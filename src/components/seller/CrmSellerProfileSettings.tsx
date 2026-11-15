@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Check, Loader2, Tags } from 'lucide-react';
+import { AlertCircle, Check, Loader2, Tags } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { supabase } from '@/lib/supabase/browser';
 import SearchCombobox from '@/components/crm/SearchCombobox';
@@ -264,6 +264,36 @@ export default function CrmSellerProfileSettings({ partnerId, contactId, onCance
     [organizations],
   );
 
+  type FormSection = 'organization' | 'pricing' | 'access';
+  /** Wszystkie braki naraz (wcześniej zapis pokazywał tylko pierwszy). Kolejność = kolejność komunikatów przy zapisie. */
+  const formProblems = useMemo(() => {
+    const list: { section: FormSection; text: string }[] = [];
+    const organization = organizations.find((org) => org.id === organizationId);
+    const activeTerms = Object.values(draftTerms).filter((term) => term.is_active);
+    const effectiveDefault = activeTerms.length === 1 ? activeTerms[0].my_company_id : defaultCompanyId;
+    if (!personId) list.push({ section: 'organization', text: 'Wybierz osobę z bazy pracowników lub kontaktów' });
+    if (partnerType === 'hotel_employee' && !organizationId) list.push({ section: 'organization', text: 'Pracownik hotelu musi mieć przypisany hotel' });
+    else if (portalEnabled && !organizationId) list.push({ section: 'organization', text: 'Wybierz organizację, w imieniu której sprzedawca będzie tworzył oferty' });
+    if (organizationId && (partnerType === 'hotel_employee' || organization?.business_type === 'hotel') && !organization?.location_id) {
+      list.push({ section: 'organization', text: 'Powiąż hotel z lokalizacją w kartotece organizacji. Sale i teren zewnętrzny dodaj w tej lokalizacji.' });
+    }
+    if (portalEnabled && personSource !== 'contact') list.push({ section: 'access', text: 'Konto portalu hotelowego musi być powiązane z osobą z kartoteki kontaktów' });
+    else if (portalEnabled && personId && !contacts.find((contact) => contact.id === personId)?.email) list.push({ section: 'access', text: 'Aby wysłać dane logowania, uzupełnij adres e-mail w kartotece kontaktu' });
+    if (portalEnabled && status !== 'active') list.push({ section: 'access', text: 'Dostęp do portalu można nadać tylko aktywnemu sprzedawcy' });
+    if (!activeTerms.length) list.push({ section: 'pricing', text: 'Włącz co najmniej jedną markę dla sprzedawcy' });
+    else if (portalEnabled && !activeTerms.some((term) => term.my_company_id === effectiveDefault)) list.push({ section: 'pricing', text: 'Wskaż domyślny cennik nowych ofert sprzedawcy' });
+    if (Object.values(draftTerms).some((term) => term.is_active && term.commission_enabled && !(Number(term.default_commission_rate) > 0))) {
+      list.push({ section: 'pricing', text: 'Podaj % od zysku większy od 0 albo wyłącz rozliczenie prowizyjne dla marki.' });
+    }
+    if (Object.values(draftTerms).some((term) => !Number.isFinite(Number(term.default_commission_rate)) || Number(term.default_commission_rate) < 0 || !Number.isFinite(Number(term.dividend_tax_rate)) || Number(term.dividend_tax_rate) < 0 || Number(term.dividend_tax_rate) >= 100)) {
+      list.push({ section: 'pricing', text: 'Podaj nieujemną prowizję oraz podatek od 0 do poniżej 100%.' });
+    }
+    return list;
+  }, [contacts, defaultCompanyId, draftTerms, organizationId, organizations, partnerType, personId, personSource, portalEnabled, status]);
+  const scrollToSection = (section: FormSection) => {
+    document.getElementById(`seller-${section}-heading`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
   const savePartner = async () => {
     if (saveLock.current) return;
     if (!canManage || (!isAdmin && (personSource !== 'contact' || partnerType === 'internal_employee'
@@ -271,50 +301,13 @@ export default function CrmSellerProfileSettings({ partnerId, contactId, onCance
       showSnackbar('Możesz zarządzać tylko przypisanymi do Ciebie sprzedawcami zewnętrznymi.', 'warning');
       return;
     }
-    if (!personId) {
-      showSnackbar('Wybierz osobę z bazy pracowników lub kontaktów', 'warning');
-      return;
-    }
-    if (partnerType === 'hotel_employee' && !organizationId) {
-      showSnackbar('Pracownik hotelu musi mieć przypisany hotel', 'warning');
-      return;
-    }
-    if (portalEnabled && !organizationId) {
-      showSnackbar('Wybierz organizację, w imieniu której sprzedawca będzie tworzył oferty', 'warning'); return;
-    }
-    if ((partnerType === 'hotel_employee' || organizations.find(org => org.id === organizationId)?.business_type === 'hotel') && !organizations.find(org => org.id === organizationId)?.location_id) {
-      showSnackbar('Powiąż hotel z lokalizacją w kartotece organizacji. Sale i teren zewnętrzny dodaj w tej lokalizacji.', 'warning'); return;
-    }
-    if (portalEnabled && personSource !== 'contact') {
-      showSnackbar('Konto portalu hotelowego musi być powiązane z osobą z kartoteki kontaktów', 'warning');
-      return;
-    }
-    if (portalEnabled && !contacts.find((contact) => contact.id === personId)?.email) {
-      showSnackbar('Aby wysłać dane logowania, uzupełnij adres e-mail w kartotece kontaktu', 'warning');
-      return;
-    }
-    if (portalEnabled && status !== 'active') {
-      showSnackbar('Dostęp do portalu można nadać tylko aktywnemu sprzedawcy', 'warning');
-      return;
-    }
-    if (!Object.values(draftTerms).some((term) => term.is_active)) {
-      showSnackbar('Włącz co najmniej jedną markę dla sprzedawcy', 'warning');
+    if (formProblems.length) {
+      showSnackbar(formProblems[0].text, 'warning');
+      scrollToSection(formProblems[0].section);
       return;
     }
     const activeCompanies = Object.values(draftTerms).filter(term => term.is_active);
     const effectiveDefaultCompany = activeCompanies.length === 1 ? activeCompanies[0].my_company_id : defaultCompanyId;
-    if (portalEnabled && !activeCompanies.some(term => term.my_company_id === effectiveDefaultCompany)) {
-      showSnackbar('Wskaż domyślny cennik nowych ofert sprzedawcy', 'warning'); return;
-    }
-
-    if (Object.values(draftTerms).some(term => term.is_active && term.commission_enabled && !(Number(term.default_commission_rate) > 0))) {
-      showSnackbar('Podaj % od zysku większy od 0 albo wyłącz rozliczenie prowizyjne dla marki.', 'warning');
-      return;
-    }
-    if (Object.values(draftTerms).some(term => !Number.isFinite(Number(term.default_commission_rate)) || Number(term.default_commission_rate) < 0 || !Number.isFinite(Number(term.dividend_tax_rate)) || Number(term.dividend_tax_rate) < 0 || Number(term.dividend_tax_rate) >= 100)) {
-      showSnackbar('Podaj nieujemną prowizję oraz podatek od 0 do poniżej 100%.', 'warning');
-      return;
-    }
     saveLock.current = true;
     setSaving(true);
     setSaveNotice('');
@@ -413,9 +406,24 @@ export default function CrmSellerProfileSettings({ partnerId, contactId, onCance
 
   return <div className="space-y-5">
     {saveNotice && <p role="alert" className="rounded-xl bg-amber-300/5 p-4 text-sm text-amber-200">{saveNotice}</p>}
+    {!editingId && <ol aria-label="Kroki dodawania sprzedawcy" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      {([
+        { section: 'organization', label: 'Osoba i hotel' },
+        { section: 'pricing', label: 'Marki i prowizja' },
+        { section: 'access', label: 'Dostęp do portalu' },
+      ] as const).map((item, index) => {
+        const open = formProblems.filter((problem) => problem.section === item.section).length;
+        const note = open ? `Do uzupełnienia: ${open}` : item.section === 'access' ? (portalEnabled ? 'Zaproszenie wyjdzie po zapisie' : 'Bez dostępu — włączysz później') : 'Gotowe';
+        return <li key={item.section}><button type="button" onClick={() => scrollToSection(item.section)} className="flex w-full items-center gap-3 rounded-lg bg-white/[0.035] p-3 text-left hover:bg-white/[0.06]">
+          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs ${open ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'bg-emerald-300/15 text-emerald-200'}`}>{open ? index + 1 : <Check className="h-3.5 w-3.5" aria-label="Gotowe" />}</span>
+          <span className="min-w-0"><span className="block text-sm">{item.label}</span><span className={`block text-[11px] ${open ? 'text-amber-100/70' : 'text-white/45'}`}>{note}</span></span>
+        </button></li>;
+      })}
+      <li className="flex items-center gap-3 rounded-lg bg-white/[0.02] p-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/5 text-xs text-white/40">4</span><span className="min-w-0"><span className="block text-sm text-white/70">Po zapisie</span><span className="block text-[11px] text-white/40">Sale, opiekun i logowanie — lista „Gotowość do pracy”</span></span></li>
+    </ol>}
     <fieldset disabled={saving} className="min-w-0 space-y-5 disabled:opacity-60">
         <section className="space-y-4 rounded-xl bg-white/[0.035] p-5" aria-labelledby="seller-organization-heading">
-          <h3 id="seller-organization-heading" className="text-sm font-medium">Organizacja i współpraca</h3>
+          <h3 id="seller-organization-heading" className="scroll-mt-24 text-sm font-medium">{!editingId && '1. '}Organizacja i współpraca</h3>
           <p className="text-xs leading-5 text-white/50">To tutaj wybierasz jedną organizację dla nowych ofert. Powiązania firm w nagłówku kontaktu i dotychczasowe oferty pozostają bez zmian.</p>
                 <div className="grid gap-3 md:grid-cols-3">
                   <label className="text-xs text-[#e5e4e2]/55">Źródło osoby<select value={personSource} disabled={Boolean(editingId || contactId) || !isAdmin} onChange={(event) => { const source = event.target.value as PersonSource; setPersonSource(source); setPersonId(''); setPartnerType(source === 'employee' ? 'internal_employee' : 'hotel_employee'); }} className={`${fieldClass} mt-1.5 disabled:opacity-50`}><option value="contact">{isAdmin ? 'Kontakty CRM' : 'Moje kontakty zewnętrzne'}</option>{isAdmin && <option value="employee">Pracownicy Mavinci</option>}</select></label>
@@ -444,14 +452,14 @@ export default function CrmSellerProfileSettings({ partnerId, contactId, onCance
 
         </section>
         <section className="space-y-4 rounded-xl bg-white/[0.035] p-5" aria-labelledby="seller-pricing-heading">
-                  <h3 id="seller-pricing-heading" className="text-sm font-medium">Cennik i zasady prowizji</h3>
+                  <h3 id="seller-pricing-heading" className="scroll-mt-24 text-sm font-medium">{!editingId && '2. '}Cennik i zasady prowizji</h3>
                   {editingId && <Link href={`/crm/salespeople/${editingId}/pricing`} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/15"><Tags className="h-4 w-4" />Indywidualne ceny produktów i rozszerzeń</Link>}
                   <p className="mt-1 text-xs text-[#e5e4e2]/40">Każda marka może mieć inną stawkę i sposób rozliczenia. Prowizja to % od zysku netto wydarzenia — po kosztach i po koszcie samej prowizji (wypłata gotówką z zysku razem z podatkiem). Inną stawkę dla jednego wydarzenia ustawisz w jego podsumowaniu.</p>
                   <label className="mt-3 block text-sm">Domyślny cennik nowych ofert w portalu<select value={Object.values(draftTerms).filter(term => term.is_active).length === 1 ? Object.values(draftTerms).find(term => term.is_active)!.my_company_id : defaultCompanyId} onChange={event => setDefaultCompanyId(event.target.value)} className={`${fieldClass} mt-1.5`}><option value="">Wybierz aktywną markę</option>{companies.filter(company => draftTerms[company.id]?.is_active).map(company => <option key={company.id} value={company.id}>{company.name}</option>)}</select><span className="mt-2 block text-xs text-white/50">Sprzedawca nie wybiera marki realizującej. Przy jednej aktywnej marce cennik zostanie wybrany automatycznie. Logo i kolory pochodzą z organizacji przypisanej powyżej; starsze oferty zachowują swoje powiązania.</span></label>
                   <div className="mt-3 space-y-2">{companies.map((company) => { const term = draftTerms[company.id] || { my_company_id: company.id, commission_enabled: false, default_commission_rate: 10, default_payment_method: 'cash_dividend' as CommissionPaymentMethod, dividend_tax_rate: DEFAULT_DIVIDEND_TAX_RATE, is_active: false }; return <div key={company.id} className={`grid gap-3 rounded-lg border p-3 md:grid-cols-[minmax(200px,1fr)_140px_220px_120px] ${term.is_active ? 'border-[#d3bb73]/20 bg-[#d3bb73]/5' : 'border-white/5 bg-[#0f1119]'}`}><div className="space-y-2"><label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={term.is_active} onChange={(event) => setDraftTerms({ ...draftTerms, [company.id]: { ...term, is_active: event.target.checked, ...(!editingId && event.target.checked ? { commission_enabled: true } : {}) } })} /><span>{company.name}</span></label><label className="flex items-center gap-2 text-[11px] text-[#e5e4e2]/55"><input type="checkbox" disabled={!term.is_active} checked={term.commission_enabled} onChange={(event) => setDraftTerms({ ...draftTerms, [company.id]: { ...term, commission_enabled: event.target.checked } })} /><span>Rozliczenie prowizyjne</span></label></div><label className="text-[11px] text-[#e5e4e2]/45">Prowizja (% od zysku)<input type="number" min="0" step="0.01" disabled={!term.is_active || !term.commission_enabled} value={term.default_commission_rate} onChange={(event) => setDraftTerms({ ...draftTerms, [company.id]: { ...term, default_commission_rate: Number(event.target.value || 0) } })} className={`${fieldClass} mt-1 py-1.5 disabled:opacity-30`} /></label><label className="text-[11px] text-[#e5e4e2]/45">Sposób wypłaty<select disabled={!term.is_active || !term.commission_enabled} value={term.default_payment_method} onChange={(event) => setDraftTerms({ ...draftTerms, [company.id]: { ...term, default_payment_method: event.target.value as CommissionPaymentMethod } })} className={`${fieldClass} mt-1 py-1.5 disabled:opacity-30`}>{Object.entries(commissionPaymentLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="text-[11px] text-[#e5e4e2]/45">Podatek (%)<input type="number" min="0" max="99.99" step="0.01" disabled={!term.is_active || !term.commission_enabled || term.default_payment_method !== 'cash_dividend'} value={term.dividend_tax_rate} onChange={(event) => setDraftTerms({ ...draftTerms, [company.id]: { ...term, dividend_tax_rate: Number(event.target.value || 0) } })} className={`${fieldClass} mt-1 py-1.5 disabled:opacity-30`} /></label></div>; })}</div>
         </section>
         <section className="space-y-4 rounded-xl bg-white/[0.035] p-5" aria-labelledby="seller-access-heading">
-          <h3 id="seller-access-heading" className="text-sm font-medium">Dostęp do portalu</h3>
+          <h3 id="seller-access-heading" className="scroll-mt-24 text-sm font-medium">{!editingId && '3. '}Dostęp do portalu</h3>
                 <div className={`rounded-lg border p-3 ${personSource === 'contact' ? 'border-sky-300/10 bg-sky-300/5' : 'border-white/5 bg-white/[0.02] opacity-45'}`}>
                   <label className="flex items-start gap-3 text-sm"><input type="checkbox" checked={portalEnabled} disabled={personSource !== 'contact'} onChange={(event) => setPortalEnabled(event.target.checked)} className="mt-0.5" /><span><span className="block text-sky-100">Nadaj dostęp do portalu sprzedawcy</span><span className="mt-1 block text-xs text-sky-100/45">Przy pierwszym nadaniu dostępu zapis utworzy lub połączy konto i wyśle zaproszenie na e-mail kontaktu. Zmiana ustawień istniejącego konta nie wysyła ponownie danych logowania. Portal pokazuje tylko dane tego sprzedawcy.</span></span></label>
                   {portalEnabled && personSource === 'contact' && <p className="mt-3 text-xs text-sky-100/45">Kontakt będzie mógł się zalogować, wylogować, samodzielnie zmienić hasło oraz odzyskać je z ekranu logowania.</p>}
@@ -460,6 +468,14 @@ export default function CrmSellerProfileSettings({ partnerId, contactId, onCance
           {portalAuthUserId && <p className="text-xs text-emerald-200/70">Konto logowania jest połączone z kontaktem.</p>}
         </section>
       </fieldset>
+      {formProblems.length > 0
+        ? <div role="status" className="rounded-xl bg-amber-300/[0.06] p-4">
+            <p className="flex items-center gap-2 text-sm text-amber-100"><AlertCircle className="h-4 w-4" />Do uzupełnienia przed zapisem ({formProblems.length})</p>
+            <ul className="mt-2 space-y-1">{formProblems.map((problem) => <li key={problem.text}>
+              <button type="button" onClick={() => scrollToSection(problem.section)} className="text-left text-xs leading-5 text-amber-100/75 hover:text-amber-50">• {problem.text}</button>
+            </li>)}</ul>
+          </div>
+        : !editingId && <p className="flex items-center gap-2 text-xs text-emerald-200/80"><Check className="h-4 w-4" />Wszystko gotowe do zapisu{portalEnabled ? ' — zapis wyśle zaproszenie do portalu.' : '.'}</p>}
       <div className="flex flex-wrap justify-end gap-2">
         <button type="button" disabled={saving} onClick={() => onCancel ? onCancel() : setAttempt(value => value + 1)} className="rounded-lg bg-white/5 px-4 py-2 text-sm text-white/60 disabled:opacity-40">{onCancel ? 'Anuluj' : 'Odrzuć niezapisane zmiany'}</button>
         <button type="button" disabled={saving} onClick={() => void savePartner()} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#111522] disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}Zapisz ustawienia</button>

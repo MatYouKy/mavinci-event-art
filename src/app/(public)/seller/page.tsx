@@ -11,6 +11,8 @@ import { useOfferRefresh } from '@/lib/seller/useOfferRefresh';
 import SellerInboxPanel from '@/components/seller/SellerInboxPanel';
 import SellerManagerCard from '@/components/seller/SellerManagerCard';
 import SellerWelcomeChecklist from '@/components/seller/SellerWelcomeChecklist';
+import SellerOnboardingGuide from '@/components/seller/SellerOnboardingGuide';
+import { useSellerOnboarding } from '@/lib/seller/onboarding';
 
 type PartnerOffer = {
   my_company_id: string;
@@ -40,6 +42,7 @@ export default function SellerDashboard() {
   const [stagesError, setStagesError] = useState('');
   const [retry, setRetry] = useState(0);
   const revision = useOfferRefresh(context ? `sales_partner_id=eq.${context.profile.id}` : undefined);
+  const onboarding = useSellerOnboarding(context?.profile.id);
 
   useEffect(() => {
     if (!context) {
@@ -141,7 +144,8 @@ export default function SellerDashboard() {
           </div>
         </header>
 
-        <SellerWelcomeChecklist context={context} offerCount={offers.length} />
+        <SellerWelcomeChecklist context={context} offerCount={offers.length} onboarding={onboarding} />
+        <SellerOnboardingGuide context={context} onboarding={onboarding} autoOpen={!loadingOffers && !offersError && offers.length === 0} />
 
         {offersError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-rose-300/10 p-4 text-sm text-rose-100">
           <p className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{offersError} {offers.length ? 'Wyświetlamy ostatnio wczytane dane.' : 'Liczby poniżej nie są jeszcze dostępne.'}</p>

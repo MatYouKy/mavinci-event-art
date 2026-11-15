@@ -17,6 +17,7 @@ import SellerChatPanel, { ChatBrand, ChatOffer } from './SellerChatPanel';
 import SellerInboxPanel, { SellerCountBadge } from './SellerInboxPanel';
 import CrmOfferBrandingPanel from './CrmOfferBrandingPanel';
 import CrmSellerProfileSettings from './CrmSellerProfileSettings';
+import CrmSellerReadiness from './CrmSellerReadiness';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import SellerManagementPanel from '@/components/crm/sellers/SellerManagementPanel';
 import SellerAuditHistory from '@/components/crm/sellers/SellerAuditHistory';
@@ -67,6 +68,30 @@ export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId
     if (section !== 'chat') next.delete('conversation');
     router.replace(`${pathname}?${next}${section === 'settings' ? '#seller-profile-settings' : ''}`, { scroll: false });
   };
+  // „Gotowość do pracy”: przejście do konkretnej sekcji ustawień (formularz wczytuje się asynchronicznie).
+  const [settingsAnchor, setSettingsAnchor] = useState<string | null>(null);
+  const goToSettings = (section: 'organization' | 'pricing' | 'access' | 'manager') => {
+    setSettingsAnchor(`seller-${section}-heading`);
+    openSection('settings');
+  };
+  const goToBranding = () => {
+    setBrandingOpen(true);
+    setSettingsAnchor('seller-branding-preview');
+    openSection('settings');
+  };
+  useEffect(() => {
+    if (tab !== 'settings' || !settingsAnchor) return;
+    let tries = 0;
+    const timer = window.setInterval(() => {
+      const target = document.getElementById(settingsAnchor);
+      if (target || ++tries > 40) {
+        window.clearInterval(timer);
+        target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        setSettingsAnchor(null);
+      }
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [tab, settingsAnchor]);
   const [data, setData] = useState<Workspace | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -141,6 +166,7 @@ export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId
       { id: 'settings', label: 'Ustawienia', icon: Settings, count: 0 },
     ].filter(item => item.id !== 'settlements' || canViewSettlements).map((item) => <button data-crm-tab-active={tab === item.id} key={item.id} type="button" onClick={() => openSection(item.id as WorkspaceSection)} className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm ${tab === item.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'bg-white/[0.03] text-white/55 hover:bg-white/5'}`}><item.icon className="h-4 w-4" />{item.label}<SellerCountBadge count={item.count} label={item.label} /></button>)}</nav>
     {tab !== 'chat' && tab !== 'settings' && tab !== 'settlements' && tab !== 'history' && <div className="flex flex-wrap gap-2">{[{ id: '', name: 'Wszystkie marki' }, ...data.brands].map((brand) => <button key={brand.id} type="button" onClick={() => setBrandId(brand.id)} className={`rounded-lg px-3 py-2 text-xs ${brandId === brand.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-white/45 hover:bg-white/5'}`}>{brand.name}</button>)}</div>}
+    {(tab === 'summary' || tab === 'settings') && <CrmSellerReadiness partnerId={partnerId} onOpenSettings={goToSettings} onOpenBranding={goToBranding} />}
     {tab === 'summary' && <>
       {!data.can_view_offers && <p className="text-sm text-amber-200">Twój zakres uprawnień nie obejmuje ofert. Dane handlowe nie są dostępne w tym widoku.</p>}
       {data.can_view_offers && <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[
@@ -202,7 +228,7 @@ export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId
       {/* Keep the editor mounted while navigating sales sections. Background
           workspace refreshes and section changes must not erase unsaved input. */}
       <CrmSellerProfileSettings key={partnerId} partnerId={partnerId} contactId={contactId} />
-      <details open={brandingOpen} onToggle={event => setBrandingOpen(event.currentTarget.open)} className="rounded-xl bg-white/[0.035] p-5">
+      <details id="seller-branding-preview" open={brandingOpen} onToggle={event => setBrandingOpen(event.currentTarget.open)} className="rounded-xl bg-white/[0.035] p-5">
         <summary className="cursor-pointer text-sm font-medium text-[#d3bb73]">Branding i wizytówka — podgląd</summary>
         <p className="mt-2 text-xs text-white/50">Sprzedawca zmienia logo, kolory i wygląd ofert w swoim portalu.</p>
         {brandingOpen && <div className="mt-5"><CrmOfferBrandingPanel key={partnerId} partnerId={partnerId} /></div>}

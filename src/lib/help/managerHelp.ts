@@ -39,17 +39,20 @@ export const MANAGER_HELP: HelpManual = {
     {
       id: 'nowy-sprzedawca',
       title: 'Nowy sprzedawca',
-      summary: 'Zaproszenie zadziała dopiero, gdy hotel ma komplet danych. Sprawdź listę poniżej przed kliknięciem „Wyślij zaproszenie”.',
+      summary: 'Formularz pokazuje w czterech krokach, czego brakuje do zapisu. Po zapisie „Gotowość do pracy” prowadzi przez resztę: sale, opiekuna, pierwsze logowanie.',
       steps: [
-        'W karcie kontaktu lub organizacji wybierz „Mianuj sprzedawcą”.',
-        'Ustaw rodzaj współpracy, status aktywny i organizację hotelu.',
-        'Powiąż organizację z lokalizacją w CRM i dodaj sale z notatkami. Bez sal hotel nie wybierze przestrzeni w kreatorze.',
-        'Ustaw marki, cennik, sposób rozliczenia i prowizję. Wskaż domyślny cennik nowych ofert.',
-        'Włącz dostęp do portalu i wyślij zaproszenie.',
+        'W karcie kontaktu lub organizacji wybierz „Mianuj sprzedawcą” (albo „Dodaj sprzedawcę” w Sprzedawcach).',
+        'Krok 1: osoba i hotel — rodzaj współpracy, status aktywny i organizacja, w imieniu której hotel składa oferty.',
+        'Krok 2: marki i prowizja — aktywne marki, sposób rozliczenia, prowizja i domyślny cennik nowych ofert.',
+        'Krok 3: dostęp do portalu — zaznacz, aby po zapisie wysłać zaproszenie na e-mail kontaktu.',
+        'Lista „Do uzupełnienia” nad przyciskiem zapisu pokazuje od razu wszystkie braki.',
+        'Po zapisie sprawdź „Gotowość do pracy” w sprzedaży sprzedawcy: sale w lokalizacji, opiekun, logowanie, wygląd ofert, pierwsza oferta.',
       ],
       notes: [
         'Kontakt musi mieć adres e-mail, który nie należy do pracownika CRM ani innego sprzedawcy.',
-        'Zaproszenie zawiera jednorazowy link do ustawienia hasła. Wygasły link wyślij ponownie z karty sprzedawcy.',
+        'Bez sal w lokalizacji hotel nie wybierze przestrzeni w kreatorze. Dodaj je w kartotece lokalizacji.',
+        'Zaproszenie zawiera jednorazowy link do ustawienia hasła. Wygasły link wyślij ponownie z „Gotowości do pracy”.',
+        'W „Gotowości” widzisz też, czy hotel przeszedł przewodnik w portalu.',
       ],
     },
     {
@@ -60,6 +63,11 @@ export const MANAGER_HELP: HelpManual = {
         'W „Sprzedawcach” kliknij „Pokaż portal hotelowi”.',
         'Wpisz nazwę i logo hotelu. Przejdź przez kreator, ofertę dla klienta i „Jak to działa”.',
         'Opowiadaj według osi w pięciu etapach — hotel zobaczy ją potem w portalu.',
+      ],
+      notes: [
+        'W demo z broszury hotel może kliknąć „Chcę dołączyć”. Powstaje zapytanie w CRM dla osoby, która wysłała broszurę, z powiadomieniem.',
+        'Zgłoszenia widać też w wynikach broszury: licznik „Chcą dołączyć” i link do zapytania przy osobie.',
+        'Po rozmowie użyj „Mianuj sprzedawcą” w karcie kontaktu utworzonego z zapytania.',
       ],
     },
     {

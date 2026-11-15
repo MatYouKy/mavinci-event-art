@@ -74,6 +74,23 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         return new NextResponse(new Uint8Array(pdf), { headers: { 'Content-Type': 'application/pdf', 'Cache-Control': 'no-store' } });
       } finally { release(); }
     }
+    if (payload.action === 'join') {
+      // „Chcę dołączyć”: zapytanie w CRM dla osoby, która wysłała broszurę (migracja 20261115190000). Jedno na sesję.
+      const raw = (payload.join && typeof payload.join === 'object' ? payload.join : {}) as Record<string, unknown>;
+      const text = (value: unknown, max: number) => typeof value === 'string' ? value.trim().slice(0, max) : '';
+      const { data: joined, error: joinError } = await admin.rpc('submit_seller_demo_join', {
+        p_session: sessionId, p_brochure: params.id,
+        p_full_name: text(raw.fullName, 120), p_organization: text(raw.organization, 160),
+        p_email: text(raw.email, 200), p_phone: text(raw.phone, 40), p_note: text(raw.note, 2000),
+      });
+      if (joinError) {
+        // Komunikaty walidacji z bazy są po polsku i przeznaczone dla odwiedzającego (RAISE EXCEPTION → P0001).
+        if (joinError.code === 'P0001') return json({ error: joinError.message }, 400);
+        console.error('[seller-demo] Join request failed', { code: joinError.code });
+        return json({ error: 'Nie udało się wysłać zgłoszenia. Spróbuj ponownie za chwilę.' }, 503);
+      }
+      return json({ ok: true, duplicate: Boolean((joined as { duplicate?: boolean } | null)?.duplicate) });
+    }
     if (!['lead','pdf'].includes(String(payload.action))) return json({ error: 'Nieznana operacja.' },400);
     const input = parseSellerDemoInput(payload.input);
     const { logo, cover, portrait, ...details } = input;

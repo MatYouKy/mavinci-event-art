@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Mail, MessageCircle, MessageSquare, Phone, UserRound } from 'lucide-react';
 import { sellerPhoneHref, sellerWhatsAppHref, type SellerPortalManager } from '@/lib/seller/portal';
-import { writeSellerWelcome } from '@/lib/seller/welcome';
+import { markSellerOnboarding } from '@/lib/seller/onboarding';
 
 const actionBase = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition';
 const action = `${actionBase} bg-white/[0.05] text-[#e5e4e2]/85 hover:bg-[#d3bb73]/15 hover:text-[#d3bb73]`;
@@ -29,7 +29,7 @@ export default function SellerManagerCard({ manager, partnerId, compact = false 
   /** Header variant on the conversations page ("Napisz" scrolls to the chat). */
   compact?: boolean;
 }) {
-  const contacted = () => { if (partnerId) writeSellerWelcome(partnerId, { manager: true }); };
+  const contacted = () => { if (partnerId) void markSellerOnboarding(partnerId, { manager_met: true }); };
   if (!manager?.name) {
     return <section aria-labelledby="seller-manager-title" className="rounded-xl bg-[#1c1f33] p-5 text-[#e5e4e2]">
       <p id="seller-manager-title" className="text-xs uppercase tracking-[0.18em] text-[#d3bb73]">Twój opiekun</p>

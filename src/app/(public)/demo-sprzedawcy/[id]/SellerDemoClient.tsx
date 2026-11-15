@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Download, Loader2, Music, Monitor, Mic2, Check, ArrowRight, LockKeyhole } from 'lucide-react';
+import { Download, Loader2, Music, Monitor, Mic2, Check, LockKeyhole } from 'lucide-react';
 import { DEFAULT_DEMO, DEMO_PRODUCTS, DEMO_PORTRAIT_MAX_FILE_BYTES, DEMO_PORTRAIT_MAX_DATA_LENGTH, DEMO_PORTRAIT_MAX_EDGE, demoInputError, type SellerDemoInput } from '@/lib/seller/demo';
 import DemoGenerationLoader from './DemoGenerationLoader';
 import DemoCoverPreview from './DemoCoverPreview';
+import SellerDemoJoin from './SellerDemoJoin';
 import { ImageDropzone } from '@/components/UI/ImageDropzone';
 import { OfferBrandColorFields } from '@/components/seller/OfferIdentityFields';
 const field = 'mt-2 w-full rounded-xl border border-white/10 bg-[var(--brand-burgundy-950)] px-4 py-3 text-sm text-[var(--brand-platinum)] outline-none placeholder:text-white/40 transition-colors focus:bg-[var(--brand-burgundy-900)]';
@@ -129,7 +130,7 @@ export default function SellerDemoClient({ brochureId, defaultCoverUrl, source =
             <p className="flex items-center gap-2 text-sm text-[var(--brand-gold)]"><LockKeyhole className="h-4 w-4"/>Poznaj całą ofertę</p>
             <p className="mt-2 text-xs leading-6 text-white/65">Strony usług, kalkulację i dane opiekuna zobaczysz w PDF po kliknięciu przycisku na końcu formularza.</p>
           </div>
-          <div className="mt-6 rounded-xl bg-[var(--brand-burgundy-900)] p-5 text-sm leading-6 text-white/65"><p className="text-white">Tak może wyglądać Twoja codzienna praca.</p><p className="mt-2">Po rozpoczęciu współpracy otrzymasz dostęp do katalogu i ustalonych warunków. Oferty przedstawisz pod własną marką, a zakres realizacji omówisz z opiekunem Mavinci.</p><a href="mailto:mateusz@mavinci.pl?subject=Strefa%20sprzedawcy%20%E2%80%94%20wsp%C3%B3%C5%82praca" className="mt-4 inline-flex items-center gap-2 text-[var(--brand-gold)]">Porozmawiajmy o współpracy <ArrowRight className="h-4 w-4"/></a></div>
+          <SellerDemoJoin post={post} ready={ready} prefill={{fullName:input.fullName,organization:input.organization,email:input.email,phone:input.phone}}/>
         </aside>
       </div>
     </div>

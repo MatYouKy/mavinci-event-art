@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSellerPortalContext } from '@/lib/seller/portal';
-import { writeSellerWelcome } from '@/lib/seller/welcome';
+import { markSellerOnboarding } from '@/lib/seller/onboarding';
 import SellerChatPanel, { ChatOffer } from '@/components/seller/SellerChatPanel';
 import SellerManagerCard from '@/components/seller/SellerManagerCard';
 
@@ -16,7 +16,7 @@ export default function SellerMessagesPage() {
     let active = true;
     if (!context) return;
     // Opening the conversations completes the "Poznaj swojego opiekuna" step.
-    writeSellerWelcome(context.profile.id, { manager: true });
+    void markSellerOnboarding(context.profile.id, { manager_met: true });
     void (async () => {
       const { data, error: loadError } = await supabase.from('offers').select('id,my_company_id,title,offer_number').eq('sales_partner_id', context.profile.id).order('created_at', { ascending: false });
       if (!active) return;

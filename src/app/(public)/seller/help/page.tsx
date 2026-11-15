@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { MessageSquare, Search } from 'lucide-react';
+import { Compass, MessageSquare, Search } from 'lucide-react';
 import { HelpChapterView } from '@/components/help/HelpDrawer';
 import { searchHelp } from '@/lib/help/helpTypes';
 import { SELLER_HELP } from '@/lib/help/sellerHelp';
@@ -17,7 +17,10 @@ export default function SellerHelpPage() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div><h1 className="text-2xl font-light uppercase">Instrukcja sprzedawcy</h1>
           <p className="mt-1 max-w-2xl text-sm text-white/55">Jak przygotować ofertę, przekazać ją klientowi i doprowadzić do wydarzenia. Na każdym ekranie tę samą pomoc otworzysz znakiem „?”.</p></div>
-        <Link href="/seller/messages" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#111522]"><MessageSquare className="h-4 w-4" />Zapytaj opiekuna</Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/seller?przewodnik=1" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-white/[0.06] px-4 py-2.5 text-sm text-[#d3bb73] hover:bg-white/10"><Compass className="h-4 w-4" />Przewodnik na start</Link>
+          <Link href="/seller/messages" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2.5 text-sm font-medium text-[#111522]"><MessageSquare className="h-4 w-4" />Zapytaj opiekuna</Link>
+        </div>
       </header>
 
       <section aria-labelledby="help-axis-title" className="rounded-xl bg-[#1c1f33] p-4 sm:p-5">

@@ -1,7 +1,11 @@
 'use client';
 
-/** Per-browser state of the first-login checklist (a convenience, never authoritative). */
-export type SellerWelcomeFlags = { dismissed?: boolean; manager?: boolean };
+/**
+ * Per-browser copy of the first-login guide state (a convenience, never authoritative).
+ * Since 20261115190000 the guide progress lives in the database (src/lib/seller/onboarding.ts);
+ * this copy keeps the guide working before the migration and avoids flashes on reload.
+ */
+export type SellerWelcomeFlags = { dismissed?: boolean; manager?: boolean; onboarding?: Record<string, boolean | string> };
 export const SELLER_WELCOME_CHANGED_EVENT = 'seller-welcome-changed';
 const storageKey = (partnerId: string) => `mavinci-seller-welcome:${partnerId}`;
 

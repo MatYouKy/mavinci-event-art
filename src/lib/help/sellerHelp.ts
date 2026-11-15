@@ -2,7 +2,8 @@ import type { HelpManual } from './helpTypes';
 
 /**
  * Instrukcja sprzedawcy (hotelu) — panel „?” w portalu i strona „Pomoc”.
- * Opisuje proces po etapie 2 wdrożenia audytu: zgoda na cenę przed pokazaniem klientowi, akceptacja online trafia sama do opiekuna.
+ * Opisuje proces po etapie 3 wdrożenia audytu: zgoda na cenę przed pokazaniem klientowi, akceptacja online trafia sama do opiekuna,
+ * przewodnik pierwszego uruchomienia zapisany na koncie sprzedawcy.
  */
 export const SELLER_HELP: HelpManual = {
   audience: 'seller',
@@ -32,14 +33,17 @@ export const SELLER_HELP: HelpManual = {
     {
       id: 'pulpit',
       title: 'Pulpit i pierwsze kroki',
-      summary: 'Pulpit pokazuje, co wymaga Twojej reakcji, oraz liczbę ofert na każdym etapie.',
+      summary: 'Pulpit pokazuje, co wymaga Twojej reakcji, oraz liczbę ofert na każdym etapie. Na start prowadzi Cię przewodnik w pięciu krokach.',
       steps: [
+        'Przejdź przewodnik „Witaj w portalu MAVINCI”: Twój hotel, wygląd ofert, opiekun, jak to działa, pierwszy krok.',
         'Ustaw wygląd ofert: logo, kolory i czcionkę hotelu (Ustawienia → Branding).',
         'Poznaj swojego opiekuna — jego dane są na pulpicie i w rozmowach.',
         'Przygotuj pierwszą ofertę albo wyślij szybkie zapytanie o termin.',
         'Wydrukuj kartę z kodem QR, aby goście hotelu sami pytali o wydarzenia.',
       ],
       notes: [
+        'Przewodnik otwiera się sam, dopóki nie masz pierwszej oferty. Wrócisz do niego przyciskiem „Przewodnik” na pulpicie albo w Pomocy.',
+        'Postęp przewodnika zapisuje się na Twoim koncie — na innym komputerze nie zaczniesz od nowa.',
         '„Do zrobienia” pokazuje tylko sprawy, w których teraz działasz Ty.',
         'Kafelki z etapami otwierają listę ofert z ustawionym filtrem.',
       ],
