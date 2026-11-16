@@ -21,6 +21,10 @@ const PAIRS = [
   ['src/lib/events/access/eventAccess.ts', 'mobile/src/lib/eventAccess.ts'],
   ['src/lib/events/settlement/eventSettlement.ts', 'mobile/src/lib/eventSettlement.ts'],
   ['src/lib/seller/sellerCockpit.ts', 'mobile/src/lib/sellerCockpit.ts'],
+  ['src/lib/seller/offerJourney.ts', 'mobile/src/lib/offerJourney.ts'],
+  ['src/lib/seller/readiness.ts', 'mobile/src/lib/sellerReadiness.ts'],
+  ['src/lib/help/helpTypes.ts', 'mobile/src/lib/helpTypes.ts'],
+  ['src/lib/help/managerHelp.ts', 'mobile/src/lib/managerHelp.ts'],
   ['src/lib/events/equipment/equipmentChecklist.ts', 'mobile/src/lib/equipmentChecklist.ts'],
   ['src/lib/CRM/meetings/meetingStatus.ts', 'mobile/src/lib/meetingStatus.ts'],
 ];

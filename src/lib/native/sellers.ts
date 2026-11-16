@@ -10,11 +10,12 @@ import {
   formatWaitingHours,
   parseSellerCockpit,
   parseSellerPriceRequests,
+  sellerCockpitJourneyStages,
   sellerCockpitTodayCount,
   type SellerCockpit,
   type SellerCockpitSeller,
 } from '@/lib/seller/sellerCockpit';
-import { SELLER_JOURNEY_ACTOR_LABELS, SELLER_JOURNEY_STAGES, sellerJourney } from '@/lib/seller/offerJourney';
+import { SELLER_JOURNEY_ACTOR_LABELS, SELLER_JOURNEY_STAGES, sellerJourney, sellerWorkspaceJourneyInput, type SellerWorkspaceOfferFacts } from '@/lib/seller/offerJourney';
 import { SELLER_READINESS_MIGRATION, sellerReadinessSteps, sellerReadinessSummary, type SellerReadinessFacts } from '@/lib/seller/readiness';
 import { MANAGER_HELP } from '@/lib/help/managerHelp';
 
@@ -187,14 +188,6 @@ export async function sellersCockpit(ctx: NativeContext, managerFilter: string |
   const payable = sellers.reduce((sum, seller) => sum + seller.payable, 0);
   const forecast = sellers.reduce((sum, seller) => sum + seller.forecast, 0);
   const isAdmin = cockpit.viewer.is_admin;
-  // Oś w 5 etapach (jak portal i CRM) z liczbami z lejka ofert i wydarzeń sprzedawców.
-  const stageCounts: Record<string, { count: number; detail: string }> = {
-    offer: { count: pipeline.draft, detail: 'szkice i oferty bez PDF' },
-    client: { count: pipeline.pdf, detail: 'PDF lub link u klienta' },
-    manager: { count: pipeline.review, detail: 'czekają na Twoją ocenę' },
-    event: { count: pipeline.accepted + pipeline.confirmed, detail: `${pipeline.accepted} do potwierdzenia · ${pipeline.confirmed} potwierdzone` },
-    settlement: { count: pipeline.completed + pipeline.settled, detail: `${pipeline.completed} do rozliczenia · ${pipeline.settled} rozliczone` },
-  };
   return {
     viewer: { employeeId: cockpit.viewer.employee_id, isAdmin },
     managers: cockpit.managers,
@@ -210,11 +203,13 @@ export async function sellersCockpit(ctx: NativeContext, managerFilter: string |
       { key: 'money', label: 'Do wypłaty', value: pln(payable), helper: `prognoza ${pln(forecast)}` },
     ],
     groups: todayGroups(cockpit),
-    stages: SELLER_JOURNEY_STAGES.map((stage) => ({ key: stage.key, label: stage.label, hint: stage.hint, ...stageCounts[stage.key] })),
+    // Oś w 5 etapach (jak portal, CRM i aplikacja mobilna) z liczbami z lejka ofert i wydarzeń sprzedawców.
+    stages: sellerCockpitJourneyStages(pipeline),
     upcoming: cockpit.upcoming.map((event) => ({ eventId: event.event_id, name: event.name, date: event.event_date, status: event.status, sellerName: event.seller_name })),
     warnings: cockpit.warnings.map((warning) => {
       const seller = sellers.find((item) => item.id === warning.sales_partner_id);
-      const settings = ['no_manager', 'manager_without_rights', 'no_active_terms'].includes(warning.code);
+      // Opiekun, marki i „Wynagrodzenie w portalu” są w ustawieniach karty sprzedawcy.
+      const settings = ['no_manager', 'manager_without_rights', 'no_active_terms', 'commission_reveal_due'].includes(warning.code);
       return {
         sellerId: warning.sales_partner_id, sellerName: warning.seller_name, message: warning.message,
         label: SELLER_WARNING_LABELS[warning.code] || 'Ostrzeżenie',
@@ -226,10 +221,9 @@ export async function sellersCockpit(ctx: NativeContext, managerFilter: string |
   };
 }
 
-type WorkspaceOffer = {
-  id: string; title: string | null; offer_number: string | null; my_company_id: string; brand_name: string; status: string;
-  created_at: string; client_name: string | null; event_date: string | null; event_id: string | null; client_total_net: number | null;
-  generated_at: string | null; review_status: string | null; guest_link: { view_count?: number; accepted_at?: string | null } | null;
+type WorkspaceOffer = SellerWorkspaceOfferFacts & {
+  id: string; title: string | null; offer_number: string | null; my_company_id: string; brand_name: string;
+  created_at: string; client_name: string | null; event_date: string | null; client_total_net: number | null;
 };
 type WorkspaceEvent = { id: string; name: string; event_date: string; status: string; brand_name: string };
 
@@ -266,16 +260,10 @@ export async function sellerCard(ctx: NativeContext, partnerId: string) {
   }
   const managerName = data.manager?.manager_name || null;
   const offerRows = offers.map((offer) => {
-    const journey = sellerJourney({
-      offerStatus: offer.status,
-      reviewStatus: offer.review_status,
+    const journey = sellerJourney(sellerWorkspaceJourneyInput(offer, {
       priceApprovalRequired: approval.get(offer.id) === 'required',
-      hasPdf: Boolean(offer.generated_at),
-      clientAcceptedOnline: Boolean(offer.guest_link?.accepted_at),
-      clientViewed: Number(offer.guest_link?.view_count || 0) > 0,
-      isRealization: Boolean(offer.event_id),
       eventStatus: offer.event_id ? eventStatus.get(offer.event_id) || null : null,
-    }, { viewer: 'manager', managerName });
+    }), { viewer: 'manager', managerName });
     return {
       id: offer.id, number: offer.offer_number, title: offer.title || 'Oferta bez tytułu', client: offer.client_name, brand: offer.brand_name,
       net: offer.client_total_net == null ? null : pln(offer.client_total_net), eventDate: offer.event_date, eventId: offer.event_id, createdAt: offer.created_at,

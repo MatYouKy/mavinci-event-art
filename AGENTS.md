@@ -37,6 +37,12 @@
 - Jeśli zmiana świadomie nie dotyczy aplikacji, wpisz w opisie PR „Mobile: nie dotyczy — powód”. Bez tego kontrola parytetu w CI zatrzymuje PR.
 - Zmiany w aplikacji wymagają nowej wersji: podnieś `version` w `mobile/app.json` i `mobile/package.json`, a następnie `cd mobile && yarn deploy`.
 
+## Instrukcje pod „?” (portal sprzedawcy i opiekun)
+
+- Treść instrukcji dla hotelu (`src/lib/help/sellerHelp.ts`), instrukcji opiekuna (`src/lib/help/managerHelp.ts`), podpowiedzi przy polach i opisy osi w 5 etapach (`src/lib/seller/offerJourney.ts`) zatwierdza opiekun sprzedawców (decyzja 15.11.2026). Przegląd odbywa się w dokumencie „Instrukcje do zatwierdzenia”: https://claude.ai/artifact/FgT91hYw1CrY8aKN1P7Nsq
+- Zmiana procesu nadal aktualizuje instrukcję w tej samej zmianie — pomoc nie może opisywać starego działania. Nowe lub zmienione zdania trafiają też do dokumentu jako sugestie do akceptacji opiekuna; jego poprawki przenosimy do kodu bez zmiany procesu.
+- Po akceptacji zapisz w nagłówku pliku instrukcji, kto i kiedy zatwierdził, a w dokumencie ustaw stan „Zatwierdzona”.
+
 
 ## Mavinci: natywna aplikacja macOS
 

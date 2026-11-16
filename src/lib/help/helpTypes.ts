@@ -2,6 +2,7 @@
  * Pomoc pod znakiem „?” — jedno źródło treści dla portalu sprzedawcy, CRM, aplikacji na Maca i aplikacji mobilnej.
  * Treść opisuje działanie, nie nazwy z kodu. Zdania krótsze niż 25 słów. Każda zmiana procesu zmienia też instrukcję
  * (jak wpis w docs/mobile-parity.md).
+ * Kopia 1:1: src/lib/help/helpTypes.ts ↔ mobile/src/lib/helpTypes.ts (scripts/ci/check-shared-copies.mjs).
  */
 
 export type HelpAudience = 'seller' | 'manager';

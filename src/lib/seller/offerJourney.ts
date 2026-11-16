@@ -1,6 +1,7 @@
 /**
  * Wspólna oś oferty z portalu sprzedawcy — pięć etapów zamiast kilkunastu nazw statusów.
- * Ta sama oś jest w portalu hotelu, w CRM (ocena oferty) i — od etapu 4 wdrożenia — w aplikacjach na Maca i mobilnej.
+ * Ta sama oś jest w portalu hotelu, w CRM (ocena oferty, kokpit opiekuna), w aplikacji na Maca i w aplikacji mobilnej.
+ * Kopia 1:1: src/lib/seller/offerJourney.ts ↔ mobile/src/lib/offerJourney.ts (scripts/ci/check-shared-copies.mjs).
  *
  * Etap wynika wyłącznie z zapisanych decyzji: status oferty, ocena opiekuna dla bieżącej wersji, przejście do realizacji
  * i status wydarzenia. Daty ani wyświetlenia linku niczego nie przesuwają. Bez zależności od Reacta i Supabase.
@@ -202,3 +203,29 @@ export const SELLER_JOURNEY_ACTOR_LABELS: Record<SellerJourneyActor, { seller: s
   manager: { seller: 'Opiekun', manager: 'Ty' },
   none: { seller: '—', manager: '—' },
 };
+
+/** Oferta z get_crm_seller_workspace — karta sprzedawcy na Macu (`src/lib/native/sellers.ts`) i w aplikacji mobilnej. */
+export type SellerWorkspaceOfferFacts = {
+  status: string;
+  review_status: string | null;
+  generated_at: string | null;
+  event_id: string | null;
+  guest_link: { view_count?: number; accepted_at?: string | null } | null;
+};
+
+/** Wejście osi dla oferty z karty sprzedawcy: zgoda na cenę z offers.partner_approval_status, status powiązanego wydarzenia. */
+export function sellerWorkspaceJourneyInput(
+  offer: SellerWorkspaceOfferFacts,
+  extra: { priceApprovalRequired?: boolean; eventStatus?: string | null } = {},
+): SellerJourneyInput {
+  return {
+    offerStatus: offer.status,
+    reviewStatus: offer.review_status,
+    priceApprovalRequired: extra.priceApprovalRequired === true,
+    hasPdf: Boolean(offer.generated_at),
+    clientAcceptedOnline: Boolean(offer.guest_link?.accepted_at),
+    clientViewed: Number(offer.guest_link?.view_count || 0) > 0,
+    isRealization: Boolean(offer.event_id),
+    eventStatus: offer.event_id ? extra.eventStatus || null : null,
+  };
+}

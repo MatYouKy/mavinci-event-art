@@ -3,7 +3,10 @@
  * Kopia 1:1: src/lib/seller/sellerCockpit.ts ↔ mobile/src/lib/sellerCockpit.ts (scripts/ci/check-shared-copies.mjs).
  * Źródło danych: RPC get_my_seller_cockpit (migracja 20261105150000_seller_manager_cockpit.sql) oraz klucz `sellers`
  * w get_my_sales_day. Tu tylko typy, bezpieczny odczyt wyniku i etykiety — bez zależności od Reacta.
+ * Oś w 5 etapach pochodzi z offerJourney.ts (też kopia 1:1, ten sam katalog w CRM i w aplikacji).
  */
+
+import { SELLER_JOURNEY_STAGES, type SellerJourneyStageKey } from './offerJourney';
 
 export type SellerPortalAccount = 'none' | 'invited' | 'active';
 export type SellerInquirySource = 'portal' | 'qr';
@@ -14,7 +17,9 @@ export type SellerWarningCode =
   | 'no_active_terms'
   | 'invite_pending'
   | 'inactive_30'
-  | 'inactive_60';
+  | 'inactive_60'
+  /** Prowizja ukryta przed hotelem, a hotel ma już rozliczone wydarzenie z naliczeniem (migracja 20261115213000). */
+  | 'commission_reveal_due';
 export type SellerPipelineStage = 'draft' | 'pdf' | 'review' | 'accepted' | 'confirmed' | 'completed' | 'settled';
 
 export type SellerCockpitPerson = { id: string; name: string };
@@ -379,6 +384,7 @@ export const SELLER_WARNING_LABELS: Record<SellerWarningCode, string> = {
   invite_pending: 'Zaproszenie nieprzyjęte',
   inactive_30: 'Brak aktywności 30 dni',
   inactive_60: 'Brak aktywności 60 dni',
+  commission_reveal_due: 'Wynagrodzenie do odsłonięcia',
 };
 
 export const SELLER_REALIZATION_STEP_LABELS: Record<string, string> = {
@@ -423,4 +429,32 @@ export function formatPriceItems(count: number): string {
   if (count === 1) return '1 pozycja do zgody';
   const tens = count % 100;
   return count % 10 >= 2 && count % 10 <= 4 && (tens < 12 || tens > 14) ? `${count} pozycje do zgody` : `${count} pozycji do zgody`;
+}
+
+export type SellerCockpitJourneyStage = { key: SellerJourneyStageKey; label: string; hint: string; count: number; detail: string };
+
+/**
+ * Lejek kokpitu na osi w 5 etapach (jak portal i ocena oferty) — kokpit CRM, Mac i aplikacja mobilna.
+ * Wydarzenie: oferta przyjęta albo realizacja przed wydarzeniem; Rozliczenie: po wydarzeniu (zakończone, zafakturowane, rozliczone).
+ */
+export function sellerCockpitJourneyStages(pipeline: Record<SellerPipelineStage, number>): SellerCockpitJourneyStage[] {
+  const counts: Record<SellerJourneyStageKey, { count: number; detail: string }> = {
+    offer: { count: pipeline.draft, detail: 'bez PDF dla klienta' },
+    client: { count: pipeline.pdf, detail: 'PDF lub link u klienta' },
+    manager: { count: pipeline.review, detail: 'czekają na ocenę opiekuna' },
+    event: { count: pipeline.accepted + pipeline.confirmed, detail: 'przyjęte, przed wydarzeniem' },
+    settlement: { count: pipeline.completed + pipeline.settled, detail: `${pipeline.completed} do rozliczenia · ${pipeline.settled} rozliczone` },
+  };
+  return SELLER_JOURNEY_STAGES.map(stage => ({ key: stage.key, label: stage.label, hint: stage.hint, ...counts[stage.key] }));
+}
+
+/** Oferty jednego sprzedawcy na osi: trzy pierwsze etapy i „Realizacje” (wydarzenie i rozliczenie razem — tak liczy baza). */
+export function sellerCockpitSellerStages(offers: SellerCockpitSeller['offers']): { key: SellerJourneyStageKey; label: string; count: number }[] {
+  const label = (key: SellerJourneyStageKey) => SELLER_JOURNEY_STAGES.find(stage => stage.key === key)?.label || '';
+  return [
+    { key: 'offer', label: label('offer'), count: offers.draft },
+    { key: 'client', label: label('client'), count: offers.pdf },
+    { key: 'manager', label: label('manager'), count: offers.review },
+    { key: 'event', label: 'Realizacje', count: offers.accepted },
+  ];
 }

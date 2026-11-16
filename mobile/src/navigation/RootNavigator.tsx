@@ -3,7 +3,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, TouchableOpacity, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { colors, typography } from '../theme';
 
 import LoginScreen from '../screens/LoginScreen';
@@ -14,6 +15,8 @@ import InboundEventDetailScreen from '../screens/InboundEventDetailScreen';
 import ContactMessageDetailScreen from '../screens/ContactMessageDetailScreen';
 import MyCommissionsScreen from '../screens/MyCommissionsScreen';
 import SellerCockpitScreen from '../screens/SellerCockpitScreen';
+import SellerDetailScreen from '../screens/SellerDetailScreen';
+import SellerHelpScreen from '../screens/SellerHelpScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -24,6 +27,9 @@ export type RootStackParamList = {
   ContactMessageDetail: { messageId: string };
   MyCommissions: undefined;
   SellerCockpit: undefined;
+  SellerDetail: { sellerId: string; contactId: string | null; name: string; organization: string | null };
+  /** Instrukcja opiekuna sprzedawców; `chapter` — rozdział otwarty na start (id z managerHelp.ts). */
+  SellerHelp: { chapter?: string } | undefined;
   PdfViewer: { url: string };
   EventDetail: {
     eventId: string;
@@ -123,9 +129,35 @@ export default function RootNavigator() {
             <Stack.Screen
               name="SellerCockpit"
               component={SellerCockpitScreen}
-              options={{
+              options={({ navigation }) => ({
                 headerShown: true,
                 title: 'Moi sprzedawcy'.toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+                headerRight: () => (
+                  <HelpButton onPress={() => navigation.navigate('SellerHelp', { chapter: 'kokpit' })} />
+                ),
+              })}
+            />
+            <Stack.Screen
+              name="SellerDetail"
+              component={SellerDetailScreen}
+              options={({ navigation }) => ({
+                headerShown: true,
+                title: 'Sprzedawca'.toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+                headerRight: () => (
+                  <HelpButton onPress={() => navigation.navigate('SellerHelp', { chapter: 'nowy-sprzedawca' })} />
+                ),
+              })}
+            />
+            <Stack.Screen
+              name="SellerHelp"
+              component={SellerHelpScreen}
+              options={{
+                headerShown: true,
+                title: 'Instrukcja opiekuna'.toLocaleUpperCase('pl-PL'),
                 headerStyle: { backgroundColor: colors.background.secondary },
                 headerTintColor: colors.text.primary,
               }}
@@ -136,5 +168,19 @@ export default function RootNavigator() {
         )}
       </Stack.Navigator>
     </NavigationContainer>
+  );
+}
+
+/** „?” w nagłówku ekranów sprzedawców — instrukcja opiekuna (ta sama treść co w CRM i na Macu). */
+function HelpButton({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      accessibilityRole="button"
+      accessibilityLabel="Instrukcja opiekuna sprzedawców"
+    >
+      <Feather name="help-circle" size={20} color={colors.primary.gold} />
+    </TouchableOpacity>
   );
 }

@@ -1,7 +1,8 @@
 /**
  * „Gotowość do pracy” sprzedawcy w CRM — co jeszcze trzeba ustawić po dodaniu, zanim hotel sprzeda pierwsze wydarzenie.
  * Fakty liczy baza (get_crm_seller_readiness, migracja 20261115190000_seller_onboarding_and_demo_join.sql);
- * tutaj tylko kroki i teksty. Bez zależności od Reacta i Supabase — w etapie 4 ta sama logika trafi na Maca i do aplikacji mobilnej.
+ * tutaj tylko kroki i teksty — te same w CRM, na Macu (`src/lib/native/sellers.ts`) i w aplikacji mobilnej. Bez zależności od Reacta
+ * i Supabase. Kopia 1:1: src/lib/seller/readiness.ts ↔ mobile/src/lib/sellerReadiness.ts (scripts/ci/check-shared-copies.mjs).
  */
 
 export type SellerReadinessFacts = {

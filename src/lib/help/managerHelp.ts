@@ -1,8 +1,13 @@
 import type { HelpManual } from './helpTypes';
 
 /**
- * Instrukcja opiekuna sprzedawców (pracownik MAVINCI) — panel „?” w CRM na ekranach sprzedawców.
- * W etapie 4 wdrożenia ta sama treść trafi do aplikacji na Maca i mobilnej.
+ * Instrukcja opiekuna sprzedawców (pracownik MAVINCI) — panel „?” w CRM na ekranach sprzedawców, „Instrukcja” na Macu
+ * i w aplikacji mobilnej („Moi sprzedawcy” → „?”).
+ * Kopia 1:1: src/lib/help/managerHelp.ts ↔ mobile/src/lib/managerHelp.ts (scripts/ci/check-shared-copies.mjs).
+ *
+ * Treść zatwierdza opiekun sprzedawców (decyzja 15.11.2026, AGENTS.md) w dokumencie „Instrukcje do zatwierdzenia”:
+ * https://claude.ai/artifact/FgT91hYw1CrY8aKN1P7Nsq
+ * Zatwierdzono: jeszcze nie — pierwsza wersja czeka na przegląd.
  */
 export const MANAGER_HELP: HelpManual = {
   audience: 'manager',
@@ -85,7 +90,7 @@ export const MANAGER_HELP: HelpManual = {
         'Akceptacje klientów — klient zaakceptował ofertę online.',
       ],
       notes: [
-        'Ostrzeżenia: brak opiekuna, opiekun bez uprawnień, brak aktywnych warunków marki, nieprzyjęte zaproszenie, brak aktywności 30 lub 60 dni.',
+        'Ostrzeżenia: brak opiekuna, opiekun bez uprawnień, brak aktywnych warunków marki, nieprzyjęte zaproszenie, brak aktywności 30 lub 60 dni, wynagrodzenie do odsłonięcia.',
         'Akceptacja online klienta sama trafia do „Ofert do sprawdzenia”. Gdy klient zaakceptował starszą wersję PDF, hotel wysyła ofertę ręcznie.',
       ],
     },
@@ -139,7 +144,11 @@ export const MANAGER_HELP: HelpManual = {
         'Naliczenie jest wypłacalne po rozliczeniu wydarzenia, bez czekania na płatność klienta.',
         'W karcie sprzedawcy włącz „Pokaż wynagrodzenie w portalu” dla marki.',
       ],
-      notes: ['Dobry moment na odsłonięcie to pierwsze potwierdzone wydarzenie hotelu.'],
+      notes: [
+        'Do odsłonięcia portal nie pokazuje hotelowi zakładki „Moje wynagrodzenie” ani kwot prowizji. Naliczenia powstają niezależnie od widoczności.',
+        'Kokpit przypomni o odsłonięciu ostrzeżeniem „Wynagrodzenie do odsłonięcia”, gdy hotel ma pierwsze rozliczone wydarzenie z naliczoną prowizją.',
+        'Gdy świadomie ukryjesz wynagrodzenie po odsłonięciu, kokpit już nie przypomina.',
+      ],
     },
     {
       id: 'gdzie',
@@ -149,7 +158,8 @@ export const MANAGER_HELP: HelpManual = {
         'CRM — kokpit, ocena oferty, potwierdzenie wydarzenia, ustawienia sprzedawcy, „Gotowość do pracy”, wynagrodzenie.',
         'Aplikacja na Maca — „Sprzedawcy”: kokpit „Dziś”, oferty na osi, karta sprzedawcy z „Gotowością do pracy”, kreator „Nowy sprzedawca”, odpowiedzi na zapytania klientów i ta instrukcja.',
         'Na Macu karta oferty z portalu ma oś, zgodę na cenę i ocenę: PDF z wysłania, termin, zespół, analizę sprzętu i decyzję. Potwierdzenie realizacji — w CRM.',
-        'Aplikacja mobilna — podgląd kokpitu i karta „Sprzedawcy — do zrobienia” w „Moim dniu”.',
+        'Aplikacja mobilna — Profil → „Moi sprzedawcy”: sprawy „Dziś”, oś w 5 etapach, karta sprzedawcy z „Gotowością do pracy” i ofertami na osi, ponowne zaproszenie i ta instrukcja. W „Moim dniu” karta „Sprzedawcy — do zrobienia”.',
+        'Na telefonie rozmowy i wydarzenia otwierają się w aplikacji. Ocena oferty, zgoda na cenę i ustawienia sprzedawcy otwierają CRM w przeglądarce.',
       ],
     },
   ],

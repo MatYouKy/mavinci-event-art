@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import { useAuth } from '../contexts/AuthContext';
 import { canView } from '../lib/permissions';
@@ -10,7 +10,6 @@ import { navigateToEvent, navigateToSellerChat, openInCrmWeb } from '../navigati
 import {
   SELLER_EVENT_TYPE_LABELS,
   SELLER_INQUIRY_STATUS_LABELS,
-  SELLER_PIPELINE_LABELS,
   SELLER_PORTAL_ACCOUNT_LABELS,
   SELLER_REALIZATION_STEP_LABELS,
   SELLER_WARNING_LABELS,
@@ -20,17 +19,21 @@ import {
   type SellerWarningCode,
   formatPriceItems,
   formatWaitingHours,
+  sellerCockpitJourneyStages,
+  sellerCockpitSellerStages,
   sellerCockpitTodayCount,
 } from '../lib/sellerCockpit';
 import { SELLER_COCKPIT_DATABASE_UPDATE_MESSAGE, fetchSellerCockpit, sellerCockpitCrmPath } from '../lib/sellerCockpitApi';
 import { STATUS_LABELS as EVENT_STATUS_LABELS } from './EventsScreen';
 
 /*
- * „Moi sprzedawcy” — kokpit opiekuna sprzedawców zewnętrznych (RPC get_my_seller_cockpit, to samo co CRM).
- * Tylko odczyt: „Dziś” (sprawy czekające na opiekuna), lista sprzedawców i najbliższe wydarzenia. Zakres liczy baza
- * (opiekun / zastępca; administrator widzi wszystkich). Rozmowa otwiera się w aplikacji, wydarzenie — w szczegółach
- * wydarzenia; decyzje (sprawdzenie oferty, potwierdzenie wydarzenia, odpowiedź na zapytanie, opiekun, prowizje)
- * podejmuje się w CRM, więc pozostałe sprawy otwierają CRM w przeglądarce.
+ * „Moi sprzedawcy” — kokpit opiekuna sprzedawców zewnętrznych (RPC get_my_seller_cockpit, to samo co CRM i Mac).
+ * „Dziś” (sprawy czekające na opiekuna), oś w 5 etapach (sellerCockpitJourneyStages — ta sama oś co w portalu hotelu),
+ * lista sprzedawców i najbliższe wydarzenia. Zakres liczy baza (opiekun / zastępca; administrator widzi wszystkich).
+ * Rozmowa otwiera się w aplikacji, wydarzenie — w szczegółach wydarzenia, sprzedawca — w karcie sprzedawcy
+ * (SellerDetailScreen: „Gotowość do pracy”, oferty na osi); decyzje (sprawdzenie oferty, zgoda na cenę, potwierdzenie
+ * wydarzenia, odpowiedź na zapytanie, opiekun, prowizje) podejmuje się w CRM, więc te sprawy otwierają przeglądarkę.
+ * „?” w nagłówku — instrukcja opiekuna (SellerHelpScreen, wspólna kopia managerHelp.ts).
  */
 
 type LoadStatus = 'loading' | 'ready' | 'missing' | 'denied' | 'error';
@@ -181,10 +184,9 @@ const TODAY_COUNTS: { key: keyof SellerCockpit['today']; label: string }[] = [
   { key: 'guest_acceptances', label: 'Akceptacje klientów' },
 ];
 
-const OFFER_COUNTS: ('draft' | 'pdf' | 'review' | 'accepted')[] = ['draft', 'pdf', 'review', 'accepted'];
-
 export default function SellerCockpitScreen() {
   const { employee } = useAuth();
+  const navigation = useNavigation<any>();
   const focused = useIsFocused();
   const canOpenEvents = canView(employee, 'events');
   const [data, setData] = useState<SellerCockpit | null>(null);
@@ -282,8 +284,9 @@ export default function SellerCockpitScreen() {
         <View style={styles.terms}>
           <Feather name="info" size={15} color={colors.primary.gold} style={{ marginTop: 1 }} />
           <Text style={styles.termsText}>
-            Podgląd spraw Twoich sprzedawców. Rozmowy i wydarzenia otworzysz w aplikacji; sprawdzenie oferty,
-            potwierdzenie wydarzenia i odpowiedź na zapytanie wykonasz w CRM (otwiera się przeglądarka).
+            Sprawy Twoich sprzedawców. Rozmowy, wydarzenia i kartę sprzedawcy („Gotowość do pracy”, oferty na osi)
+            otworzysz w aplikacji; sprawdzenie oferty, zgodę na cenę, potwierdzenie wydarzenia i odpowiedź na zapytanie
+            wykonasz w CRM (otwiera się przeglądarka). Instrukcja — „?” u góry.
           </Text>
         </View>
 
@@ -329,6 +332,30 @@ export default function SellerCockpitScreen() {
           </TouchableOpacity>
         ))}
 
+        {/* Oś w 5 etapach — ta sama co w portalu hotelu, w CRM i na Macu */}
+        <Text style={styles.sectionTitle}>Oś w 5 etapach</Text>
+        <View style={styles.row}>
+          {sellerCockpitJourneyStages(data.pipeline).map((stage, index) => (
+            <View key={stage.key} style={[styles.stageRow, index > 0 && styles.stageDivider]} accessibilityLabel={`${stage.label}: ${stage.count}, ${stage.detail}`}>
+              <View style={styles.stageNumber}>
+                <Text style={styles.stageNumberText}>{index + 1}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.stageLabel}>{stage.label}</Text>
+                <Text style={styles.metaMuted} numberOfLines={1}>{stage.detail}</Text>
+              </View>
+              <Text style={[styles.stageCount, stage.key === 'manager' && stage.count > 0 && { color: colors.primary.gold }]}>{stage.count}</Text>
+            </View>
+          ))}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('SellerHelp', { chapter: 'os' })}
+            accessibilityRole="button"
+            accessibilityHint="Otwiera instrukcję opiekuna"
+          >
+            <Text style={styles.link}>Jak czytać oś?</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Moi sprzedawcy */}
         <Text style={styles.sectionTitle}>
           {isAdmin ? 'Sprzedawcy' : 'Moi sprzedawcy'} ({data.sellers.length})
@@ -337,7 +364,17 @@ export default function SellerCockpitScreen() {
           <Text style={styles.empty}>{isAdmin ? 'Brak sprzedawców zewnętrznych.' : 'Nie masz przypisanych sprzedawców.'}</Text>
         )}
         {data.sellers.map((seller) => (
-          <SellerCard key={seller.id} seller={seller} showManager={isAdmin} />
+          <SellerCard
+            key={seller.id}
+            seller={seller}
+            showManager={isAdmin}
+            onOpen={() => navigation.navigate('SellerDetail', {
+              sellerId: seller.id,
+              contactId: seller.contact_id,
+              name: seller.name,
+              organization: seller.organization_name,
+            })}
+          />
         ))}
 
         {/* Najbliższe wydarzenia */}
@@ -386,23 +423,23 @@ export default function SellerCockpitScreen() {
   );
 }
 
-function SellerCard({ seller, showManager }: { seller: SellerCockpitSeller; showManager: boolean }) {
+function SellerCard({ seller, showManager, onOpen }: { seller: SellerCockpitSeller; showManager: boolean; onOpen: () => void }) {
   const accountColor = PORTAL_ACCOUNT_COLORS[seller.portal_account];
   const lastActivity = seller.last_activity_at || seller.last_sign_in_at;
   return (
     <TouchableOpacity
       style={styles.row}
-      onPress={() => openInCrmWeb(sellerCockpitCrmPath.seller(seller.id))}
+      onPress={onOpen}
       accessibilityRole="button"
       accessibilityLabel={`${seller.name}${seller.organization_name ? `, ${seller.organization_name}` : ''}`}
-      accessibilityHint="Otwiera kartę sprzedawcy w CRM w przeglądarce"
+      accessibilityHint="Otwiera kartę sprzedawcy: gotowość do pracy, oferty na osi, rozmowy i wydarzenia"
     >
       <View style={styles.rowHeader}>
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={styles.rowTitle} numberOfLines={1}>{seller.name}</Text>
           {!!seller.organization_name && <Text style={styles.meta} numberOfLines={1}>{seller.organization_name}</Text>}
         </View>
-        <Feather name="external-link" size={16} color={colors.text.tertiary} />
+        <Feather name="chevron-right" size={16} color={colors.text.tertiary} />
       </View>
 
       <View style={styles.chipRow}>
@@ -431,12 +468,12 @@ function SellerCard({ seller, showManager }: { seller: SellerCockpitSeller; show
       )}
 
       <View style={styles.stats}>
-        {OFFER_COUNTS.map((stage) => (
-          <View key={stage} style={styles.stat}>
-            <Text style={[styles.statValue, stage === 'review' && seller.offers.review > 0 && { color: colors.primary.gold }]}>
-              {seller.offers[stage]}
+        {sellerCockpitSellerStages(seller.offers).map((stage) => (
+          <View key={stage.key} style={styles.stat}>
+            <Text style={[styles.statValue, stage.key === 'manager' && stage.count > 0 && { color: colors.primary.gold }]}>
+              {stage.count}
             </Text>
-            <Text style={styles.statLabel} numberOfLines={1}>{SELLER_PIPELINE_LABELS[stage]}</Text>
+            <Text style={styles.statLabel} numberOfLines={1}>{stage.label}</Text>
           </View>
         ))}
       </View>
@@ -513,6 +550,19 @@ const styles = StyleSheet.create({
   },
   statValue: { color: colors.text.primary, fontSize: typography.fontSizes.md, fontWeight: typography.fontWeights.bold },
   statLabel: { color: colors.text.tertiary, fontSize: 10 },
+  stageRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 4 },
+  stageDivider: { borderTopWidth: 1, borderTopColor: colors.border.default, paddingTop: 8 },
+  stageNumber: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(211, 187, 115, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stageNumberText: { color: colors.primary.gold, fontSize: 12, fontWeight: typography.fontWeights.bold },
+  stageLabel: { color: colors.text.primary, fontSize: 14, fontWeight: typography.fontWeights.semibold },
+  stageCount: { color: colors.text.primary, fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold, minWidth: 28, textAlign: 'right' },
   dateBadge: {
     minWidth: 48,
     paddingVertical: 4,

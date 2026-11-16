@@ -4,6 +4,10 @@ import type { HelpManual } from './helpTypes';
  * Instrukcja sprzedawcy (hotelu) — panel „?” w portalu i strona „Pomoc”.
  * Opisuje proces po etapie 3 wdrożenia audytu: zgoda na cenę przed pokazaniem klientowi, akceptacja online trafia sama do opiekuna,
  * przewodnik pierwszego uruchomienia zapisany na koncie sprzedawcy.
+ *
+ * Treść zatwierdza opiekun sprzedawców (decyzja 15.11.2026, AGENTS.md) w dokumencie „Instrukcje do zatwierdzenia”:
+ * https://claude.ai/artifact/FgT91hYw1CrY8aKN1P7Nsq
+ * Zatwierdzono: jeszcze nie — pierwsza wersja czeka na przegląd.
  */
 export const SELLER_HELP: HelpManual = {
   audience: 'seller',
