@@ -2,6 +2,7 @@ import type {
   ContractClauseCategory,
   ContractClausePrimaryCategory,
 } from './contractClauseContent';
+import type { ContractRequirement } from './contractRequirements';
 
 export type EventContractClauseSource = 'automatic' | 'custom';
 
@@ -15,6 +16,10 @@ export type EventContractClauseBase = {
   preview: string;
   sharedKey?: string;
   legacyOverrideId?: string;
+  /** Wymaganie z parametrami — umowa łączy je z wymaganiami innych usług (`mergeContractRequirements`). */
+  requirement?: ContractRequirement;
+  /** Klucz klauzuli z biblioteki, która zawiera ten zapis. */
+  coveredBy?: string;
 };
 
 export type EventContractClauseItem = {
@@ -30,6 +35,8 @@ export type EventContractClauseItem = {
   baseHtml: string;
   sharedKey?: string;
   legacyOverrideId?: string;
+  requirement?: ContractRequirement;
+  coveredBy?: string;
 };
 
 type StoredEventContractClauseOverride = {
@@ -144,8 +151,11 @@ export const buildEventContractClauseItems = (
     const legacyReplacementUsed = usesLegacyReplacement && usedLegacyReplacements.has(clause.legacyOverrideId!);
     if (usesLegacyReplacement) usedLegacyReplacements.add(clause.legacyOverrideId!);
     const html = typeof override?.html === 'string' ? override.html : clause.html;
+    // Treść zmieniona dla tego wydarzenia jest zwykłym zapisem — nie łączy się już z wymaganiami innych usług.
+    const edited = normalizeHtmlForComparison(html) !== normalizeHtmlForComparison(clause.html);
     return {
       ...clause,
+      requirement: edited ? undefined : clause.requirement,
       html,
       preview: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 420),
       enabled: override?.enabled !== false && !legacyReplacementUsed,

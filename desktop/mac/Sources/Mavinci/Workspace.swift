@@ -8,6 +8,8 @@ import Network
     @Published var snapshot: Snapshot?
     @Published var selection: Module? = .day
     @Published var eventRoute: EventRoute?
+    /// Oferta, rozmowa i krok przygotowań wskazane w powiadomieniu (zakładka „Ustalenia”) — odczytywane przez kartę wydarzenia.
+    @Published var sellerFocus: SellerArrangementsFocus?
     @Published var refreshEventToken = UUID()
     @Published var focusedID: String?
     @Published var focusToken = UUID()

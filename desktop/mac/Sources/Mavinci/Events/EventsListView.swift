@@ -115,6 +115,8 @@ struct EventSettlementCell: View {
     @State private var selectedID: String?
     @State private var statusFor: EventListItem?
     @State private var removing: EventListItem?
+    /// „Nowy event” (`EventWizard`).
+    @State private var creating = false
 
     private var today: Date { Calendar.current.startOfDay(for: Date()) }
     private func isPast(_ item: EventListItem) -> Bool { (item.end.map { Calendar.current.startOfDay(for: $0) } ?? today) < today }
@@ -158,13 +160,14 @@ struct EventSettlementCell: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { state.openCRM("/crm/event-categories") } label: { Label("Kategorie", systemImage: "tag") }.help("Kategorie wydarzeń (CRM)")
                 if store.access?.canCreate == true {
-                    Button { state.openCRM("/crm/events?new=1") } label: { Label("Nowy event", systemImage: "plus") }.help("Nowy event (kreator w CRM)")
+                    Button { creating = true } label: { Label("Nowy event", systemImage: "plus") }.help("Nowy event — kreator jak w CRM")
                 }
                 Button { inspectorShown.toggle() } label: { Label("Karta", systemImage: "sidebar.trailing") }
                     .help("Pokaż lub ukryj kartę wydarzenia (⌥⌘I)").keyboardShortcut("i", modifiers: [.command, .option])
             }
         }
         .onChange(of: selectedID) { _, value in if value != nil { inspectorShown = true } }
+        .sheet(isPresented: $creating) { EventCreateSheet(store: store).warehouseSheetStyle(state) }
         .sheet(item: $statusFor) { item in
             EventStatusSheet(store: store, item: item).environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }

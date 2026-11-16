@@ -734,6 +734,8 @@ struct MeetingHatch: Shape {
     let remove: (Meeting) -> Void
     let setStatus: (Meeting, MeetingStatus) -> Void
     @Environment(\.crmTheme) private var theme
+    /// Spotkanie, przy którym rozwinięto „Zmień odpowiedź” (po odpowiedzi przyciski chowają się).
+    @State private var changingResponse: String?
 
     var body: some View {
         if let m = meeting {
@@ -761,17 +763,32 @@ struct MeetingHatch: Shape {
 
             if let mine, !organizer, status != .cancelled {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(mine == .pending ? "Czy będziesz na spotkaniu?" : "Twoja odpowiedź: \(mine.label)").font(.callout)
-                    HStack(spacing: 6) {
-                        ForEach(MeetingResponse.answers) { response in
-                            Button { Task { await store.respond(m, response) } } label: {
-                                Label(response.action, systemImage: response.symbol).frame(maxWidth: .infinity)
+                    if mine == .pending || changingResponse == m.id {
+                        Text(mine == .pending ? "Czy będziesz na spotkaniu?" : "Twoja odpowiedź: \(mine.label)").font(.callout)
+                        HStack(spacing: 6) {
+                            ForEach(MeetingResponse.answers) { response in
+                                Button {
+                                    Task {
+                                        await store.respond(m, response)
+                                        changingResponse = nil
+                                    }
+                                } label: {
+                                    Label(response.action, systemImage: response.symbol).frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(mine == response ? response.color : Color.primary.opacity(0.18))
+                                .foregroundStyle(mine == response ? CrmTheme.rgb(0x13161f) : theme.text)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(mine == response ? response.color : Color.primary.opacity(0.18))
-                            .foregroundStyle(mine == response ? CrmTheme.rgb(0x13161f) : theme.text)
+                        }.controlSize(.large)
+                    } else {
+                        HStack(spacing: 8) {
+                            Image(systemName: mine.symbol).foregroundStyle(mine.color)
+                            Text("Twoja odpowiedź: \(mine.label)").font(.callout)
+                            Spacer(minLength: 6)
+                            Button("Zmień odpowiedź") { changingResponse = m.id }
+                                .buttonStyle(.link).font(.caption)
                         }
-                    }.controlSize(.large)
+                    }
                 }
                 .padding(12).background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
             }

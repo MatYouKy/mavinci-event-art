@@ -16,6 +16,21 @@ import {
 } from '@/lib/CRM/contracts/contractClauseContent';
 
 import { SHARED_CONTRACT_CLAUSES, getSharedContractClause } from '@/lib/CRM/contracts/sharedContractClauses';
+import {
+  CONTRACT_REQUIREMENT_TYPES,
+  contractRequirementCategory,
+  contractRequirementLabel,
+  contractRequirementTopic,
+  normalizeContractRequirement,
+  summarizeContractRequirement,
+  type ContractRequirementType,
+} from '@/lib/CRM/contracts/contractRequirements';
+import {
+  ContractRequirementFields,
+  contractRequirementDraftText,
+  defaultContractRequirement,
+  type ContractRequirementDraft,
+} from './ContractRequirementFields';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
@@ -130,6 +145,14 @@ export function ProductContractClauses({
     setIsSaving(true);
     try {
       const normalized = entries.flatMap((entry) => {
+        if (entry.requirement) {
+          // Wymaganie z parametrami: bez parametrów nie trafia do produktu; treść to zdanie z parametrów.
+          const requirement = normalizeContractRequirement(entry.requirement);
+          if (!requirement) return [];
+          return [{ ...entry, requirement, sharedKey: undefined, coveredBy: undefined,
+            category: contractRequirementCategory(requirement.type), topic: contractRequirementTopic(requirement.type),
+            title: entry.title.trim() || contractRequirementLabel(requirement.type), content: contractRequirementDraftText(requirement) }];
+        }
         const content = normalizeContractClausePointListHtml(entry.content);
         if (!hasContent(content)) return [];
         const topics = getContractClauseTopicOptions(entry.category);
@@ -218,7 +241,11 @@ export function ProductContractClauses({
                 {entries.map((entry) => <button key={entry.id} type="button" onClick={() => setSelectedId(entry.id)} className={`w-full rounded-lg border p-3 text-left ${selectedId === entry.id ? 'border-[#d3bb73]/60 bg-[#d3bb73]/10' : 'border-white/10 bg-white/[0.025]'}`}>
                   <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#d3bb73]">{CONTRACT_CLAUSE_CATEGORY_LABELS[entry.category]}</span>
                   <span className="mt-1 block text-sm text-[#e5e4e2]">{entry.title || getContractClauseTopicLabel(entry.topic)}</span>
-                  <span className="mt-1 block text-[11px] text-[#e5e4e2]/40">{getContractClauseTopicLabel(entry.topic)}</span>
+                  <span className="mt-1 block text-[11px] text-[#e5e4e2]/40">
+                    {entry.requirement
+                      ? `Parametry: ${normalizeContractRequirement(entry.requirement) ? summarizeContractRequirement(normalizeContractRequirement(entry.requirement)!) : 'uzupełnij'}`
+                      : getContractClauseTopicLabel(entry.topic)}
+                  </span>
                 </button>)}
                 {entries.length === 0 && <button type="button" onClick={() => addEntry()} className="w-full rounded-lg border border-dashed border-white/10 p-5 text-xs text-[#d3bb73]">Dodaj pierwszą klauzulę</button>}
               </div>
@@ -228,19 +255,43 @@ export function ProductContractClauses({
               {activeEntry ? <>
                 <div className="mb-3 grid gap-3 rounded-xl border border-[#d3bb73]/20 bg-[#411326] p-4 md:grid-cols-2">
                   <label className="text-xs text-[#e5e4e2]/60 md:col-span-2">Treść klauzuli
-                    <select value={activeEntry.sharedKey || ''} onChange={(event) => {
-                      const shared = getSharedContractClause(event.target.value);
+                    <select value={activeEntry.requirement ? `requirement:${activeEntry.requirement.type}` : activeEntry.sharedKey || ''} onChange={(event) => {
+                      const value = event.target.value;
+                      if (value.startsWith('requirement:')) {
+                        const type = value.slice('requirement:'.length) as ContractRequirementType;
+                        const draft = defaultContractRequirement(type);
+                        updateEntry(activeEntry.id, {
+                          requirement: draft as any, sharedKey: undefined, coveredBy: undefined,
+                          category: contractRequirementCategory(type), topic: contractRequirementTopic(type),
+                          title: contractRequirementLabel(type), content: contractRequirementDraftText(draft),
+                        });
+                        return;
+                      }
+                      const shared = getSharedContractClause(value);
                       updateEntry(activeEntry.id, shared
-                        ? { sharedKey: shared.key, category: shared.category, topic: shared.topic, title: shared.title, content: shared.content }
-                        : { sharedKey: undefined });
+                        ? { sharedKey: shared.key, requirement: undefined, coveredBy: undefined, category: shared.category, topic: shared.topic, title: shared.title, content: shared.content }
+                        : { sharedKey: undefined, requirement: undefined });
                     }} className="mt-1 w-full rounded-lg border border-white/10 bg-[#210811] px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]/20">
                       <option value="">Własna treść dla tego produktu</option>
-                      {SHARED_CONTRACT_CLAUSES.map((clause) => <option key={clause.key} value={clause.key}>Wspólna zasada: {clause.title}</option>)}
+                      <optgroup label="Wymaganie z parametrami (łączone w umowie)">
+                        {CONTRACT_REQUIREMENT_TYPES.map((definition) => <option key={definition.type} value={`requirement:${definition.type}`}>Wymaganie: {definition.label}</option>)}
+                      </optgroup>
+                      <optgroup label="Wspólne zasady">
+                        {SHARED_CONTRACT_CLAUSES.map((clause) => <option key={clause.key} value={clause.key}>Wspólna zasada: {clause.title}</option>)}
+                      </optgroup>
                     </select>
                     {activeEntry.sharedKey && <span className="mt-2 block leading-5">Ta sama zasada zostanie wydrukowana tylko raz, również przy kilku produktach. Aby zmienić treść wyłącznie dla tej usługi, wybierz własną treść.</span>}
+                    {activeEntry.requirement && <span className="mt-2 block leading-5">W umowie wymagania wszystkich usług tego rodzaju łączą się w jeden zapis: mocniejsze pokrywa słabsze (np. 400 V / 32 A pokrywa 230 V / 16 A), a osobne obwody są liczone oddzielnie.</span>}
                   </label>
+                  {!activeEntry.sharedKey && !activeEntry.requirement && <label className="text-xs text-[#e5e4e2]/60 md:col-span-2">Pomiń, gdy umowa zawiera wspólną zasadę
+                    <select value={activeEntry.coveredBy || ''} onChange={(event) => updateEntry(activeEntry.id, { coveredBy: event.target.value || undefined })} className="mt-1 w-full rounded-lg border border-white/10 bg-[#210811] px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]/20">
+                      <option value="">Zawsze drukuj ten zapis</option>
+                      {SHARED_CONTRACT_CLAUSES.map((clause) => <option key={clause.key} value={clause.key}>{clause.title}</option>)}
+                    </select>
+                    <span className="mt-1 block leading-5">Wybierz zasadę, która zawiera już treść tego zapisu — wtedy w umowie zostanie tylko ona.</span>
+                  </label>}
                   <label className="text-xs text-[#e5e4e2]/60">Sekcja
-                    <select disabled={Boolean(activeEntry.sharedKey)} value={activeEntry.category} onChange={(event) => {
+                    <select disabled={Boolean(activeEntry.sharedKey || activeEntry.requirement)} value={activeEntry.category} onChange={(event) => {
                       const category = event.target.value as ContractClausePrimaryCategory;
                       const topic = getContractClauseTopicOptions(category)[0]?.value || 'technical';
                       updateEntry(activeEntry.id, { category, topic, title: getContractClauseTopicLabel(topic) });
@@ -249,7 +300,7 @@ export function ProductContractClauses({
                     </select>
                   </label>
                   <label className="text-xs text-[#e5e4e2]/60">Typ kontrolowany w umowie
-                    <select disabled={Boolean(activeEntry.sharedKey)} value={activeEntry.topic} onChange={(event) => {
+                    <select disabled={Boolean(activeEntry.sharedKey || activeEntry.requirement)} value={activeEntry.topic} onChange={(event) => {
                       const topic = event.target.value;
                       updateEntry(activeEntry.id, { topic, title: getContractClauseTopicLabel(topic) });
                     }} className="mt-1 w-full rounded-lg border border-[#d3bb73]/25 bg-[#210811] px-3 py-2 text-sm text-[#e5e4e2]">
@@ -261,6 +312,20 @@ export function ProductContractClauses({
                   </label>
                 </div>
 
+                {activeEntry.requirement ? <div className="space-y-3">
+                  <div className="rounded-xl border border-[#d3bb73]/20 bg-[#411326] p-4">
+                    <ContractRequirementFields
+                      value={activeEntry.requirement as unknown as ContractRequirementDraft}
+                      onChange={(draft) => updateEntry(activeEntry.id, { requirement: draft as any, content: contractRequirementDraftText(draft) })}
+                    />
+                  </div>
+                  <div className="rounded-lg border border-[#d3bb73]/25 bg-[#fffaf4] px-4 py-3 font-serif text-[12pt] leading-relaxed text-black">
+                    {activeEntry.content || <span className="text-black/40">Uzupełnij parametry — bez nich wymaganie nie trafi do umowy.</span>}
+                  </div>
+                  <div className="flex justify-end">
+                    <button type="button" onClick={() => removeEntry(activeEntry.id)} className="inline-flex items-center gap-1 rounded-md border border-red-400/20 px-3 py-1.5 text-xs text-red-200"><Trash2 className="h-3.5 w-3.5" />Usuń</button>
+                  </div>
+                </div> : <>
                 <div className="mb-3 flex flex-wrap gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#411326] p-3">
                   <button type="button" onClick={() => insertText('§n')} className="rounded-md border border-[#d3bb73]/35 bg-[#d3bb73]/10 px-3 py-1.5 text-xs text-[#d3bb73]">§n</button>
                   <button type="button" onClick={() => formatPoint(0)} title="Punkt główny" className="rounded-md border border-[#d3bb73]/35 bg-[#d3bb73]/10 px-3 py-1.5 text-xs text-[#d3bb73]">1. punkt główny</button>
@@ -281,7 +346,8 @@ export function ProductContractClauses({
                   .contract-clauses-editor .ql-toolbar .ql-picker { color: #e5e4e2; }
                 `}</style>
                 <ReactQuillWithRef key={activeEntry.id} ref={quillRef} theme="snow" readOnly={Boolean(activeEntry.sharedKey)} value={activeEntry.content} onChange={(content: string) => { if (!activeEntry.sharedKey) updateEntry(activeEntry.id, { content }); }} onChangeSelection={(range: { index: number } | null) => range && setCursorPosition(range.index)} modules={{ toolbar: [[{ header: [1, 2, 3, false] }], ['bold', 'italic', 'underline'], ['blockquote'], [{ list: 'ordered' }, { list: 'bullet' }], [{ indent: '-1' }, { indent: '+1' }], [{ align: [] }], ['clean']] }} formats={formats} placeholder="Wpisz pojedynczą klauzulę tego typu…" />
-                <p className="mt-3 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-3 py-2 text-xs leading-5 text-[#e5e4e2]/70">Tab tworzy kolejny poziom numeracji, np. 1.1, a Shift+Tab wraca poziom wyżej. Wspólne obowiązki i wymagania wybieraj z listy wspólnych zasad. Własne wpisy powinny opisywać szczegóły usługi, np. napięcie, wymagane obciążenie, format pliku lub próbę techniczną. Termin materiałów wskazuje zmienna „Wspólny termin materiałów”; nie wpisuj osobnych terminów dla każdego produktu.</p>
+                <p className="mt-3 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-3 py-2 text-xs leading-5 text-[#e5e4e2]/70">Tab tworzy kolejny poziom numeracji, np. 1.1, a Shift+Tab wraca poziom wyżej. Zasilanie, internet, miejsce, dojazd, montaż i zaplecze wybieraj jako „Wymaganie z parametrami” — umowa połączy je z wymaganiami innych usług. Wspólne obowiązki i ryzyka wybieraj z listy wspólnych zasad. Własne wpisy zostaw na postanowienia naprawdę szczególne dla tej usługi (np. format pliku). Termin materiałów wskazuje zmienna „Wspólny termin materiałów”; nie wpisuj osobnych terminów dla każdego produktu.</p>
+                </>}
               </> : <button type="button" onClick={() => addEntry()} className="min-h-[300px] w-full rounded-xl border border-dashed border-[#d3bb73]/25 text-sm text-[#d3bb73]">Dodaj pierwszą klauzulę</button>}
             </div>
           </div>
@@ -301,7 +367,7 @@ export function ProductContractClauses({
               return <section key={category.value}>
                 <div className="mb-3 border-b border-[#d3bb73]/60 pb-1 text-[10px] font-semibold uppercase tracking-wide text-[#6b213f]">{category.label}</div>
                 <div className="space-y-4">{categoryEntries.map((entry) => <article key={entry.id}>
-                  <div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-[#6b213f]"><span>{entry.title || getContractClauseTopicLabel(entry.topic)}</span><span className="rounded bg-[#6b213f]/10 px-1.5 py-0.5 text-[9px] uppercase">{getContractClauseTopicLabel(entry.topic)}</span></div>
+                  <div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-[#6b213f]"><span>{entry.title || getContractClauseTopicLabel(entry.topic)}</span><span className="rounded bg-[#6b213f]/10 px-1.5 py-0.5 text-[9px] uppercase">{entry.requirement ? 'Wymaganie z parametrami — łączone w umowie' : getContractClauseTopicLabel(entry.topic)}</span>{entry.coveredBy && <span className="rounded bg-[#6b213f]/10 px-1.5 py-0.5 text-[9px] uppercase">Pomijane przy: {getSharedContractClause(entry.coveredBy)?.title || entry.coveredBy}</span>}</div>
                   <div className="contract-clause-preview prose prose-sm max-w-none font-serif text-[12pt] leading-relaxed" dangerouslySetInnerHTML={{ __html: normalizeContractClausePointListHtml(entry.content) }} />
                 </article>)}</div>
               </section>;

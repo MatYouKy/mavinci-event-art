@@ -10,6 +10,7 @@ import { applyTravelTimes, eventMutate, eventTabAction, eventTabQuery, eventTabW
 // Moduły zakładek rejestrują swoje dane, zapisy i odczyty w `eventTabs.ts` przy imporcie.
 import { equipmentCatalogEntries, uploadReturnPhoto } from '@/lib/native/eventEquipment';
 import { sendCalculationEmail } from '@/lib/native/eventCalculations';
+import { sendContractEmail } from '@/lib/native/eventContractEmail';
 import { collectionItems, collectionState, invalidateNativeSyncPrefix } from '@/lib/native/sync';
 import '@/lib/native/eventLogistics';
 import '@/lib/native/eventAgenda';
@@ -25,6 +26,7 @@ import '@/lib/native/eventArrangements';
 import '@/lib/native/eventCalculations';
 import '@/lib/native/eventContract';
 import '@/lib/native/eventClientLocation';
+import '@/lib/native/eventCreate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -239,6 +241,17 @@ export async function POST(request: Request) {
       const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';
       try {
         return nativeJson(await sendCalculationEmail(ctx, token, id, body));
+      } catch (error) {
+        return nativeJson({ error: (error as Error).message || 'Błąd podczas wysyłania email' }, 400);
+      }
+    }
+    // Umowa e-mailem (`SendContractEmailModal`) — funkcja poczty tokenem pracownika, jak w przeglądarce.
+    if (body.op === 'contractEmail') {
+      const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';
+      try {
+        const result = await sendContractEmail(ctx, token, id, body);
+        invalidateEvents();
+        return nativeJson(result);
       } catch (error) {
         return nativeJson({ error: (error as Error).message || 'Błąd podczas wysyłania email' }, 400);
       }

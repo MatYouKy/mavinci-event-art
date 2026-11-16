@@ -26,6 +26,8 @@ struct InquiryRemoval: Identifiable {
 /// Czynności karty, listy i szczegółów.
 struct InquiryActions {
     let open: (Inquiry) -> Void
+    /// Karta zapytania (jak strona `/crm/inquiries/[id]`).
+    let work: (Inquiry) -> Void
     let edit: (Inquiry) -> Void
     let claim: (Inquiry) -> Void
     let contact: (Inquiry) -> Void
@@ -52,6 +54,8 @@ struct InquiryActions {
     @State private var removal: InquiryRemoval?
     @State private var deleting: InquiryRemoval?
     @State private var targeted: InquiryStage?
+    /// Otwarta karta zapytania — zastępuje lejek do powrotu („Lejek zapytań”).
+    @State private var workspaceID: String?
 
     private var me: String? { store.access?.employeeId ?? state.employee?.id }
     private var scopes: [InquiryScope] {
@@ -104,6 +108,21 @@ struct InquiryActions {
     }
 
     var body: some View {
+        if let id = workspaceID {
+            InquiryWorkspaceView(store: store, inquiryID: id, close: { workspaceID = nil },
+                                 editSales: { editing = InquiryEditRequest(inquiry: $0) })
+                .navigationTitle(store.inquiry(id)?.titleLabel ?? "Zapytanie")
+                .navigationSubtitle("Karta zapytania")
+                .sheet(item: $editing) { request in
+                    InquiryEditorSheet(store: store, inquiry: request.inquiry, initialStage: request.stage)
+                        .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+                }
+        } else {
+            funnel
+        }
+    }
+
+    private var funnel: some View {
         VStack(spacing: 0) {
             header
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -298,11 +317,12 @@ struct InquiryActions {
     private var actions: InquiryActions {
         InquiryActions(
             open: { selectedID = $0.id; inspectorShown = true },
+            work: { selectedID = $0.id; workspaceID = $0.id },
             edit: { editing = InquiryEditRequest(inquiry: $0) },
             claim: { inquiry in Task { if await store.claim(inquiry) { scope = .mine } } },
             contact: { contactTarget = $0 },
             snooze: { inquiry in Task { await store.snooze(inquiry) } },
-            handoff: { state.openCRM("/crm/inquiries/\($0.id)") },
+            handoff: { selectedID = $0.id; workspaceID = $0.id },
             remove: { inquiry in
                 Task {
                     guard let mode = await store.removalMode(inquiry) else { return }
@@ -422,12 +442,13 @@ struct FlowBadges: View {
     let canClaim: Bool
     let actions: InquiryActions
     var body: some View {
+        Button("Otwórz kartę zapytania", systemImage: "rectangle.and.text.magnifyingglass") { actions.work(inquiry) }
         Button("Pokaż szczegóły", systemImage: "info.circle") { actions.open(inquiry) }
         Button("Otwórz w CRM", systemImage: "safari") { actions.browser(inquiry) }
         if canClaim { Button("Przejmij", systemImage: "person.crop.circle.badge.checkmark") { actions.claim(inquiry) } }
         if canManage {
             Divider()
-            Button("Obsługa zapytania…", systemImage: "pencil") { actions.edit(inquiry) }
+            Button("Opiekun, etap i termin…", systemImage: "slider.horizontal.3") { actions.edit(inquiry) }
             Menu("Przenieś do etapu") {
                 ForEach(InquiryStage.allCases) { stage in
                     Button(stage.label) { actions.move(inquiry, stage) }.disabled(stage == inquiry.inquiryStage)
@@ -496,10 +517,12 @@ struct FlowBadges: View {
     let actions: InquiryActions
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
+    @State private var fullMessage = false
 
     var body: some View {
         if let inquiry {
             ScrollView { details(inquiry).padding(18).frame(maxWidth: .infinity, alignment: .leading) }
+                .onChange(of: inquiry.id) { _, _ in fullMessage = false }
         } else {
             ContentUnavailableView("Wybierz zapytanie", systemImage: "tray", description: Text("Kliknij kartę w lejku lub wiersz listy."))
         }
@@ -557,7 +580,7 @@ struct FlowBadges: View {
             group("Wydarzenie") {
                 field("Miejsce", inquiry.locationText)
                 field("Zakres", inquiry.scope)
-                field("Treść zapytania", inquiry.message.isEmpty ? inquiry.description : inquiry.message)
+                messageField(inquiry)
             }
             VStack(alignment: .leading, spacing: 6) {
                 if let offer = inquiry.linkedOfferId, state.employee?.canView(.offers) == true {
@@ -572,12 +595,33 @@ struct FlowBadges: View {
                 }
                 Button("Pełne szczegóły w CRM", systemImage: "safari") { actions.browser(inquiry) }
             }.buttonStyle(.link).linkCursor()
-            if canManage {
-                HStack {
+            HStack {
+                if canManage {
                     Button(role: .destructive) { actions.remove(inquiry) } label: { Label("Usuń…", systemImage: "trash") }
-                    Spacer()
-                    Button { actions.edit(inquiry) } label: { Label("Obsługa zapytania", systemImage: "pencil") }
-                        .buttonStyle(.borderedProminent).keyboardShortcut("e")
+                    Button { actions.edit(inquiry) } label: { Label("Etap i termin", systemImage: "slider.horizontal.3") }
+                        .help("Opiekun, etap, wartość i termin następnego działania")
+                }
+                Spacer()
+                Button { actions.work(inquiry) } label: { Label("Obsługa zapytania", systemImage: "rectangle.and.text.magnifyingglass") }
+                    .buttonStyle(.borderedProminent).keyboardShortcut("e")
+                    .help("Karta zapytania: treść, ustalenia, klient, kontakt, oferty, notatki i historia")
+            }
+        }
+    }
+
+    /// Treść bez stopek, klauzul poufności i cytowanych wiadomości — z „Pokaż całą wiadomość”.
+    @ViewBuilder private func messageField(_ inquiry: Inquiry) -> some View {
+        let full = inquiry.message.isEmpty ? inquiry.description : inquiry.message
+        let clean = inquiry.messageClean?.isEmpty == false ? inquiry.messageClean! : full
+        let trimmed = !inquiry.message.isEmpty && clean != full
+        if !full.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Treść zapytania").font(.caption).foregroundStyle(.secondary)
+                Text(trimmed && !fullMessage ? clean : full).textSelection(.enabled)
+                if trimmed {
+                    Button(fullMessage ? "Pokaż tylko treść" : "Pokaż całą wiadomość") { fullMessage.toggle() }
+                        .buttonStyle(.link).font(.caption)
+                        .help("Stopki, klauzule poufności i cytowane wcześniejsze wiadomości")
                 }
             }
         }

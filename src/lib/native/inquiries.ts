@@ -2,6 +2,7 @@ import 'server-only';
 import type { NativeContext } from './auth';
 import { collectionItems, collectionState, invalidateNativeSync } from './sync';
 import { inquirySourceLabel, inquiryTitleLabel, inquiryTypeLabels } from '@/lib/ui/systemLabels';
+import { cleanInquiryMessage } from '@/lib/CRM/inquiries/cleanInquiryMessage';
 
 /*
  * Lejek zapytań na Macu (`/crm/inquiries`): te same zapytania co strona (`InquiriesPageClient` — `tasks` z opiekunem,
@@ -55,6 +56,8 @@ async function loadInquiries(ctx: NativeContext): Promise<Item[]> {
         typeLabels: inquiryTypeLabels(text(t.title), d),
         description: text(t.description),
         message: text(d.source_message_content),
+        // Do szybkiego czytania: bez cytatów, klauzul poufności i dopisków poczty (pełna treść w `message`).
+        messageClean: cleanInquiryMessage(text(d.source_message_content)).text,
         stage: text(t.inquiry_stage) || 'new',
         ownerId: t.inquiry_owner_id ?? null,
         ownerName: owner ? `${owner.name ?? ''} ${owner.surname ?? ''}`.trim() : '',

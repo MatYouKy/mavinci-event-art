@@ -1,8 +1,9 @@
 import SwiftUI
 
 // MARK: Ustalenia ze sprzedawcą (1:1 z `EventSellerCorrespondence`): oferty sprzedawców powiązane z wydarzeniem (wyszukiwanie,
-// nieprzeczytane), oferta źródłowa, przygotowanie wydarzenia (przejścia do zakładek), prowizja opiekuna (Podsumowanie) i rozmowa
-// o realizacji (wiadomości, starsze, wysyłka bez duplikatów, odczyt). Kreator realizacji i dodatkowe ustalenia — w CRM.
+// nieprzeczytane), oferta źródłowa, przygotowanie wydarzenia z potwierdzeniem realizacji, kreator przygotowań krok po kroku,
+// dodatkowe ustalenia realizacji (baza hotelu, dni i godziny, kontakty), prowizja opiekuna (Podsumowanie) i rozmowa o realizacji
+// (wiadomości, starsze, wysyłka bez duplikatów, odczyt). Niezapisane dane kroku lub ustaleń chronione przy zmianie oferty.
 
 struct SellerTabData: Decodable {
     struct Conversation: Decodable, Hashable { var id: String; var title: String; var brandName: String; var lastMessage: String?; var lastAt: String?; var unread: Int; var canSend: Bool }
@@ -30,13 +31,16 @@ private struct SellerMessages: Decodable {
     @State private var selectedID: String?
     @State private var query = ""
     @State private var opening = false
+    @State private var arrangementsDirty = false
+    @State private var wizardDirty = false
+    /// Odświeżenie kreatora i ustaleń po zapisie, potwierdzeniu realizacji albo powrocie do aplikacji (`seller-workspace-changed`).
+    @State private var refreshKey = 0
+    @State private var pendingOfferID: String?
+    @State private var focusStep: String?
+    /// „Dodatkowe ustalenia CRM” — zwinięte jak `<details>`; z niezapisanymi zmianami nie zwijamy (formularz zostaje).
+    @State private var arrangementsExpanded = false
 
     private var data: SellerTabData? { store.tab(eventID, "seller-arrangements", as: SellerTabData.self) }
-
-    private static let sections: [(String, String, String)] = [
-        ("phases", "Timeline", "Godziny i etapy pracy"), ("team", "Zespół", "Pracownicy i zaproszenia"), ("equipment", "Sprzęt", "Plan, braki i rezerwacje"),
-        ("agenda", "Agenda", "Program wydarzenia"), ("logistics", "Logistyka", "Transport, kierowcy i przejazdy"), ("finances", "Finanse i prowizje", "Planowane rozliczenia i wypłaty"),
-    ]
 
     var body: some View {
         Group {
@@ -55,10 +59,44 @@ private struct SellerMessages: Decodable {
         }
         .task(id: eventID) {
             await store.loadTab(eventID, "seller-arrangements")
+            applyFocus()
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
                 if NSApplication.shared.isActive { await store.loadTab(eventID, "seller-arrangements") }
             }
+        }
+        .onChange(of: state.sellerFocus) { _, _ in applyFocus() }
+        .onChange(of: data?.offers.count) { _, _ in applyFocus() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refreshKey += 1 }
+        .alert("Zmienić ofertę i porzucić niezapisane dane przygotowań?", isPresented: Binding(get: { pendingOfferID != nil }, set: { if !$0 { pendingOfferID = nil } })) {
+            Button("Zmień ofertę", role: .destructive) {
+                arrangementsDirty = false
+                wizardDirty = false
+                selectedID = pendingOfferID
+                pendingOfferID = nil
+            }
+            Button("Anuluj", role: .cancel) { pendingOfferID = nil }
+        }
+    }
+
+    /// Zmiana oferty pyta o porzucenie niezapisanych danych kroku lub ustaleń (jak `selectOffer` w CRM).
+    private func choose(_ id: String?, current: String?) {
+        guard let id, id != current else { return }
+        if arrangementsDirty || wizardDirty { pendingOfferID = id; return }
+        selectedID = id
+    }
+
+    /// Oferta, rozmowa i krok wskazane w powiadomieniu — po wczytaniu listy ofert tej karty.
+    private func applyFocus() {
+        guard let focus = state.sellerFocus, focus.eventID == eventID, let offers = data?.offers, !offers.isEmpty else { return }
+        let target = offers.first { $0.id == focus.offerID } ?? offers.first { $0.conversation?.id != nil && $0.conversation?.id == focus.conversationID }
+        state.sellerFocus = nil
+        guard let target else { return }
+        focusStep = focus.step
+        if arrangementsDirty || wizardDirty {
+            if target.id != (selectedID ?? offers.first?.id) { pendingOfferID = target.id }
+        } else {
+            selectedID = target.id
         }
     }
 
@@ -85,7 +123,7 @@ private struct SellerMessages: Decodable {
                     if data.offers.count > 1 {
                         VStack(spacing: 6) {
                             TextField("Szukaj oferty lub sprzedawcy…", text: $query).textFieldStyle(.roundedBorder).padding(.horizontal, 10).padding(.top, 8)
-                            List(visible, selection: Binding(get: { selected?.id }, set: { selectedID = $0 })) { offer in
+                            List(visible, selection: Binding(get: { selected?.id }, set: { choose($0, current: selected?.id) })) { offer in
                                 offerRow(offer).tag(offer.id)
                             }
                             .listStyle(.sidebar)
@@ -128,7 +166,7 @@ private struct SellerMessages: Decodable {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(offers) { offer in
-                        Button { selectedID = offer.id } label: {
+                        Button { choose(offer.id, current: selected?.id) } label: {
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack {
                                     Text(offer.label).font(.callout.weight(.medium))
@@ -163,12 +201,31 @@ private struct SellerMessages: Decodable {
                 }
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
-                preparation(offer)
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Dodatkowe ustalenia CRM i kreator realizacji").font(.headline)
-                    Text("Zmiany terminu, miejsca i wymagań mogą wymagać ponownego potwierdzenia odpowiednich kroków. Dane osoby na miejscu zatwierdzaj w kreatorze realizacji.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button { state.openCRM("/crm/events/\(eventID)?tab=seller-arrangements&offer=\(offer.id)") } label: { Label("Otwórz ustalenia w CRM", systemImage: "safari") }
+                SellerPreparationPanel(store: store, eventID: eventID, offerID: offer.id, go: go) {
+                    refreshKey += 1
+                    await store.loadTab(eventID, "seller-arrangements")
+                    await store.load(eventID)
+                    await store.loadDetails(eventID)
+                }
+                .id("preparation:" + offer.id)
+                SellerRealizationWizardView(store: store, eventID: eventID, offerID: offer.id, refreshKey: refreshKey, blocked: arrangementsDirty,
+                                            dirty: $wizardDirty, focusStep: focusStep, go: go) { refreshKey += 1 }
+                    .id("wizard:" + offer.id)
+                DisclosureGroup(isExpanded: Binding(get: { arrangementsExpanded }, set: { open in
+                    if open || !arrangementsDirty { arrangementsExpanded = open }
+                })) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Zmiany terminu, miejsca i wymagań mogą wymagać ponownego potwierdzenia odpowiednich kroków. Dane osoby na miejscu zatwierdzaj w kreatorze powyżej.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        SellerOfferArrangementsView(store: store, eventID: eventID, offerID: offer.id, refreshKey: refreshKey, dirty: $arrangementsDirty, go: go) {
+                            refreshKey += 1
+                            await store.loadTab(eventID, "seller-arrangements")
+                        }
+                        .id("arrangements:" + offer.id)
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Text("Dodatkowe ustalenia CRM").font(.headline).foregroundStyle(theme.accent)
                 }
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
@@ -183,31 +240,6 @@ private struct SellerMessages: Decodable {
             .frame(maxWidth: .infinity, alignment: .topLeading)
             conversation(offer).frame(width: 440)
         }
-    }
-
-    private func preparation(_ offer: SellerTabData.Offer) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Przygotowanie wydarzenia z oferty", systemImage: "calendar").font(.headline)
-            Text("Wydarzenie jest powiązane z ofertą. Dalsze przygotowanie prowadzisz w standardowych sekcjach CRM.").font(.callout).foregroundStyle(.secondary)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 8)], spacing: 8) {
-                ForEach(Self.sections, id: \.0) { section in
-                    Button { go(section.0) } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(section.1).font(.callout.weight(.medium))
-                            Text(section.2).font(.caption).foregroundStyle(.secondary)
-                        }
-                        .padding(10).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain).background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                }
-            }
-            Text("Zakres sprzętu pochodzi z produktów i konfiguracji oferty. Linie planowane nie rezerwują egzemplarzy. Zespół i pojazdy wybierasz w CRM; nie wysyłamy zaproszeń przy samej akceptacji. Prowizja jest planowana tylko przy włączonym modelu prowizyjnym — nie jest wypłatą.")
-                .font(.caption2).foregroundStyle(.secondary)
-            Button { state.openCRM("/crm/events/\(eventID)?tab=seller-arrangements&offer=\(offer.id)") } label: { Label("Potwierdzenie realizacji (gdy oczekuje) — w CRM", systemImage: "checkmark.seal") }
-                .buttonStyle(.link).linkCursor().font(.caption)
-        }
-        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
     }
 
     @ViewBuilder private func conversation(_ offer: SellerTabData.Offer) -> some View {

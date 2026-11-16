@@ -7,9 +7,13 @@ import UniformTypeIdentifiers
 // pasek „Do sprawdzenia” i podzakładki Treść / Dane i warunki / Klauzule / Sprawdzenie / Dokumenty i historia.
 // Na Macu: zmiana statusu wystawionej umowy (zasady jak w CRM), potwierdzenie podpisu firmy, podgląd PDF w zakładce, pobieranie
 // i druk, podsumowanie zapisanej treści (warunki, pola zmienione dla umowy, osoby podpisujące, klauzule), podpisane dokumenty
-// i wcześniejsze wersje. Treść składa i dzieli na strony edytor w CRM z aktualnych danych oferty, szablonu i klauzul — edycja,
-// klauzule, szablon, depozyt, audyt AI, wystawienie szkicu, generowanie PDF, wysyłka i anulowanie otwierają się w CRM
-// na właściwej podzakładce (`?tab=contract&contractSection=…`).
+// i wcześniejsze wersje. Składanie umowy z szablonu, oferty i klauzul liczy ten sam kod co CRM w Chrome na Macu
+// (`EventContractEngine.swift`): „Przygotuj umowę”, „Podgląd bieżącej treści”, „Odśwież szablon i dane” i „Generuj PDF”,
+// pola i warunki z osobami podpisującymi, depozyt oraz wystawienie szkicu z uwagami (`EventContractEditor.swift`),
+// klauzule tej umowy z wyborem rozbieżnych wersji wspólnych ustaleń i zmiana szablonu (`EventContractClauses.swift`),
+// wysyłka draftu i umowy e-mailem (`EventContractEmailSheet.swift`), edycja treści, audyt AI i anulowanie z hasłem
+// administratora (`EventContractContent.swift`). Bez przeglądarki Chromium na Macu albo bez dostępu do kwot składanie umowy
+// otwiera się w CRM na właściwej podzakładce (`?tab=contract&contractSection=…`).
 
 struct ContractTabData: Decodable {
     struct Dates: Decodable, Hashable {
@@ -90,14 +94,25 @@ struct ContractTabData: Decodable {
         var signers: [String]?
         var clauses: [ClauseGroup]
     }
+    struct Template: Decodable, Hashable, Identifiable {
+        var id: String
+        var name: String
+    }
     var isAdmin: Bool
     var canManage: Bool
     var canChangeStatus: Bool
+    /// „Zmień szablon umowy” (`can_manage_event_workflows` i zarządzanie umowami); `nil` — starszy serwer CRM.
+    var canChangeTemplate: Bool?
+    var templateId: String?
     var templateName: String?
+    /// Aktywne szablony do „Zmień szablon umowy”.
+    var templates: [Template]?
     var contract: Contract?
     var history: [Archived]
     var signed: Signed
     var summary: Summary?
+    /// Hosty sieci dla silnika dokumentów (CRM, pliki, fonty) — jak przy wydrukach.
+    var engineHosts: [String]?
 }
 
 enum ContractText {
@@ -215,6 +230,8 @@ fileprivate extension View {
 @MainActor struct EventContractTab: View {
     @ObservedObject var store: EventCardStore
     let eventID: String
+    /// Obszar „kwoty” (`canViewAmounts` w CRM): bez niego nie składamy ani nie przeliczamy umowy (kwoty byłyby 0 zł).
+    var canViewAmounts = false
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var preview: NativePreview?
@@ -227,8 +244,40 @@ fileprivate extension View {
     @State private var inlinePdfKey: String?
     @State private var inlinePdfData: Data?
     @State private var inlinePdfError: String?
+    @State private var confirmingRefresh = false
+    @State private var editingFields = false
+    @State private var statusTarget: EventContractStatusTarget?
+    @State private var managingClauses = false
+    @State private var changingTemplate = false
+    @State private var sendingEmail = false
+    @State private var editingContent = false
+    @State private var cancelling = false
+    @State private var auditReview: ContractAuditReview?
 
     private var data: ContractTabData? { store.tab(eventID, "contract", as: ContractTabData.self) }
+    /// Składanie umowy na Macu (Chrome) z dostępem do kwot — jak w CRM.
+    private var nativeAssembly: Bool { EventContractNative.available && canViewAmounts }
+
+    /// `canEdit` z CRM: umowa nieanulowana i niezablokowana; poza szkicem — tylko administrator.
+    private func canEdit(_ contract: ContractTabData.Contract, _ data: ContractTabData) -> Bool {
+        contract.status != "cancelled" && contract.lockedAt == nil && (data.isAdmin || contract.status == "draft")
+    }
+
+    /// `canSendEmail` z CRM: umowa nieanulowana; administrator albo osoba, która ją przygotowała.
+    private func canSendEmail(_ contract: ContractTabData.Contract, _ data: ContractTabData) -> Bool {
+        contract.status != "cancelled" && (data.isAdmin || contract.ownContract)
+    }
+
+    /// „Zmień szablon umowy” na Macu: uprawnienie, umowa nieanulowana i więcej niż jeden aktywny szablon (jak w CRM).
+    private func canChangeTemplate(_ contract: ContractTabData.Contract?, _ data: ContractTabData) -> Bool {
+        data.canChangeTemplate == true && contract?.status != "cancelled" && (data.templates?.count ?? 0) > 1
+    }
+
+    /// Po zmianach umowy z okien: nowy PDF w podzakładce „Treść” i odświeżone dane.
+    private func reloadContract() async {
+        inlinePdfKey = nil
+        await store.loadTab(eventID, "contract")
+    }
 
     /// Edytor umowy w CRM, opcjonalnie na wskazanej podzakładce.
     private func crmPath(_ target: ContractTabSection? = nil) -> String {
@@ -257,12 +306,66 @@ fileprivate extension View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in Task { await store.loadTab(eventID, "contract") } }
         .sheet(item: $preview) { NativeDocumentPreview(preview: $0) }
+        .sheet(isPresented: $editingFields) {
+            EventContractFieldsSheet(eventID: eventID, canViewAmounts: canViewAmounts, hosts: data?.engineHosts ?? []) {
+                inlinePdfKey = nil
+                await store.loadTab(eventID, "contract")
+            }
+        }
+        .sheet(item: $statusTarget) { target in
+            EventContractStatusSheet(eventID: eventID, target: target.status, canViewAmounts: canViewAmounts,
+                                     hosts: data?.engineHosts ?? [], isAdmin: data?.isAdmin == true) {
+                inlinePdfKey = nil
+                await store.loadTab(eventID, "contract")
+            }
+        }
+        .sheet(isPresented: $managingClauses) {
+            EventContractClausesSheet(eventID: eventID, canViewAmounts: canViewAmounts, hosts: data?.engineHosts ?? [],
+                                      isAdmin: data?.isAdmin == true, hasContract: data?.contract != nil) {
+                await reloadContract()
+            }
+        }
+        .sheet(isPresented: $changingTemplate) {
+            if let data {
+                EventContractTemplateSheet(store: store, eventID: eventID, data: data, canViewAmounts: canViewAmounts) {
+                    await reloadContract()
+                }
+            }
+        }
+        .sheet(isPresented: $editingContent) {
+            EventContractContentSheet(eventID: eventID, canViewAmounts: canViewAmounts, hosts: data?.engineHosts ?? [],
+                                      isAdmin: data?.isAdmin == true) {
+                await reloadContract()
+            }
+        }
+        .sheet(item: $auditReview) { ContractAuditReviewSheet(review: $0) }
+        .sheet(isPresented: $cancelling) {
+            if let contract = data?.contract {
+                EventContractCancelSheet(store: store, eventID: eventID, contractID: contract.id, status: contract.status,
+                                         templateName: data?.templateName) {
+                    await reloadContract()
+                }
+            }
+        }
+        .sheet(isPresented: $sendingEmail) {
+            if let contract = data?.contract {
+                EventContractEmailSheet(store: store, eventID: eventID, contractID: contract.id) {
+                    await store.loadTab(eventID, "contract")
+                }
+            }
+        }
         .confirmationDialog("Zmienić status umowy?", isPresented: Binding(get: { pendingStatus != nil }, set: { if !$0 { pendingStatus = nil } }), titleVisibility: .visible) {
             if let next = pendingStatus, let contract = data?.contract {
                 Button("Zmień na „\(ContractText.status(next))”") { Task { await changeStatus(contract, next) } }
             }
             Button("Anuluj", role: .cancel) { pendingStatus = nil }
         } message: { Text(statusMessage) }
+        .confirmationDialog("Odświeżyć szablon i dane umowy?", isPresented: $confirmingRefresh, titleVisibility: .visible) {
+            Button("Odśwież umowę") { Task { await refreshContract() } }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text("Pobierzemy najnowszą wersję użytego szablonu, dane klienta, ofertę i klauzule. Treść umowy zostanie odbudowana. Indywidualne poprawki treści i pól zostaną zastąpione. Kontynuować?")
+        }
         .confirmationDialog("Potwierdzić podpis firmy?", isPresented: $confirmingSignature, titleVisibility: .visible) {
             if let contract = data?.contract { Button("Potwierdź podpis firmy") { Task { await confirmSignature(contract) } } }
             Button("Anuluj", role: .cancel) {}
@@ -275,7 +378,7 @@ fileprivate extension View {
 
     private var statusMessage: String {
         guard let next = pendingStatus else { return "" }
-        if next == "draft" { return "Umowa wróci do szkicu. Dotychczasowy PDF zostanie oznaczony jako nieaktualny — przed wysyłką wygeneruj go ponownie w CRM." }
+        if next == "draft" { return "Umowa wróci do szkicu. Dotychczasowy PDF zostanie oznaczony jako nieaktualny — przed wysyłką wygeneruj go ponownie." }
         return "Status zmieni się na „\(ContractText.status(next))” z bieżącą datą. Zmiana statusu nie wysyła wiadomości do klienta."
     }
 
@@ -293,8 +396,22 @@ fileprivate extension View {
                     VStack(spacing: 10) {
                         Image(systemName: "doc.text").font(.system(size: 40)).foregroundStyle(.tertiary)
                         Text("Umowa nie została jeszcze utworzona").font(.headline)
-                        Text("Szkic powstaje w edytorze umowy w CRM z szablonu, oferty i danych wydarzenia.").font(.callout).foregroundStyle(.secondary)
-                        Button("Przygotuj umowę w CRM") { state.openCRM(crmPath()) }
+                        Text("Szkic powstaje z szablonu, oferty i danych wydarzenia — tym samym kodem co w CRM.").font(.callout).foregroundStyle(.secondary)
+                        if data.canManage && nativeAssembly {
+                            HStack(spacing: 10) {
+                                Button { Task { await prepareContract() } } label: { Label("Przygotuj umowę", systemImage: "doc.badge.plus") }
+                                    .buttonStyle(.borderedProminent)
+                                if EventContractNative.previewAvailable {
+                                    Button { Task { await previewCurrent(nil, data) } } label: { Label("Podgląd treści", systemImage: "eye") }
+                                }
+                            }
+                            Button("Przygotuj w CRM") { state.openCRM(crmPath()) }.buttonStyle(.link)
+                        } else {
+                            Button("Przygotuj umowę w CRM") { state.openCRM(crmPath()) }
+                            if data.canManage && !canViewAmounts {
+                                Text(EventContractNative.amountsRequired).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
                     }
                     .frame(maxWidth: .infinity).padding(36)
                     .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
@@ -332,10 +449,14 @@ fileprivate extension View {
                 Button { Task { await openPdf(contract.id, action: .preview) } } label: { Label(showLabel, systemImage: "eye") }
                 Button { Task { await openPdf(contract.id, action: .download) } } label: { Label("Pobierz PDF", systemImage: "arrow.down.circle") }
             }
-            if data.canManage && !cancelled {
+            if nativeAssembly && canEdit(contract, data) {
+                Button { editingContent = true } label: { Label("Edytuj treść", systemImage: "square.and.pencil") }
+                    .buttonStyle(.borderedProminent)
+                    .help("Treść tej umowy z formatowaniem — zmiany dotyczą tylko tej umowy.")
+            } else if data.canManage && canEdit(contract, data) {
                 Button { state.openCRM(crmPath(.content)) } label: { Label("Edytuj treść w CRM", systemImage: "safari") }
                     .buttonStyle(.borderedProminent)
-                    .help("Treść umowy, generowanie PDF i wysyłka — w edytorze umowy w CRM.")
+                    .help("Składanie i edycja treści na Macu wymaga przeglądarki Chromium i dostępu do kwot.")
             }
             Menu { moreMenu(contract, data) } label: { Image(systemName: "ellipsis.circle") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("Więcej czynności")
@@ -351,15 +472,48 @@ fileprivate extension View {
         }
         if data.canManage && !cancelled {
             Divider()
-            Button { state.openCRM(crmPath(.content)) } label: { Label(generateLabel, systemImage: "doc.badge.gearshape") }
-            Button { state.openCRM(crmPath(.content)) } label: { Label(draft ? "Wyślij draft w CRM" : "Wyślij umowę w CRM", systemImage: "paperplane") }
-            if draft {
-                Button { state.openCRM(crmPath(.data)) } label: { Label("Edytuj pola i warunki w CRM", systemImage: "list.bullet.rectangle") }
-                Button { state.openCRM(crmPath(.clauses)) } label: { Label("Zarządzaj klauzulami w CRM", systemImage: "text.badge.checkmark") }
-                Button { state.openCRM(crmPath(.review)) } label: { Label("Odśwież szablon i dane w CRM", systemImage: "arrow.triangle.2.circlepath") }
+            if nativeAssembly {
+                Button { Task { await generatePdf(contract, data) } } label: {
+                    Label((contract.pdf == nil ? "Generuj PDF" : "Regeneruj PDF") + (draft ? " draftu" : ""), systemImage: "doc.badge.gearshape")
+                }
+                if EventContractNative.previewAvailable {
+                    Button { Task { await previewCurrent(contract, data) } } label: { Label("Podgląd bieżącej treści", systemImage: "eye") }
+                }
+            } else {
+                Button { state.openCRM(crmPath(.content)) } label: { Label(generateLabel, systemImage: "doc.badge.gearshape") }
             }
-            Button { state.openCRM(crmPath(.review)) } label: { Label("Audyt AI w CRM", systemImage: "sparkles") }
-            if data.canChangeStatus {
+            if canSendEmail(contract, data) {
+                Button { sendingEmail = true } label: { Label(draft ? "Wyślij draft…" : "Wyślij umowę…", systemImage: "paperplane") }
+            }
+            if canEdit(contract, data) {
+                if nativeAssembly {
+                    Button { managingClauses = true } label: { Label("Zarządzaj klauzulami…", systemImage: "text.badge.checkmark") }
+                } else {
+                    Button { state.openCRM(crmPath(.clauses)) } label: { Label("Zarządzaj klauzulami w CRM", systemImage: "text.badge.checkmark") }
+                }
+            }
+            if draft {
+                if nativeAssembly && canEdit(contract, data) {
+                    Button { editingFields = true } label: { Label("Edytuj pola i warunki…", systemImage: "list.bullet.rectangle") }
+                } else {
+                    Button { state.openCRM(crmPath(.data)) } label: { Label("Edytuj pola i warunki w CRM", systemImage: "list.bullet.rectangle") }
+                }
+                if nativeAssembly && canEdit(contract, data) {
+                    Button { confirmingRefresh = true } label: { Label("Odśwież szablon i dane…", systemImage: "arrow.triangle.2.circlepath") }
+                } else {
+                    Button { state.openCRM(crmPath(.review)) } label: { Label("Odśwież szablon i dane w CRM", systemImage: "arrow.triangle.2.circlepath") }
+                }
+            }
+            if canEdit(contract, data) && draft {
+                if nativeAssembly {
+                    Button { Task { await startAudit() } } label: { Label("Audyt AI…", systemImage: "sparkles") }
+                } else {
+                    Button { state.openCRM(crmPath(.review)) } label: { Label("Audyt AI w CRM", systemImage: "sparkles") }
+                }
+            }
+            if canChangeTemplate(contract, data) && nativeAssembly {
+                Button { changingTemplate = true } label: { Label("Zmień szablon umowy…", systemImage: "doc.on.doc") }
+            } else if data.canChangeTemplate ?? data.canChangeStatus {
                 Button { state.openCRM(crmPath(.content)) } label: { Label("Zmień szablon umowy w CRM", systemImage: "doc.on.doc") }
             }
         }
@@ -367,8 +521,8 @@ fileprivate extension View {
         Button { state.openCRM(crmPath(section)) } label: { Label("Otwórz w CRM", systemImage: "safari") }
         if data.isAdmin && !cancelled {
             Divider()
-            Button(role: .destructive) { state.openCRM(crmPath(.content)) } label: { Label("Anuluj umowę w CRM…", systemImage: "xmark.circle") }
-                .help("Anulowanie wymaga potwierdzenia hasłem administratora — otworzy się w CRM.")
+            Button(role: .destructive) { cancelling = true } label: { Label("Anuluj umowę…", systemImage: "xmark.circle") }
+                .help("Anulowanie wymaga potwierdzenia hasłem administratora.")
         }
     }
 
@@ -388,10 +542,11 @@ fileprivate extension View {
         return ContractText.flow[index + 1]
     }
 
-    /// Szkic wystawia się w CRM (treść składana z aktualnych danych, uwagi do umowy); pozostałe zmiany — tutaj, po potwierdzeniu.
+    /// Szkic: treść składana z aktualnych danych i uwagi przed wystawieniem — na Macu (silnik dokumentów) albo w CRM;
+    /// pozostałe zmiany — tutaj, po potwierdzeniu.
     private func choose(_ status: String, _ contract: ContractTabData.Contract) {
         if contract.status == "draft" {
-            state.openCRM(crmPath(.review))
+            if nativeAssembly { statusTarget = EventContractStatusTarget(status: status) } else { state.openCRM(crmPath(.review)) }
             return
         }
         pendingStatus = status
@@ -444,7 +599,7 @@ fileprivate extension View {
                             let current = status == contract.status
                             let clickable = canChange && !current && statusAllowed(status, contract, data)
                             let style: StepStyle = current ? .current : index < currentIndex ? .done : .future
-                            let hint: String = draft
+                            let hint: String = draft && !nativeAssembly
                                 ? "Wystawienie szkicu — w edytorze umowy w CRM"
                                 : "Zmień status na „\(ContractText.status(status))”"
                             Button { choose(status, contract) } label: { stepLabel(ContractText.status(status), style) }
@@ -468,7 +623,11 @@ fileprivate extension View {
                     Button("Potwierdź podpis firmy") { confirmingSignature = true }
                 }
                 if canChange, let next = nextStatus(contract), statusAllowed(next, contract, data) {
-                    if draft {
+                    if draft && nativeAssembly {
+                        Button(ContractText.nextAction(next) + " →") { statusTarget = EventContractStatusTarget(status: next) }
+                            .buttonStyle(.borderedProminent)
+                            .help("Treść składana z aktualnych danych oferty i szablonu, z uwagami przed wystawieniem — jak w CRM.")
+                    } else if draft {
                         Button { state.openCRM(crmPath(.review)) } label: { Label("Wystaw umowę w CRM", systemImage: "safari") }
                             .help("Przed wystawieniem CRM składa treść z aktualnych danych oferty i szablonu oraz sprawdza uwagi do umowy.")
                     } else {
@@ -507,10 +666,11 @@ fileprivate extension View {
         let signedStatus = ["signed_by_client", "signed_returned"].contains(contract.status)
         if contract.pdf == nil {
             checks.append(ReviewCheck(id: "pdf", level: draft || cancelled ? .info : .warn, title: "PDF nie został jeszcze wygenerowany",
-                                      detail: "Wygenerujesz go w edytorze umowy w CRM.", alert: "brak PDF umowy", section: .content))
+                                      detail: nativeAssembly ? "Wygenerujesz go: Więcej → Generuj PDF." : "Wygenerujesz go w edytorze umowy w CRM.",
+                                      alert: "brak PDF umowy", section: .content))
         } else if contract.modified && !cancelled {
             checks.append(ReviewCheck(id: "pdf", level: .warn, title: "PDF nieaktualny",
-                                      detail: "Treść zmieniła się po wygenerowaniu PDF (\(ContractText.date(contract.pdfAt))) — wygeneruj go ponownie w CRM.",
+                                      detail: "Treść zmieniła się po wygenerowaniu PDF (\(ContractText.date(contract.pdfAt))) — wygeneruj go ponownie" + (nativeAssembly ? "." : " w CRM."),
                                       alert: "PDF nieaktualny — treść zmieniła się po wygenerowaniu", section: .content))
         } else {
             checks.append(ReviewCheck(id: "pdf", level: .ok, title: "PDF aktualny", detail: "Wygenerowano: " + ContractText.date(contract.pdfAt)))
@@ -676,8 +836,17 @@ fileprivate extension View {
                     Button { Task { await openPdf(contract.id, action: .print) } } label: { Label("Drukuj", systemImage: "printer") }
                 }
                 if contract.modified && contract.status != "cancelled" {
-                    Label("Podgląd pokazuje PDF sprzed ostatnich zmian treści. Aktualną treść zobaczysz i wygenerujesz w edytorze umowy w CRM.", systemImage: "exclamationmark.triangle")
-                        .font(.callout).foregroundStyle(.orange)
+                    HStack(spacing: 10) {
+                        Label(nativeAssembly && data.canManage
+                              ? "Podgląd pokazuje PDF sprzed ostatnich zmian treści — wygeneruj go ponownie."
+                              : "Podgląd pokazuje PDF sprzed ostatnich zmian treści. Aktualną treść zobaczysz i wygenerujesz w edytorze umowy w CRM.",
+                              systemImage: "exclamationmark.triangle")
+                            .font(.callout).foregroundStyle(.orange)
+                        Spacer()
+                        if nativeAssembly && data.canManage {
+                            Button { Task { await generatePdf(contract, data) } } label: { Label("Regeneruj PDF", systemImage: "doc.badge.gearshape") }
+                        }
+                    }
                 }
                 Group {
                     if inlinePdfKey == key, let pdfData = inlinePdfData {
@@ -702,10 +871,27 @@ fileprivate extension View {
             VStack(spacing: 10) {
                 Image(systemName: "doc.text").font(.system(size: 34)).foregroundStyle(.tertiary)
                 Text(contract.status == "draft" ? "PDF draftu nie został jeszcze wygenerowany." : "PDF umowy nie został jeszcze wygenerowany.").font(.headline)
-                Text("Podgląd treści i generowanie PDF są w edytorze umowy w CRM — tam treść jest składana i dzielona na strony z aktualnych danych.")
-                    .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                if data.canManage && contract.status != "cancelled" {
-                    Button { state.openCRM(crmPath(.content)) } label: { Label("Otwórz treść w CRM", systemImage: "safari") }
+                if data.canManage && contract.status != "cancelled" && nativeAssembly {
+                    Text("Treść jest składana i dzielona na strony z aktualnych danych oferty, szablonu i klauzul — tak samo jak w CRM.")
+                        .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    HStack(spacing: 10) {
+                        Button { Task { await generatePdf(contract, data) } } label: {
+                            Label(contract.status == "draft" ? "Generuj PDF draftu" : "Generuj PDF", systemImage: "doc.badge.gearshape")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        if EventContractNative.previewAvailable {
+                            Button { Task { await previewCurrent(contract, data) } } label: { Label("Podgląd bieżącej treści", systemImage: "eye") }
+                        }
+                    }
+                    if canEdit(contract, data) {
+                        Button { editingContent = true } label: { Label("Edytuj treść", systemImage: "square.and.pencil") }.buttonStyle(.link)
+                    }
+                } else {
+                    Text("Podgląd treści i generowanie PDF są w edytorze umowy w CRM — tam treść jest składana i dzielona na strony z aktualnych danych.")
+                        .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    if data.canManage && contract.status != "cancelled" {
+                        Button { state.openCRM(crmPath(.content)) } label: { Label("Otwórz treść w CRM", systemImage: "safari") }
+                    }
                 }
             }
             .frame(maxWidth: .infinity)
@@ -727,9 +913,12 @@ fileprivate extension View {
 
     private func dataSection(_ contract: ContractTabData.Contract, _ data: ContractTabData) -> some View {
         let editable = data.canManage && contract.status == "draft"
-        let note: String = editable
+        let native = editable && nativeAssembly && canEdit(contract, data)
+        let note: String = native
+            ? "Zmiany dotyczą tylko tej umowy. Pola z formatowaniem (bloki stron, tabele) edytujesz w oknie pól, klauzule — w „Zarządzaj klauzulami…”."
+            : editable
             ? "Dane strony klienta, osoby podpisujące, pola i warunki zmienisz w edytorze umowy w CRM (zmiany dotyczą tylko tej umowy)."
-            : "Pola i warunki zmienia się w szkicu umowy w CRM."
+            : "Pola i warunki zmienia się w szkicu umowy."
         return VStack(alignment: .leading, spacing: 12) {
             if let summary = data.summary {
                 let client: String = summary.client.map { $0.name + ($0.company ? " (firma)" : " (osoba prywatna)") } ?? "—"
@@ -764,7 +953,10 @@ fileprivate extension View {
                 Text("Nie udało się odczytać danych zapisanej umowy.").font(.callout).foregroundStyle(.secondary).contractCard()
             }
             HStack(spacing: 10) {
-                if editable {
+                if native {
+                    Button { editingFields = true } label: { Label("Edytuj pola, warunki i depozyt", systemImage: "list.bullet.rectangle") }
+                        .buttonStyle(.borderedProminent)
+                } else if editable {
                     Button { state.openCRM(crmPath(.data)) } label: { Label("Edytuj pola i warunki w CRM", systemImage: "safari") }
                 }
                 Text(note).font(.caption).foregroundStyle(.secondary)
@@ -776,17 +968,23 @@ fileprivate extension View {
 
     private func clausesSection(_ contract: ContractTabData.Contract, _ data: ContractTabData) -> some View {
         let groups = data.summary?.clauses ?? []
-        let editable = data.canManage && contract.status == "draft"
+        let editable = data.canManage && canEdit(contract, data)
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Klauzule produktów w umowie").font(.headline)
-                    Text("Edytujesz lub wyłączasz automatyczne klauzule i dodajesz ustalenia klienta tylko dla tego wydarzenia w CRM.")
+                    Text(editable && nativeAssembly
+                         ? "Edytuj lub wyłącz automatyczne klauzule i dodaj ustalenia klienta tylko dla tego wydarzenia. Tu wybierzesz też wersję rozbieżnych wspólnych ustaleń."
+                         : "Edytujesz lub wyłączasz automatyczne klauzule i dodajesz ustalenia klienta tylko dla tego wydarzenia w CRM.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if editable {
-                    Button { state.openCRM(crmPath(.clauses)) } label: { Label("Zarządzaj klauzulami w CRM", systemImage: "safari") }
+                    if nativeAssembly {
+                        Button { managingClauses = true } label: { Label("Zarządzaj klauzulami…", systemImage: "text.badge.checkmark") }
+                    } else {
+                        Button { state.openCRM(crmPath(.clauses)) } label: { Label("Zarządzaj klauzulami w CRM", systemImage: "safari") }
+                    }
                 }
             }
             if groups.isEmpty {
@@ -836,13 +1034,34 @@ fileprivate extension View {
                 }
             }
             .contractCard()
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Pełne sprawdzenie w CRM", systemImage: "checklist").font(.headline)
-                Text("Uwagi przed wystawieniem, zgodność treści z aktualnymi danymi wydarzenia i oferty (odświeżenie szablonu i danych), rozbieżne wersje wspólnych ustaleń i audyt AI sprawdza edytor umowy w CRM — wymagają złożenia treści w przeglądarce.")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Button { state.openCRM(crmPath(.review)) } label: { Label("Sprawdź w CRM", systemImage: "safari") }
+            if contract.status == "draft" && nativeAssembly && data.canChangeStatus {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Uwagi przed wystawieniem", systemImage: "exclamationmark.shield").font(.headline)
+                    Text("Dane klienta i reprezentacji, wymagane pola i źródło zakresu umowy — sprawdzane na aktualnej treści, jak w CRM. Uwagi możesz uzupełnić albo świadomie potwierdzić przy wystawieniu.")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Button { statusTarget = EventContractStatusTarget(status: "issued") } label: { Label("Sprawdź uwagi i wystaw umowę…", systemImage: "checklist") }
+                }
+                .contractCard()
             }
-            .contractCard()
+            if nativeAssembly {
+                if contract.status == "draft" && canEdit(contract, data) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Audyt AI", systemImage: "sparkles").font(.headline)
+                        Text("Asystent porównuje treść draftu: duplikaty, sprzeczności, niepełne zdania i numerację. Dane stron, reprezentantów i podpisy są wyłączone z analizy. Każdą zmianę zatwierdzasz przed zapisem. Rozbieżne wersje wspólnych ustaleń wybierzesz w „Zarządzaj klauzulami…”, a zgodność z aktualnymi danymi przywróci „Odśwież szablon i dane”.")
+                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Button { Task { await startAudit() } } label: { Label("Uruchom audyt AI…", systemImage: "sparkles") }
+                    }
+                    .contractCard()
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Pełne sprawdzenie w CRM", systemImage: "checklist").font(.headline)
+                    Text("Uwagi przed wystawieniem, zgodność treści z aktualnymi danymi wydarzenia i oferty (odświeżenie szablonu i danych), rozbieżne wersje wspólnych ustaleń i audyt AI sprawdza edytor umowy w CRM — na Macu wymagają przeglądarki Chromium i dostępu do kwot.")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Button { state.openCRM(crmPath(.review)) } label: { Label("Sprawdź w CRM", systemImage: "safari") }
+                }
+                .contractCard()
+            }
         }
     }
 
@@ -1016,6 +1235,125 @@ fileprivate extension View {
         }
         guard let loaded = fetched else { return }
         deliver(loaded, action: download ? .download : .preview)
+    }
+
+    // MARK: Składanie umowy na Macu (silnik dokumentów)
+
+    /// Silnik z oknem postępu; błąd — w komunikacie (z przyczyną, np. brak szablonu albo uprawnień).
+    private func assemble(_ mode: EventContractEngineMode, pending: String, failure: String,
+                          extra: [String: JSONValue] = [:]) async -> EventContractEngineResult? {
+        let hosts = data?.engineHosts ?? []
+        return await state.withPending(pending) { () async -> EventContractEngineResult? in
+            do {
+                return try await state.eventContract(eventID: eventID, mode: mode, canViewAmounts: canViewAmounts, hosts: hosts, extra: extra)
+            } catch {
+                state.error = failure + ": " + store.failureText(error, "spróbuj ponownie")
+                return nil
+            }
+        }
+    }
+
+    /// „Przygotuj umowę” — szkic z bieżącą treścią (`ensureContractRecord`).
+    private func prepareContract() async {
+        guard let result = await assemble(.create, pending: "Przygotowywanie umowy…", failure: "Błąd podczas tworzenia umowy") else { return }
+        await store.loadTab(eventID, "contract")
+        state.succeed(result.created ? "Szkic umowy został przygotowany" : "Umowa już istnieje — wczytano jej aktualny stan")
+        notes(result)
+    }
+
+    /// „Odśwież szablon i dane” — najnowszy szablon, dane klienta, oferta i klauzule (`handleRefreshFromOffer`).
+    private func refreshContract() async {
+        guard let result = await assemble(.refresh, pending: "Odświeżanie umowy z szablonu i danych…", failure: "Nie udało się odświeżyć szablonu i danych umowy") else { return }
+        await store.loadTab(eventID, "contract")
+        state.succeed("Umowa została odświeżona z najnowszego szablonu i danych źródłowych")
+        notes(result)
+    }
+
+    /// „Generuj PDF” (`handlePrint`): strony z silnika, druk w Chrome, zapis w Dokumenty → Umowy.
+    private func generatePdf(_ contract: ContractTabData.Contract, _ data: ContractTabData) async {
+        guard let result = await assemble(.pdf, pending: "Składanie umowy…", failure: "Błąd generowania PDF") else { return }
+        guard let contractID = result.contractId, let pages = result.pagesHtml, let css = result.cssText else {
+            state.error = "Nie udało się przygotować stron umowy."
+            return
+        }
+        do {
+            try await state.withPending("Generowanie PDF umowy…") {
+                try await state.generateEventContractPdf(eventID: eventID, contractID: contractID, pagesHtml: pages, cssText: css)
+            }
+            inlinePdfKey = nil
+            await store.loadTab(eventID, "contract")
+            state.succeed("PDF umowy został wygenerowany i zapisany w Dokumenty → Umowy")
+            notes(result)
+        } catch {
+            state.error = store.failureText(error, "Błąd generowania PDF")
+        }
+    }
+
+    /// Podgląd bieżącej treści (jak podgląd stron w CRM) — PDF bez zapisu.
+    private func previewCurrent(_ contract: ContractTabData.Contract?, _ data: ContractTabData) async {
+        guard let result = await assemble(.preview, pending: "Składanie umowy…", failure: "Nie udało się przygotować podglądu umowy") else { return }
+        guard let pages = result.pagesHtml, let css = result.cssText else {
+            state.error = "Nie udało się przygotować stron umowy."
+            return
+        }
+        do {
+            let pdf = try await state.withPending("Przygotowywanie podglądu…") {
+                try await state.eventContractPreviewPdf(eventID: eventID, contractID: result.contractId ?? contract?.id, pagesHtml: pages, cssText: css)
+            }
+            preview = NativePreview(name: "Podgląd umowy.pdf", data: pdf)
+            notes(result)
+        } catch {
+            state.error = store.failureText(error, "Nie udało się przygotować podglądu umowy")
+        }
+    }
+
+    /// „Audyt AI” (`handleStartContractAudit`): wynik do przeglądu; zatwierdzone decyzje zapisuje silnik
+    /// (`handleApplyContractAudit`) na treści, która była audytowana.
+    private func startAudit() async {
+        guard let result = await assemble(.audit, pending: "Audytowanie umowy…", failure: "Nie udało się przeprowadzić audytu umowy",
+                                          extra: ["isAdmin": .bool(data?.isAdmin == true)]) else { return }
+        guard let payload = result.audit, let audit = payload.result, let raw = payload.raw, let source = payload.source, let stamp = payload.stamp else {
+            state.error = "Serwer CRM nie obsługuje jeszcze audytu AI na Macu — zaktualizuj CRM."
+            return
+        }
+        let hosts = data?.engineHosts ?? []
+        let isAdmin = data?.isAdmin == true
+        auditReview = ContractAuditReview(result: audit, blocks: payload.blocks ?? []) { selections in
+            do {
+                let applied = try await state.withPending("Zapisywanie zmian z audytu…") {
+                    try await state.eventContract(eventID: eventID, mode: .applyAudit, canViewAmounts: canViewAmounts, hosts: hosts, extra: [
+                        "isAdmin": .bool(isAdmin),
+                        "review": .object([
+                            "audit": raw,
+                            "selections": .object(selections.mapValues { JSONValue.string($0) }),
+                            "source": .string(source),
+                            "stamp": .string(stamp),
+                        ]),
+                    ])
+                }
+                guard let summary = applied.audit, let removed = summary.removed, let changed = summary.changed else {
+                    return "Serwer CRM nie obsługuje jeszcze audytu AI na Macu — zaktualizuj CRM."
+                }
+                if removed == 0 && changed == 0 {
+                    state.notice = "Nie wybrano zmian do zastosowania"
+                } else {
+                    await reloadContract()
+                    state.succeed("Audyt zastosowany: usunięto \(removed), poprawiono \(changed) fragmentów")
+                }
+                return nil
+            } catch {
+                return store.failureText(error, "Nie udało się zastosować audytu")
+            }
+        }
+    }
+
+    /// Uwagi po składaniu, które w CRM widać nad podglądem umowy.
+    private func notes(_ result: EventContractEngineResult) {
+        var lines: [String] = []
+        if result.sourceOutdated { lines.append("Treść umowy jest starsza niż szablon, oferta lub dane klienta — możesz ją odświeżyć (Więcej → Odśwież szablon i dane).") }
+        if result.unresolvedConflicts > 0 { lines.append("Rozstrzygnij rozbieżne wersje wspólnych ustaleń (\(result.unresolvedConflicts)) — Więcej → Zarządzaj klauzulami.") }
+        if !result.unplacedClauseCategories.isEmpty { lines.append("Szablon nie ma miejsca na część klauzul — sprawdź podzakładkę Klauzule.") }
+        if !lines.isEmpty { state.notice = lines.joined(separator: " ") }
     }
 
     private func changeStatus(_ contract: ContractTabData.Contract, _ next: String) async {

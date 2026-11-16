@@ -171,7 +171,7 @@ import SwiftUI
                 actions
                 summary
                 if item.format != "word" {
-                    Label("Starszy format — w edytorze CRM przekształcisz go do edytora jak Word (style, warunki, scalanie wariantów).", systemImage: "info.circle")
+                    Label("Starszy format — otwórz go w edytorze i kliknij „Przekształć szablon” (edytor jak Word: style, warunki, scalanie wariantów).", systemImage: "info.circle")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -198,7 +198,7 @@ import SwiftUI
         HStack(spacing: 8) {
             Button { onOpen(); store.editingTemplateID = item.id } label: { Label("Otwórz w edytorze", systemImage: "doc.richtext") }
                 .buttonStyle(.borderedProminent)
-                .help("Szablon jako kartka A4 w stylach dokumentu. Edycja treści na Macu — w kolejnym etapie.")
+                .help("Szablon jako kartka A4 w stylach dokumentu — edycja treści, warunków i układu jak w CRM.")
             Menu {
                 Button { state.openCRM("/crm/contract-templates/\(item.id)/edit-wysiwyg") } label: { Label("Edytuj treść w CRM", systemImage: "safari") }
                 Divider()

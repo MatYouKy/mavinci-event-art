@@ -1,15 +1,60 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson, can, type NativeContext } from '@/lib/native/auth';
 import { inquiriesItems, inquiriesState, inquiryAccess, invalidateInquiries } from '@/lib/native/inquiries';
 import { LOST_REASON_CATEGORIES, STAGES } from '@/lib/CRM/inquiries/pipeline';
+import {
+  acceptInquiryOffer,
+  addInquiryNote,
+  changeInquiryStage,
+  createInquiryCalculation,
+  createInquiryOffer,
+  duplicateInquiryOffer,
+  handOffInquiry,
+  inquiryHandoffCandidates,
+  inquiryWorkspace,
+  markInquiryContacted,
+  reopenInquiryNegotiation,
+  saveInquiryBrief,
+  saveInquiryTitle,
+} from '@/lib/native/inquiryWorkspace';
+import {
+  approveInquirySummary,
+  askInquiryAssistant,
+  convertInquiry,
+  createInquiryTask,
+  improveInquiryEmail,
+  inquiryAnalysis,
+  inquiryClientSetup,
+  inquiryConvertSetup,
+  inquiryCorrespondence,
+  inquiryEmailPreview,
+  inquiryEmailSetup,
+  inquiryEmailThread,
+  inquiryTasks,
+  inquiryTeam,
+  linkInquiryClient,
+  linkInquiryEmail,
+  readInquiryGuests,
+  searchInquiryClients,
+  searchInquiryEmails,
+  sendInquiryEmail,
+  setInquiryTeamMember,
+} from '@/lib/native/inquiryWorkspaceTools';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 /*
  * Lejek zapytań dla aplikacji na Maca — te same operacje co strona `/crm/inquiries` (`InquiriesPageClient`): zmiana etapu
  * i obsługa zapytania (`tasks`), przejęcie (`claim_inquiry`), kontakt wykonany (`complete_inquiry_followup`), odłożenie
  * (`snooze_inquiry_followup`), usunięcie lub archiwizacja (`remove_inquiry`). Tokenem pracownika — RLS jak w przeglądarce.
+ * Karta zapytania (`/crm/inquiries/[id]`, `src/lib/native/inquiryWorkspace.ts`): GET op=workspace | handoffCandidates;
+ * POST op=workspaceTitle | workspaceBrief | workspaceContacted | workspaceStage | workspaceReopen | workspaceNote |
+ * workspaceHandoff | workspaceOffer | workspaceCalculation | workspaceAccept | workspaceDuplicate.
+ * Część 2 (`src/lib/native/inquiryWorkspaceTools.ts`): GET op=correspondence | emailSearch | emailThread | emailSetup |
+ * analysis | clientSetup | clientSearch | team | tasks | convertSetup; POST op=workspaceLinkEmail | workspaceEmailPreview |
+ * workspaceEmailSend | workspaceEmailImprove | workspaceAsk | workspaceGuests | workspaceApprove | workspaceClient |
+ * workspaceTeam | workspaceTask | workspaceConvert. Wysyłka e-maili i asystent AI tokenem pracownika (jak przeglądarka).
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -21,6 +66,8 @@ const allowed = (ctx: NativeContext) => can(ctx.employee, 'inquiries_view') || c
     .some((scope) => ctx.employee.permissions.includes(scope));
 const stageIds = STAGES.map((stage) => stage.id as string);
 const lostCategories = LOST_REASON_CATEGORIES.map(([value]) => value as string);
+const bearer = (request: Request) => /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';
+const workspaceRead = new Set(['workspace', 'handoffCandidates', 'correspondence', 'emailSearch', 'emailThread', 'emailSetup', 'analysis', 'clientSetup', 'clientSearch', 'team', 'tasks', 'convertSetup']);
 const isoOrNull = (value: unknown) => {
   if (value === null || value === undefined || value === '') return null;
   const date = new Date(String(value));
@@ -49,12 +96,36 @@ export async function GET(request: Request) {
         const list = (data || []).filter((e) => everyone || (access.salesTeamId ? e.sales_team_id === access.salesTeamId : e.id === access.employeeId));
         return nativeJson({ employees: list.map((e) => ({ id: e.id, name: `${e.name ?? ''} ${e.surname ?? ''}`.trim() })) });
       }
+      case 'workspace':
+        return nativeJson(await inquiryWorkspace(ctx, q('id')));
+      case 'handoffCandidates':
+        return nativeJson(await inquiryHandoffCandidates(ctx, q('id')));
+      case 'correspondence':
+        return nativeJson(await inquiryCorrespondence(ctx, q('id')));
+      case 'emailSearch':
+        return nativeJson(await searchInquiryEmails(ctx, q('id'), q('query')));
+      case 'emailThread':
+        return nativeJson(await inquiryEmailThread(ctx, q('id'), q('type'), q('messageId')));
+      case 'emailSetup':
+        return nativeJson(await inquiryEmailSetup(ctx, q('id')));
+      case 'analysis':
+        return nativeJson(await inquiryAnalysis(ctx, q('id')));
+      case 'clientSetup':
+        return nativeJson(await inquiryClientSetup(ctx, q('id')));
+      case 'clientSearch':
+        return nativeJson(await searchInquiryClients(ctx, q('id'), q('kind'), q('query')));
+      case 'team':
+        return nativeJson(await inquiryTeam(ctx, q('id')));
+      case 'tasks':
+        return nativeJson(await inquiryTasks(ctx, q('id')));
+      case 'convertSetup':
+        return nativeJson(await inquiryConvertSetup(ctx, q('id')));
       default:
         return failure('Nieznana operacja.');
     }
   } catch (error) {
     console.error('[native-inquiries]', error);
-    return failure(errorText(error, 'Nie udało się pobrać zapytań.'), 500);
+    return failure(errorText(error, 'Nie udało się pobrać zapytań.'), workspaceRead.has(q('op')) ? 400 : 500);
   }
 }
 
@@ -64,7 +135,8 @@ export async function POST(request: Request) {
   if (!allowed(ctx)) return failure('Nie masz dostępu do zapytań.', 403);
   let body: Record<string, any>;
   try {
-    body = await readJson(request, 256_000);
+    // Wiadomość do klienta może mieć załączniki (do 25 MB, base64) — jak wysyłka w module Wiadomości.
+    body = await readJson(request, 36 * 1024 * 1024);
   } catch {
     return failure('Nieprawidłowe dane.');
   }
@@ -164,11 +236,37 @@ export async function POST(request: Request) {
         }
         return done({ mode });
       }
+      case 'workspaceTitle': return done(await saveInquiryTitle(ctx, body));
+      case 'workspaceBrief': return done(await saveInquiryBrief(ctx, body));
+      case 'workspaceContacted': return done(await markInquiryContacted(ctx, body));
+      case 'workspaceStage': return done(await changeInquiryStage(ctx, body));
+      case 'workspaceReopen': return done(await reopenInquiryNegotiation(ctx, body));
+      case 'workspaceNote': return done(await addInquiryNote(ctx, body));
+      case 'workspaceHandoff': return done(await handOffInquiry(ctx, body));
+      case 'workspaceOffer': return done(await createInquiryOffer(ctx, body));
+      case 'workspaceCalculation': return done(await createInquiryCalculation(ctx, body));
+      case 'workspaceAccept': return done(await acceptInquiryOffer(ctx, body));
+      case 'workspaceDuplicate': return done(await duplicateInquiryOffer(ctx, body));
+      case 'workspaceLinkEmail': return done(await linkInquiryEmail(ctx, body));
+      case 'workspaceEmailPreview': return nativeJson(await inquiryEmailPreview(ctx, body));
+      case 'workspaceEmailSend': return done(await sendInquiryEmail(ctx, bearer(request), body));
+      case 'workspaceEmailImprove': return nativeJson(await improveInquiryEmail(ctx, bearer(request), body));
+      case 'workspaceAsk': return nativeJson(await askInquiryAssistant(ctx, bearer(request), body));
+      case 'workspaceGuests': return nativeJson(await readInquiryGuests(ctx, bearer(request), body));
+      case 'workspaceApprove': return done(await approveInquirySummary(ctx, body));
+      case 'workspaceClient': {
+        const result = await linkInquiryClient(ctx, body);
+        return 'duplicate' in result ? nativeJson(result) : done(result);
+      }
+      case 'workspaceTeam': return done(await setInquiryTeamMember(ctx, body));
+      case 'workspaceTask': return done(await createInquiryTask(ctx, body));
+      case 'workspaceConvert': return done(await convertInquiry(ctx, body));
       default:
         return failure('Nieznana operacja.');
     }
   } catch (error) {
     console.error('[native-inquiries]', op, error);
+    if (op.startsWith('workspace')) return failure(errorText(error, 'Serwer nie wykonał operacji.'), 400);
     return failure(errorText(error, 'Serwer nie wykonał operacji.'), 500);
   }
 }

@@ -22,6 +22,7 @@ import {
   updateOfferItem,
 } from '@/lib/native/offerItems';
 import { offerPackages, offerRequirements, saveOfferPackages, saveOfferRequirements } from '@/lib/native/offerSections';
+import { offerTravel } from '@/lib/native/offerTravel';
 import {
   createOfferEvent,
   linkOffer,
@@ -74,6 +75,7 @@ export const maxDuration = 300;
  * pozycje (`src/lib/native/offerItems.ts`): GET op=itemCatalog&id=… | itemEditor&id=…&item=…; POST op=itemPreview (wycena
  * szkicu) | itemAdd | itemUpdate | audienceSave (liczba osób i stołów do wyceny);
  * wymagania, pakiety i logistyka (`src/lib/native/offerSections.ts`): GET op=requirements&id=… | packages&id=…;
+ * kalkulator trasy i paliwa logistyki (`src/lib/native/offerTravel.ts`): GET op=travel&id=…&action=destination|search|route|fuel;
  * POST op=requirementsSave | packagesSave; propozycje dodatkowe (`src/lib/native/offerRecommendations.ts`): GET
  * op=recommendations&id=… (katalog do propozycji: op=itemCatalog&mode=recommendation&exclude=…); POST op=recommendationBuild |
  * recommendationPreview | recommendationsSave; dokumenty: GET op=pdf&id=…&language=pl|en; POST op=pdfDelete | english (angielska
@@ -115,6 +117,7 @@ export async function GET(request: Request) {
       case 'itemEditor': return nativeJson(await offerItemEditor(ctx, url.searchParams.get('id') || '', url.searchParams.get('item') || ''));
       case 'requirements': return nativeJson(await offerRequirements(ctx, url.searchParams.get('id') || ''));
       case 'packages': return nativeJson(await offerPackages(ctx, url.searchParams.get('id') || ''));
+      case 'travel': return nativeJson(await offerTravel(ctx, url.searchParams.get('id') || '', url.searchParams));
       case 'recommendations': return nativeJson(await offerRecommendations(ctx, url.searchParams.get('id') || ''));
       case 'emailSetup': return nativeJson(await offerEmailSetup(ctx, url.searchParams.get('id') || ''));
       case 'linkChoices': return nativeJson(await offerLinkChoices(ctx, url.searchParams.get('id') || '', url.searchParams.get('kind') || 'event', url.searchParams.get('search') || ''));

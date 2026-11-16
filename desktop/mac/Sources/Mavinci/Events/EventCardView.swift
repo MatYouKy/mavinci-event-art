@@ -41,6 +41,8 @@ import AppKit
     @AppStorage("eventCard.overview") private var overviewShown = true
     /// Szuflada „Wydruki” pod przyciskiem drukarki.
     @State private var printsShown = false
+    /// „Edytuj event” (`EditEventModalNew`).
+    @State private var editingEvent = false
     /// Pasek zakładek: ramki zakładek względem widocznej części paska, jego szerokość i szerokość całej karty.
     @State private var tabFrames: [String: CGRect] = [:]
     @State private var tabViewport: CGFloat = 0
@@ -307,6 +309,7 @@ import AppKit
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle(EventFields(raw: cached?.page.event ?? [:]).name.nonEmpty ?? cached?.page.realization?.object["name"]?.text.nonEmpty ?? "Wydarzenie")
         .toolbar { toolbar }
+        .sheet(isPresented: $editingEvent) { EventEditSheet(store: store, eventID: eventID).warehouseSheetStyle(state) }
         .confirmationDialog("Czy na pewno chcesz usunąć to wydarzenie?", isPresented: $removing, titleVisibility: .visible) {
             Button("Usuń", role: .destructive) { Task { await deleteEvent() } }
             Button("Anuluj", role: .cancel) {}
@@ -357,8 +360,8 @@ import AppKit
             Menu {
                 if let flags {
                     if flags.canEventManage {
-                        Button("Edytuj", systemImage: "square.and.pencil") { state.openCRM("/crm/events/\(eventID)") }
-                            .help("Edycja nazwy, terminu, klienta i kontaktu — w CRM")
+                        Button("Edytuj", systemImage: "square.and.pencil") { editingEvent = true }
+                            .help("Nazwa, klient, kategoria, firma realizująca, termin, lokalizacja, budżet i status")
                         Button("Duplikuj", systemImage: "plus.square.on.square") { duplicating = true }
                     }
                     if flags.showDetailsAction && flags.canEventManage && flags.tabs.contains(where: { $0.id == "details" }) {
@@ -528,7 +531,7 @@ import AppKit
         case "finances": EventFinancesTab(store: store, eventID: eventID, navigate: { tab = $0 })
         case "seller-arrangements": EventSellerTab(store: store, eventID: eventID, navigate: { tab = $0 })
         case "calculations": EventCalculationsTab(store: store, eventID: eventID)
-        case "contract": EventContractTab(store: store, eventID: eventID)
+        case "contract": EventContractTab(store: store, eventID: eventID, canViewAmounts: page.flags?.canViewValues == true)
         case "tasks": TasksBoardView(store: store.tasksStore(eventID), embedded: true).id("tasks-event-\(eventID)")
         case "agenda":
             if page.flags?.isWeddingEvent == true { EventWeddingCardTab(store: store, eventID: eventID) }

@@ -1648,6 +1648,8 @@ export default function EventWizard({
           clientType={clientType}
           onSuccess={async () => {
             setShowOfferWizard(false);
+            // Oferta jest już zapisana przez kreator oferty — „Zakończ” nie może dodać drugiej, pustej oferty.
+            setCreateOffer(false);
             showSnackbar('Oferta utworzona pomyślnie!', 'success');
             // Automatycznie przejdź do kroku 3 (Sprzęt)
             setCurrentStep(3);

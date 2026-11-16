@@ -1,4 +1,11 @@
 import { getSharedContractClause } from './sharedContractClauses';
+import {
+  contractRequirementCategory,
+  contractRequirementText,
+  contractRequirementTopic,
+  normalizeContractRequirement,
+  type ContractRequirement,
+} from './contractRequirements';
 
 const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*?>/i;
 const ESCAPED_HTML_PATTERN = /&lt;\/?(?:p|div|h[1-6]|ol|ul|li|strong|em|blockquote)\b/i;
@@ -26,6 +33,13 @@ export type ContractClauseEntry = {
   content: string;
   sharedKey?: string;
   legacyId?: string;
+  /**
+   * Wymaganie z parametrami (`contractRequirements.ts`): umowa łączy je z wymaganiami innych usług w jeden zapis na typ.
+   * `content` to wtedy zdanie wygenerowane z parametrów (dla czytników, które nie znają parametrów).
+   */
+  requirement?: ContractRequirement;
+  /** Klucz klauzuli z biblioteki, która zawiera ten zapis — gdy jest w umowie, ten wpis jest pomijany. */
+  coveredBy?: string;
 };
 
 export const CONTRACT_CLAUSE_CATEGORIES: ContractClauseCategory[] = [
@@ -234,14 +248,22 @@ export const parseContractClauseEntries = (
       return parsed.entries.flatMap((entry: unknown, index: number) => {
         if (!entry || typeof entry !== 'object') return [];
         const candidate = entry as Partial<ContractClauseEntry>;
-        const shared = getSharedContractClause(candidate.sharedKey);
-        const category = asPrimaryCategory(shared?.category || candidate.category);
-        const content = String(shared?.content || candidate.content || '').trim();
+        const requirement = normalizeContractRequirement(candidate.requirement);
+        const shared = requirement ? undefined : getSharedContractClause(candidate.sharedKey);
+        const category = requirement
+          ? contractRequirementCategory(requirement.type)
+          : asPrimaryCategory(shared?.category || candidate.category);
+        const content = requirement
+          ? contractRequirementText(requirement)
+          : String(shared?.content || candidate.content || '').trim();
         if (!category || !content) return [];
         const allowedTopics = getContractClauseTopicOptions(category).map((topic) => topic.value);
-        const topic = allowedTopics.includes(String(shared?.topic || candidate.topic || ''))
-          ? String(shared?.topic || candidate.topic)
-          : inferContractClauseTopic(category, content);
+        const topic = requirement
+          ? contractRequirementTopic(requirement.type)
+          : allowedTopics.includes(String(shared?.topic || candidate.topic || ''))
+            ? String(shared?.topic || candidate.topic)
+            : inferContractClauseTopic(category, content);
+        const coveredBy = !shared && getSharedContractClause(candidate.coveredBy) ? String(candidate.coveredBy) : undefined;
         return [{
           id: String(candidate.id || stableClauseEntryId(category, content, index)),
           category,
@@ -250,6 +272,8 @@ export const parseContractClauseEntries = (
           content,
           ...(shared ? { sharedKey: shared.key } : {}),
           ...(typeof candidate.legacyId === 'string' ? { legacyId: candidate.legacyId } : {}),
+          ...(requirement ? { requirement } : {}),
+          ...(coveredBy ? { coveredBy } : {}),
         }];
       });
     }
@@ -277,22 +301,38 @@ export const serializeContractClauseEntries = (entries: ContractClauseEntry[]) =
   JSON.stringify({
     version: 2,
     entries: entries
-      .filter((entry) => entry.content.trim())
+      .filter((entry) => entry.content.trim() || normalizeContractRequirement(entry.requirement))
       .map((entry, index) => {
+        const requirement = normalizeContractRequirement(entry.requirement);
+        if (requirement) {
+          const content = contractRequirementText(requirement);
+          const category = contractRequirementCategory(requirement.type);
+          return {
+            id: entry.id || stableClauseEntryId(category, content, index),
+            category,
+            topic: contractRequirementTopic(requirement.type),
+            title: String(entry.title || getContractClauseTopicLabel(contractRequirementTopic(requirement.type))).trim(),
+            content,
+            requirement,
+            ...(entry.legacyId ? { legacyId: entry.legacyId } : {}),
+          };
+        }
         const category = asPrimaryCategory(entry.category) || 'requirements';
         const topic = getContractClauseTopicOptions(category).some(
           (definition) => definition.value === entry.topic,
         )
           ? entry.topic
           : inferContractClauseTopic(category, entry.content);
+        const shared = getSharedContractClause(entry.sharedKey);
         return {
           id: entry.id || stableClauseEntryId(category, entry.content, index),
           category,
           topic,
           title: String(entry.title || getContractClauseTopicLabel(topic)).trim(),
           content: entry.content.trim(),
-          ...(getSharedContractClause(entry.sharedKey) ? { sharedKey: entry.sharedKey } : {}),
+          ...(shared ? { sharedKey: entry.sharedKey } : {}),
           ...(entry.legacyId ? { legacyId: entry.legacyId } : {}),
+          ...(!shared && getSharedContractClause(entry.coveredBy) ? { coveredBy: entry.coveredBy } : {}),
         };
       }),
   });

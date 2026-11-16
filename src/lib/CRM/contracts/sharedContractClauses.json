@@ -105,6 +105,13 @@
     "content": "<p>Zamawiający zgłosi zauważone uszkodzenia, niestabilność urządzeń i nieprawidłowości niezwłocznie, w miarę możliwości podczas wydarzenia, aby umożliwić Wykonawcy ich ocenę i usunięcie. Osoby działające po stronie Zamawiającego powstrzymają się od samodzielnych napraw. Nie narusza to ustawowych uprawnień Zamawiającego.</p>"
   },
   {
+    "key": "offer_scope",
+    "category": "conditions",
+    "topic": "scope_condition",
+    "title": "Zakres usług z oferty",
+    "content": "<p>Szczegółowy zakres każdej z zamówionych usług, w szczególności liczba i rodzaj urządzeń, konfiguracja, personalizacja, repertuar, czas pracy lub udostępnienia, obsługa, transport, montaż i demontaż, wynika z zaakceptowanej oferty lub zamówienia oraz potwierdzonego harmonogramu wydarzenia.</p>"
+  },
+  {
     "key": "scope_changes",
     "category": "conditions",
     "topic": "scope_condition",

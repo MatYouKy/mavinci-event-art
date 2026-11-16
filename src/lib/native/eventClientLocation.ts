@@ -60,7 +60,7 @@ async function businessContacts(ctx: NativeContext, _eventId: string, params: UR
 }
 
 /** Wyszukiwarka miejsc (`/bridge/places/autocomplete`): Polska, język polski. */
-async function placeSearch(_ctx: NativeContext, _eventId: string, params: URLSearchParams) {
+export async function placeSearch(_ctx: NativeContext, _eventId: string, params: URLSearchParams) {
   const input = text(params.get('input'), 200);
   if (!input) return { predictions: [] };
   const key = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -82,7 +82,7 @@ async function placeSearch(_ctx: NativeContext, _eventId: string, params: URLSea
 }
 
 /** Szczegóły miejsca (`/bridge/places/details` + `buildBestAddress`) — pola formularza lokalizacji. */
-async function placeDetails(_ctx: NativeContext, _eventId: string, params: URLSearchParams) {
+export async function placeDetails(_ctx: NativeContext, _eventId: string, params: URLSearchParams) {
   const placeId = text(params.get('placeId'), 300);
   if (!placeId) fail('Brak identyfikatora miejsca.');
   const key = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -201,7 +201,7 @@ async function clientSave(ctx: NativeContext, eventId: string, body: Row) {
 }
 
 /** `AddLocationModal.handleSave`: nowa lokalizacja (nazwa wymagana); wybór dla wydarzenia — jak w CRM, osobnym zapisem. */
-async function locationCreate(ctx: NativeContext, _eventId: string, body: Row) {
+export async function locationCreate(ctx: NativeContext, _eventId: string, body: Row) {
   const name = text(body.name, 300);
   if (!name) fail('Nazwa lokalizacji jest wymagana');
   const number = (value: unknown) => (value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value));

@@ -167,6 +167,11 @@ struct ProductResources: Codable {
         var title: String
         var content: String
         var sharedKey: String?
+        /// Wymaganie z parametrami — umowa łączy je z wymaganiami innych usług w jeden zapis.
+        var requirement: ClauseRequirement?
+        var requirementSummary: String?
+        /// Klucz wspólnej zasady, przy której ten zapis jest pomijany w umowie.
+        var coveredBy: String?
     }
     struct ClauseCategory: Codable, Hashable {
         var key: String
@@ -193,7 +198,10 @@ struct ProductResources: Codable {
         var topics: [ClauseTopic]
         var shared: [SharedClause]
         var placeholders: [Placeholder]
+        /// Typy wymagań z parametrami (starszy serwer — brak).
+        var requirementTypes: [RequirementType]?
 
+        func requirementType(_ type: String?) -> RequirementType? { type.flatMap { type in requirementTypes?.first { $0.type == type } } }
         func topics(_ category: String) -> [ClauseTopic] { topics.filter { $0.category == category } }
         func topicLabel(_ topic: String) -> String { topics.first { $0.value == topic }?.label ?? "Inny typ" }
         func categoryLabel(_ category: String) -> String { categories.first { $0.key == category }?.label ?? category }

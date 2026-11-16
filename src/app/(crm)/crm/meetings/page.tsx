@@ -836,6 +836,9 @@ function MeetingDetailModal({
   const mine = myMeetingResponse(meeting, employeeId);
   const organizer = isMeetingOrganizer(meeting, employeeId);
   const summary = meetingResponseSummaryText(meeting);
+  // Po odpowiedzi przyciski chowają się — „Zmień odpowiedź” pokazuje je ponownie (do zapisania nowej odpowiedzi).
+  const [changingResponse, setChangingResponse] = useState(false);
+  useEffect(() => { setChangingResponse(false); }, [meeting.id, mine]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -883,7 +886,19 @@ function MeetingDetailModal({
           </button>
         </div>
 
-        {mine && !organizer && status.value !== 'cancelled' && (
+        {mine && mine !== 'pending' && !changingResponse && !organizer && status.value !== 'cancelled' && (
+          <div className="mx-5 mb-2 flex items-center justify-between gap-3 rounded-xl bg-[#d3bb73]/[0.07] p-3">
+            <span className="flex items-center gap-2 text-sm text-[#e5e4e2]/80">
+              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: meetingResponseOption(mine).color }} />
+              Twoja odpowiedź: {meetingResponseOption(mine).label}
+            </span>
+            <button type="button" onClick={() => setChangingResponse(true)} className="text-xs text-[#d3bb73] hover:underline">
+              Zmień odpowiedź
+            </button>
+          </div>
+        )}
+
+        {mine && (mine === 'pending' || changingResponse) && !organizer && status.value !== 'cancelled' && (
           <div className="mx-5 mb-2 rounded-xl bg-[#d3bb73]/[0.07] p-3">
             <p className="mb-2 text-sm text-[#e5e4e2]/80">
               {mine === 'pending' ? 'Czy będziesz na spotkaniu?' : `Twoja odpowiedź: ${meetingResponseOption(mine).label}`}

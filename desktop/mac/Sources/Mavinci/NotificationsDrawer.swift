@@ -69,6 +69,12 @@ import SwiftUI
                 if let mapping=aliases[section]{
                     let candidate=UUID(uuidString:next) != nil ? next:mapping.1.compactMap{q[$0]}.first{UUID(uuidString:$0) != nil} ?? ""
                     if !candidate.isEmpty{type=mapping.0;id=candidate;tab=q["tab"] ?? tab}
+                    // Ustalenia sprzedawcy: wskazana oferta (`offer`), rozmowa (`conversation`) i krok przygotowań (`prepStep`).
+                    if section=="events",!candidate.isEmpty,q["tab"]=="seller-arrangements"{
+                        let offer=q["offer"].flatMap{UUID(uuidString:$0) != nil ? $0:nil}
+                        let conversation=q["conversation"].flatMap{UUID(uuidString:$0) != nil ? $0:nil}
+                        if offer != nil || conversation != nil{sellerFocus=SellerArrangementsFocus(eventID:candidate,offerID:offer,conversationID:conversation,step:q["prepStep"])}
+                    }
                 }
                 // Spotkania: /crm/calendar/meeting/<id> i /crm/calendar?meeting=<id>.
                 if section=="calendar"{

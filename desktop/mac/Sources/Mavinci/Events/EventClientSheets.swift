@@ -342,12 +342,12 @@ private struct EventBusinessContacts: Decodable { var contacts: [EventClientPers
 
 // MARK: Nowa lokalizacja
 
-private struct PlacePredictions: Decodable {
+fileprivate struct PlacePredictions: Decodable {
     struct Prediction: Decodable, Identifiable, Hashable { var placeId: String; var main: String; var secondary: String; var id: String { placeId } }
     var predictions: [Prediction]
 }
 
-private struct PlaceDetails: Decodable {
+fileprivate struct PlaceDetails: Decodable {
     var name: String
     var latitude: Double?
     var longitude: Double?
@@ -362,9 +362,60 @@ private struct PlaceDetails: Decodable {
 
 private struct CreatedLocation: Decodable { struct Location: Decodable { var id: String }; var location: Location }
 
+/// Wyszukiwanie miejsc Google i zapis nowej lokalizacji: z karty wydarzenia (moduł `details`) albo z kreatora nowego
+/// wydarzenia (`/events` — jeszcze bez wydarzenia). Te same funkcje serwera (`eventClientLocation.ts`).
+struct EventLocationService {
+    fileprivate let search: @MainActor (_ input: String, _ session: String) async throws -> PlacePredictions
+    fileprivate let details: @MainActor (_ placeID: String, _ session: String) async throws -> PlaceDetails
+    fileprivate let create: @MainActor (_ body: [String: JSONValue]) async throws -> String
+    let failureText: @MainActor (Error, String) -> String
+
+    /// Karta wydarzenia — jak dotąd (moduł `details`).
+    @MainActor static func card(_ store: EventCardStore, eventID: String) -> EventLocationService {
+        EventLocationService(
+            search: { input, session in
+                try await store.tabQuery(eventID, "details", "placeSearch", ["input": input, "sessiontoken": session], as: PlacePredictions.self)
+            },
+            details: { placeID, session in
+                try await store.tabQuery(eventID, "details", "placeDetails", ["placeId": placeID, "sessiontoken": session], as: PlaceDetails.self)
+            },
+            create: { body in
+                let reply = try await store.tabAction(eventID, "details", "locationCreate", body, reload: [], success: "Lokalizacja została dodana", pending: "Zapisywanie…")
+                return try JSONDecoder().decode(CreatedLocation.self, from: reply).location.id
+            },
+            failureText: { store.failureText($0, $1) })
+    }
+
+    /// Kreator „Nowy event” — bez wydarzenia (`/events`).
+    @MainActor static func events(_ store: EventsStore) -> EventLocationService {
+        EventLocationService(
+            search: { input, session in
+                guard let api = store.api else { throw AppError.configuration }
+                return try JSONDecoder().decode(PlacePredictions.self, from: try await api.get("/events", query: [
+                    "op": "placeSearch", "input": input, "sessiontoken": session,
+                ]))
+            },
+            details: { placeID, session in
+                guard let api = store.api else { throw AppError.configuration }
+                return try JSONDecoder().decode(PlaceDetails.self, from: try await api.get("/events", query: [
+                    "op": "placeDetails", "placeId": placeID, "sessiontoken": session,
+                ]))
+            },
+            create: { body in
+                guard let api = store.api, let workspace = store.workspace else { throw AppError.configuration }
+                var payload = body
+                payload["op"] = .string("createLocation")
+                let request = payload
+                let reply = try await workspace.withPending("Zapisywanie…") { try await api.post("/events", request) }
+                workspace.succeed("Lokalizacja została dodana")
+                return try JSONDecoder().decode(CreatedLocation.self, from: reply).location.id
+            },
+            failureText: { store.failureText($0, $1) })
+    }
+}
+
 @MainActor struct AddEventLocationSheet: View {
-    @ObservedObject var store: EventCardStore
-    let eventID: String
+    let service: EventLocationService
     let onAdded: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
@@ -390,6 +441,15 @@ private struct CreatedLocation: Decodable { struct Location: Decodable { var id:
                                                                              span: MKCoordinateSpan(latitudeDelta: 4, longitudeDelta: 4)))
     @State private var saving = false
     @State private var error: String?
+
+    init(store: EventCardStore, eventID: String, onAdded: @escaping (String) -> Void) {
+        self.init(service: .card(store, eventID: eventID), onAdded: onAdded)
+    }
+
+    init(service: EventLocationService, onAdded: @escaping (String) -> Void) {
+        self.service = service
+        self.onAdded = onAdded
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -478,16 +538,16 @@ private struct CreatedLocation: Decodable { struct Location: Decodable { var id:
         try? await Task.sleep(nanoseconds: 300_000_000)
         guard !Task.isCancelled else { return }
         do {
-            predictions = try await store.tabQuery(eventID, "details", "placeSearch", ["input": input, "sessiontoken": session], as: PlacePredictions.self).predictions
+            predictions = try await service.search(input, session).predictions
         } catch {
             predictions = []
-            self.error = store.failureText(error, "Nie udało się wyszukać miejsca.")
+            self.error = service.failureText(error, "Nie udało się wyszukać miejsca.")
         }
     }
 
     private func choose(_ prediction: PlacePredictions.Prediction) async {
         do {
-            let place = try await store.tabQuery(eventID, "details", "placeDetails", ["placeId": prediction.placeId, "sessiontoken": session], as: PlaceDetails.self)
+            let place = try await service.details(prediction.placeId, session)
             session = UUID().uuidString
             predictions = []
             if !place.name.isEmpty { name = place.name }
@@ -504,7 +564,7 @@ private struct CreatedLocation: Decodable { struct Location: Decodable { var id:
                 camera = .region(MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: lat, longitude: lng), span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)))
             }
         } catch {
-            self.error = store.failureText(error, "Nie udało się pobrać szczegółów miejsca.")
+            self.error = service.failureText(error, "Nie udało się pobrać szczegółów miejsca.")
         }
     }
 
@@ -540,12 +600,10 @@ private struct CreatedLocation: Decodable { struct Location: Decodable { var id:
         body["latitude"] = latitude.map { JSONValue.number($0) } ?? JSONValue.null
         body["longitude"] = longitude.map { JSONValue.number($0) } ?? JSONValue.null
         do {
-            let reply = try await store.tabAction(eventID, "details", "locationCreate", body, reload: [], success: "Lokalizacja została dodana", pending: "Zapisywanie…")
-            let created = try JSONDecoder().decode(CreatedLocation.self, from: reply)
-            onAdded(created.location.id)
+            onAdded(try await service.create(body))
             dismiss()
         } catch {
-            self.error = store.failureText(error, "Błąd podczas zapisywania lokalizacji")
+            self.error = service.failureText(error, "Błąd podczas zapisywania lokalizacji")
         }
     }
 }

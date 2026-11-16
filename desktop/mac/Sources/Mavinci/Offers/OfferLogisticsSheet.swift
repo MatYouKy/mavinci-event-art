@@ -2,11 +2,13 @@ import SwiftUI
 
 // MARK: „Logistyka oferty” (`OfferPackagesEditor` + `OfferLogisticsEstimateEditor`) — wewnętrzny koszt wspólny dla całej
 // realizacji: kwota ręczna albo kalkulator szacunkowy (paliwo, czas ekipy, wyżywienie, nocleg, inne, rezerwa, założenia)
-// i opcjonalna osobna dopłata klienta z opisem. Trasę z mapy i bieżące ceny paliw liczy kalkulator w CRM — tu dystans,
-// spalanie i cenę paliwa wpisuje się ręcznie (zapisana trasa zostaje).
+// i opcjonalna osobna dopłata klienta z opisem. Wiersz „Paliwo” liczy kalkulator trasy (`OfferTravelCalculator`: Google Maps,
+// średnia cena paliwa, spalanie); bez połączenia z serwerem dystans, spalanie i cenę wpisuje się ręcznie.
 
 @MainActor struct OfferLogisticsSheet: View {
     let editing: Bool
+    /// Kalkulator trasy tej oferty (`nil` bez połączenia z serwerem — wtedy pola paliwa wpisuje się ręcznie).
+    let travel: OfferTravelService?
     let onSave: (OfferLogistics) async -> String?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
@@ -15,9 +17,12 @@ import SwiftUI
     @State private var previous: OfferLogisticsEstimate?
     @State private var saving = false
     @State private var problem: String?
+    /// Wiersze paliwa z trasą liczoną w tej chwili — zapis czeka na wynik (jak `routeBusy` w CRM).
+    @State private var routeBusy: Set<String> = []
 
-    init(logistics: OfferLogistics, editing: Bool, onSave: @escaping (OfferLogistics) async -> String?) {
+    init(logistics: OfferLogistics, editing: Bool, travel: OfferTravelService? = nil, onSave: @escaping (OfferLogistics) async -> String?) {
         self.editing = editing
+        self.travel = travel
         self.onSave = onSave
         _value = State(initialValue: logistics)
     }
@@ -61,7 +66,7 @@ import SwiftUI
                 Button(editing ? "Anuluj" : "Zamknij") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
                 if editing {
                     Button(saving ? "Zapisywanie…" : "Zapisz logistykę") { Task { await save() } }
-                        .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(saving)
+                        .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(saving || !routeBusy.isEmpty)
                 }
             }
             .padding(18)
@@ -167,18 +172,33 @@ import SwiftUI
                                                 set: { next in patch(id) { $0.name = String(next.prefix(120)) } }))
                         .textFieldStyle(.roundedBorder)
                 }
+                // Paliwo z kalkulatorem trasy: dystans, cena i spalanie pochodzą z kalkulatora (jak w CRM); ręcznie tylko bez serwera.
+                let manualFuel = row.kind == "fuel" && travel == nil
                 LazyVGrid(columns: [GridItem(.flexible(), alignment: .topLeading), GridItem(.flexible(), alignment: .topLeading)], alignment: .leading, spacing: 10) {
                     number(row, \.quantity, Self.quantityLabel(row.kind))
-                    number(row, \.units, Self.unitsLabel(row.kind))
-                    if row.kind == "fuel" { number(row, \.consumption, "Spalanie (l/100 km)") }
-                    number(row, \.rate, Self.rateLabel(row.kind))
+                    if row.kind != "fuel" || manualFuel { number(row, \.units, Self.unitsLabel(row.kind)) }
+                    if manualFuel { number(row, \.consumption, "Spalanie (l/100 km)") }
+                    if row.kind != "fuel" || manualFuel { number(row, \.rate, Self.rateLabel(row.kind)) }
                     if row.kind == "travel" { number(row, \.included_hours, "Godziny już w cenie pakietu / osobę") }
                 }
                 if row.kind == "fuel" {
-                    if let route = OfferLogisticsMath.routeText(row.route ?? value.estimate?.route) {
+                    if let travel {
+                        OfferTravelCalculator(service: travel, route: Self.present(row.route) ?? Self.present(value.estimate?.route), fuel: Self.fuelValue(row),
+                                              distance: row.units, busy: busyBinding(id)) { route, fuel, distance in
+                            patch(id) { item in
+                                item.route = route ?? JSONValue.null
+                                if let distance { item.units = distance }
+                                if let fuel {
+                                    item.fuel_estimate = fuel
+                                    item.rate = Self.numberValue(fuel.object["price"])
+                                    item.consumption = Self.numberValue(fuel.object["consumption"])
+                                }
+                            }
+                        }
+                    } else if let route = OfferLogisticsMath.routeText(row.route ?? value.estimate?.route) {
                         Text("Ostatnie obliczenie: \(route).").font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("Koszt kalkulatora dotyczy jednego auta. Powyżej mnożymy go przez liczbę aut. Parking, opłaty i wynajem dodaj jako inny koszt. Trasę z mapy i aktualną cenę paliwa wyliczysz kalkulatorem w CRM.")
+                    Text("Koszt kalkulatora dotyczy jednego auta. Powyżej mnożymy go przez liczbę aut. Parking, opłaty i wynajem dodaj jako inny koszt.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 if row.kind == "travel" {
@@ -251,6 +271,36 @@ import SwiftUI
         case "accommodation": return "Koszt netto (zł/pokój/noc)"
         default: return "Koszt jednostkowy netto (zł)"
         }
+    }
+
+    /// Wartość różna od `null` (jak `row.route || value.route` w CRM).
+    static func present(_ value: JSONValue?) -> JSONValue? {
+        guard let value, value != .null else { return nil }
+        return value
+    }
+
+    static func numberValue(_ value: JSONValue?) -> Double? {
+        if case .number(let number)? = value { return number }
+        return nil
+    }
+
+    /// Wycena paliwa wiersza dla kalkulatora: zapisana albo ręczna z ceny i spalania (`fuel_type: diesel`).
+    static func fuelValue(_ row: OfferLogisticsRow) -> JSONValue? {
+        if let estimate = present(row.fuel_estimate) { return estimate }
+        guard row.rate != nil || row.consumption != nil else { return nil }
+        return .object([
+            "fuel_type": .string("diesel"),
+            "price": row.rate.map { JSONValue.number($0) } ?? .null,
+            "consumption": row.consumption.map { JSONValue.number($0) } ?? .null,
+            "price_source": .string("manual"),
+            "quote": .null,
+        ])
+    }
+
+    private func busyBinding(_ id: String) -> Binding<Bool> {
+        Binding(get: { routeBusy.contains(id) }, set: { busy in
+            if busy { routeBusy.insert(id) } else { routeBusy.remove(id) }
+        })
     }
 
     /// Wycena paliwa wpisana ręcznie (rodzaj paliwa z kalkulatora zostaje).

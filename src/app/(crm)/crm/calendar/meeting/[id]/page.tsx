@@ -127,6 +127,8 @@ export default function MeetingDetailPage() {
   const { employee: currentEmployee } = useCurrentEmployee();
   const [backHref, setBackHref] = useState('/crm/calendar');
   const [responding, setResponding] = useState<MeetingResponse | null>(null);
+  // Po odpowiedzi przyciski chowają się — „Zmień odpowiedź” pokazuje je ponownie.
+  const [changingResponse, setChangingResponse] = useState(false);
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('from') === 'meetings') setBackHref('/crm/meetings');
@@ -377,6 +379,7 @@ export default function MeetingDetailPage() {
       const { error } = await supabase.rpc('respond_to_meeting', { p_meeting_id: meetingId, p_response: response });
       if (error) throw error;
       showSnackbar(`Twoja odpowiedź: ${meetingResponseOption(response).action}`, 'success');
+      setChangingResponse(false);
       await fetchMeeting();
     } catch (error: any) {
       console.error('Error responding to meeting:', error);
@@ -585,6 +588,19 @@ export default function MeetingDetailPage() {
           {!isEditing && (() => {
             const mine = myMeetingResponse(meeting, currentEmployee?.id);
             if (!mine || isMeetingOrganizer(meeting, currentEmployee?.id) || meetingStatus(meeting.status) === 'cancelled') return null;
+            if (mine !== 'pending' && !changingResponse) {
+              return (
+                <div className="flex flex-wrap items-center gap-3 rounded-lg bg-[#d3bb73]/[0.07] p-3">
+                  <span className="flex items-center gap-2 text-sm text-[#e5e4e2]/80">
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: meetingResponseOption(mine).color }} />
+                    Twoja odpowiedź: {meetingResponseOption(mine).label}
+                  </span>
+                  <button type="button" onClick={() => setChangingResponse(true)} className="text-xs text-[#d3bb73] hover:underline">
+                    Zmień odpowiedź
+                  </button>
+                </div>
+              );
+            }
             return (
               <div className="flex flex-wrap items-center gap-3 rounded-lg bg-[#d3bb73]/[0.07] p-3">
                 <span className="text-sm text-[#e5e4e2]/80">

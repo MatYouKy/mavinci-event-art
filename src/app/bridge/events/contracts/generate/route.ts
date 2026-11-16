@@ -1,9 +1,9 @@
 import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
 import { buildContractHtml } from '@/app/(crm)/crm/events/[id]/helpers/buildContractHtml';
+import { storeContractPdf } from '@/lib/events/print/contractPdf.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,51 +17,6 @@ type Body = {
   fileName?: string; // opcjonalnie
   createdBy?: string | null;
 };
-
-const getSupabaseAdmin = () => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false },
-  });
-};
-
-async function getOrCreateUmowyFolderId({
-  supabase,
-  eventId,
-  createdBy,
-}: {
-  supabase: ReturnType<typeof getSupabaseAdmin>;
-  eventId: string;
-  createdBy?: string | null;
-}) {
-  // 1) Spróbuj RPC (jeśli działa poprawnie)
-  const rpc = await supabase.rpc('get_or_create_documents_subfolder', {
-    p_event_id: eventId,
-    p_subfolder_name: 'Umowy',
-    p_required_permission: 'contracts_manage',
-    p_created_by: createdBy ?? null,
-  });
-
-  if (!rpc.error && rpc.data) return rpc.data as string;
-
-  // 2) Jeśli RPC wali 23505 -> folder już jest, więc go pobierz
-  if (rpc.error?.code === '23505') {
-    const q = await supabase
-      .from('event_folders')
-      .select('id')
-      .eq('event_id', eventId)
-      .eq('name', 'Umowy')
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (q.data?.id) return q.data.id as string;
-  }
-
-  // 3) Jak RPC jest zepsute lub brak tabeli itd.
-  throw rpc.error || new Error('Nie udało się uzyskać folderu Umowy');
-}
 
 export async function POST(req: Request) {
   try {
@@ -136,60 +91,14 @@ export async function POST(req: Request) {
         preferCSSPageSize: true,
       });
 
-      // --- Upload do Supabase ---
-      const supabase = getSupabaseAdmin();
-
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const finalFileName = fileName || `umowa-${timestamp}.pdf`;
-      const storagePath = `${eventId}/${finalFileName}`;
-
-      const upload = await supabase.storage.from('event-files').upload(storagePath, pdfBuffer, {
-        contentType: 'application/pdf',
-        upsert: false,
-      });
-
-      if (upload.error) {
-        return NextResponse.json({ error: upload.error.message }, { status: 500 });
-      }
-
-      const folderId = await getOrCreateUmowyFolderId({
-        supabase,
+      // --- Zapis: plik, folder „Umowy”, ścieżka PDF w umowie (wspólne z PDF z Maca) ---
+      const { storagePath, fileName: finalFileName } = await storeContractPdf({
         eventId,
+        contractId,
+        pdf: pdfBuffer,
+        fileName,
         createdBy: createdBy ?? null,
       });
-
-      const insertFile = await supabase.from('event_files').insert([
-        {
-          event_id: eventId,
-          folder_id: folderId,
-          name: finalFileName,
-          original_name: finalFileName,
-          file_path: storagePath,
-          file_size: pdfBuffer.byteLength,
-          mime_type: 'application/pdf',
-          document_type: 'contract',
-          thumbnail_url: null,
-          uploaded_by: createdBy ?? null,
-        },
-      ]);
-
-      if (insertFile.error) {
-        // jeśli upload poszedł, a insert nie — chociaż loguj
-        console.error('event_files insert error:', insertFile.error);
-      }
-
-      const upd = await supabase
-        .from('contracts')
-        .update({
-          generated_pdf_path: storagePath,
-          generated_pdf_at: new Date().toISOString(),
-          modified_after_generation: false,
-        })
-        .eq('id', contractId);
-
-      if (upd.error) {
-        console.error('contracts update error:', upd.error);
-      }
 
       return NextResponse.json({
         ok: true,

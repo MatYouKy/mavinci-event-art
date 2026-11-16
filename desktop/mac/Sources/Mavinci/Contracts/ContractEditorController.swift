@@ -121,6 +121,16 @@ import SwiftUI
         stats = ContractDocumentStats(ContractHTMLParser.parse(html))
     }
 
+    /// Cała treść z innego źródła (scalanie szablonów) — jedna zmiana do cofnięcia (⌘Z), jak `setContent` w edytorze CRM.
+    func replaceContent(_ html: String) {
+        let document = ContractHTMLParser.parse(html)
+        perform {
+            storage.setAttributedString(ContractDocumentBuilder.build(ContractFlattener.flatten(document.blocks), context: context))
+            return NSRange(location: 0, length: 0)
+        }
+        stats = ContractDocumentStats(document)
+    }
+
     // MARK: Cofanie (migawki tekstu)
 
     private struct Snapshot {

@@ -10,6 +10,7 @@ import { contractOptionKeyFromLabel, resolveContractOptions } from '@/lib/CRM/co
 import { CONTRACT_PLACEHOLDER_GROUPS } from '@/lib/CRM/contracts/contractPlaceholderGroups';
 import { CONTRACT_CLAUSE_SLOTS } from '@/lib/CRM/contracts/contractClauseSlots';
 import { SYSTEM_FONTS } from '@/lib/CRM/systemFonts';
+import { trustedPrintHosts } from '@/lib/print/printJob.server';
 
 /*
  * Umowy z klientami na Macu — strony `/crm/contracts` (lista umów) i `/crm/contract-templates` (szablony): te same dane
@@ -534,6 +535,91 @@ export async function saveTemplateContent(ctx: NativeContext, body: Row) {
   };
   const { data, error } = await ctx.supabase.from('contract_templates')
     .update({ content: plainText, content_html: html, page_settings: pageSettings, updated_at: updatedAt })
+    .eq('id', id).eq('updated_at', expected).select('id, updated_at').maybeSingle();
+  if (error) fail(error.message);
+  if (!data) fail(CONTENT_CONFLICT);
+  return { ok: true, updatedAt: (data as Row).updated_at || updatedAt };
+}
+
+// MARK: Przekształcanie i scalanie szablonów (silnik dokumentów w Chrome na Macu)
+
+/*
+ * „Przekształć szablon” i „Scal z innym szablonem” mierzą układ dokumentu (style akapitów, podział na strony), więc liczy
+ * je przeglądarka: Mac wczytuje w lokalnym Chrome stronę `/native-engine/contracts` z kodem CRM
+ * (`convertLegacyContractTemplate`, `renderContractDocument`, `mergeContractTemplates`). Serwer podaje źródło szablonu
+ * i zapisuje przekształcenie jak `ContractTemplateConvertBanner` — z kopią poprzedniej wersji i kontrolą wersji.
+ */
+
+/** Źródło szablonu dla silnika: treść jak w CRM (`flowContent` albo `content_html`), ustawienia strony bez stron. */
+export async function contractTemplateSource(ctx: NativeContext, id: string) {
+  const key = templateId(id);
+  const [templateRes, categoriesRes] = await Promise.all([
+    ctx.supabase.from('contract_templates').select('id, name, updated_at, page_settings, content_html').eq('id', key).maybeSingle(),
+    ctx.supabase.from('event_categories').select('name').eq('contract_template_id', key).order('name'),
+  ]);
+  if (templateRes.error || !templateRes.data) fail('Nie znaleziono szablonu.');
+  const template = templateRes.data as Row;
+  const stored: Row = template.page_settings && typeof template.page_settings === 'object' ? template.page_settings : {};
+  const flow = typeof stored.flowContent === 'string' && stored.flowContent ? stored.flowContent : String(template.content_html || '');
+  const settings: Row = { ...stored };
+  delete settings.pages;
+  delete settings.flowContent;
+  delete settings.legacyFormatBackup;
+  return {
+    id: key,
+    name: String(template.name || ''),
+    updatedAt: template.updated_at ?? null,
+    format: isContractDocumentStylesTemplate(stored) ? 'word' : 'legacy',
+    flow,
+    settings,
+    categories: ((categoriesRes.data || []) as Row[]).map((row) => String(row.name || '').trim()).filter(Boolean),
+    hosts: trustedPrintHosts(),
+  };
+}
+
+/** Zapis przekształcenia jak „Przekształć” w CRM: nowa treść i style, kopia poprzedniej wersji w `legacyFormatBackup`. */
+export async function convertTemplateFormat(ctx: NativeContext, body: Row) {
+  if (!contractsAccess(ctx).canManage) fail('Nie masz uprawnień do zmiany szablonów umów.');
+  const id = templateId(body.id);
+  const expected = typeof body.updatedAt === 'string' ? body.updatedAt : '';
+  if (!expected) fail('Odśwież szablon przed przekształceniem.');
+  const source = typeof body.html === 'string' ? body.html : '';
+  if (source.length > 2_000_000) fail('Treść szablonu jest za długa.');
+  if (!body.documentStyles || typeof body.documentStyles !== 'object') fail('Brak stylów dokumentu z przekształcenia.');
+  const { data: current, error: readError } = await ctx.supabase.from('contract_templates')
+    .select('id, updated_at, page_settings, content_html').eq('id', id).maybeSingle();
+  if (readError || !current) fail('Nie znaleziono szablonu.');
+  const row = current as Row;
+  const settings: Row = row.page_settings && typeof row.page_settings === 'object' ? row.page_settings : {};
+  if (isContractDocumentStylesTemplate(settings)) fail('Ten szablon jest już w nowym formacie.');
+  if (row.updated_at !== expected) fail(CONTENT_CONFLICT);
+
+  const html = resolveParagraphNumbers(normalizeParagraphNumbers(sanitizeContractHtml(source)));
+  if (!html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()) fail('Treść szablonu nie może być pusta.');
+  const styles = cleanDocumentStyles(body.documentStyles, undefined);
+  const original = typeof settings.flowContent === 'string' && settings.flowContent ? settings.flowContent : String(row.content_html || '');
+  const base: Row = { ...settings };
+  delete base.pages;
+  delete base.flowContent;
+  const updatedAt = new Date().toISOString();
+  const pageSettings = {
+    ...base,
+    documentStyles: styles,
+    selectedFont: styles.styles.body.fontFamily,
+    lineHeight: styles.styles.body.lineHeight,
+    flowContent: html,
+    // Strony składa od nowa podgląd i PDF z `flowContent` (jak przy zapisie treści z Maca).
+    pages: [html],
+    legacyFormatBackup: {
+      flowContent: original,
+      selectedFont: settings.selectedFont ?? null,
+      lineHeight: settings.lineHeight ?? null,
+      clauseTypography: settings.clauseTypography ?? null,
+      convertedAt: updatedAt,
+    },
+  };
+  const { data, error } = await ctx.supabase.from('contract_templates')
+    .update({ content_html: html, page_settings: pageSettings, updated_at: updatedAt })
     .eq('id', id).eq('updated_at', expected).select('id, updated_at').maybeSingle();
   if (error) fail(error.message);
   if (!data) fail(CONTENT_CONFLICT);

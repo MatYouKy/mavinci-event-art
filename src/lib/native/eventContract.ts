@@ -1,5 +1,6 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
+import { createClient } from '@supabase/supabase-js';
 import type { NativeContext } from './auth';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import { registerEventActions, registerEventQueries, registerEventTab } from './eventTabs';
@@ -17,13 +18,17 @@ import {
   getContractClauseTopicLabel,
 } from '@/lib/CRM/contracts/contractClauseContent';
 import { CONTRACT_PLACEHOLDER_GROUPS } from '@/lib/CRM/contracts/contractPlaceholderGroups';
+import { trustedPrintHosts } from '@/lib/print/printJob.server';
 
 /**
  * Zakładka „Umowa” (`EventContractTab`) — obsługa dokumentu niewymagająca silnika składu przeglądarki: status z datami
  * i zasadami jak w CRM, wersja, blokada, podpis firmy, PDF bieżący i archiwalne wersje, podpisane załączniki (jak
  * `/bridge/events/contracts/signed-files`: te same uprawnienia, bucket, ścieżki i walidacja PDF/JPG/PNG do 20 MB).
- * Treść umowy jest składana z szablonu, oferty i klauzul oraz dzielona na strony przez edytor w CRM — edycja danych i treści,
- * klauzule, szablon, depozyt, audyt AI, wystawienie szkicu, generowanie PDF, wysyłka i anulowanie (hasło) zostają w CRM.
+ * Treść umowy składa z szablonu, oferty i klauzul ten sam kod co CRM (`src/lib/CRM/contracts/eventContractData.ts`) — na
+ * Macu w silniku dokumentów w Chrome (`/native-engine/contracts`, hosty sieci: `engineHosts`), PDF zapisuje
+ * `/bridge/events/contract-pdf`. Zmiana szablonu (`template`, jak `/bridge/events/contracts/template`) — tutaj, wysyłka
+ * e-mailem — `eventContractEmail.ts`, anulowanie z hasłem administratora (`cancel`, jak `/bridge/events/contracts/cancel`).
+ * Treść, klauzule, audyt AI i pola składa silnik dokumentów na Macu (`/native-engine/contracts`).
  * Podsumowanie zapisanej treści (`summary`) — do podzakładek jak w CRM: klient, kategoria, warunki umowy (rodzaj klienta
  * i opcje szablonu, z wyborem zapisanym w umowie), pola zmienione dla tej umowy, wybrane osoby podpisujące i klauzule
  * produktów według kategorii (z atrybutów, które nadaje im składanie umowy).
@@ -49,7 +54,7 @@ async function contractPermissions(ctx: NativeContext, eventId: string) {
   ]);
   const canManage = !manage.error && Boolean(manage.data);
   const canChangeTemplate = !workflow.error && Boolean(workflow.data) && canManage;
-  return { isAdmin: ctx.employee.isAdmin, canManage, canChangeStatus: ctx.employee.isAdmin || canChangeTemplate };
+  return { isAdmin: ctx.employee.isAdmin, canManage, canChangeTemplate, canChangeStatus: ctx.employee.isAdmin || canChangeTemplate };
 }
 
 async function latestContract(ctx: NativeContext, eventId: string) {
@@ -90,7 +95,7 @@ async function signedFiles(ctx: NativeContext, eventId: string, contract: Row) {
 
 /** Nazwy pól umowy (`{{…}}`) jak w menu „Wstaw pole” edytora szablonu. */
 const FIELD_LABELS = new Map<string, string>(CONTRACT_PLACEHOLDER_GROUPS.flatMap((group) =>
-  (group.items as Array<{ key: string; label: string }>).map((item): [string, string] => [item.key.replace(/^\{\{|\}\}$/g, ''), item.label])));
+  (group.items as ReadonlyArray<{ key: string; label: string }>).map((item): [string, string] => [item.key.replace(/^\{\{|\}\}$/g, ''), item.label])));
 const CLAUSE_OPEN = /<div\b[^>]*\bclass="[^"]*\bproduct-contract-clause\b[^"]*"[^>]*>/g;
 
 const one = (value: unknown): Row | null => {
@@ -217,11 +222,13 @@ async function contractSummary(ctx: NativeContext, eventId: string, contractId: 
 
 async function contractTab(ctx: NativeContext, eventId: string) {
   const s = ctx.supabase;
-  const [permissions, contract, eventRes, historyRes] = await Promise.all([
+  const [permissions, contract, eventRes, historyRes, templatesRes] = await Promise.all([
     contractPermissions(ctx, eventId),
     latestContract(ctx, eventId),
     s.from('events').select('selected_contract_template_id, event_categories:category_id(contract_template_id)').eq('id', eventId).maybeSingle(),
     s.from('contracts').select('id, title, contract_number, version_number, status, created_at, generated_pdf_path, generated_pdf_at').eq('event_id', eventId).order('created_at', { ascending: false }),
+    // Szablony do „Zmień szablon umowy” (`fetchAvailableTemplates`).
+    s.from('contract_templates').select('id, name').eq('is_active', true).order('name', { ascending: true }),
   ]);
   const event = eventRes.data as Row | null;
   const templateId = contract?.template_id || event?.selected_contract_template_id || event?.event_categories?.contract_template_id || null;
@@ -239,6 +246,7 @@ async function contractTab(ctx: NativeContext, eventId: string) {
   }
   return {
     ...permissions,
+    templateId,
     templateName,
     contract: contract ? {
       id: contract.id, number: contract.contract_number ?? null, title: contract.title || '', status: STATUSES.includes(contract.status) ? contract.status : 'draft',
@@ -257,6 +265,8 @@ async function contractTab(ctx: NativeContext, eventId: string) {
     signed: contract ? await signedFiles(ctx, eventId, contract) : { canView: false, canUpload: false, files: [], error: null },
     // Podsumowanie nie blokuje zakładki — bez niego Mac pokazuje status, PDF i dokumenty.
     summary: contract ? await contractSummary(ctx, eventId, contract.id, templateId, template).catch(() => null) : null,
+    engineHosts: trustedPrintHosts(),
+    templates: ((templatesRes.data || []) as Row[]).map((template) => ({ id: String(template.id), name: String(template.name || '') })),
   };
 }
 
@@ -385,4 +395,95 @@ async function registerSigned(ctx: NativeContext, eventId: string, body: Row) {
   return { ok: true };
 }
 
-registerEventActions('contract', { status, companySignature, prepareSigned, registerSigned });
+/**
+ * „Zmień szablon umowy” jak `PATCH /bridge/events/contracts/template`: prawo do prowadzenia wydarzenia i zarządzania
+ * umowami, aktywny szablon, `change_event_contract_template` (szkic dostaje nowy szablon, wystawiona umowa — nową wersję
+ * szkicu). Treść z nowego szablonu składa potem silnik dokumentów na Macu (jak `fetchContractData` po zmianie w CRM).
+ */
+async function template(ctx: NativeContext, eventId: string, body: Row) {
+  const templateId = String(body.templateId || '');
+  if (!UUID.test(templateId)) fail('Brak identyfikatora wydarzenia lub szablonu.');
+  const contractId = body.contractId ? String(body.contractId) : null;
+  if (contractId && !UUID.test(contractId)) fail('Nieprawidłowy identyfikator umowy.');
+  const { data: canManage, error: permissionError } = await ctx.supabase.rpc('can_manage_event_workflows', { p_event_id: eventId });
+  if (permissionError || !canManage) fail('Nie masz uprawnień do zmiany szablonu tej umowy.');
+  const [{ data: eventAccess, error: eventAccessError }, { data: contractManage }] = await Promise.all([
+    ctx.supabase.from('events').select('id').eq('id', eventId).maybeSingle(),
+    ctx.supabase.rpc('crm_contract_permission', { p_action: 'manage' }),
+  ]);
+  if (eventAccessError || !eventAccess || !contractManage) fail('Brak dostępu do umowy wydarzenia.');
+  const admin = createSupabaseAdminClient();
+  const { data: row, error: templateError } = await admin.from('contract_templates').select('id, name, is_active').eq('id', templateId).maybeSingle();
+  if (templateError) fail(templateError.message);
+  if (!row || (row as Row).is_active === false) fail('Wybrany szablon nie jest dostępny.');
+  const { data: result, error: updateError } = await ctx.supabase.rpc('change_event_contract_template', {
+    p_event_id: eventId, p_template_id: templateId, p_expected_contract_id: contractId,
+  });
+  if (updateError) fail(updateError.message || 'Nie udało się zmienić szablonu umowy.');
+  return {
+    ok: true,
+    templateId,
+    templateName: String((row as Row).name || ''),
+    contractId: (result as Row | null)?.contractId ?? null,
+    createdRevision: (result as Row | null)?.createdRevision === true,
+  };
+}
+
+/**
+ * „Anuluj umowę” jak `POST /bridge/events/contracts/cancel`: aktywny administrator (rola albo poziom dostępu), hasło
+ * zalogowanego konta sprawdzone osobnym, nietrwałym klientem (sesja weryfikacji od razu unieważniana), potem
+ * `cancel_event_contract_verified` z oczekiwanym statusem. Treść, PDF i historia zostają. Hasła nie zapisujemy ani nie logujemy.
+ */
+async function cancel(ctx: NativeContext, eventId: string, body: Row) {
+  const contractId = String(body.contractId || '');
+  const expectedStatus = typeof body.expectedStatus === 'string' ? body.expectedStatus : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+  body.password = '';
+  if (!UUID.test(contractId) || !password || password.length > 1024 || !expectedStatus || expectedStatus.length > 40) {
+    fail('Podaj hasło i poprawne dane umowy.');
+  }
+  const admin = createSupabaseAdminClient();
+  const { data: employee, error: employeeError } = await admin.from('employees').select('id, role, access_level')
+    .eq('id', ctx.employee.id).eq('is_active', true).maybeSingle();
+  if (employeeError || !employee || ((employee as Row).role !== 'admin' && (employee as Row).access_level !== 'admin')) {
+    fail('Tylko aktywny administrator może anulować umowę.');
+  }
+  const { data: contract, error: contractError } = await admin.from('contracts').select('id').eq('id', contractId).eq('event_id', eventId).maybeSingle();
+  if (contractError) fail('Nie udało się odczytać umowy.');
+  if (!contract) fail('Nie znaleziono umowy dla tego wydarzenia.');
+  // Adres e-mail wyłącznie z konta zweryfikowanego tokenem — nigdy z treści żądania.
+  const { data: account, error: accountError } = await admin.auth.admin.getUserById(ctx.employee.authUserId);
+  const email = account?.user?.email;
+  if (accountError || !email) fail('Sesja wygasła. Zaloguj się ponownie.');
+  const verifier = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const { data: verified, error: passwordError } = await verifier.auth.signInWithPassword({ email, password });
+  try {
+    if (passwordError || !verified.session || verified.user?.id !== ctx.employee.authUserId) {
+      if (passwordError?.status === 429) fail('Zbyt wiele prób weryfikacji hasła. Odczekaj i spróbuj ponownie.');
+      fail('Nie udało się potwierdzić hasła administratora. Sprawdź hasło i spróbuj ponownie.');
+    }
+    const { error } = await admin.rpc('cancel_event_contract_verified', {
+      p_contract_id: contractId,
+      p_event_id: eventId,
+      p_employee_id: ctx.employee.id,
+      p_expected_status: expectedStatus,
+    });
+    if (error) {
+      if (['PGRST202', '42883', '42P01'].includes(error.code)) {
+        fail('Anulowanie wymaga aktualizacji bazy danych. Zastosuj migrację zabezpieczonego anulowania umów.');
+      }
+      if (error.code === '40001') fail('Status umowy zmienił się w międzyczasie. Odśwież widok i sprawdź umowę przed anulowaniem.');
+      fail('Nie udało się anulować umowy. Dane i PDF nie zostały usunięte.');
+    }
+    return { ok: true, status: 'cancelled' };
+  } finally {
+    // Unieważniamy tylko tymczasową sesję weryfikacji, nie sesję pracownika na Macu.
+    if (verified.session?.access_token) {
+      await admin.auth.admin.signOut(verified.session.access_token, 'local').catch(() => undefined);
+    }
+  }
+}
+
+registerEventActions('contract', { status, companySignature, prepareSigned, registerSigned, template, cancel });

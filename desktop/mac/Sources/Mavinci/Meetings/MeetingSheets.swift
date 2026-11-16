@@ -56,7 +56,7 @@ import AppKit
 
             Form {
                 Section {
-                    TextField("Tytuł", text: $title, prompt: Text("np. Spotkanie z klientem"))
+                    MeetingTextField("Tytuł", text: $title, prompt: "np. Spotkanie z klientem")
                     Picker("Rodzaj", selection: $isPrivate) {
                         Label("Firmowe", systemImage: "building.2").tag(false)
                         Label("Prywatne", systemImage: "lock").tag(true)
@@ -97,7 +97,7 @@ import AppKit
                 .environment(\.timeZone, MeetingDates.zone)
 
                 Section("Miejsce") {
-                    TextField("Lokalizacja", text: $locationText, prompt: Text("Wybierz lub wpisz lokalizację"))
+                    MeetingTextField("Lokalizacja", text: $locationText, prompt: "Wybierz lub wpisz lokalizację")
                         .onChange(of: locationText) { _, text in if text != pickedPlace { locationId = nil } }
                     ForEach(places) { place in
                         Button {
@@ -146,7 +146,7 @@ import AppKit
                         Label("Dodaj pracownika", systemImage: "person.badge.plus")
                     }
                     .disabled(store.employees.isEmpty)
-                    TextField("Dodaj kontakt", text: $contactQuery, prompt: Text("Wpisz imię lub nazwę kontaktu"))
+                    MeetingTextField("Dodaj kontakt", text: $contactQuery, prompt: "Wpisz imię lub nazwę kontaktu")
                     ForEach(contactResults.filter { c in !guests.contains { $0.contactId == c.id } }) { contact in
                         Button {
                             guests.append(Guest(employeeId: nil, contactId: contact.id, name: contact.name))
@@ -307,6 +307,29 @@ import AppKit
             problem = failure.message
         } catch {
             problem = error is URLError ? "Brak połączenia z serwerem CRM. Spróbuj ponownie." : "Nie udało się zapisać spotkania."
+        }
+    }
+}
+
+/// Pole tekstowe formularza spotkania: etykieta, odstęp i tekst wyrównany do lewej (domyślnie w formularzu macOS pole
+/// jest wyrównane do prawej i nie widać wpisywanych spacji na końcu).
+struct MeetingTextField: View {
+    let label: String
+    @Binding var text: String
+    let prompt: String
+
+    init(_ label: String, text: Binding<String>, prompt: String) {
+        self.label = label
+        _text = text
+        self.prompt = prompt
+    }
+
+    var body: some View {
+        LabeledContent(label) {
+            TextField(label, text: $text, prompt: Text(prompt))
+                .labelsHidden()
+                .multilineTextAlignment(.leading)
+                .padding(.leading, 16)
         }
     }
 }

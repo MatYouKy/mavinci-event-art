@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   XCircle,
   X,
+  Sparkles,
 } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -27,8 +28,9 @@ import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBa
 
 export default function ContractTemplatesPage() {
   const router = useRouter();
-  const { canManageModule } = useCurrentEmployee();
+  const { canManageModule, isAdmin } = useCurrentEmployee();
   const canManage = canManageModule('contracts');
+  const canCleanClauses = isAdmin || canManageModule('offers');
   const { showSnackbar } = useSnackbar();
   const [templates, setTemplates] = useState<IContractTemplate[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<IContractTemplate[]>([]);
@@ -235,13 +237,23 @@ export default function ContractTemplatesPage() {
             </p>
           </div>
   
-          {canManage && (<button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-          >
-            <Plus className="h-5 w-5" />
-            Nowy szablon
-          </button>)}
+          <div className="flex flex-wrap items-center gap-2">
+            {canCleanClauses && (<button
+              type="button"
+              onClick={() => router.push('/crm/contract-templates/porzadkowanie-klauzul')}
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-5 py-3 text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
+            >
+              <Sparkles className="h-5 w-5 text-[#d3bb73]" />
+              Porządkowanie klauzul
+            </button>)}
+            {canManage && (<button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+            >
+              <Plus className="h-5 w-5" />
+              Nowy szablon
+            </button>)}
+          </div>
         </div>
   
         <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">

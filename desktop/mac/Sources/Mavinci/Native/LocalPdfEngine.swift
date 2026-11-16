@@ -40,7 +40,7 @@ struct PrintJob: Decodable {
 }
 
 enum LocalPdfError: LocalizedError {
-    case browserMissing, fontsMissing, launch(String), devtools(String), timeout(String)
+    case browserMissing, fontsMissing, launch(String), devtools(String), timeout(String), engine(String)
     var errorDescription: String? {
         switch self {
         case .browserMissing: return "Na tym Macu nie ma przeglądarki Chrome."
@@ -48,6 +48,7 @@ enum LocalPdfError: LocalizedError {
         case .launch(let text): return "Nie udało się uruchomić Chrome do wydruku: \(text)"
         case .devtools(let text): return "Wydruk w Chrome nie powiódł się: \(text)"
         case .timeout(let text): return "Wydruk trwał zbyt długo (\(text))."
+        case .engine(let text): return "Przeliczenie dokumentu w Chrome nie powiodło się: \(text)"
         }
     }
 }
@@ -205,6 +206,45 @@ actor ChromePdfEngine {
         let printed = try await send("Page.printToPDF", PlaywrightPdf.parameters(job.pdf), session: session, timeout: 120)
         guard let base64 = printed["data"] as? String, let data = Data(base64Encoded: base64) else { throw LocalPdfError.devtools("pusty dokument") }
         return data
+    }
+
+    // MARK: Silnik dokumentów CRM
+
+    /// Funkcja silnika dokumentów CRM (strona `/native-engine/…`) w tej samej przeglądarce w tle: strona ładuje kod CRM,
+    /// `script` (wyrażenie zwracające Promise z tekstem JSON) liczy wynik — układ dokumentu dokładnie jak w przeglądarce
+    /// w CRM. Sieć tylko do strony i hostów z listy (CRM, pliki, fonty).
+    func evaluate(page: URL, hosts: [String], script: String, timeout: Double = 120) async throws -> Data {
+        busy += 1
+        idleTask?.cancel()
+        defer { busy -= 1; scheduleIdle() }
+        try await ensureBrowser()
+        let target = try await send("Target.createTarget", ["url": "about:blank"])
+        guard let targetID = target["targetId"] as? String else { throw LocalPdfError.devtools("brak karty") }
+        defer { Task { _ = try? await self.send("Target.closeTarget", ["targetId": targetID]) } }
+        let attached = try await send("Target.attachToTarget", ["targetId": targetID, "flatten": true])
+        guard let session = attached["sessionId"] as? String else { throw LocalPdfError.devtools("brak sesji") }
+        defer { events[session] = nil; inflight[session] = nil; lastActivity[session] = nil; policies[session] = nil }
+
+        policies[session] = ("trusted", Set(hosts), page.absoluteString)
+        _ = try await send("Page.enable", [:], session: session)
+        _ = try await send("Network.enable", [:], session: session)
+        _ = try await send("Fetch.enable", ["patterns": [["urlPattern": "*", "requestStage": "Request"]]], session: session)
+        events[session] = [:]
+        let navigation = try await send("Page.navigate", ["url": page.absoluteString], session: session)
+        if let problem = navigation["errorText"] as? String, !problem.isEmpty {
+            throw LocalPdfError.engine("nie udało się otworzyć strony silnika w CRM (\(problem)).")
+        }
+        try await waitForEvent("Page.loadEventFired", session: session, timeout: 45)
+        let reply = try await send("Runtime.evaluate", ["expression": script, "awaitPromise": true, "returnByValue": true],
+                                   session: session, timeout: timeout)
+        if let details = reply["exceptionDetails"] as? [String: Any] {
+            let exception = details["exception"] as? [String: Any]
+            let text = (exception?["description"] as? String) ?? (details["text"] as? String) ?? "błąd skryptu"
+            let line = text.components(separatedBy: "\n").first ?? text
+            throw LocalPdfError.engine(line.hasPrefix("Error: ") ? String(line.dropFirst(7)) : line)
+        }
+        guard let value = (reply["result"] as? [String: Any])?["value"] as? String else { throw LocalPdfError.engine("pusty wynik.") }
+        return Data(value.utf8)
     }
 
     // MARK: Przeglądarka

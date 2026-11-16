@@ -59,7 +59,8 @@ struct OfferPackageRoute: Identifiable {
         }
         .sheet(isPresented: $logisticsOpen) {
             if let data {
-                OfferLogisticsSheet(logistics: data.logistics, editing: canEdit) { next in await save(nil, logistics: next) }
+                OfferLogisticsSheet(logistics: data.logistics, editing: canEdit,
+                                    travel: store.api.map { OfferTravelService(offerID: detail.offer.id, api: $0) }) { next in await save(nil, logistics: next) }
             }
         }
         .confirmationDialog("Usuń pakiet", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {

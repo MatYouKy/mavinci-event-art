@@ -540,6 +540,8 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
   };
 
   const [respondingTo, setRespondingTo] = useState<MeetingResponse | null>(null);
+  // Spotkanie, przy którym rozwinięto „Zmień odpowiedź” — po odpowiedzi przyciski się chowają.
+  const [changingResponseId, setChangingResponseId] = useState<string | null>(null);
   const respondToMeeting = async (meeting: Meeting, response: MeetingResponse) => {
     if (!employee || respondingTo) return;
     setRespondingTo(response);
@@ -552,6 +554,7 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
           : m;
       setMeetings((current) => current.map(update));
       setSelectedMeeting((current) => (current ? update(current) : current));
+      setChangingResponseId(null);
     } catch (error: any) {
       Alert.alert('Błąd', error?.message || 'Nie udało się zapisać odpowiedzi');
     } finally {
@@ -1411,6 +1414,22 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               {(() => {
                 const mine = myMeetingResponse(selectedMeeting, employee?.id);
                 if (!mine || selectedMeeting.created_by === employee?.id || meetingStatus(selectedMeeting.status) === 'cancelled') return null;
+                if (mine !== 'pending' && changingResponseId !== selectedMeeting.id) {
+                  return (
+                    <View style={[styles.rsvpBox, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+                      <Text style={[styles.rsvpTitle, { marginBottom: 0, flexShrink: 1 }]}>
+                        Twoja odpowiedź: {meetingResponseOption(mine).label}
+                      </Text>
+                      <TouchableOpacity
+                        accessibilityRole="button"
+                        onPress={() => setChangingResponseId(selectedMeeting.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={{ color: colors.primary.gold, fontSize: 13 }}>Zmień odpowiedź</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                }
                 return (
                   <View style={styles.rsvpBox}>
                     <Text style={styles.rsvpTitle}>

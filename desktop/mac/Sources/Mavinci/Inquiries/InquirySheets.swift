@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// „Obsługa zapytania” — pola jak w CRM (`InquiryEditorModal`): tytuł, etap, opiekun, następne działanie, ostatni kontakt,
-/// wartość, prawdopodobieństwo i powód utraty. Powiązanie z klientem i założenia oferty edytuje się na stronie zapytania w CRM.
+/// „Opiekun, etap i termin działania” — pola jak w CRM (`InquiryEditorModal`): tytuł, etap, opiekun, następne działanie
+/// (szybkie terminy albo własny), ostatni kontakt, wartość, prawdopodobieństwo i powód utraty. Pełna obsługa (treść, ustalenia,
+/// klient, oferty, notatki) — w karcie zapytania (`InquiryWorkspace.swift`).
 @MainActor struct InquiryEditorSheet: View {
     @ObservedObject var store: InquiriesStore
     let inquiry: Inquiry
@@ -35,13 +36,13 @@ import SwiftUI
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Obsługa zapytania").font(.title2.bold())
+                Text("Opiekun, etap i termin działania").font(.title2.bold())
                 Text(inquiry.titleLabel).font(.callout).foregroundStyle(.secondary).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading).padding([.horizontal, .top], 20).padding(.bottom, 6)
 
             Form {
                 Section {
-                    TextField("Tytuł zapytania", text: $title)
+                    MeetingTextField("Tytuł zapytania", text: $title, prompt: "Nazwa zapytania")
                     Picker("Etap sprzedaży", selection: $stage) {
                         ForEach(InquiryStage.allCases) { item in
                             Label { Text(item.label) } icon: { Image(systemName: "circle.fill").foregroundStyle(item.color) }.tag(item)
@@ -56,21 +57,54 @@ import SwiftUI
                     if !canAssign { Text("Opiekuna zmienia menedżer albo osoba z uprawnieniem do przydzielania.").font(.caption).foregroundStyle(.secondary) }
                 }
 
-                Section("Kontakt") {
-                    Toggle("Następne działanie", isOn: $hasNext).disabled(stage.closed)
-                    if hasNext && !stage.closed {
-                        DatePicker("Termin", selection: $next, displayedComponents: [.date, .hourAndMinute])
+                Section("Następne działanie") {
+                    if stage.closed {
+                        Text("Zamknięte zapytanie nie ma kolejnych działań.").font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 6) {
+                            Button("Jutro 9:00") { plan(days: 1) }
+                            Button("Za 3 dni") { plan(days: 3) }
+                            Button("Za tydzień") { plan(days: 7) }
+                            Button("Bez terminu") { hasNext = false }
+                        }
+                        .controlSize(.small)
+                        if hasNext {
+                            DatePicker("Termin", selection: $next, displayedComponents: [.date, .hourAndMinute])
+                        } else {
+                            Label("Brak zaplanowanego działania — zapytanie łatwo przeoczyć.", systemImage: "exclamationmark.triangle")
+                                .font(.caption).foregroundStyle(.orange)
+                            Button("Wybierz termin…") { hasNext = true; next = Date().addingTimeInterval(86_400) }.buttonStyle(.link)
+                        }
                     }
-                    Toggle("Ostatni kontakt", isOn: $hasLast)
-                    if hasLast { DatePicker("Kiedy", selection: $last, displayedComponents: [.date, .hourAndMinute]) }
+                }
+                .environment(\.timeZone, MeetingDates.zone).environment(\.locale, Locale(identifier: "pl_PL"))
+
+                Section("Ostatni kontakt") {
+                    if hasLast {
+                        HStack {
+                            DatePicker("Kiedy", selection: $last, displayedComponents: [.date, .hourAndMinute])
+                            Button("Wyczyść") { hasLast = false }.controlSize(.small)
+                        }
+                    } else {
+                        HStack {
+                            Text("Kontakt jeszcze niepodjęty").foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Teraz") { hasLast = true; last = Date() }.controlSize(.small)
+                        }
+                    }
                 }
                 .environment(\.timeZone, MeetingDates.zone).environment(\.locale, Locale(identifier: "pl_PL"))
 
                 Section("Wartość") {
-                    TextField("Szacowana wartość (zł)", text: $value, prompt: Text("0"))
-                    Stepper(value: $probability, in: 0...100, step: 5) {
-                        HStack { Text("Prawdopodobieństwo wygranej"); Spacer(); Text("\(probability)%").monospacedDigit() }
-                    }.disabled(stage.closed)
+                    MeetingTextField("Szacowana wartość (zł)", text: $value, prompt: "0")
+                    LabeledContent("Prawdopodobieństwo wygranej") {
+                        HStack(spacing: 10) {
+                            Slider(value: Binding(get: { Double(probability) }, set: { probability = Int(($0 / 5).rounded() * 5) }), in: 0...100, step: 5)
+                                .frame(minWidth: 160)
+                            Text("\(probability)%").monospacedDigit().frame(width: 40, alignment: .trailing)
+                        }
+                    }
+                    .disabled(stage.closed)
                 }
 
                 if stage == .lost {
@@ -111,6 +145,14 @@ import SwiftUI
             DispatchQueue.main.async { prepared = true }
             await store.loadEmployees()
         }
+    }
+
+    /// Szybki termin następnego działania: dzień za `days` dni, godz. 9:00 (czas polski).
+    private func plan(days: Int) {
+        let calendar = MeetingDates.calendar
+        let day = calendar.date(byAdding: .day, value: days, to: calendar.startOfDay(for: Date())) ?? Date()
+        next = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: day) ?? day
+        hasNext = true
     }
 
     /// Lista opiekunów z serwera (zakres jak w CRM) i obecny opiekun, nawet spoza tej listy.

@@ -5,6 +5,12 @@ import {
 } from './contractClauseContent';
 import type { EventContractClauseItem } from './eventContractClauseOverrides';
 import { getSharedContractClause, SHARED_CONTRACT_CLAUSES } from './sharedContractClauses';
+import {
+  contractRequirementCategory,
+  contractRequirementTopic,
+  mergeContractRequirements,
+  type MergedContractRequirement,
+} from './contractRequirements';
 
 const categories: ContractClauseCategory[] = [
   'conditions', 'requirements', 'obligations', 'risks', 'additional_requirements', 'general',
@@ -73,14 +79,56 @@ export const assembleContractClauses = (
     const selected = conflict.candidates.find((item) => item.id === selections[conflict.key]);
     return selected ? [[conflict.key, contractClauseIdentity(selected.html)] as const] : [];
   }));
-  const items = sourceItems.filter((item) => {
+  const enabledItems = sourceItems.filter((item) => {
     if (!item.enabled) return false;
     const selected = item.sharedKey && selectedIdentities.get(`shared:${item.sharedKey}`);
     return !selected || contractClauseIdentity(item.html) === selected;
   });
+
+  // Wymagania z parametrami: jeden zapis na typ dla wszystkich usług (mocniejsze pokrywa słabsze, np. 400 V / 32 A
+  // pokrywa 230 V / 16 A) zamiast osobnego zdania każdej usługi.
+  const structured = enabledItems.filter((item) => item.requirement);
+  const mergedRequirements = mergeContractRequirements(structured.map((item) => ({
+    requirement: item.requirement!,
+    source: item.source === 'automatic' ? item.productName : '',
+  })));
+  const mergedByTopic = new Map<string, MergedContractRequirement>(
+    mergedRequirements.map((entry) => [contractRequirementTopic(entry.type), entry]),
+  );
+  // Ogólne zapisy z biblioteki w tym samym temacie (np. „Zasilanie 230 V”) zawiera już zapis z parametrami,
+  // a wpisy oznaczone „pokryte przez” klauzulę z biblioteki — ta klauzula (z wpisu albo z treści szablonu).
+  const sharedKeysInContract = new Set([
+    ...enabledItems.map((item) => item.sharedKey).filter((key): key is string => Boolean(key)),
+    ...Array.from(template.querySelectorAll<HTMLElement>('[data-contract-shared-clause]'))
+      .map((block) => block.dataset.contractSharedClause || '').filter(Boolean),
+  ]);
+  // Tylko zasilanie i internet: ogólna zasada z biblioteki mówi tam mniej niż zapis z parametrami. „Bezpieczne miejsce
+  // realizacji” zostaje — zawiera też drogi ewakuacyjne i akceptację obiektu.
+  const supersededSharedClause = (key: string | undefined) => {
+    const shared = getSharedContractClause(key);
+    return Boolean(shared && shared.category === 'requirements' && ['power', 'internet'].includes(shared.topic)
+      && mergedByTopic.has(shared.topic));
+  };
+  const items = enabledItems.filter((item) => {
+    if (item.requirement) return false;
+    if (item.sharedKey && supersededSharedClause(item.sharedKey)) return false;
+    return !(item.coveredBy && sharedKeysInContract.has(item.coveredBy));
+  });
+  const placedRequirementTopics = new Set<string>();
+
   const coveredSharedKeys = new Set<string>();
   template.querySelectorAll<HTMLElement>('[data-contract-shared-clause]').forEach((block) => {
     const key = block.dataset.contractSharedClause || '';
+    if (supersededSharedClause(key)) {
+      // Miejsce na ogólny zapis z biblioteki w szablonie dostaje zapis z parametrami tego tematu.
+      const topic = getSharedContractClause(key)!.topic;
+      const merged = mergedByTopic.get(topic)!;
+      if (placedRequirementTopics.has(topic)) block.remove();
+      else block.innerHTML = merged.text;
+      placedRequirementTopics.add(topic);
+      coveredSharedKeys.add(key);
+      return;
+    }
     const matches = items.filter((item) => item.sharedKey === key);
     if (conflictingKeys.has(`shared:${key}`) && !selectedIdentities.has(`shared:${key}`)) {
       // Rozbieżne wersje pozostają widoczne do rozstrzygnięcia; nie wybieramy losowej.
@@ -99,6 +147,22 @@ export const assembleContractClauses = (
   type Point = { html: string; item: EventContractClauseItem; products: Set<string> };
   const pointsByCategory = new Map(categories.map((category) => [category, [] as Point[]]));
   const seen = new Map<string, Point>();
+  mergedRequirements.forEach((entry) => {
+    const topic = contractRequirementTopic(entry.type);
+    if (placedRequirementTopics.has(topic)) return;
+    const identity = contractClauseIdentity(entry.text);
+    if (!identity || existingText.has(identity)) return;
+    const first = structured.find((item) => item.requirement?.type === entry.type)!;
+    const category = contractRequirementCategory(entry.type);
+    const point: Point = {
+      html: entry.text,
+      // Usługi są wymienione w treści zapisu („dotyczy: …”) — bez osobnej etykiety produktu.
+      item: { ...first, id: `requirement:${entry.type}`, category, topic, productName: '', sharedKey: undefined },
+      products: new Set(),
+    };
+    seen.set(identity, point);
+    pointsByCategory.get(category)?.push(point);
+  });
   const commonOrder = new Map(SHARED_CONTRACT_CLAUSES.map((clause, index) => [clause.key, index]));
   const ordered = items.map((item, index) => ({ item, index })).sort((a, b) => {
     if (Boolean(a.item.sharedKey) !== Boolean(b.item.sharedKey)) return a.item.sharedKey ? -1 : 1;

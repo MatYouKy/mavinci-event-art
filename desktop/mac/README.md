@@ -1,6 +1,6 @@
 # Mavinci na macOS
 
-Aktualna wersja: **0.5.0** (zakres — sekcje „Aktualizacja 0.4” i „Aktualizacja 0.5” na końcu). Bieżący zakres wydarzeń i kalendarza oraz dokładna macierz brakujących operacji znajdują się w sekcji „Aktualizacja 0.2” poniżej. Opis pierwszego etapu pozostawiono jako historię zakresu.
+Aktualna wersja: **0.19.0**. Bieżący zakres natywny i aktualna lista tego, co zostaje w CRM — sekcja „Aktualizacja 0.19 — aktualny zakres natywny” poniżej. Pozostałe sekcje „Aktualizacja …” opisują kolejne etapy jako historię zakresu (to, co w starszej sekcji było „w CRM”, mogło już przejść na Maca). Szczegóły techniczne każdej zmiany: wpisy „Mac: …” w `docs/mobile-parity.md`.
 
 Natywna aplikacja SwiftUI, macOS 14 lub nowszy, Swift 5.9+. Katalog `desktop/mac` jest równorzędny z `mobile`. Bez osadzonego panelu WWW i zewnętrznych bibliotek Swift.
 
@@ -54,6 +54,8 @@ Rejestr zbiorów: `tasks`, `inquiries`, `contacts`, `events`, `offers`, `tenders
 **Migracja nie jest uruchamiana przez skrypty aplikacji ani import konfiguracji.** Do jej wdrożenia aplikacja używa pełnego odczytu stronicowanego po 200 rekordów, wyraźnie oznaczonego w interfejsie. Błąd inny niż brak RPC nie uruchamia tej ścieżki awaryjnej. Mój dzień korzysta z istniejącego RPC i jest odświeżany w całości jako małe podsumowanie.
 
 ## Kolejne etapy i parytet
+
+Plan z pierwszego etapu (historia). Aktualny stan i to, co zostaje w CRM — sekcja „Aktualizacja 0.19”. Ostatnim etapem są poprawki sekcji finansów.
 
 Nie jest to jeszcze kompletne zastępstwo panelu sprzedawcy. Do wdrożenia:
 
@@ -348,6 +350,28 @@ Karta wydarzenia na razie jak dotąd (zakładki z danymi, zapis do pracy bez int
 
 Serwer: `GET/POST /bridge/native/v1/events` (`op=state`, `items|status|delete`; `src/lib/native/events.ts`).
 
+## Aktualizacja 0.19 — aktualny zakres natywny
+
+Od 0.18 na Macu natywnie działają także umowa wydarzenia, nowe wydarzenie i jego edycja, ustalenia sprzedawcy z kreatorem przygotowań, kalkulator trasy w logistyce oferty, karta zapytania, a wcześniej (bez opisu w tym pliku) — Oferty, Produkty, Szablony ofert i Broszury. Te same funkcje bazy, reguły i uprawnienia co w CRM; zapis z kontrolą wersji tam, gdzie ma ją CRM.
+
+**Oferty** — lista z kopii na dysku i strona oferty: informacje podstawowe, założenia (z „Zaproponuj z AI”), rabat całej oferty, kolejność pozycji (przeciąganie), dodawanie i edycja pozycji z cenami wariantów, pakiety (sprzęt, obsada i koszty realizacji, ceny tylko w tej ofercie), konfigurator sceny i LED, wymagania techniczne, propozycje dodatkowe, logistyka (kwota ręczna albo kalkulator szacunkowy; wiersz „Paliwo” z kalkulatorem trasy: miejsce startu, cel z wydarzenia / oferty albo z katalogu lokalizacji, trasa Google Maps tam i z powrotem, średnia cena paliwa AutoCentrum albo ręczna, spalanie), PDF PL / EN z postępem i podglądem w oknie aplikacji, wysyłka e-mailem (skrzynki, podgląd, „Redaguj AI”, planowanie), powiązanie z wydarzeniem lub zapytaniem, aktualizacja zaakceptowanej oferty, rezerwacja sprzętu i akceptacja (także bez rezerwacji), kreator „Nowa oferta” z gotowością produktów. **Szablony ofert** — kategorie, kreator wyglądu, tła PDF, pola danych i tabela wyceny.
+
+**Produkty** — karta produktu z kolumną boczną gotowości: warianty, przygotowanie i zamówienia, wymagania, powiązane usługi, dodatki, pakiety sprzedaży, sprzęt i obsada, wersja angielska, kadrowanie zdjęć w PDF, opisy AI. **Broszury** — lista, edytor ze Studiem stron, podgląd i PDF, wysyłka mailem z historią, demo i statystyki, broszury w karcie klienta.
+
+**Zapytania** — karta zapytania jak `/crm/inquiries/[id]`: treść bez stopek i cytatów, ustalenia, klient, prowadzenie sprzedaży, korespondencja (dołączanie wiadomości i wątków), e-mail ze skrzynki firmy, AI, zespół, utworzenie wydarzenia.
+
+**Wydarzenia** — „Nowy event” (kreator: szczegóły z walidacją jak w CRM, nowa osoba kontaktowa i lokalizacja, nietypowe dni, oferta w kreatorze oferty Maca z budżetem z oferty, przejście do sprzętu) i „Edytuj event” (nazwa, kategoria, firma, termin, lokalizacja z salami, budżet, status). Zakładka „Oferta”: wysyłka i rezerwacja sprzętu; „Kalkulacje”: wysyłka e-mailem z PDF i plikami wydarzenia.
+
+**Umowa wydarzenia** — umowę składa ten sam kod co CRM (silnik dokumentów w Chrome na Macu): podgląd stron i PDF na Macu, pola i warunki (także z formatowaniem), depozyt, uwagi przed wystawieniem i wystawienie, klauzule tej umowy (wyłączanie, zmiana treści, „Przywróć oryginał”, ustalenia dla wydarzenia, rozbieżne wersje), zmiana szablonu, wysyłka e-mailem, edycja treści (edytor w WebKit: formatowanie, listy, wcięcia, nowy paragraf, wklejanie jako tekst), audyt AI umowy i klauzul z przeglądem zmian, anulowanie hasłem administratora (hasło tylko do weryfikacji na serwerze, nie jest zapisywane). **Szablony umów** — przekształcanie starszego formatu i scalanie szablonów.
+
+**Ustalenia sprzedawcy** (zakładka „Ustalenia”) — dla oferty sprzedawcy: przygotowanie wydarzenia z przejściami do sekcji karty i okno „Potwierdź realizację” (dane wydarzenia, terminy, miejsce z bazy lokalizacji, kategoria, opis, osobne potwierdzenie); kreator przygotowań krok po kroku (kontakt na miejscu, miejsce i organizacja, materiały i wymagania, plan realizacji, zatwierdzenie przygotowań — szkic, przekazanie, zatwierdzenie, prośba o poprawki, historia kroku; ponowienie zapisu nie dubluje); dodatkowe ustalenia realizacji (sala z bazy hotelu lub wpis ręczny z planami przestrzeni, uczestnicy, dni i godziny także przez północ, montaż i demontaż, termin materiałów, wymagania, kontakty organizacyjne i z bazy hotelu, klient i zespół) oraz rozmowa o realizacji. Zmiana oferty i zwinięcie ustaleń nie gubią niezapisanych danych; powiadomienia otwierają wskazaną ofertę i krok, a w „Sprzedawcach” „Potwierdź realizację” prowadzi do tej zakładki.
+
+**Spotkania** — po odpowiedzi na zaproszenie zostaje „Twoja odpowiedź” z „Zmień odpowiedź”.
+
+**Zostaje w CRM** (przycisk otwiera właściwe miejsce w przeglądarce), m.in.: wystawianie faktur i karta faktury; baza sal i kontaktów hotelu (ustawienia organizacji); karta pojazdu floty, karta i nowy podwykonawca, sale obiektu w karcie lokalizacji, kategorie wydarzeń, lokalizacje magazynu; rozmowa, ustawienia, ceny indywidualne, rozliczenia i tryb pokazowy w „Sprzedawcach”; nowe zapytanie i SLA, nowy kontakt, pełne szczegóły zadania; ustawienia CRM (dashboard, konta e-mail, poziomy dostępu); Mavinci LIVE (ukryte na Macu); pliki wydarzeń w Finderze — w przygotowaniu. Ostatni etap: poprawki sekcji finansów (Rozliczenie).
+
+**Przed użyciem** — wdrożony CRM z bieżącymi trasami natywnymi (`/bridge/native/v1/…`, `src/lib/native/*`) i silnikiem dokumentów (`/native-engine/contracts`); starszy CRM nie zna nowych operacji (komunikat o nieznanej operacji albo „zaktualizuj CRM”) — wtedy najpierw wdrożenie CRM. Migracje uruchamia administrator, m.in. `supabase/migrations/20261116170000_meeting_first_answer_notifies_organizer.sql` (odpowiedzi na zaproszenia) i `supabase/migrations/20261116190000_contract_clause_cleanup_backups.sql` (porządkowanie klauzul). Kompilacja: `./scripts/build-app.sh` (wersja 0.19.0).
+
 ## Aktualizacja 0.18 — Karta wydarzenia (etap 4): wszystkie zakładki natywnie
 
 Wszystkie zakładki karty (poza Mavinci LIVE) działają na Macu natywnie — te same zapytania, funkcje bazy i reguły co CRM, kopia na dysku ze skrótem, zapisy z paskiem postępu i komunikatem.
@@ -359,7 +383,7 @@ Wszystkie zakładki karty (poza Mavinci LIVE) działają na Macu natywnie — te
 - **Zadania** — tablica zadań wydarzenia (kolumny, przypisania z dopisaniem do zespołu, timer).
 - **Oferta** (lista, usuwanie), **Historia** (oś czasu i widok po dacie), **Podsumowanie** (rozliczenie wydarzenia), **Finanse** (koszty, prowizje, plan płatności i raty, zamknięcie, faktury, gotówka), **Ustalenia** (rozmowa ze sprzedawcą).
 - **Kalkulacje** — lista (suma, PDF, akceptacja), edytor z sekcjami, sumami, mocą i wagą, kolejnością (przeciąganie), pozycje z magazynu (stan), usługi personelu, pojazdy z kalkulatorem trasy i stawki paliwa, import z oferty; **PDF na Macu** do Plików → Kalkulacje, podgląd / pobierz / drukuj.
-- **Umowa** — status z datami, podpis firmy, PDF bieżący i archiwalne, podpisane dokumenty (dodawanie PDF / JPG / PNG). Edytor treści umowy (dane, klauzule, szablon, depozyt, audyt AI, wystawienie, PDF, wysyłka, anulowanie) zostaje w CRM — treść składa edytor przeglądarki z bieżących danych.
+- **Umowa** — status z datami, podpis firmy, PDF bieżący i archiwalne, podpisane dokumenty (dodawanie PDF / JPG / PNG). Edytor treści umowy (dane, klauzule, szablon, depozyt, audyt AI, wystawienie, PDF, wysyłka, anulowanie) zostaje w CRM — treść składa edytor przeglądarki z bieżących danych. **Od 0.19 — natywnie na Macu** (zob. „Aktualizacja 0.19”).
 - **Szczegóły** — zmiana klienta (indywidualny / firma, osoby kontaktowe) i nowa lokalizacja (wyszukiwanie Google, punkt na mapie).
 
 **Lista wydarzeń** — natywna tabela narzędziowa jak w Wodawo: piktogram kategorii zamiast kolorowych odznak, Lp., sortowanie w nagłówkach kolumn (nazwa, termin, klient, miejsce, kategoria, status, rozliczenie, budżet), status jako kropka z opisem, zaległe płatności — czerwona etykieta z wykrzyknikiem, wyszukiwanie i „Pokaż” (Aktywne / Wszystkie / status) nad tabelą, karta zaznaczonego wydarzenia z boku (⌥⌘I); dwuklik albo ↩ otwiera kartę wydarzenia. Zespół realizacji widzi etapy operacyjne bez kwot.
@@ -398,7 +422,7 @@ Okno „Zarządzaj sprzętem” zajmuje prawie całe okno aplikacji; pozycje dod
 
 **Pozostałe listy karty jako natywne tabele** — Oferty (Lp., numer, klient, status-kropka, brutto, netto, ważność; dwuklik otwiera ofertę), Kalkulacje (status, PDF, pozycje, suma; dwuklik — edytor), Historia zmian (autor, kiedy, czynność, dotyczy, opis, przed → po; filtr rodzaju, szczegóły zaznaczonej zmiany pod tabelą, dwuklik — karta osoby), a w panelach Finansów i Logistyki — wiersze z wyrównanymi kolumnami i nagłówkiem: faktury, koszty (kropka statusu, czynności w „…” i pod prawym przyciskiem), pojazdy (miniatura, kierowca, wyjazd, dystans, koszt, status, konflikt na czerwono; dwuklik — edycja) i harmonogram logistyczny. Pliki — do omówienia osobno.
 
-W CRM pozostają: kreator i wysyłka oferty, wysyłka kalkulacji e-mailem, edytor umowy, faktury z wydarzenia, sposób rozliczenia i panel prowizji w Szczegółach, folder Mac / iCloud, Mavinci LIVE.
+W CRM pozostają: kreator i wysyłka oferty, wysyłka kalkulacji e-mailem, edytor umowy, faktury z wydarzenia, sposób rozliczenia i panel prowizji w Szczegółach, folder Mac / iCloud, Mavinci LIVE. (Stan wersji 0.18 — aktualna lista w „Aktualizacji 0.19”; kreator i wysyłka oferty, wysyłka kalkulacji i edytor umowy działają już natywnie.)
 
 ## Aktualizacja — Sprzedawcy: kokpit opiekuna i karta sprzedawcy
 
@@ -406,9 +430,9 @@ W CRM pozostają: kreator i wysyłka oferty, wysyłka kalkulacji e-mailem, edyto
 1. **Kokpit opiekuna**: kafelki (sprawy na dziś, sprzedawcy, oferty w toku, wydarzenia w 14 dni, do wypłaty), **Dziś** w tych samych grupach co CRM (ceny do zgody, oferty do sprawdzenia, kroki realizacji, wydarzenia do potwierdzenia, rozmowy, zapytania klientów — **Odpowiedz** i **Utwórz zapytanie CRM**, akceptacje klientów), **oferty na osi** w 5 etapach (Oferta → U klienta → U opiekuna → Wydarzenie → Rozliczenie — te same nazwy widzi hotel), najbliższe wydarzenia, ostrzeżenia. Administrator wybiera opiekuna.
 2. **Lista sprzedawców i karta**: **Gotowość do pracy** (te same kroki co CRM; **Wyślij zaproszenie ponownie**), opiekun i konto w portalu, marki i widoczność prowizji, **oferty na osi** w widoku opiekuna (z filtrem etapów i zdaniem „Teraz”), realizacje. Oferta otwiera się w karcie oferty, wydarzenie — w karcie wydarzenia.
 3. **Instrukcja opiekuna** (znak „?”) — ta sama treść co w CRM.
-4. **Ocena oferty z portalu** w karcie oferty: oś, **zgoda na cenę** (Zatwierdź ceny / Poproś o zmianę ceny), PDF z wysłania w podglądzie, potwierdzenia terminu i zespołu, **kontrola sprzętu** (z wyjątkiem i uzasadnieniem), wiadomość dla sprzedawcy i decyzja: **Zaakceptuj ofertę** (tworzy wydarzenie), **Poproś o zmiany**, **Nie przyjmuj**. Potwierdzenie realizacji — w CRM.
+4. **Ocena oferty z portalu** w karcie oferty: oś, **zgoda na cenę** (Zatwierdź ceny / Poproś o zmianę ceny), PDF z wysłania w podglądzie, potwierdzenia terminu i zespołu, **kontrola sprzętu** (z wyjątkiem i uzasadnieniem), wiadomość dla sprzedawcy i decyzja: **Zaakceptuj ofertę** (tworzy wydarzenie), **Poproś o zmiany**, **Nie przyjmuj**. Potwierdzenie realizacji — od 0.19 natywnie w zakładce „Ustalenia” wydarzenia („Potwierdź realizację” otwiera ją na tej ofercie).
 5. **Kreator „Nowy sprzedawca”** („Dodaj sprzedawcę”): osoba, hotel i sale, warunki marek, opiekun i zastępca (administrator), zaproszenie do portalu. Lista **Gotowość** od pierwszego kroku, zapis przy komplecie; warunki zapisu te same co w CRM.
-6. Rozmowy, ustawienia istniejącego sprzedawcy, potwierdzenie realizacji i tryb pokazowy — na razie w CRM (przyciski otwierają właściwe miejsce).
+6. Rozmowy, ustawienia istniejącego sprzedawcy i tryb pokazowy — na razie w CRM (przyciski otwierają właściwe miejsce). Potwierdzenie realizacji — od 0.19 na Macu (zakładka „Ustalenia” wydarzenia).
 
 Serwer: `GET /bridge/native/v1/sellers?op=cockpit|seller|help|offer|newSeller|people|organizations`, `POST op=inquiryRespond|inquiryConvert|priceDecide|validate|create` (`src/lib/native/sellers.ts`, `src/lib/native/sellerOffer.ts`, `src/lib/native/sellerCreate.ts`); zaproszenie — `/bridge/seller/invite`; ocena, PDF i analiza sprzętu — `/bridge/seller/offers/[id]` (jak w CRM).
 

@@ -213,6 +213,34 @@ struct ContractsState: Codable {
         }
     }
 
+    /// Źródło szablonu dla silnika dokumentów w Chrome (przekształcenie, scalanie): treść, ustawienia strony, kategorie.
+    func templateSource(_ id: String) async throws -> ContractTemplateSource {
+        guard let api else { throw AppError.configuration }
+        return try JSONDecoder().decode(ContractTemplateSource.self, from: try await api.get("/contracts?op=templateSource&id=\(id)"))
+    }
+
+    /// Zapis przekształcenia szablonu do edytora jak Word (jak „Przekształć” w CRM) — `true` po zapisie, inaczej komunikat w oknie.
+    func convertTemplate(_ id: String, html: String, documentStyles: JSONValue, updatedAt: String?) async -> Bool {
+        guard let api, let workspace else { return false }
+        guard workspace.canWrite else {
+            workspace.error = "Przekształcenie wymaga połączenia z serwerem CRM."
+            return false
+        }
+        do {
+            let body: [String: JSONValue] = [
+                "op": .string("templateConvert"), "id": .string(id), "html": .string(html), "documentStyles": documentStyles,
+                "updatedAt": updatedAt.map { JSONValue.string($0) } ?? JSONValue.null,
+            ]
+            _ = try await workspace.withPending("Zapisywanie przekształconego szablonu…") { try await api.post("/contracts", body, timeout: 120) }
+            workspace.succeed("Szablon przekształcony — otwieram nowy edytor")
+            Task { await sync(force: true) }
+            return true
+        } catch {
+            workspace.error = failureText(error, "Nie udało się przekształcić szablonu")
+            return false
+        }
+    }
+
     /// Obraz do treści szablonu (logo, grafika) — wysyłka do magazynu logotypów; zwraca publiczny adres albo `nil`
     /// (komunikat błędu w oknie).
     func uploadTemplateImage(_ data: Data) async -> String? {

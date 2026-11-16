@@ -20,6 +20,16 @@ import {
   type ContractClausePrimaryCategory,
 } from '@/lib/CRM/contracts/contractClauseContent';
 import { SHARED_CONTRACT_CLAUSES, getSharedContractClause } from '@/lib/CRM/contracts/sharedContractClauses';
+import {
+  CONTRACT_REQUIREMENT_DEFAULTS,
+  CONTRACT_REQUIREMENT_FIELDS,
+  CONTRACT_REQUIREMENT_TYPES,
+  contractRequirementCategory,
+  contractRequirementText,
+  contractRequirementTopic,
+  normalizeContractRequirement,
+  summarizeContractRequirement,
+} from '@/lib/CRM/contracts/contractRequirements';
 import { systemLabel } from '@/lib/ui/systemLabels';
 
 /*
@@ -179,6 +189,10 @@ export async function productResources(ctx: NativeContext, productValue: string,
       title: entry.title,
       content: entry.content,
       sharedKey: entry.sharedKey ?? null,
+      // Wymaganie z parametrami (łączone w umowie z wymaganiami innych usług) i „pomiń, gdy umowa zawiera…”.
+      requirement: entry.requirement ?? null,
+      requirementSummary: entry.requirement ? summarizeContractRequirement(entry.requirement) : null,
+      coveredBy: entry.coveredBy ?? null,
     })),
     clauseMeta: {
       categories: CONTRACT_CLAUSE_PRIMARY_CATEGORIES.map((key) => ({ key, label: CONTRACT_CLAUSE_CATEGORY_LABELS[key] })),
@@ -187,6 +201,10 @@ export async function productResources(ctx: NativeContext, productValue: string,
         key: clause.key, category: clause.category, topic: clause.topic, title: clause.title, content: clause.content,
       })),
       placeholders: CLAUSE_PLACEHOLDERS.map(([value, label]) => ({ value, label })),
+      requirementTypes: CONTRACT_REQUIREMENT_TYPES.map((definition) => ({
+        type: definition.type, label: definition.label, category: definition.category, topic: definition.topic,
+        fields: CONTRACT_REQUIREMENT_FIELDS[definition.type], defaults: CONTRACT_REQUIREMENT_DEFAULTS[definition.type],
+      })),
     },
     compensation: settings && Number.isFinite(Number(settings.cit_rate)) && Number.isFinite(Number(settings.dividend_rate))
       ? { cit_rate: Number(settings.cit_rate), dividend_rate: Number(settings.dividend_rate), updated_at: settings.updated_at ?? null }
@@ -607,7 +625,16 @@ export async function saveClauses(ctx: NativeContext, body: Row) {
   const variantId = await editableScope(ctx, productId, body.variantId, 'contract_clauses');
   const input = Array.isArray(body.entries) ? body.entries as Row[] : [];
   if (input.length > 60) fail('Produkt może mieć najwyżej 60 klauzul.');
-  const entries: ContractClauseEntry[] = input.flatMap((entry, index) => {
+  const entries: ContractClauseEntry[] = input.flatMap((entry, index): ContractClauseEntry[] => {
+    if (entry?.requirement) {
+      // Wymaganie z parametrami — bez poprawnych parametrów nie trafia do produktu; treść to zdanie z parametrów.
+      const requirement = normalizeContractRequirement(entry.requirement);
+      if (!requirement) return [];
+      const topic = contractRequirementTopic(requirement.type);
+      return [{ id: String(entry.id || randomUUID()).slice(0, 80), category: contractRequirementCategory(requirement.type), topic,
+        title: String(entry?.title ?? '').trim().slice(0, 200) || getContractClauseTopicLabel(topic),
+        content: contractRequirementText(requirement), requirement }];
+    }
     const shared = getSharedContractClause(entry?.sharedKey);
     if (shared) {
       return [{ id: String(entry.id || `shared-${shared.key}-${index}`).slice(0, 80), category: shared.category, topic: shared.topic,
@@ -622,7 +649,8 @@ export async function saveClauses(ctx: NativeContext, body: Row) {
     const content = sanitizeClauseHtml(raw);
     if (!hasClauseText(content)) return [];
     const title = String(entry?.title ?? '').trim().slice(0, 200) || getContractClauseTopicLabel(topic);
-    return [{ id: String(entry?.id || randomUUID()).slice(0, 80), category, topic, title, content }];
+    const coveredBy = getSharedContractClause(entry?.coveredBy) ? String(entry.coveredBy) : undefined;
+    return [{ id: String(entry?.id || randomUUID()).slice(0, 80), category, topic, title, content, ...(coveredBy ? { coveredBy } : {}) }];
   });
   const first = entries[0]?.category;
   // Kolumna historyczna ma starszy CHECK — pełna kategoria jest w dokumencie wersji 2 (jak zapis w CRM).

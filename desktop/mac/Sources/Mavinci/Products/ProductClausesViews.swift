@@ -69,6 +69,14 @@ import SwiftUI
                                             Text("Wspólna zasada").font(.caption2).padding(.horizontal, 6).padding(.vertical, 1)
                                                 .background(theme.accent.opacity(0.15), in: Capsule()).foregroundStyle(theme.accent)
                                         }
+                                        if entry.requirement != nil {
+                                            Text("Wymaganie z parametrami — łączone w umowie").font(.caption2).padding(.horizontal, 6).padding(.vertical, 1)
+                                                .background(theme.accent.opacity(0.15), in: Capsule()).foregroundStyle(theme.accent)
+                                        }
+                                        if let covered = entry.coveredBy {
+                                            Text("Pomijane przy: \(meta.shared(covered)?.title ?? covered)").font(.caption2).padding(.horizontal, 6).padding(.vertical, 1)
+                                                .background(Color.primary.opacity(0.08), in: Capsule())
+                                        }
                                     }
                                     ClausePreviewView(html: entry.content)
                                 }
@@ -102,7 +110,8 @@ import SwiftUI
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(meta.categoryLabel(entry.category)).font(.caption2).foregroundStyle(theme.accent)
                                     Text(entry.title.isEmpty ? meta.topicLabel(entry.topic) : entry.title).font(.caption.weight(.medium)).lineLimit(2)
-                                    Text(meta.topicLabel(entry.topic)).font(.caption2).foregroundStyle(.secondary)
+                                    Text(entry.requirement.map { "Wymaganie: \(meta.requirementType($0.type)?.label ?? $0.type)" } ?? meta.topicLabel(entry.topic))
+                                        .font(.caption2).foregroundStyle(.secondary)
                                 }
                                 .padding(6)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -129,12 +138,27 @@ import SwiftUI
 
     private func entryEditor(_ entry: ProductResources.Clause) -> some View {
         let shared = meta.shared(entry.sharedKey)
+        let requirementType = meta.requirementType(entry.requirement?.type)
+        let locked = shared != nil || entry.requirement != nil
         return VStack(alignment: .leading, spacing: 8) {
-            ProductField(label: "Treść klauzuli", help: shared == nil ? nil
-                         : "Ta sama zasada zostanie wydrukowana tylko raz, również przy kilku produktach. Aby zmienić treść wyłącznie dla tej usługi, wybierz własną treść.") {
-                Picker("", selection: Binding(get: { entry.sharedKey ?? "" }, set: { key in
+            ProductField(label: "Treść klauzuli", help: shared != nil
+                         ? "Ta sama zasada zostanie wydrukowana tylko raz, również przy kilku produktach. Aby zmienić treść wyłącznie dla tej usługi, wybierz własną treść."
+                         : entry.requirement != nil
+                         ? "W umowie wymagania wszystkich usług tego rodzaju łączą się w jeden zapis: mocniejsze pokrywa słabsze (np. 400 V / 32 A pokrywa 230 V / 16 A), a osobne obwody są liczone oddzielnie."
+                         : nil) {
+                Picker("", selection: Binding(get: { entry.requirement.map { "requirement:\($0.type)" } ?? entry.sharedKey ?? "" }, set: { key in
                     update(entry.id) { clause in
-                        if let shared = meta.shared(key) {
+                        if key.hasPrefix("requirement:"), let type = meta.requirementType(String(key.dropFirst("requirement:".count))) {
+                            clause.requirement = type.defaults
+                            clause.sharedKey = nil
+                            clause.coveredBy = nil
+                            clause.category = type.category
+                            clause.topic = type.topic
+                            clause.title = type.label
+                            clause.content = ""
+                        } else if let shared = meta.shared(key) {
+                            clause.requirement = nil
+                            clause.coveredBy = nil
                             clause.sharedKey = shared.key
                             clause.category = shared.category
                             clause.topic = shared.topic
@@ -142,13 +166,33 @@ import SwiftUI
                             clause.content = shared.content
                         } else {
                             clause.sharedKey = nil
+                            clause.requirement = nil
                         }
                     }
                 })) {
                     Text("Własna treść dla tego produktu").tag("")
-                    ForEach(meta.shared, id: \.key) { clause in Text("Wspólna zasada: \(clause.title)").tag(clause.key) }
+                    if let types = meta.requirementTypes, !types.isEmpty {
+                        Section("Wymaganie z parametrami (łączone w umowie)") {
+                            ForEach(types, id: \.type) { type in Text("Wymaganie: \(type.label)").tag("requirement:\(type.type)") }
+                        }
+                    }
+                    Section("Wspólne zasady") {
+                        ForEach(meta.shared, id: \.key) { clause in Text("Wspólna zasada: \(clause.title)").tag(clause.key) }
+                    }
                 }
                 .labelsHidden()
+            }
+            if !locked {
+                ProductField(label: "Pomiń, gdy umowa zawiera wspólną zasadę",
+                             help: "Wybierz zasadę, która zawiera już treść tego zapisu — wtedy w umowie zostanie tylko ona.") {
+                    Picker("", selection: Binding(get: { entry.coveredBy ?? "" }, set: { key in
+                        update(entry.id) { $0.coveredBy = key.isEmpty ? nil : key }
+                    })) {
+                        Text("Zawsze drukuj ten zapis").tag("")
+                        ForEach(meta.shared, id: \.key) { clause in Text(clause.title).tag(clause.key) }
+                    }
+                    .labelsHidden()
+                }
             }
             HStack(alignment: .top, spacing: 10) {
                 ProductField(label: "Sekcja") {
@@ -163,7 +207,7 @@ import SwiftUI
                     }
                     .labelsHidden()
                 }
-                .disabled(shared != nil)
+                .disabled(locked)
                 ProductField(label: "Typ kontrolowany w umowie") {
                     Picker("", selection: Binding(get: { entry.topic }, set: { topic in
                         update(entry.id) { clause in
@@ -175,13 +219,43 @@ import SwiftUI
                     }
                     .labelsHidden()
                 }
-                .disabled(shared != nil)
+                .disabled(locked)
             }
             ProductField(label: "Nazwa robocza") {
                 TextField("", text: Binding(get: { entry.title }, set: { title in update(entry.id) { $0.title = String(title.prefix(200)) } }))
                     .textFieldStyle(.roundedBorder)
             }
             .disabled(shared != nil)
+            if let requirementType, entry.requirement != nil {
+                requirementEditor(entry, requirementType)
+            } else {
+                textEditor(entry, shared: shared)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Parametry wymagania (formularz z opisu pól z serwera); zdanie do umowy powstaje przy zapisie.
+    private func requirementEditor(_ entry: ProductResources.Clause, _ type: ProductResources.RequirementType) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ClauseRequirementForm(definition: type, requirement: Binding(
+                get: { entries.first { $0.id == entry.id }?.requirement ?? type.defaults },
+                set: { next in update(entry.id) { $0.requirement = next } }))
+                .padding(10)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+            HStack {
+                Text(entry.content.isEmpty || entry.requirement != resources.clauses.first(where: { $0.id == entry.id })?.requirement
+                     ? "Zdanie do umowy powstanie z parametrów po zapisaniu."
+                     : entry.content.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button(role: .destructive) { remove(entry.id) } label: { Label("Usuń", systemImage: "trash") }
+            }
+        }
+    }
+
+    private func textEditor(_ entry: ProductResources.Clause, shared: ProductResources.SharedClause?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 HStack(spacing: 6) {
                 Button("§n") { controller.insertParagraphHeading() }.help("Nagłówek paragrafu — numer nada umowa")
@@ -209,10 +283,9 @@ import SwiftUI
                              editable: shared == nil, controller: controller)
                 .id(entry.id + (entry.sharedKey ?? ""))
                 .frame(minHeight: 300)
-            Text("Tab tworzy kolejny poziom numeracji, np. 1.1, a Shift+Tab wraca poziom wyżej. Wspólne obowiązki i wymagania wybieraj z listy wspólnych zasad. Własne wpisy powinny opisywać szczegóły usługi, np. napięcie, wymagane obciążenie, format pliku lub próbę techniczną.")
+            Text("Tab tworzy kolejny poziom numeracji, np. 1.1, a Shift+Tab wraca poziom wyżej. Zasilanie, internet, miejsce, dojazd, montaż i zaplecze wybieraj jako „Wymaganie z parametrami” — umowa połączy je z wymaganiami innych usług. Wspólne obowiązki i ryzyka wybieraj z listy wspólnych zasad. Własne wpisy zostaw na postanowienia naprawdę szczególne dla tej usługi (np. format pliku).")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Czynności
@@ -262,6 +335,10 @@ import SwiftUI
 
     private func save() async {
         let payload: [JSONValue] = entries.compactMap { entry in
+            if let requirement = entry.requirement {
+                return .object(["id": .string(entry.id), "title": .string(entry.title.trimmingCharacters(in: .whitespaces)),
+                                "requirement": requirement.json])
+            }
             if entry.sharedKey == nil && ClauseHTML.parse(entry.content).allSatisfy({ $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
                 return nil
             }
@@ -270,6 +347,7 @@ import SwiftUI
                 "title": .string(entry.title.trimmingCharacters(in: .whitespaces)), "content": .string(entry.content),
             ]
             if let key = entry.sharedKey { object["sharedKey"] = .string(key) }
+            if entry.sharedKey == nil, let covered = entry.coveredBy { object["coveredBy"] = .string(covered) }
             return .object(object)
         }
         saving = true

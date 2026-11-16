@@ -5,8 +5,9 @@ import UniformTypeIdentifiers
 // MARK: Edytor szablonu umowy na Macu — kartka A4 w stylach dokumentu jak edytor CRM. Wstążka: narzędzia główne zawsze
 // widoczne (galeria stylów, punkty 1. / 1.1, pogrubienie…, wyrównanie), pod nimi „Wstaw” (pola umowy, „§n”, miejsca na
 // klauzule, obrazy i logotypy) i „Układ” (czcionka dokumentu, logo w nagłówku, stopka). Zapis w tym samym formacie co CRM
-// (⌘S). Warunki, opcje umowy i tabele — w kolejnym etapie („Edytuj w CRM”). Niezapisana treść zostaje w edytorze przy
-// przejściu do innej części aplikacji.
+// (⌘S). Warunki, opcje umowy i „Pokaż jako” na wstążce „Warunki”; przekształcanie szablonów w starszym formacie
+// i „Scal z innym szablonem” liczy kod CRM w Chrome na Macu (`ContractTemplateEngine.swift`). Niezapisana treść zostaje
+// w edytorze przy przejściu do innej części aplikacji.
 
 struct ContractTemplateDocumentPayload: Decodable {
     struct FieldGroup: Decodable { let label: String; let items: [Field] }
@@ -162,6 +163,7 @@ struct ContractDocumentStats {
     @State private var editingFooter = false
     @State private var conditionRequest: ContractConditionRequest?
     @State private var editingOptions = false
+    @State private var merging = false
 
     private var name: String { store.template(controller.templateID)?.name ?? controller.payload.name }
     private var word: Bool { controller.payload.format == "word" }
@@ -199,6 +201,9 @@ struct ContractDocumentStats {
         .sheet(isPresented: $editingOptions) {
             ContractOptionsSheet(options: controller.options, usage: controller.optionUsage()) { controller.saveOptions($0) }
         }
+        .sheet(isPresented: $merging) {
+            ContractMergeSheet(store: store, controller: controller, fieldLabels: conditionFieldLabels)
+        }
         .confirmationDialog("Wczytać szablon ponownie?", isPresented: $confirmReload) {
             Button("Wczytaj ponownie", role: .destructive) { reload() }
             Button("Anuluj", role: .cancel) {}
@@ -231,7 +236,10 @@ struct ContractDocumentStats {
                 .buttonStyle(.borderless)
             }
             Menu {
-                Button("Edytuj w CRM (scalanie szablonów)") {
+                if word && controller.editable {
+                    Button("Scal z innym szablonem…") { merging = true }
+                }
+                Button("Otwórz w CRM") {
                     state.openCRM("/crm/contract-templates/\(controller.templateID)/edit-wysiwyg")
                 }
                 Divider()
@@ -475,6 +483,10 @@ struct ContractDocumentStats {
             .buttonStyle(.bordered)
             .help("Opcje włączane przy każdej umowie (np. nocleg)")
         Divider().frame(height: 22)
+        Button { merging = true } label: { Label("Scal z innym szablonem", systemImage: "arrow.triangle.merge") }
+            .buttonStyle(.bordered)
+            .help("Scal z innym szablonem — różnice jako sekcje warunkowe")
+        Divider().frame(height: 22)
         Toggle(isOn: Binding(get: { controller.simulation != nil }, set: { on in
             controller.simulation = on ? ContractSimulation(client: "osoba", category: controller.payload.categories?.first ?? "", options: [:]) : nil
         })) {
@@ -607,15 +619,7 @@ struct ContractDocumentStats {
 
     @ViewBuilder private var content: some View {
         if !word {
-            ContentUnavailableView {
-                Label("Szablon w starszym formacie", systemImage: "doc.badge.gearshape")
-            } description: {
-                Text("Edytor na Macu działa na szablonach w formacie edytora jak Word. Przekształć szablon w CRM (baner „Przekształć szablon” w edytorze) — potem otworzysz go tutaj.")
-            } actions: {
-                Button("Przekształć w CRM") { state.openCRM("/crm/contract-templates/\(controller.templateID)/edit-wysiwyg") }
-                    .buttonStyle(.borderedProminent)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ContractLegacyTemplateView(store: store, controller: controller) { reload() }
         } else {
             ContractSheetView(controller: controller, magnification: zoom * ContractPage.browserScale,
                               pageLayout: controller.pageLayout, fontFamily: controller.documentFont)

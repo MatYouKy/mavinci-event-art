@@ -620,15 +620,29 @@ struct SellerEquipmentReview: Decodable {
                     .font(.callout.weight(.medium))
                 Text(realization.confirmed || realization.cancelled
                      ? "Timeline, zespół, agendę i logistykę prowadzisz w wydarzeniu."
+                     : realization.eventId != nil && realization.canViewEvent
+                     ? "Sprawdź dane i potwierdź realizację w zakładce „Ustalenia” wydarzenia. Hotel zobaczy wtedy „Potwierdzone” i swoje kroki przygotowania."
                      : "Sprawdź dane i potwierdź realizację w karcie oferty w CRM. Hotel zobaczy wtedy „Potwierdzone” i swoje kroki przygotowania.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             if let eventID = realization.eventId, realization.canViewEvent {
-                Button("Otwórz wydarzenie") { state.showEvent(eventID, cardTab: "seller-arrangements") }
+                Button("Otwórz wydarzenie") {
+                    state.sellerFocus = SellerArrangementsFocus(eventID: eventID, offerID: offerID, conversationID: nil, step: nil)
+                    state.showEvent(eventID, cardTab: "seller-arrangements")
+                }
             }
             if !realization.confirmed && !realization.cancelled {
-                Button("Potwierdź w CRM") { state.openCRM(data.links.crm) }.buttonStyle(.borderedProminent)
+                // Potwierdzenie realizacji jest natywne w zakładce „Ustalenia” wydarzenia (wskazana ta oferta).
+                if let eventID = realization.eventId, realization.canViewEvent {
+                    Button("Potwierdź realizację") {
+                        state.sellerFocus = SellerArrangementsFocus(eventID: eventID, offerID: offerID, conversationID: nil, step: nil)
+                        state.showEvent(eventID, cardTab: "seller-arrangements")
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button("Potwierdź w CRM") { state.openCRM(data.links.crm) }.buttonStyle(.borderedProminent)
+                }
             }
         }
         .controlSize(.small)

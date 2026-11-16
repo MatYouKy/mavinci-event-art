@@ -4,6 +4,8 @@ import {
   contractsAccess,
   contractsState,
   contractTemplateDocument,
+  contractTemplateSource,
+  convertTemplateFormat,
   createTemplate,
   deleteFooterTemplate,
   deleteTemplate,
@@ -21,8 +23,9 @@ export const maxDuration = 60;
 
 /*
  * Umowy z klientami dla aplikacji na Maca (`src/lib/native/contracts.ts`): GET op=state (umowy i szablony), op=pdf&id=…,
- * op=template&id=… (treść szablonu dla edytora);
+ * op=template&id=… (treść szablonu dla edytora), op=templateSource&id=… (źródło szablonu dla silnika dokumentów w Chrome na Macu);
  * POST op=templateCreate | templateSave | templateContent (treść i układ z edytora na Macu) | templateImage (obraz do treści) |
+ * templateConvert (zapis „Przekształć szablon” policzonego w Chrome na Macu) |
  * templateActive | templateDuplicate | templateDelete | footerTemplateSave | footerTemplateDelete (edytor stopek).
  */
 
@@ -43,6 +46,8 @@ export async function GET(request: Request) {
         return nativeJson(await contractPdf(ctx, url.searchParams.get('id') || ''));
       case 'template':
         return nativeJson(await contractTemplateDocument(ctx, url.searchParams.get('id') || ''));
+      case 'templateSource':
+        return nativeJson(await contractTemplateSource(ctx, url.searchParams.get('id') || ''));
       default:
         return failure('Nieznana operacja.');
     }
@@ -67,6 +72,7 @@ export async function POST(request: Request) {
       case 'templateCreate': return nativeJson(await createTemplate(ctx, body));
       case 'templateSave': return nativeJson(await saveTemplate(ctx, body));
       case 'templateContent': return nativeJson(await saveTemplateContent(ctx, body));
+      case 'templateConvert': return nativeJson(await convertTemplateFormat(ctx, body));
       case 'templateImage': return nativeJson(await uploadTemplateImage(ctx, body));
       case 'footerTemplateSave': return nativeJson(await saveFooterTemplate(ctx, body));
       case 'footerTemplateDelete': return nativeJson(await deleteFooterTemplate(ctx, body));

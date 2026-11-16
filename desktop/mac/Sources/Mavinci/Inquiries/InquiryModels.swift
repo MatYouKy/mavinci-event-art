@@ -52,6 +52,8 @@ struct Inquiry: Codable, Hashable, Identifiable {
     var typeLabels: [String]
     var description: String
     var message: String
+    /// Treść bez stopek, klauzul poufności i cytatów (serwer: `cleanInquiryMessage`); starsza kopia na dysku — brak.
+    var messageClean: String?
     var stage: String
     var ownerId: String?
     var ownerName: String
