@@ -138,6 +138,8 @@ extension OffersStore {
     @State private var sendConfirmation = false
     @State private var confirming = false
     @State private var conflict: OfferReservationState.Equipment?
+    /// Pozycja z brakującym sprzętem i obsadą pakietu — okno pozycji na Macu, po zamknięciu ponowne sprawdzenie.
+    @State private var fixing: OfferItemRoute?
 
     private var equipment: [OfferReservationState.Equipment] { data?.equipment ?? [] }
     private var blocked: Bool { data == nil || data?.error != nil }
@@ -187,6 +189,9 @@ extension OffersStore {
         .frame(width: 860)
         .interactiveDismissDisabled(confirming)
         .task { await load(nil) }
+        .sheet(item: $fixing, onDismiss: { Task { await load(packageId) } }) { route in
+            OfferItemSheet(store: store, offerID: offerID, itemID: route.itemID)
+        }
         .sheet(item: $conflict) { item in
             OfferSubstitutionSheet(store: store, offerID: offerID, item: item, packageId: packageId) { next in apply(next) }
         }
@@ -258,9 +263,9 @@ extension OffersStore {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(issue.name).font(.callout.weight(.medium))
                     Text("Pakiet: \(issue.packageName). Uzupełnij: \(issue.missing).").font(.caption).foregroundStyle(.secondary)
-                    Text("Sprzęt i obsadę pakietu w pozycji oferty uzupełnisz w CRM („Sprzęt i obsada”). Zmiana samego produktu nie aktualizuje już dodanej oferty.")
+                    Text("Sprzęt i obsadę pakietu uzupełnisz w pozycji oferty („Sprzęt i obsada”). Zmiana samego produktu nie aktualizuje już dodanej oferty.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Button("Uzupełnij pozycję w CRM") { state.openCRM("/crm/offers/\(offerID)") }.controlSize(.small)
+                    Button("Uzupełnij pozycję") { fixing = OfferItemRoute(itemID: issue.id) }.controlSize(.small)
                 }
                 .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))

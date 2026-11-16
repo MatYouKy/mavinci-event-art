@@ -2,7 +2,8 @@ import Foundation
 
 // MARK: Oferty, część E — kreator nowej oferty (`OfferWizard` w CRM). Mac trzyma szkic kreatora (klient, dane podstawowe,
 // pozycje), a wycenę, gotowość produktów do oferty i braki sprzętu liczy serwer (`op=wizardPreview`, te same funkcje co okna
-// pozycji CRM). Serwer: `src/lib/native/offerWizard.ts`.
+// pozycji CRM). Produkty z konfiguratorem (scena, LED) dostają konfigurację z `op=modular` i panel konfiguratora w wierszu
+// (`ModularConfigurator.swift`). Serwer: `src/lib/native/offerWizard.ts`.
 
 struct OfferWizardEvent: Decodable, Identifiable, Hashable {
     var id: String
@@ -72,6 +73,8 @@ struct OfferWizardSetup: Decodable {
         var packagesEnabled: Bool
         var variants: [Variant]
         var packages: [Package]
+        /// Pełne pakiety do zmian tylko w tej ofercie (sprzęt i obsada, koszty).
+        var packageOptions: [JSONValue]?
         var addons: [ProductAddonItem]
         var readiness: ProductListItem.Readiness
 
@@ -226,6 +229,10 @@ extension OffersStore {
     @Published private(set) var previewing = false
     @Published var previewError: String?
     @Published var creating = false
+    /// Produkty modułowe, których konfiguracja jest właśnie pobierana po kliknięciu „Dodaj”.
+    @Published private(set) var addingModular: Set<String> = []
+    /// Konfiguratory pozycji modułowych — stan panelu zostaje po zwinięciu wiersza.
+    private var configurators: [String: ModularConfiguratorModel] = [:]
     /// Po dodaniu produktu — ostrzeżenie o brakach sprzętu, gdy podgląd je pokaże (jak okno w CRM po `checkCartConflicts`).
     private var warnConflicts = false
     private var previewTask: Task<Void, Never>?
@@ -351,7 +358,10 @@ extension OffersStore {
 
     /// Dodanie produktu albo zmiana zakresu (pakiet / wariant) już dodanej pozycji — ilość, dni i rabat zostają.
     func add(_ product: OfferWizardSetup.Product, variant: OfferWizardSetup.Variant? = nil, package: OfferWizardSetup.Package? = nil) {
-        guard !product.modular else { return }
+        if product.modular {
+            Task { await addModular(product) }
+            return
+        }
         let selectedPackage = variant == nil ? (package ?? product.packages.first) : nil
         let base = selectedPackage?.priceNet ?? variant?.priceNet ?? product.basePrice
         var addons = product.addons
@@ -384,6 +394,8 @@ extension OffersStore {
                 item.draft.quantitySource = source
                 item.draft.showVariants = showVariants
                 item.draft.showVariantPrices = selectedPackage == nil
+                // Nowy zakres — pakiety jak w katalogu (zmiany sprzętu, obsady i kosztów dotyczyły poprzedniego wyboru).
+                item.draft.packageOptions = nil
             } else {
                 item.draft.quantity += 1
             }
@@ -405,6 +417,74 @@ extension OffersStore {
         }
     }
 
+    /// Produkt z konfiguratorem (jak `addProduct` z `configuration_schema`): konfiguracja z karty produktu z pobranym sprzętem,
+    /// nazwa i opis z konfiguracji, cena z kalkulatora; ponowne dodanie zwiększa ilość.
+    func addModular(_ product: OfferWizardSetup.Product) async {
+        if let index = items.firstIndex(where: { $0.productId == product.id }) {
+            items[index].draft.quantity += 1
+            return
+        }
+        guard !addingModular.contains(product.id) else { return }
+        addingModular.insert(product.id)
+        defer { addingModular.remove(product.id) }
+        do {
+            let reply = try await store.configureModular(productID: product.id, snapshot: nil, edits: [], refresh: false, quantity: 1)
+            guard !items.contains(where: { $0.productId == product.id }) else { return }
+            var draft = OfferWizardItem.draft(quantity: 1, days: 1, price: reply.view.calculatorTotal ?? 0)
+            draft.showVariants = false
+            draft.showVariantPrices = false
+            draft.modular = reply.snapshot
+            draft.modularManual = false
+            let id = "temp-\(UUID().uuidString.lowercased())"
+            let configurator = ModularConfiguratorModel(store: store, snapshot: reply.snapshot, view: reply.view)
+            bind(configurator, to: id)
+            configurators[id] = configurator
+            items.append(OfferWizardItem(id: id, productId: product.id, name: reply.view.title, description: reply.view.scopeText, unit: "zestaw", draft: draft))
+            warnConflicts = true
+            if !product.readiness.ready {
+                store.workspace?.notice = "„\(product.name)” nie jest gotowy do oferty — \(product.readiness.summary.lowercased())."
+            }
+        } catch {
+            store.workspace?.error = store.failureText(error, "Nie udało się pobrać konfiguracji produktu.")
+        }
+    }
+
+    /// Konfigurator pozycji modułowej (tworzony przy pierwszym rozwinięciu wiersza).
+    func configurator(_ itemID: String) -> ModularConfiguratorModel? {
+        guard let item = items.first(where: { $0.id == itemID }), let snapshot = item.draft.modular else { return nil }
+        if let existing = configurators[itemID] {
+            existing.quantity = item.draft.quantity
+            return existing
+        }
+        let configurator = ModularConfiguratorModel(store: store, snapshot: snapshot)
+        configurator.quantity = item.draft.quantity
+        bind(configurator, to: itemID)
+        configurators[itemID] = configurator
+        return configurator
+    }
+
+    /// Zmiana konfiguracji przepisuje nazwę i opis pozycji, a bez własnej ceny — także cenę z kalkulatora.
+    private func bind(_ configurator: ModularConfiguratorModel, to itemID: String) {
+        configurator.onChange = { [weak self] snapshot, view in
+            self?.update(itemID) { item in
+                item.draft.modular = snapshot
+                item.draft.modularRevision += 1
+                item.name = view.title
+                item.description = view.scopeText
+                if item.draft.modularManual != true { item.draft.unitPrice = view.calculatorTotal ?? 0 }
+            }
+        }
+    }
+
+    /// Cena z kalkulatora zamiast własnej (`ModularPriceHint` → „Użyj ceny z kalkulatora”).
+    func useCalculatorPrice(_ itemID: String) {
+        let total = configurators[itemID]?.view?.calculatorTotal
+        update(itemID) { item in
+            item.draft.modularManual = false
+            if let total { item.draft.unitPrice = total }
+        }
+    }
+
     func update(_ id: String, _ change: (inout OfferWizardItem) -> Void) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         var item = items[index]
@@ -414,6 +494,7 @@ extension OffersStore {
 
     func remove(_ id: String) {
         items.removeAll { $0.id == id }
+        configurators[id] = nil
     }
 
     /// „Dodaj pozycję” w ostatnim kroku.
@@ -424,14 +505,23 @@ extension OffersStore {
 
     /// Zapis edycji w ostatnim kroku (`saveEditedItem`): cena jednostkowa z dodatkami → cena bazowa bez dodatków.
     func saveEdit(_ id: String, name: String, description: String, quantity: Double, days: Double, unitPrice: Double) {
-        let extras = items.first { $0.id == id }.flatMap(evaluated).map { $0.unitPrice - $0.baseUnitPrice } ?? 0
+        let current = items.first { $0.id == id }.flatMap(evaluated)
+        let extras = current.map { $0.unitPrice - $0.baseUnitPrice } ?? 0
         update(id) { item in
             item.name = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Pozycja oferty" : name.trimmingCharacters(in: .whitespacesAndNewlines)
             item.description = description.trimmingCharacters(in: .whitespacesAndNewlines)
             item.draft.quantity = quantity.isFinite ? max(1, quantity) : 1
             item.draft.days = max(1, min(3650, days.isFinite ? days.rounded(.towardZero) : 1))
             let price = unitPrice.isFinite ? max(0, unitPrice) : 0
-            item.draft.unitPrice = item.productId == nil ? price : price - extras
+            if item.draft.modular != nil {
+                // Zestaw: zmieniona cena staje się własną ceną bazową (kalkulator jej nie nadpisze).
+                if abs(price - (current?.unitPrice ?? item.draft.unitPrice)) > 0.004 {
+                    item.draft.modularManual = true
+                    item.draft.unitPrice = price
+                }
+            } else {
+                item.draft.unitPrice = item.productId == nil ? price : price - extras
+            }
         }
     }
 
@@ -443,6 +533,8 @@ extension OffersStore {
         guard !creating else { return nil }
         creating = true
         defer { creating = false }
+        // Zmiany w konfiguratorach zestawów wysłane i przeliczone przed utworzeniem oferty.
+        for configurator in configurators.values { await configurator.settle() }
         var body = draftBody
         body["clientType"] = .string(clientType)
         body["organizationId"] = .string(organizationId)

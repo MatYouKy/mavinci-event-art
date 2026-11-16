@@ -1,13 +1,16 @@
 import 'server-only';
 import type { NativeContext } from './auth';
 import { fail, offerDetail } from './offers';
+import { modularSnapshotOf } from './modularConfigurator';
 import {
   configurationPrice,
   createConfiguration,
+  createModularConfiguration,
   validateConfiguration,
   type OfferConfiguration,
   type ProductAddon,
 } from '@/lib/CRM/Offers/offerAddons';
+import { modularScope, modularTitle, type ProductConfigurationSnapshot } from '@/lib/CRM/Offers/modularProduct';
 import {
   configurationNeedsTables,
   resolveAudienceConfiguration,
@@ -21,7 +24,10 @@ import { pricedPackageSelection, type ProductSalesPackage } from '@/lib/CRM/Offe
  * z katalogu, wariant albo pakiet, ilość (ręcznie, z liczby osób lub stołów), dni, cena, rabat, dodatki, ceny wariantów
  * w tej ofercie, widoczność wariantów w PDF i stawka VAT. Wycenę liczą te same funkcje co CRM (`createConfiguration`,
  * `resolveAudienceConfiguration`, `configurationPrice`, `validateConfiguration`) — Mac wysyła szkic, serwer zwraca podgląd
- * i zapisuje. Produkty z konfiguratorem (scena, LED) — w CRM.
+ * i zapisuje. Produkty z konfiguratorem (scena, LED): szkic niesie konfigurację (`modular`, z `op=modular`), cenę liczy
+ * `createModularConfiguration` — z kalkulatora albo własna (`modularManual`), jak `ModularPriceHint` w CRM.
+ * Pakiety w tej ofercie (`ProductPackagePicker`): szkic może nieść `packageOptions` — cena, zakres, cena z liczby osób,
+ * sprzęt i obsada oraz koszty pakietów tylko w tej ofercie; serwer przenosi wyłącznie te pola na zapisane pakiety.
  */
 
 type Row = Record<string, any>;
@@ -91,6 +97,12 @@ export type Draft = {
   showVariantPrices: boolean;
   name: string;
   vatRate: number | null;
+  /** Konfiguracja produktu modułowego (scena, LED) — wtedy bez pakietów, wariantów i dodatków. */
+  modular: ProductConfigurationSnapshot | null;
+  /** Własna cena bazowa zamiast ceny z kalkulatora (`modular_price_source: 'manual'`). */
+  modularManual: boolean;
+  /** Pakiety zmienione w tej ofercie (cena, zakres, cena z liczby osób, sprzęt i obsada, koszty); `null` — bez zmian. */
+  packageOptions: Row[] | null;
 };
 
 const num = (value: unknown) => (value === null || value === undefined || value === '' ? NaN : Number(value));
@@ -130,11 +142,51 @@ export function draftOf(input: unknown): Draft {
     showVariantPrices: raw.showVariantPrices !== false,
     name: text(raw.name).trim().slice(0, 300),
     vatRate: raw.vatRate == null || raw.vatRate === '' ? null : Number(raw.vatRate),
+    modular: raw.modular && typeof raw.modular === 'object' ? modularSnapshotOf(raw.modular) : null,
+    modularManual: raw.modularManual === true,
+    packageOptions: Array.isArray(raw.packageOptions) ? (raw.packageOptions as unknown[]).slice(0, 3).filter((item) => item && typeof item === 'object') as Row[] : null,
   };
 }
 
+/**
+ * Pakiety pozycji z poprawkami z tej oferty (jak `onChange` w `ProductPackagePicker` i edytory zasobów i kosztów w kreatorze):
+ * z Maca przechodzą tylko cena, zakres, cena z liczby osób, sprzęt i obsada oraz koszty — reszta pakietu zostaje zapisana.
+ */
+export function optionsFor(draft: Draft, options: ProductSalesPackage[]): ProductSalesPackage[] {
+  if (!draft.packageOptions) return options;
+  const edits = new Map(draft.packageOptions.map((item) => [text(item.id), item]));
+  return options.map((option) => {
+    const edit = edits.get(String(option.id));
+    if (!edit) return option;
+    const next: Row = { ...option };
+    if (edit.price_net !== undefined) next.price_net = num(edit.price_net);
+    if (typeof edit.included_label === 'string') next.included_label = edit.included_label.slice(0, 95);
+    if (edit.audience_pricing !== undefined) next.audience_pricing = edit.audience_pricing && typeof edit.audience_pricing === 'object' ? edit.audience_pricing : null;
+    if (edit.resources !== undefined) next.resources = edit.resources && typeof edit.resources === 'object' ? edit.resources : null;
+    if (edit.cost_items !== undefined) next.cost_items = Array.isArray(edit.cost_items) ? edit.cost_items : null;
+    return next as ProductSalesPackage;
+  });
+}
+
+/** Sprzęt i obsada pakietów z karty produktu (`Pobierz sprzęt i obsadę z produktu` w oknie edycji pozycji). */
+const catalogResources = (product: Row) => Object.fromEntries(productPackages(product)
+  .filter((option) => Array.isArray(option.resources?.equipment) && Array.isArray(option.resources?.staff))
+  .map((option) => [String(option.id), option.resources]));
+
 /** Wycena szkicu (jak `rawConfiguration` → `resolveAudienceConfiguration` → `configurationPrice` w oknach CRM). */
 export function evaluate(draft: Draft, options: ProductSalesPackage[], audience: OfferAudience) {
+  if (draft.modular) {
+    // Produkt modułowy: cena z kalkulatora albo własna, ilość ręczna (jak `rawConfiguration` przy `modular` w oknach CRM).
+    const configuration = createModularConfiguration(draft.modular, draft.modularManual ? draft.unitPrice : undefined);
+    return {
+      selectedPackage: undefined as ProductSalesPackage | undefined,
+      configuration,
+      quantity: draft.quantity,
+      price: configurationPrice(configuration),
+      audienceRequired: false,
+      audienceError: null as string | null,
+    };
+  }
   const selectedPackage = options.find((option) => option.id === draft.packageId);
   const raw: OfferConfiguration = {
     ...createConfiguration(draft.unitPrice, draft.addons,
@@ -156,7 +208,8 @@ export function problem(draft: Draft, result: ReturnType<typeof evaluate>) {
   if (result.audienceError) return result.audienceError;
   if (!Number.isInteger(draft.days) || draft.days < 1 || draft.days > 3650) return 'Podaj liczbę dni od 1 do 3650.';
   if (!Number.isFinite(result.quantity) || result.quantity <= 0) return 'Ilość musi być większa od 0';
-  if (!Number.isFinite(draft.unitPrice) || draft.unitPrice < 0) return 'Cena nie może być ujemna';
+  const basePrice = draft.modular ? result.configuration.base_unit_price : draft.unitPrice;
+  if (!Number.isFinite(basePrice) || basePrice < 0) return 'Cena nie może być ujemna';
   if (!Number.isFinite(draft.discountPercent) || draft.discountPercent < 0 || draft.discountPercent > 100) return 'Rabat musi być w zakresie 0–100%';
   if (Object.values(draft.variantPrices).some((price) => !Number.isFinite(price) || price < 0 || price > 999999999.99)) {
     return 'Podaj poprawne, nieujemne ceny wszystkich wariantów.';
@@ -197,7 +250,10 @@ function summary(draft: Draft, result: ReturnType<typeof evaluate>, audience: Of
 }
 
 export const unitOf = (draft: Draft, selectedPackage: ProductSalesPackage | undefined, fallback: string) =>
-  selectedPackage ? 'pakiet' : draft.quantitySource === 'guests' ? 'osoba' : draft.quantitySource === 'tables' ? 'stół' : fallback;
+  draft.modular ? 'zestaw' : selectedPackage ? 'pakiet' : draft.quantitySource === 'guests' ? 'osoba' : draft.quantitySource === 'tables' ? 'stół' : fallback;
+
+/** Nazwa i opis pozycji z konfiguracji (`modularTitle`, `modularScope`, jak okna CRM). */
+export const modularText = (modular: ProductConfigurationSnapshot) => ({ name: modularTitle(modular), description: modularScope(modular).join('\n') });
 
 // MARK: Katalog do dodawania
 
@@ -205,6 +261,19 @@ export const unitOf = (draft: Draft, selectedPackage: ProductSalesPackage | unde
 function initialDraft(product: Row, proposal: Row | undefined) {
   const variants = activeVariants(product);
   const config = proposal?.pricing_configuration as Row | undefined;
+  if (product.configuration_schema) {
+    // Produkt modułowy: zapisana konfiguracja z propozycji albo — bez niej — Mac pobiera nową (`op=modular`).
+    const saved = config?.modular as Row | undefined;
+    return {
+      draft: {
+        variantId: null, packageId: '', quantity: Number(proposal?.quantity) || 1, quantitySource: 'manual',
+        days: Number(proposal?.days ?? 1) || 1, unitPrice: saved ? Number(config?.base_unit_price) || 0 : 0,
+        discountPercent: Number(proposal?.discount_percent || 0), addons: [], variantPrices: {}, showVariants: false,
+        showVariantPrices: false, modular: saved || null, modularManual: Boolean(saved) && config?.modular_price_source === 'manual',
+      } as Row,
+      packages: [] as ProductSalesPackage[],
+    };
+  }
   const defaultVariant = proposal ? variants.find((variant) => variant.id === proposal.product_variant_id) : variants.find((variant) => variant.is_recommended) || variants[0];
   const copied = config?.product_package as Row | undefined;
   const options: ProductSalesPackage[] = copied?.options || productPackages(product);
@@ -264,6 +333,7 @@ export async function offerItemCatalog(ctx: NativeContext, id: string, exclude: 
       return {
         id: String(row.id),
         name: text(row.name),
+        packageOptions: start.packages,
         description: text(row.offer_description || row.description),
         category: text(row.category?.name) || null,
         unit: text(row.unit) || 'szt.',
@@ -317,10 +387,14 @@ export async function offerItemEditor(ctx: NativeContext, id: string, itemId: st
     vatRate: Number(offer.tax_percent ?? 23),
     variants: activeVariants(product).map(variantView),
     packages: packages.map(packageView),
+    packageOptions: packages,
+    catalogResources: catalogResources(product),
     productAddons: (product.pricing_addons || []) as ProductAddon[],
     productQuantitySource: (product.quantity_source || 'manual') as QuantitySource,
     productBasePrice: Number(product.base_price) || 0,
     canLoadProductAddons: !config && Boolean(product.pricing_addons?.length),
+    // „Przejdź na konfigurator — przelicz tę pozycję”: wcześniejsza wycena produktu, który ma teraz konfigurator.
+    canUseConfigurator: !config?.modular && Boolean(product.configuration_schema),
     allowIndividual: !packages.every((option) => option.price_on_request),
     draft: {
       variantId: item.product_variant_id || null,
@@ -336,6 +410,8 @@ export async function offerItemEditor(ctx: NativeContext, id: string, itemId: st
       showVariantPrices: item.show_variant_prices_in_pdf !== false,
       name: text(item.name || product.name),
       vatRate: Number(offer.tax_percent ?? 23),
+      modular: config?.modular || null,
+      modularManual: Boolean(config?.modular) && config?.modular_price_source === 'manual',
     },
   };
 }
@@ -359,7 +435,7 @@ export async function previewOfferItem(ctx: NativeContext, body: Row) {
     options = proposal?.pricing_configuration?.product_package?.options || productPackages(product as Row);
   }
   const vatRate = draft.vatRate != null && VAT_RATES.includes(draft.vatRate) ? draft.vatRate : Number(offer.tax_percent ?? 23);
-  return summary(draft, evaluate(draft, options, audience), audience, vatRate, body.recommendation === true);
+  return summary(draft, evaluate(draft, optionsFor(draft, options), audience), audience, vatRate, body.recommendation === true);
 }
 
 export async function addOfferItem(ctx: NativeContext, body: Row) {
@@ -369,15 +445,16 @@ export async function addOfferItem(ctx: NativeContext, body: Row) {
   const { data: productRow } = await ctx.supabase.from('offer_products').select(PRODUCT_SELECT).eq('id', productId).maybeSingle();
   const product = productRow as Row | null;
   if (!product || product.is_active === false) fail('Wybierz produkt');
-  if (product.configuration_schema) fail('Ten produkt ma konfigurator (scena, LED) — dodaj go w CRM.');
+  const draft = draftOf(body.draft);
+  if (product.configuration_schema && !draft.modular) fail('Skonfiguruj produkt przed dodaniem do oferty.');
+  if (!product.configuration_schema && draft.modular) fail('Ten produkt nie ma konfiguratora.');
   const { data: existing } = await ctx.supabase.from('offer_items').select('id').eq('offer_id', id).eq('product_id', productId).limit(1);
   if (existing?.length) fail('Ten produkt jest już dodany. Wybierz inną pozycję.');
   const recommendations = (Array.isArray(offer.recommended_items) ? offer.recommended_items : []) as Row[];
   const proposal = recommendations.find((item) => item.product_id === productId);
   if (proposal && body.moveRecommendation !== true) fail(`„${product.name}” jest już w propozycjach dodatkowych. Potwierdź przeniesienie do głównej listy.`);
-  const draft = draftOf(body.draft);
   const audience = audienceOf(offer);
-  const options: ProductSalesPackage[] = proposal?.pricing_configuration?.product_package?.options || productPackages(product);
+  const options: ProductSalesPackage[] = optionsFor(draft, proposal?.pricing_configuration?.product_package?.options || productPackages(product));
   const result = evaluate(draft, options, audience);
   const error = problem(draft, result);
   if (error) fail(error);
@@ -385,16 +462,17 @@ export async function addOfferItem(ctx: NativeContext, body: Row) {
   if (draft.variantId && !variant) fail('Wybierz wariant produktu.');
   const selectedPackage = result.selectedPackage;
   const sameProposal = proposal && proposal.product_variant_id === (variant?.id || null);
+  const modular = draft.modular ? modularText(draft.modular) : null;
   const item = {
     offer_id: id,
     product_id: productId,
     product_variant_id: variant?.id || null,
     variant_prices_net: { ...draft.variantPrices, ...(variant ? { [variant.id]: draft.unitPrice } : {}) },
-    show_variant_prices_in_pdf: draft.showVariantPrices,
-    show_product_variants_in_pdf: draft.showVariants,
-    name: selectedPackage ? `${product.name} — ${selectedPackage.name}` : sameProposal ? proposal!.name
+    show_variant_prices_in_pdf: modular ? false : draft.showVariantPrices,
+    show_product_variants_in_pdf: modular ? false : draft.showVariants,
+    name: modular ? modular.name : selectedPackage ? `${product.name} — ${selectedPackage.name}` : sameProposal ? proposal!.name
       : variant ? `${product.name} — ${variant.name}` : product.name,
-    description: selectedPackage ? [selectedPackage.included_label, selectedPackage.bonus].filter(Boolean).join('. ')
+    description: modular ? modular.description : selectedPackage ? [selectedPackage.included_label, selectedPackage.bonus].filter(Boolean).join('. ')
       : sameProposal ? proposal!.description : variant?.description || variant?.short_description || product.description,
     quantity: result.quantity,
     days: draft.days,
@@ -420,11 +498,13 @@ export async function updateOfferItem(ctx: NativeContext, body: Row) {
   const id = uuid(body.id);
   const offer = await editable(ctx, id);
   const item = await offerItem(ctx, id, body.itemId);
-  if (item.pricing_configuration?.modular) fail('Konfigurację tej pozycji (scena, LED) zmienisz w CRM.');
   const draft = draftOf(body.draft);
   if (!draft.name) fail('Nazwa pozycji nie może być pusta');
+  // Pozycja z konfiguratorem zostaje przy konfiguratorze; inną można świadomie przełączyć, gdy produkt go ma.
+  if (item.pricing_configuration?.modular && !draft.modular) fail('Brakuje konfiguracji produktu. Otwórz pozycję ponownie.');
+  if (draft.modular && !item.pricing_configuration?.modular && !item.product?.configuration_schema) fail('Ten produkt nie ma konfiguratora.');
   const audience = audienceOf(offer);
-  const result = evaluate(draft, itemPackages(item), audience);
+  const result = evaluate(draft, optionsFor(draft, itemPackages(item)), audience);
   const error = problem(draft, result);
   if (error) fail(error);
   const variants = activeVariants(item.product || {});
@@ -434,6 +514,7 @@ export async function updateOfferItem(ctx: NativeContext, body: Row) {
   const discountAmount = (quantity * draft.days * result.price * draft.discountPercent) / 100;
   const patch: Row = {
     name: draft.name,
+    ...(draft.modular ? { description: modularText(draft.modular).description } : {}),
     ...(selectedPackage ? { description: [selectedPackage.included_label, selectedPackage.bonus].filter(Boolean).join('. ') } : {}),
     quantity,
     days: draft.days,

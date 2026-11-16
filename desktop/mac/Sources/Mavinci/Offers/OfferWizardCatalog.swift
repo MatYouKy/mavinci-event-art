@@ -183,7 +183,13 @@ import SwiftUI
                 }
                 ProductReadinessInline(readiness: product.readiness)
                 if product.modular {
-                    Text("Produkt z konfiguratorem (scena, LED) — dodasz go do oferty w CRM.").font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Button(model.addingModular.contains(product.id) ? "Pobieranie konfiguracji…" : "Dodaj do oferty") { addChoice(product, nil) }
+                            .buttonStyle(.borderedProminent).controlSize(.small)
+                            .disabled(model.addingModular.contains(product.id))
+                        Text("Produkt z konfiguratorem (scena, LED) — rozmiar i wyposażenie ustawisz po dodaniu, w „Konfiguruj zestaw”.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 } else {
                     modePicker(product)
                     if list.isEmpty {
@@ -247,7 +253,11 @@ import SwiftUI
             Text(selected?.priceText ?? "\(OfferText.amount(product.basePrice)) zł").font(.caption.weight(.medium))
                 .foregroundStyle(theme.accent).frame(width: 120, alignment: .trailing)
             if product.modular {
-                Text("W CRM").font(.caption).foregroundStyle(.secondary).frame(width: 220, alignment: .trailing)
+                Button(model.addingModular.contains(product.id) ? "Pobieranie…" : "Dodaj") { addChoice(product, nil) }
+                    .buttonStyle(.borderedProminent).controlSize(.small)
+                    .disabled(model.addingModular.contains(product.id))
+                    .help("Produkt z konfiguratorem — rozmiar i wyposażenie ustawisz po dodaniu")
+                    .frame(width: 220, alignment: .trailing)
             } else {
                 HStack(spacing: 6) {
                     modePicker(product)
@@ -355,6 +365,19 @@ import SwiftUI
         }
     }
 
+    /// Cena bazowa netto / dzień; przy zestawie wpisana cena staje się własną ceną (jak pole ceny przy konfiguratorze w CRM).
+    private func priceBinding(_ item: OfferWizardItem, _ evaluated: OfferWizardPreview.Item?) -> Binding<Double?> {
+        Binding(get: {
+            if item.draft.modular != nil && item.draft.modularManual != true { return evaluated?.baseUnitPrice ?? item.draft.unitPrice }
+            return item.draft.unitPrice
+        }, set: { value in
+            model.update(itemID) { entry in
+                if entry.draft.modular != nil { entry.draft.modularManual = true }
+                entry.draft.unitPrice = max(0, value ?? 0)
+            }
+        })
+    }
+
     private func binding<T>(_ key: WritableKeyPath<OfferItemDraft, T>, _ fallback: T) -> Binding<T> {
         Binding(get: { item?.draft[keyPath: key] ?? fallback }, set: { value in model.update(itemID) { entry in entry.draft[keyPath: key] = value } })
     }
@@ -382,10 +405,8 @@ import SwiftUI
                 .font(.caption).foregroundStyle(.secondary)
                 // Cena bazowa netto / dzień edytowana wprost w wierszu — to samo pole co w „Konfiguruj zakres i dodatki”.
                 VStack(alignment: .trailing, spacing: 1) {
-                    ProductNumberField(value: Binding(get: { Optional(item.draft.unitPrice) }, set: { value in
-                        model.update(itemID) { entry in entry.draft.unitPrice = max(0, value ?? 0) }
-                    }), suffix: "zł")
-                    .help("Cena bazowa netto za dzień, bez dodatków")
+                    ProductNumberField(value: priceBinding(item, evaluated), suffix: "zł")
+                    .help(item.draft.modular != nil ? "Cena zestawu netto za dzień — z kalkulatora albo własna" : "Cena bazowa netto za dzień, bez dodatków")
                     if let evaluated, evaluated.unitPrice - evaluated.baseUnitPrice > 0.004 {
                         Text("z dodatkami \(OfferText.amount(evaluated.unitPrice)) zł").font(.caption2).foregroundStyle(.secondary)
                     }
@@ -411,7 +432,9 @@ import SwiftUI
     }
 
     @ViewBuilder private func pdfSettings(_ item: OfferWizardItem, _ product: OfferWizardSetup.Product) -> some View {
-        if !item.draft.packageId.isEmpty {
+        if item.draft.modular != nil {
+            Text("Konfiguracja zestawu · pełna strona PDF").font(.caption2).foregroundStyle(theme.accent)
+        } else if !item.draft.packageId.isEmpty {
             Text("Elementy bez cen + pakiety").font(.caption2).foregroundStyle(theme.accent)
         } else if !item.draft.addons.isEmpty {
             Text("Wybrany zakres + kalkulacja dodatków").font(.caption2).foregroundStyle(.secondary)
@@ -426,6 +449,37 @@ import SwiftUI
     }
 
     @ViewBuilder private func configuration(_ item: OfferWizardItem, _ product: OfferWizardSetup.Product) -> some View {
+        if item.draft.modular != nil {
+            modularConfiguration(item)
+        } else {
+            standardConfiguration(item, product)
+        }
+    }
+
+    /// Zestaw z konfiguratorem: panel konfiguratora, cena z kalkulatora albo własna, liczba dni (bez pakietów i dodatków).
+    @ViewBuilder private func modularConfiguration(_ item: OfferWizardItem) -> some View {
+        let evaluated = model.evaluated(item)
+        VStack(alignment: .leading, spacing: 10) {
+            if let configurator = model.configurator(itemID) {
+                ModularConfiguratorPanel(model: configurator)
+                ModularPriceHint(calculatorTotal: configurator.view?.calculatorTotal, manual: item.draft.modularManual == true) {
+                    model.useCalculatorPrice(itemID)
+                }
+            }
+            HStack(alignment: .top, spacing: 12) {
+                ProductField(label: "Liczba dni") {
+                    ProductNumberField(value: Binding(get: { Optional(item.draft.days) }, set: { value in
+                        model.update(itemID) { entry in entry.draft.days = value ?? 1 }
+                    })).frame(width: 90)
+                }
+                ProductField(label: "Cena bazowa netto / dzień") {
+                    ProductNumberField(value: priceBinding(item, evaluated), suffix: "zł").frame(width: 160)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func standardConfiguration(_ item: OfferWizardItem, _ product: OfferWizardSetup.Product) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if !product.packages.isEmpty {
                 ProductField(label: "Wybrany zakres", help: "Zmiana zakresu przywróci jego cenę katalogową i dodatki. Ilość oraz rabat pozostaną zachowane.") {
@@ -464,8 +518,14 @@ import SwiftUI
             .controlSize(.small)
             .disabled(item.draft.addons.count >= 40)
             if !item.draft.packageId.isEmpty {
-                Text("Sprzęt i obsadę pakietu oraz jego koszty w tej ofercie zmienisz po utworzeniu oferty — w CRM.")
-                    .font(.caption).foregroundStyle(.secondary)
+                // Sprzęt, obsada i koszty wybranego pakietu tylko w tej ofercie (jak edytory pod pozycją w kreatorze CRM).
+                let evaluated = model.evaluated(item)
+                OfferPackageOptionsEditor(options: Binding(get: { item.draft.packageOptions ?? product.packageOptions ?? [] }, set: { value in
+                    model.update(itemID) { entry in entry.draft.packageOptions = value }
+                }), selectedID: item.draft.packageId, productID: product.id,
+                salePriceNet: (evaluated?.unitPrice ?? item.draft.unitPrice) * (1 - item.draft.discountPercent / 100), adjustments: false)
+                Text("Cena sprzedaży dodatku nie jest kosztem pracownika. Uzupełnij stawki w obsadzie pakietu; rozliczenie gotówką korzysta z ustawień wynagrodzeń.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -476,7 +536,8 @@ import SwiftUI
     }
 
     private func configureLabel(_ item: OfferWizardItem) -> String {
-        item.draft.addons.isEmpty ? "Konfiguruj zakres i dodatki" : "Konfiguruj zakres i dodatki (\(item.draft.addons.count))"
+        if item.draft.modular != nil { return "Konfiguruj zestaw" }
+        return item.draft.addons.isEmpty ? "Konfiguruj zakres i dodatki" : "Konfiguruj zakres i dodatki (\(item.draft.addons.count))"
     }
 
     private func packageLabel(_ option: OfferWizardSetup.Package) -> String {

@@ -3,7 +3,8 @@ import SwiftUI
 // MARK: „Dodaj pozycję do oferty” i „Edytuj pozycję” (`AddOfferItemModal`, `EditOfferItemModal`): katalog produktów
 // (bez już dodanych), pakiet albo wycena elementów, wariant, ceny wariantów w tej ofercie, ilość (ręcznie, z liczby osób
 // lub stołów), dni, cena, rabat, dodatki, widoczność wariantów w PDF, stawka VAT i uczestnicy oferty. Wycenę podglądu
-// liczy serwer tymi samymi funkcjami co CRM; produkty z konfiguratorem (scena, LED) — w CRM. Z `onRecommendation` okno
+// liczy serwer tymi samymi funkcjami co CRM. Produkty z konfiguratorem (scena, LED): panel konfiguratora (`ModularConfigurator`),
+// cena z kalkulatora albo własna, a w edycji także „Przejdź na konfigurator” dla wcześniejszej wyceny. Z `onRecommendation` okno
 // działa jak „Dodaj proponowany produkt” (`onAddRecommendation`): katalog bez produktów oferty i propozycji, rabat wliczony
 // w cenę, a gotowa propozycja od razu zapisuje się w sekcji propozycji.
 
@@ -37,6 +38,8 @@ import SwiftUI
     @State private var saving = false
     @State private var problem: String?
     @State private var confirmMove = false
+    /// Konfigurator zestawu (scena, LED) dla wybranego produktu albo edytowanej pozycji.
+    @State private var configurator: ModularConfiguratorModel?
 
     private var editing: Bool { itemID != nil }
     private var proposalMode: Bool { onRecommendation != nil }
@@ -48,7 +51,13 @@ import SwiftUI
     private var productAddons: [ProductAddonItem] { editor?.productAddons ?? product?.productAddons ?? [] }
     private var productName: String { editor?.productName ?? product?.name ?? "" }
     private var allowIndividual: Bool { editor?.allowIndividual ?? !(product?.variants.isEmpty ?? true) }
-    private var modular: Bool { editor?.modular ?? product?.modular ?? false }
+    /// Pozycja z konfiguratorem: zapisana konfiguracja, produkt modułowy z katalogu albo przejście na konfigurator.
+    /// Pakiety pozycji z poprawkami z tej oferty (bez poprawek — zapisane w pozycji, propozycji albo produkcie).
+    private var baseOptions: [JSONValue] { editor?.packageOptions ?? product?.packageOptions ?? [] }
+    private var packageOptions: Binding<[JSONValue]> {
+        Binding(get: { draft?.packageOptions ?? baseOptions }, set: { draft?.packageOptions = $0 })
+    }
+    private var modular: Bool { configurator != nil || draft?.modular != nil || (editing ? editor?.modular == true : product?.modular == true) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -92,7 +101,7 @@ import SwiftUI
                     else { Task { await save(move: false) } }
                 }
                 .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
-                .disabled(saving || draft == nil || modular || preview?.error != nil || audienceDirty)
+                .disabled(saving || draft == nil || (modular && draft?.modular == nil) || preview?.error != nil || (!modular && audienceDirty))
             }
             .padding(18)
         }
@@ -148,24 +157,118 @@ import SwiftUI
         productID = id
         problem = nil
         preview = nil
+        configurator = nil
         guard let id, let item = catalog?.products.first(where: { $0.id == id }) else { draft = nil; return }
         draft = item.initial
+        // Produkt modułowy: zapisana konfiguracja z propozycji albo nowa z karty produktu (z pobranym sprzętem).
+        if item.modular { startConfigurator(snapshot: item.initial.modular, productID: id) }
+    }
+
+    // MARK: Konfigurator zestawu
+    private func startConfigurator(snapshot: JSONValue?, productID: String?) {
+        let next: ModularConfiguratorModel
+        if let snapshot { next = ModularConfiguratorModel(store: store, snapshot: snapshot) }
+        else if let productID { next = ModularConfiguratorModel(store: store, productID: productID) }
+        else { return }
+        next.quantity = draft?.quantity ?? 1
+        next.onChange = { snapshot, view in applyConfiguration(snapshot, view) }
+        configurator = next
+    }
+
+    /// Zmiana konfiguracji (jak `onChange` konfiguratora w oknach CRM): nazwa z konfiguracji, cena z kalkulatora bez własnej
+    /// ceny; pierwsza konfiguracja czyści pakiet, wariant i dodatki (przejście na konfigurator — ilość 1).
+    private func applyConfiguration(_ snapshot: JSONValue, _ view: ModularView) {
+        guard var next = draft else { return }
+        if next.modular == nil {
+            next.packageId = ""
+            next.variantId = nil
+            next.variantPrices = [:]
+            next.addons = []
+            next.quantitySource = "manual"
+            next.showVariants = false
+            next.showVariantPrices = false
+            if next.modularManual == nil { next.modularManual = false }
+            if editing { next.quantity = 1 }
+        }
+        next.modular = snapshot
+        next.modularRevision += 1
+        if editing { next.name = view.title }
+        if next.modularManual != true { next.unitPrice = view.calculatorTotal ?? 0 }
+        draft = next
+    }
+
+    private func useCalculatorPrice() {
+        draft?.modularManual = false
+        if let total = configurator?.view?.calculatorTotal { draft?.unitPrice = total }
+    }
+
+    @ViewBuilder private var modularDetails: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if editing { nameField }
+            if let configurator {
+                ModularConfiguratorPanel(model: configurator, disabled: saving)
+                ModularPriceHint(calculatorTotal: configurator.view?.calculatorTotal, manual: draft?.modularManual == true, disabled: saving) {
+                    useCalculatorPrice()
+                }
+            }
+            GroupBox("Szczegóły pozycji") {
+                HStack(alignment: .top, spacing: 12) {
+                    ProductField(label: "Liczba dni") {
+                        ProductNumberField(value: Binding(get: { draft?.days ?? 1 }, set: { draft?.days = $0 ?? 0 })).frame(width: 100)
+                    }
+                    ProductField(label: "Ilość") {
+                        ProductNumberField(value: Binding(get: { draft?.quantity ?? 1 }, set: { value in
+                            draft?.quantity = value ?? 0
+                            configurator?.quantity = value ?? 1
+                        })).frame(width: 100)
+                    }
+                    ProductField(label: "Cena bazowa netto / dzień") {
+                        ProductNumberField(value: Binding(get: {
+                            draft?.modularManual == true ? (draft?.unitPrice ?? 0) : (preview?.unitPrice ?? draft?.unitPrice ?? 0)
+                        }, set: { price in
+                            draft?.modularManual = true
+                            draft?.unitPrice = price ?? 0
+                        }), suffix: "zł")
+                        .frame(width: 150)
+                    }
+                    ProductField(label: editing ? "Rabat %" : "Rabat (%)") {
+                        ProductNumberField(value: Binding(get: { draft?.discountPercent ?? 0 }, set: { draft?.discountPercent = $0 ?? 0 }), suffix: "%").frame(width: 100)
+                    }
+                    if editing {
+                        ProductField(label: "Stawka VAT") {
+                            Picker("", selection: Binding(get: { draft?.vatRate ?? 23 }, set: { draft?.vatRate = $0 })) {
+                                ForEach([0.0, 5, 8, 23], id: \.self) { rate in Text("\(Int(rate))%").tag(rate) }
+                            }
+                            .labelsHidden().fixedSize()
+                        }
+                    }
+                }
+                .padding(6)
+            }
+            summary
+        }
+        .disabled(saving)
     }
 
     // MARK: Szczegóły pozycji
     @ViewBuilder private var details: some View {
         if !editing && product == nil {
             ContentUnavailableView("Wybierz produkt z listy", systemImage: "shippingbox").frame(maxWidth: .infinity).padding(.top, 120)
-        } else if modular {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("Produkt z konfiguratorem (scena, LED)", systemImage: "square.stack.3d.up").font(.headline)
-                Text(editing ? "Konfigurację tej pozycji zmienisz w CRM." : "Ten produkt dodasz w CRM — konfigurator modułów jest na razie tylko w przeglądarce.")
-                    .font(.callout).foregroundStyle(.secondary)
-                Button { state.openCRM("/crm/offers/\(offerID)") } label: { Label("Otwórz ofertę w CRM", systemImage: "safari") }
-            }
+        } else if modular, draft != nil {
+            modularDetails
         } else if draft != nil {
             VStack(alignment: .leading, spacing: 14) {
                 if editing { nameField }
+                if editing, editor?.canUseConfigurator == true {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Ta pozycja zachowuje wcześniejszą wycenę. Możesz świadomie zastąpić ją konfiguracją według obecnego cennika produktu.")
+                            .font(.callout).fixedSize(horizontal: false, vertical: true)
+                        Button("Przejdź na konfigurator — przelicz tę pozycję") { startConfigurator(snapshot: nil, productID: editor?.productId) }
+                            .controlSize(.small)
+                    }
+                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                }
                 audienceBox
                 if !packages.isEmpty { packagePicker }
                 if draft?.packageId.isEmpty == true && !variants.isEmpty { variantPicker }
@@ -234,7 +337,7 @@ import SwiftUI
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(option.name).font(.callout.weight(.semibold))
                                 if !option.included.isEmpty { Text(option.included).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
-                                Text(option.priceText).font(.caption.weight(.medium))
+                                Text(priceText(option)).font(.caption.weight(.medium))
                             }
                             .padding(8)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -250,17 +353,24 @@ import SwiftUI
                         .disabled(draft?.packageId.isEmpty == true)
                 }
                 if editing, preview?.packageResourcesMissing == true, let name = packages.first(where: { $0.id == draft?.packageId })?.name {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Pakiet „\(name)” w tej ofercie nie ma zapisanej konfiguracji sprzętu i obsady. Jest ona wymagana przed akceptacją.")
-                            .font(.caption)
-                        Button("Uzupełnij sprzęt i obsadę w CRM") { state.openCRM("/crm/offers/\(offerID)") }.buttonStyle(.link).font(.caption)
-                    }
-                    .padding(8)
-                    .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                    Text("Pakiet „\(name)” w tej ofercie nie ma zapisanej konfiguracji sprzętu i obsady. Jest ona wymagana przed akceptacją.")
+                        .font(.caption).padding(8).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                }
+                OfferPackageOptionsEditor(options: packageOptions, selectedID: draft?.packageId ?? "", productID: editor?.productId ?? productID,
+                                          salePriceNet: (draft?.unitPrice ?? 0) * (1 - (draft?.discountPercent ?? 0) / 100),
+                                          catalogResources: editor?.catalogResources ?? [:], disabled: saving) { price in
+                    draft?.unitPrice = price
                 }
             }
             .padding(6)
         }
+    }
+
+    /// Cena pakietu po zmianach w tej ofercie (bez zmian — z katalogu).
+    private func priceText(_ option: OfferItemPackage) -> String {
+        guard let price = OfferPackageOptions.price(packageOptions.wrappedValue, option.id) else { return option.priceText }
+        return option.priceOnRequest && price <= 0 ? "Wycena indywidualna" : "\(OfferText.number(price)) zł netto"
     }
 
     private var variantPicker: some View {
@@ -342,7 +452,7 @@ import SwiftUI
         next.quantity = 1
         next.quantitySource = "manual"
         next.variantId = nil
-        next.unitPrice = option.priceNet
+        next.unitPrice = OfferPackageOptions.price(packageOptions.wrappedValue, option.id) ?? option.priceNet
         next.addons = option.includeProductAddons ? productAddons : []
         if editing { next.name = "\(productName) — \(option.name)" }
         draft = next
@@ -478,8 +588,8 @@ import SwiftUI
     // MARK: Wczytanie, podgląd, zapis
     /// Zmiana szkicu albo liczby osób odświeża podgląd wyceny.
     private var previewKey: String {
-        guard let draft, let data = try? JSONEncoder().encode(draft.json) else { return "" }
-        return (productID ?? "") + String(decoding: data, as: UTF8.self) + "|\(audience.guest_count ?? -1)|\(audience.guests_per_table ?? -1)|\(audience.table_count ?? -1)"
+        guard let draft else { return "" }
+        return (productID ?? "") + draft.signature + "|\(audience.guest_count ?? -1)|\(audience.guests_per_table ?? -1)|\(audience.table_count ?? -1)"
     }
 
     private func load() async {
@@ -490,6 +600,7 @@ import SwiftUI
                 editor = data
                 draft = data.draft
                 setAudience(data.audience)
+                if let snapshot = data.draft.modular { startConfigurator(snapshot: snapshot, productID: nil) }
             } else {
                 let data = try await store.itemCatalog(offerID, recommendationExclude: proposalMode ? recommendationExclude : nil)
                 catalog = data
@@ -508,7 +619,8 @@ import SwiftUI
     }
 
     private func refreshPreview() async {
-        guard let draft, !modular, editing || productID != nil else { return }
+        guard let draft, editing || productID != nil else { return }
+        if modular && draft.modular == nil { return }
         do {
             preview = try await store.previewItem(offerID, productID: editing ? nil : productID, itemID: itemID, draft: draft, recommendation: proposalMode)
             previewError = nil
@@ -549,11 +661,17 @@ import SwiftUI
     }
 
     /// „Dodaj propozycję”: serwer buduje propozycję jak CRM, sekcja dopisuje ją do listy i zapisuje.
+    /// Zapis po ostatnim przeliczeniu konfiguracji (zmiany wysyłane po chwili bez pisania).
+    private func settleConfigurator() async {
+        await configurator?.settle()
+    }
+
     private func addRecommendation() async {
-        guard let draft, let productID, let onRecommendation else { problem = "Wybierz produkt"; return }
-        problem = nil
         saving = true
         defer { saving = false }
+        await settleConfigurator()
+        guard let draft, let productID, let onRecommendation else { problem = "Wybierz produkt"; return }
+        problem = nil
         do {
             let item = try await store.buildRecommendation(offerID, productID: productID, draft: draft, exclude: recommendationExclude)
             if let failure = await onRecommendation(item) {
@@ -567,10 +685,11 @@ import SwiftUI
     }
 
     private func save(move: Bool) async {
-        guard let draft else { return }
-        problem = nil
         saving = true
         defer { saving = false }
+        await settleConfigurator()
+        guard let draft else { return }
+        problem = nil
         let ok: Bool
         if let itemID {
             ok = await store.change(offerID, "itemUpdate", ["itemId": .string(itemID), "draft": draft.json], success: "Pozycja zaktualizowana")

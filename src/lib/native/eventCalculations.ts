@@ -5,11 +5,16 @@ import { registerEventActions, registerEventQueries, registerEventTab } from './
 import { getDrivingLeg } from '@/lib/CRM/events/travelDirections';
 import { DEFAULT_TRAVEL_ORIGIN } from '@/lib/CRM/events/travelEstimate';
 import { guessCategory } from '@/components/crm/events/calculations/calculations.utils';
+import { composeOfferEmail, sendingAccounts } from './offerActions';
+import { emailPreviewDocument } from './messages';
+import { dispatchCrmEmail } from '@/lib/emailScheduling';
 
 /**
  * Zakładka „Kalkulacje” (`EventCalculationsTab` + `CalculationEditor` + `AddCalculationItemModal`): lista z sumą netto,
  * tworzenie, duplikowanie (`duplicate_sales_calculation`), akceptacja (źródło finansów), usuwanie, PDF; edytor z pozycjami
  * według kategorii (magazyn ze stanem, usługi personelu, pojazdy, ręczne), kolejność, zapis wszystkich pozycji jednym żądaniem.
+ * Wysyłka kalkulacji e-mailem jak `SendCalculationEmailModal`: skrzynka pracownika, adresat (osoba kontaktowa wydarzenia),
+ * treść ze stopką firmy, aktualny PDF i opcjonalnie pliki wydarzenia w załącznikach, wysyłka teraz albo zaplanowana.
  */
 
 type Row = Record<string, any>;
@@ -348,7 +353,128 @@ async function pdfPayload(ctx: NativeContext, eventId: string, params: URLSearch
   return { eventId, calculationId: calc.id, expectedRevision: Number(calc.content_revision ?? 0) };
 }
 
-registerEventQueries('calculations', { editor, catalog, pdf, pdfPayload, travel, importSources });
+// MARK: Wysyłka kalkulacji e-mailem (`SendCalculationEmailModal`)
+
+const MAX_ATTACHMENTS_BYTES = 25 * 1024 * 1024;
+const pdfCurrent = (calc: Row) => Boolean(calc.generated_pdf_path) && calc.generated_pdf_revision === calc.content_revision;
+
+/** Okno „Wyślij kalkulację przez email”: skrzynki, adresat, temat i treść, stan PDF, pliki wydarzenia do dołączenia. */
+async function emailSetup(ctx: NativeContext, eventId: string, params: URLSearchParams) {
+  const calc = await ownCalculation(ctx, eventId, params.get('calculationId') || '');
+  const [accounts, event, files] = await Promise.all([
+    sendingAccounts(ctx),
+    ctx.supabase.from('events').select('name, contact_person_id').eq('id', eventId).maybeSingle(),
+    ctx.supabase.from('event_files').select('id, name, original_name, file_path, file_size, mime_type, created_at')
+      .eq('event_id', eventId).order('created_at', { ascending: false }),
+  ]);
+  const contactId = (event.data as Row | null)?.contact_person_id;
+  const contact = contactId
+    ? ((await ctx.supabase.from('contacts').select('first_name, last_name, email').eq('id', contactId).maybeSingle()).data as Row | null)
+    : null;
+  const name = String(calc.name || '').trim();
+  const eventName = String((event.data as Row | null)?.name || '').trim();
+  return {
+    accounts: accounts.map((account) => ({
+      id: account.id,
+      label: `${account.from_name ? `${account.from_name} — ` : ''}${account.email_address}${account.account_type === 'shared' ? ' (wspólna)' : ''}`,
+    })),
+    to: String(contact?.email || ''),
+    contact: contact ? [contact.first_name, contact.last_name].filter(Boolean).join(' ') : '',
+    subject: name ? `Kalkulacja: ${name}` : eventName ? `Kalkulacja - ${eventName}` : 'Kalkulacja wydarzenia',
+    text: 'Dzień dobry,\n\nW załączeniu przesyłam kalkulację wydarzenia.\n\nProszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dyspozycji.',
+    pdfReady: pdfCurrent(calc),
+    files: ((files.data || []) as Row[]).filter((file) => file.file_path !== calc.generated_pdf_path).map((file) => ({
+      id: String(file.id),
+      name: String(file.name || file.original_name || String(file.file_path).split('/').pop() || 'Plik'),
+      size: file.file_size == null ? null : Number(file.file_size),
+      createdAt: file.created_at ?? null,
+    })),
+  };
+}
+
+registerEventQueries('calculations', { editor, catalog, pdf, pdfPayload, travel, importSources, emailSetup });
+
+async function senderAccount(ctx: NativeContext, accountId: unknown) {
+  const account = (await sendingAccounts(ctx)).find((item) => item.id === String(accountId || ''));
+  if (!account) fail('Wybierz konto pocztowe nadawcy');
+  return account;
+}
+
+/** „Podgląd” wiadomości ze stopką i szablonem wybranej skrzynki. */
+async function emailPreview(ctx: NativeContext, eventId: string, body: Row) {
+  await ownCalculation(ctx, eventId, String(body.calculationId || ''));
+  const account = await senderAccount(ctx, body.accountId);
+  const email = await composeOfferEmail(ctx, account.id, String(body.subject || ''), String(body.text || ''), '');
+  return { html: emailPreviewDocument(email.html) };
+}
+
+async function download(ctx: NativeContext, path: string, message: string) {
+  const { data, error } = await ctx.supabase.storage.from('event-files').download(path);
+  if (error || !data) fail(message);
+  return Buffer.from(await data.arrayBuffer());
+}
+
+/**
+ * „Wyślij email” / „Zaplanuj” (`send-email`, przy planowaniu `schedule-email`): aktualny PDF kalkulacji i wybrane pliki
+ * wydarzenia w załącznikach, treść ze stopką firmy. Wymaga tokenu pracownika (funkcja poczty jak w przeglądarce).
+ */
+export async function sendCalculationEmail(ctx: NativeContext, accessToken: string, eventId: string, body: Row) {
+  const calc = await ownCalculation(ctx, eventId, String(body.calculationId || ''));
+  const to = String(body.to || '').trim();
+  const subject = String(body.subject || '').trim();
+  const message = String(body.text || '');
+  if (!to) fail('Wprowadź adres email odbiorcy');
+  if (!subject) fail('Wprowadź temat wiadomości');
+  if (!message.trim()) fail('Wprowadź treść wiadomości');
+  const account = await senderAccount(ctx, body.accountId);
+  let scheduledAt: string | null = null;
+  if (body.scheduledAt) {
+    const date = new Date(String(body.scheduledAt));
+    if (Number.isNaN(date.getTime())) fail('Podaj prawidłową datę i godzinę wysyłki');
+    if (date.getTime() < Date.now() + 30_000) fail('Termin wysyłki musi przypadać w przyszłości');
+    scheduledAt = date.toISOString();
+  }
+  if (!pdfCurrent(calc)) fail('PDF kalkulacji nie został jeszcze wygenerowany. Najpierw kliknij "Generuj PDF".');
+  const pdf = await download(ctx, calc.generated_pdf_path, 'Nie udało się pobrać PDF ze storage');
+  const attachments = [{
+    filename: String(calc.generated_pdf_path).split('/').pop() || `Kalkulacja_${calc.name || calc.id}.pdf`,
+    content: pdf.toString('base64'),
+    contentType: 'application/pdf',
+    contentDisposition: 'attachment',
+  }];
+  let total = pdf.length;
+  const ids = (Array.isArray(body.fileIds) ? body.fileIds : []).map(String).filter((id: string) => UUID.test(id)).slice(0, 20);
+  if (ids.length) {
+    const { data, error } = await ctx.supabase.from('event_files').select('id, name, original_name, file_path, mime_type')
+      .eq('event_id', eventId).in('id', ids);
+    if (error) fail('Nie udało się pobrać plików wydarzenia');
+    for (const file of ((data || []) as Row[]).filter((row) => row.file_path !== calc.generated_pdf_path)) {
+      const name = String(file.original_name || file.name || 'Plik');
+      const content = await download(ctx, file.file_path, `Nie udało się pobrać pliku: ${name}`);
+      total += content.length;
+      if (total > MAX_ATTACHMENTS_BYTES) fail('Załączniki przekraczają 25 MB. Wybierz mniej plików wydarzenia.');
+      attachments.push({ filename: name, content: content.toString('base64'), contentType: String(file.mime_type || 'application/octet-stream'), contentDisposition: 'attachment' });
+    }
+  }
+  const email = await composeOfferEmail(ctx, account.id, subject, message, '');
+  const result = await dispatchCrmEmail({
+    accessToken,
+    functionName: 'send-email',
+    scheduledAt,
+    metadata: { entityType: 'calculation', entityId: calc.id, eventId, actionUrl: `/crm/events/${eventId}?tab=calculations` },
+    payload: {
+      salesDocument: { kind: 'calculation', id: calc.id, storagePath: calc.generated_pdf_path, revision: calc.generated_pdf_revision },
+      emailAccountId: account.id,
+      to,
+      subject,
+      body: email.html,
+      attachments,
+      cc: String(body.cc || '').trim(),
+      bcc: String(body.bcc || '').trim(),
+    },
+  });
+  return { scheduled: result.scheduled, scheduledAt: result.scheduledAt ?? null };
+}
 
 async function create(ctx: NativeContext, eventId: string) {
   const { data, error } = await ctx.supabase.from('event_calculations').insert({ event_id: eventId, name: 'Nowa kalkulacja' }).select('id').single();
@@ -461,4 +587,4 @@ async function importItems(ctx: NativeContext, eventId: string, body: Row) {
   return { ok: true, count: (data || []).length };
 }
 
-registerEventActions('calculations', { create, remove, duplicate, accept, saveItem, removeItem, save, importItems });
+registerEventActions('calculations', { create, remove, duplicate, accept, saveItem, removeItem, save, importItems, emailPreview });

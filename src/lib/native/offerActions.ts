@@ -87,8 +87,11 @@ export async function offerEmailSetup(ctx: NativeContext, id: string) {
   };
 }
 
-/** Treść wysyłki jak `buildUnifiedEmailContent` z celem „offer”: szablon i stopka firmy skrzynki nadawczej. */
-async function composeOfferEmail(ctx: NativeContext, accountId: string, subject: string, body: string, recipientName: string) {
+/**
+ * Treść wysyłki jak `buildUnifiedEmailContent` z celem „offer”: szablon i stopka firmy skrzynki nadawczej. Tak samo
+ * wysyła się kalkulację (`SendCalculationEmailModal`, `src/lib/native/eventCalculations.ts`).
+ */
+export async function composeOfferEmail(ctx: NativeContext, accountId: string, subject: string, body: string, recipientName: string) {
   const signature = await buildCompanySignatureHtml({ client: ctx.supabase, employeeId: ctx.employee.id, emailAccountId: accountId });
   const result = await buildCompanyEmailBody({
     client: ctx.supabase,

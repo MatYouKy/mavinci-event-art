@@ -6,7 +6,7 @@ import SwiftUI
 // `ImportFromOfferModal` i `CalculationVehicleTravel`): lista z sumą netto, akceptacja (źródło danych finansowych), duplikowanie,
 // PDF; edytor z sekcjami Pozycje / Ludzie / Transport / Pozostałe, sumami netto i brutto, mocą i wagą, kolejnością (przeciąganie),
 // importem z oferty i kalkulatorem trasy dla transportu. PDF powstaje na Macu (Chrome) i trafia do Plików → Kalkulacje.
-// Wysyłka kalkulacji e-mailem otwiera się w CRM.
+// Wysyłka kalkulacji e-mailem — `CalculationEmailSheet` (jak `SendCalculationEmailModal`).
 
 struct CalculationsTabData: Decodable {
     struct Calculation: Decodable, Identifiable, Hashable {
@@ -191,6 +191,7 @@ enum CalculationPdf {
     @State private var deleting: CalculationsTabData.Calculation?
     @State private var accepting: CalculationsTabData.Calculation?
     @State private var preview: NativePreview?
+    @State private var emailing: CalculationEmailRoute?
 
     private var data: CalculationsTabData? { store.tab(eventID, "calculations", as: CalculationsTabData.self) }
 
@@ -217,6 +218,7 @@ enum CalculationPdf {
             if openID == nil { Task { await store.loadTab(eventID, "calculations") } }
         }
         .sheet(item: $preview) { NativeDocumentPreview(preview: $0) }
+        .sheet(item: $emailing) { route in CalculationEmailSheet(store: store, eventID: eventID, calculationID: route.calculationID, name: route.name) }
         .confirmationDialog("Usunąć kalkulację?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             if let calculation = deleting { Button("Usuń", role: .destructive) { Task { await remove(calculation) } } }
             Button("Anuluj", role: .cancel) { state.snack = Snack(kind: .info, text: "Anulowano usuwanie kalkulacji") }
@@ -384,8 +386,7 @@ enum CalculationPdf {
             state.snack = Snack(kind: .info, text: "Najpierw wygeneruj PDF kalkulacji")
             return
         }
-        state.snack = Snack(kind: .info, text: "Wysyłka kalkulacji e-mailem otworzy się w CRM — otwórz tam kalkulację „\(calculation.name)”.")
-        state.openCRM("/crm/events/\(eventID)?tab=calculations")
+        emailing = CalculationEmailRoute(calculationID: calculation.id, name: calculation.name)
     }
 }
 
@@ -420,6 +421,7 @@ struct CalculationItemRequest: Identifiable {
     @State private var showImport = false
     @State private var deleting = false
     @State private var preview: NativePreview?
+    @State private var emailOpen = false
 
     private var working: Bool { saving || generating || pdfAction != nil }
     private var pdfVisible: Bool { pdfReady && !orderChanged }
@@ -454,6 +456,7 @@ struct CalculationItemRequest: Identifiable {
             }
         }
         .sheet(item: $preview) { NativeDocumentPreview(preview: $0) }
+        .sheet(isPresented: $emailOpen) { CalculationEmailSheet(store: store, eventID: eventID, calculationID: calculationID, name: name) }
         .confirmationDialog("Usunąć kalkulację?", isPresented: $deleting, titleVisibility: .visible) {
             Button("Usuń", role: .destructive) { Task { await deleteCalculation() } }
             Button("Anuluj", role: .cancel) { state.snack = Snack(kind: .info, text: "Anulowano usuwanie kalkulacji") }
@@ -893,8 +896,7 @@ struct CalculationItemRequest: Identifiable {
             state.snack = Snack(kind: .info, text: "Najpierw wygeneruj PDF kalkulacji")
             return
         }
-        state.snack = Snack(kind: .info, text: "Wysyłka kalkulacji e-mailem otworzy się w CRM — otwórz tam kalkulację „\(name)”.")
-        state.openCRM("/crm/events/\(eventID)?tab=calculations")
+        emailOpen = true
     }
 }
 

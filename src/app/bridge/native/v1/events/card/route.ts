@@ -9,6 +9,7 @@ import { EVENT_STEPS_HELP, EVENT_STEPS_RULES } from '@/lib/events/steps/eventSte
 import { applyTravelTimes, eventMutate, eventTabAction, eventTabQuery, eventTabWithHash, isEventTab, phaseOptions, vehicleConflicts } from '@/lib/native/eventTabs';
 // Moduły zakładek rejestrują swoje dane, zapisy i odczyty w `eventTabs.ts` przy imporcie.
 import { equipmentCatalogEntries, uploadReturnPhoto } from '@/lib/native/eventEquipment';
+import { sendCalculationEmail } from '@/lib/native/eventCalculations';
 import { collectionItems, collectionState, invalidateNativeSyncPrefix } from '@/lib/native/sync';
 import '@/lib/native/eventLogistics';
 import '@/lib/native/eventAgenda';
@@ -231,6 +232,15 @@ export async function POST(request: Request) {
         return nativeJson(result);
       } catch (error) {
         return nativeJson({ error: (error as Error).message || 'Nie udało się wysłać potwierdzenia' }, 400);
+      }
+    }
+    // Kalkulacja e-mailem (`SendCalculationEmailModal`) — funkcja poczty tokenem pracownika, jak w przeglądarce.
+    if (body.op === 'calculationEmail') {
+      const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';
+      try {
+        return nativeJson(await sendCalculationEmail(ctx, token, id, body));
+      } catch (error) {
+        return nativeJson({ error: (error as Error).message || 'Błąd podczas wysyłania email' }, 400);
       }
     }
     if (body.op === 'duplicate') {

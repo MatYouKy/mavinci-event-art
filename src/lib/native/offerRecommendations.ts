@@ -2,7 +2,8 @@ import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
 import type { NativeContext } from './auth';
 import { fail } from './offers';
-import { configurationPrice, createConfiguration, validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
+import { configurationPrice, createConfiguration, createModularConfiguration, validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
+import { modularSnapshotOf } from './modularConfigurator';
 import {
   activeVariants,
   addonOf,
@@ -10,6 +11,8 @@ import {
   draftOf,
   editable,
   evaluate,
+  modularText,
+  optionsFor,
   problem,
   PRODUCT_SELECT,
   productPackages,
@@ -21,7 +24,8 @@ import {
  * dodatkowe poza wyceną i rezerwacją. Odczyt listy (bez produktów, które trafiły do głównej oferty), budowa nowej propozycji
  * z katalogu jak `onAddRecommendation` w `AddOfferItemModal`, podgląd i zapis zmian jak okno „Edytuj propozycję”, zapis całej
  * listy (kolejność, układ w PDF, usunięcia) przez `save_offer_recommendations` ze sprawdzeniem, że nikt w międzyczasie
- * nie zmienił propozycji.
+ * nie zmienił propozycji. Propozycje z konfiguratorem (scena, LED): zmiana konfiguracji (`modular`), własna cena
+ * (`basePrice`) albo powrót do ceny z kalkulatora (`modularManual: false`), jak w oknie edycji CRM.
  */
 
 type Row = Record<string, any>;
@@ -73,6 +77,7 @@ function view(item: Row, urls: Map<string, string>) {
     raw: item,
     imageUrl: image ? (/^https?:\/\//i.test(image) ? image : urls.get(image) || null) : null,
     modular: Boolean(config?.modular),
+    modularManual: Boolean(config?.modular) && config?.modular_price_source === 'manual',
     configured: Boolean(config),
     basePrice: finite(config?.base_unit_price ?? item.unit_price),
     addons: config && !config.modular ? listOf(config.addons).map((addon) => {
@@ -106,8 +111,20 @@ function applyPatch(item: Row, patch: Row) {
   if (has('days')) next.days = num(patch.days);
   if (has('quantity')) next.quantity = num(patch.quantity);
   const config = next.pricing_configuration as Row | undefined;
-  if (has('basePrice') || has('addons')) {
-    if (config?.modular) fail('Konfigurację tej propozycji (scena, LED) zmienisz w CRM.');
+  if (config?.modular) {
+    // Konfigurator: zmiana zestawu przepisuje nazwę i opis (`modularTitle`, `modularScope`); cena z kalkulatora albo własna.
+    if (has('addons')) fail('Konfigurator produktu nie może być łączony z dodatkami.');
+    const modular = has('modular') ? modularSnapshotOf(patch.modular) : config.modular;
+    const manual = has('modularManual') ? patch.modularManual === true : has('basePrice') || config.modular_price_source === 'manual';
+    const price = has('basePrice') ? num(patch.basePrice) : num(config.base_unit_price);
+    next.pricing_configuration = createModularConfiguration(modular, manual ? price : undefined);
+    if (has('modular')) {
+      const described = modularText(modular);
+      next.name = described.name;
+      next.description = described.description;
+      next.description_override = true;
+    }
+  } else if (has('basePrice') || has('addons')) {
     if (config) {
       const base = has('basePrice') ? num(patch.basePrice) : num(config.base_unit_price);
       const addons = has('addons') ? listOf(patch.addons).slice(0, 41).map((addon) => addonOf(addon || {})) : listOf(config.addons);
@@ -206,7 +223,6 @@ export async function buildOfferRecommendation(ctx: NativeContext, body: Row) {
   const { data: productRow } = await ctx.supabase.from('offer_products').select(PRODUCT_SELECT).eq('id', productId).maybeSingle();
   const product = productRow as Row | null;
   if (!product || product.is_active === false) fail('Wybierz produkt');
-  if (product.configuration_schema) fail('Ten produkt ma konfigurator (scena, LED) — dodaj propozycję w CRM.');
   const { data: main } = await ctx.supabase.from('offer_items').select('id').eq('offer_id', id).eq('product_id', productId).limit(1);
   if (main?.length) fail('Ten produkt jest już w głównej ofercie. Nie dodawaj go ponownie do propozycji.');
   const exclude = listOf(body.exclude).map(text);
@@ -214,18 +230,21 @@ export async function buildOfferRecommendation(ctx: NativeContext, body: Row) {
     fail('Ten produkt jest już na liście propozycji.');
   }
   const draft = draftOf(body.draft);
-  const result = evaluate(draft, productPackages(product), audienceOf(offer));
+  if (product.configuration_schema && !draft.modular) fail('Skonfiguruj produkt przed dodaniem propozycji.');
+  if (!product.configuration_schema && draft.modular) fail('Ten produkt nie ma konfiguratora.');
+  const result = evaluate(draft, optionsFor(draft, productPackages(product)), audienceOf(offer));
   const error = problem(draft, result);
   if (error) fail(error);
   const variant = activeVariants(product).find((row) => row.id === draft.variantId) || null;
   if (draft.variantId && !variant) fail('Wybierz wariant produktu.');
   const selectedPackage = result.selectedPackage as Row | undefined;
+  const modular = draft.modular ? modularText(draft.modular) : null;
   const item: Row = {
     id: randomUUID(),
     product_id: productId,
     product_variant_id: variant?.id || null,
-    name: selectedPackage ? `${product.name} — ${selectedPackage.name}` : variant ? `${product.name} — ${variant.name}` : product.name,
-    description: product.offer_description || product.description || variant?.description || variant?.short_description || '',
+    name: modular ? modular.name : selectedPackage ? `${product.name} — ${selectedPackage.name}` : variant ? `${product.name} — ${variant.name}` : product.name,
+    description: modular ? modular.description : product.offer_description || product.description || variant?.description || variant?.short_description || '',
     quantity: result.quantity,
     days: draft.days,
     unit: unitOf(draft, selectedPackage as any, text(product.unit)),

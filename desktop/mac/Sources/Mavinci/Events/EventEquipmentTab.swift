@@ -241,7 +241,8 @@ private struct ComponentsRequest: Identifiable {
             }
             Spacer()
             Button("Rozwiąż konflikty") {
-                if let id = data.latestOfferId { state.openCRM("/crm/offers/\(id)") } else { state.error = "Brak ofert dla tego eventu" }
+                // Strona oferty na Macu (rezerwacja i zamienniki), bez dostępu do ofert — w CRM.
+                if let id = data.latestOfferId { state.showOffer(id) } else { state.error = "Brak ofert dla tego eventu" }
             }
             .buttonStyle(.borderedProminent).tint(.red)
         }

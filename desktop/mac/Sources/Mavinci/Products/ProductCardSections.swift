@@ -240,7 +240,7 @@ extension ProductCardView {
         return card("pricing", "Ceny i koszty", subtitle: packages ? "Ceny i koszty poszczególnych pakietów oraz wspólna stawka VAT." : "Cena sprzedaży, koszty realizacji, transport i logistyka.", detail) {
             if packages {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("VAT: \(ProductText.number(value(product, "vat_rate")))%. Cena i koszty zależą od wybranego pakietu — zmienisz je przez menu pakietu → „Edytuj” (na razie w CRM). Koszty bazowe nie są dziedziczone przez pakiety.")
+                    Text("VAT: \(ProductText.number(value(product, "vat_rate")))%. Cena i koszty zależą od wybranego pakietu — zmienisz je w sekcji „Pakiety”: menu pakietu → „Edytuj” (cena, „Sprzęt i obsada”, „Koszty realizacji”). Koszty bazowe nie są dziedziczone przez pakiety.")
                         .font(.callout).foregroundStyle(.secondary)
                     ForEach(Array(detail.facts.packageNames.enumerated()), id: \.offset) { _, name in
                         Label(name, systemImage: "shippingbox").font(.callout)

@@ -2,7 +2,9 @@ import SwiftUI
 
 // MARK: Oferty wydarzenia (1:1 z `EventTabOffer`): lista ofert z wartością brutto i netto, statusem, klientem i datami,
 // usuwanie (szkic / wysłana, administrator — każda), otwarcie oferty. „Nowa oferta” otwiera kreator (`OfferWizardSheet`)
-// dla tego wydarzenia — pracownikom z dostępem do ofert; pozostałym kreator w CRM. Wysyłka e-mailem — w CRM.
+// dla tego wydarzenia — pracownikom z dostępem do ofert; pozostałym kreator w CRM. „Wyślij ofertę” (pierwszy szkic, jak
+// `handleSendOffer`) i „Zarezerwuj sprzęt” otwierają okna oferty na Macu (`OfferEmailSheet`, `OfferReservationSheet`);
+// status wydarzenia po wysyłce zmienia wyzwalacz w bazie. Bez dostępu do ofert — w CRM.
 
 struct OfferTabData: Decodable {
     struct Offer: Decodable, Identifiable, Hashable {
@@ -23,6 +25,9 @@ struct OfferTabData: Decodable {
     @State private var busy: String?
     @State private var selected: String?
     @State private var wizard: OfferWizardRoute?
+    /// Wysyłka e-mailem i rezerwacja sprzętu na Macu (okna ze strony oferty).
+    @State private var emailing: EventOfferRoute?
+    @State private var reserving: EventOfferRoute?
 
     /// Kreator na Macu korzysta z modułu Oferty (dostęp do ofert); bez niego — kreator w CRM, jak dotąd.
     private var nativeWizard: Bool { state.employee?.canView(.offers) == true }
@@ -48,6 +53,8 @@ struct OfferTabData: Decodable {
         .sheet(item: $wizard) { route in
             OfferWizardSheet(store: state.offers, eventID: route.eventID) { _ in Task { await store.loadTab(eventID, "offer") } }
         }
+        .sheet(item: $emailing, onDismiss: refresh) { route in OfferEmailSheet(store: state.offers, offerID: route.offerID) }
+        .sheet(item: $reserving, onDismiss: refresh) { route in OfferReservationSheet(store: state.offers, offerID: route.offerID) }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in Task { await store.loadTab(eventID, "offer") } }
         .confirmationDialog("Czy na pewno chcesz usunąć tę ofertę?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             if let offer = deleting { Button("Usuń", role: .destructive) { Task { await remove(offer) } } }
@@ -62,8 +69,8 @@ struct OfferTabData: Decodable {
                 Text(NativeList.count(data.offers.count, "oferta", "oferty", "ofert")).foregroundStyle(.secondary)
                 Spacer()
                 if !data.offers.isEmpty && data.eventStatus == "offer_to_send" {
-                    Button { state.openCRM("/crm/events/\(eventID)?tab=offer") } label: { Label("Wyślij ofertę", systemImage: "paperplane") }
-                        .help("Wysyłka oferty e-mailem otworzy się w CRM.")
+                    Button { send(data) } label: { Label("Wyślij ofertę", systemImage: "paperplane") }
+                        .help("Wysyłka pierwszej oferty w szkicu e-mailem (z aktualnym PDF oferty)")
                 }
                 Button { newOffer() } label: { Label("Nowa oferta", systemImage: "plus") }
                     .buttonStyle(.borderedProminent).help(nativeWizard ? "Kreator oferty dla tego wydarzenia" : "Kreator oferty otworzy się w CRM.")
@@ -128,10 +135,10 @@ struct OfferTabData: Decodable {
         let deleteTitle: String = canDelete ? "Usuń ofertę" : (offer.status == "accepted" ? "Nie można usunąć zaakceptowanej oferty" : "Nie można usunąć odrzuconej oferty")
         Button("Otwórz ofertę", systemImage: "doc.text.magnifyingglass") { open(offer) }
         if offer.status == "draft" || offer.status == "sent" {
-            Button("Zarezerwuj sprzęt (w CRM)", systemImage: "lock") { state.openCRM("/crm/events/\(eventID)?tab=offer") }
+            Button("Zarezerwuj sprzęt", systemImage: "lock") { reserve(offer) }
         }
         if data.eventStatus == "offer_to_send" {
-            Button("Wyślij ofertę (w CRM)", systemImage: "paperplane") { state.openCRM("/crm/events/\(eventID)?tab=offer") }
+            Button("Wyślij ofertę", systemImage: "paperplane") { send(data) }
         }
         Divider()
         Button(deleteTitle, systemImage: "trash", role: .destructive) { deleting = offer }.disabled(!canDelete || busy == offer.id)
@@ -176,6 +183,24 @@ struct OfferTabData: Decodable {
         state.showOffer(offer.id)
     }
 
+    /// „Wyślij ofertę” jak `handleSendOffer` w CRM: pierwsza oferta w szkicu.
+    private func send(_ data: OfferTabData) {
+        guard let draft = data.offers.first(where: { $0.status == "draft" }) else { state.error = "Brak oferty do wysłania"; return }
+        if nativeWizard { emailing = EventOfferRoute(offerID: draft.id) } else { state.openCRM("/crm/events/\(eventID)?tab=offer") }
+    }
+
+    private func reserve(_ offer: OfferTabData.Offer) {
+        if nativeWizard { reserving = EventOfferRoute(offerID: offer.id) } else { state.openCRM("/crm/events/\(eventID)?tab=offer") }
+    }
+
+    /// Po wysyłce lub rezerwacji: oferty, status wydarzenia i sprzęt.
+    private func refresh() {
+        Task {
+            await store.loadTab(eventID, "offer")
+            await store.loadOverview(eventID)
+        }
+    }
+
     private func remove(_ offer: OfferTabData.Offer) async {
         deleting = nil
         busy = offer.id
@@ -187,4 +212,10 @@ struct OfferTabData: Decodable {
             state.error = store.failureText(error, "Błąd podczas usuwania oferty")
         }
     }
+}
+
+/// Okno oferty otwierane z zakładki wydarzenia (wysyłka, rezerwacja sprzętu).
+struct EventOfferRoute: Identifiable {
+    let offerID: String
+    var id: String { offerID }
 }

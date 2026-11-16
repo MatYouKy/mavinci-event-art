@@ -196,7 +196,7 @@ enum ProductSectionFields {
             }
             ProductRequirementsSection(store: store, productID: productID, extras: extras)
         } else {
-            ProductExtrasBlock(store: store, productID: productID)
+            ProductExtrasBlock(store: store, productID: productID).id("product-section-packages")
         }
     }
 
@@ -214,7 +214,7 @@ enum ProductSectionFields {
             ProductLiveSection(store: store, productID: productID, resources: resources)
             ProductClausesSection(store: store, productID: productID, resources: resources).id("product-section-clauses")
         } else {
-            ProductResourcesBlock(store: store, productID: productID)
+            ProductResourcesBlock(store: store, productID: productID).id("product-section-resources")
         }
     }
 
@@ -257,7 +257,8 @@ enum ProductSectionFields {
         }
     }
 
-    /// „Uzupełnij” / „Pokaż” przy braku: sekcja na Macu (z edycją) albo karta w CRM dla sekcji, których tu jeszcze nie ma.
+    /// „Uzupełnij” / „Pokaż” przy braku: przewinięcie do sekcji na Macu (z edycją). Przy pakietach sprzęt i obsada są w pakiecie
+    /// (menu pakietu → „Edytuj” → „Sprzęt i obsada”), więc braki prowadzą do sekcji „Pakiety”.
     func show(_ check: ProductDetail.Check, proxy: ScrollViewProxy) {
         guard let detail else { return }
         switch check.anchor {
@@ -273,17 +274,18 @@ enum ProductSectionFields {
                 begin("presentation", detail)
             }
         case "product-section-packages":
-            if store.extras[productID] != nil { withAnimation { proxy.scrollTo("product-section-packages", anchor: .top) } }
-            else { state.openCRM("/crm/offers/products/\(productID)") }
-        case "product-section-equipment", "product-section-staff", "product-section-clauses":
-            // Sekcje części B — gdy produkt ma pakiety, sprzęt i obsada są w pakietach (na razie w CRM).
-            if let resources = store.resources[productID], !(resources.packages && check.anchor != "product-section-clauses") {
-                withAnimation { proxy.scrollTo(check.anchor, anchor: .top) }
+            withAnimation { proxy.scrollTo("product-section-packages", anchor: .top) }
+        case "product-section-equipment", "product-section-staff":
+            if store.resources[productID]?.packages ?? detail.packagePricing {
+                withAnimation { proxy.scrollTo("product-section-packages", anchor: .top) }
+                state.notice = "Sprzęt i obsadę uzupełnisz w pakiecie: menu pakietu → „Edytuj” → „Sprzęt i obsada”."
             } else {
-                state.openCRM("/crm/offers/products/\(productID)")
+                withAnimation { proxy.scrollTo(store.resources[productID] == nil ? "product-section-resources" : check.anchor, anchor: .top) }
             }
+        case "product-section-clauses":
+            withAnimation { proxy.scrollTo(store.resources[productID] == nil ? "product-section-resources" : check.anchor, anchor: .top) }
         default:
-            state.openCRM("/crm/offers/products/\(productID)")
+            withAnimation { proxy.scrollTo(check.anchor, anchor: .top) }
         }
     }
 

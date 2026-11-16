@@ -1,10 +1,11 @@
 import 'server-only';
 import { can, type NativeContext } from './auth';
 import { fail } from './offers';
-import { activeVariants, addonOf, draftOf, evaluate, problem, productPackages, unitOf } from './offerItems';
+import { activeVariants, addonOf, draftOf, evaluate, optionsFor, problem, productPackages, unitOf } from './offerItems';
 import { configurationNeedsTables, audienceTables, resolveAudienceConfiguration, type OfferAudience } from '@/lib/CRM/Offers/audiencePricing';
 import { validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
 import { formatEventAssumptionItems, normalizeEventAssumptionItems } from '@/lib/CRM/Offers/eventAssumptions';
+import { productConfigurationSnapshot } from '@/lib/CRM/Offers/modularProduct';
 import { productReadiness, READINESS_CHECK_SHORT, type ProductReadiness } from '@/lib/CRM/Offers/productReadiness';
 
 /*
@@ -14,6 +15,7 @@ import { productReadiness, READINESS_CHECK_SHORT, type ProductReadiness } from '
  * oraz gotowość produktów do oferty (`productReadiness` — ta sama reguła co katalog i karta produktu). Mac trzyma szkic
  * kreatora; wycenę pozycji liczą funkcje z `offerItems.ts` (`evaluate`, jak okna pozycji CRM), a zapis odtwarza
  * `submitOfferWizard` (oferta, pozycje, podsumowanie z dokładnym rabatem, znacznik braków sprzętu w wydarzeniu).
+ * Produkty z konfiguratorem (scena, LED): pozycja niesie konfigurację z `op=modular` (`modularConfigurator.ts`).
  */
 
 type Row = Record<string, any>;
@@ -144,6 +146,8 @@ const productView = (row: Row, imageUrl: string | null) => {
       quantitySource: variant.quantity_source || null,
       description: text(variant.description || variant.short_description || row.description),
     })),
+    // Pełne pakiety do zmian tylko w tej ofercie (sprzęt i obsada, koszty — jak edytory w kroku katalogu CRM).
+    packageOptions: packages,
     packages: packages.map((option) => ({
       id: String(option.id),
       name: text(option.name),
@@ -318,16 +322,17 @@ async function evaluateItems(ctx: NativeContext, body: Row, audience: OfferAudie
         needsTables: false, audienceRequired: false, error, submitError: `${name || 'Produkt'}: ${error}`,
       };
     }
+    // Produkt z konfiguratorem: konfiguracja z Maca (bez niej — świeża z karty produktu, kalkulator poprosi o pobranie
+    // sprzętu); zwykły produkt nigdy nie dostaje konfiguracji modułowej.
     if (product.configuration_schema) {
-      const error = 'Ten produkt ma konfigurator (scena, LED) — dodaj go w CRM.';
-      return {
-        key, productId, product, name: name || text(product.name), description, unit: 'zestaw', quantity: 0, days: 1, baseUnitPrice: 0,
-        unitPrice: 0, discountPercent: 0, subtotal: 0, configuration: null, variantId: null, showVariants: false, showVariantPrices: false,
-        needsTables: false, audienceRequired: false, error, submitError: `${name || text(product.name)}: ${error}`,
-      };
+      draft.modular ||= productConfigurationSnapshot(product.configuration_schema);
+      draft.variantId = null;
+      draft.packageId = '';
+    } else {
+      draft.modular = null;
     }
     const variant = activeVariants(product).find((row) => row.id === draft.variantId) || null;
-    const options = productPackages(product);
+    const options = optionsFor(draft, productPackages(product));
     const result = evaluate({ ...draft, variantId: variant?.id || null, discountPercent: Number.isFinite(draft.discountPercent) ? draft.discountPercent : 0 }, options, audience);
     let error = problem(draft, result);
     let submitError: string | null = null;
@@ -355,8 +360,9 @@ async function evaluateItems(ctx: NativeContext, body: Row, audience: OfferAudie
       subtotal: quantity * safeDays * (Number.isFinite(result.price) ? result.price : 0) * (1 - discount / 100),
       configuration: result.configuration as Row,
       variantId: result.selectedPackage ? null : variant?.id || null,
-      showVariants: draft.showVariants,
-      showVariantPrices: draft.showVariantPrices,
+      // Konfiguracja zestawu ma w PDF pełną stronę bez wariantów (jak `addProduct` w kreatorze CRM).
+      showVariants: draft.modular ? false : draft.showVariants,
+      showVariantPrices: draft.modular ? false : draft.showVariantPrices,
       needsTables: configurationNeedsTables(result.configuration),
       audienceRequired: result.audienceRequired,
       error,

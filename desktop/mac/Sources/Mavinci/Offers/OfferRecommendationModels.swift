@@ -8,6 +8,8 @@ struct OfferRecommendationView: Decodable, Identifiable, Equatable {
     var raw: JSONValue
     var imageUrl: String?
     var modular: Bool
+    /// Zestaw z własną ceną zamiast ceny z kalkulatora.
+    var modularManual: Bool?
     var configured: Bool
     var basePrice: Double
     var addons: [ProductAddonItem]
@@ -37,6 +39,8 @@ struct OfferRecommendationView: Decodable, Identifiable, Equatable {
         return value.isEmpty ? "compact" : value
     }
     var net: Double { quantity * days * unitPrice }
+    /// Zapisana konfiguracja zestawu (scena, LED).
+    var modularSnapshot: JSONValue? { raw.object["pricing_configuration"]?.object["modular"] }
 
     func with(layout: String) -> OfferRecommendationView {
         var copy = self

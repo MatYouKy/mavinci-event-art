@@ -52,6 +52,7 @@ import {
   saveOfferTemplateTable,
   uploadOfferTemplateBackground,
 } from '@/lib/native/offerTemplates';
+import { configureModular } from '@/lib/native/modularConfigurator';
 import {
   buildOfferRecommendation,
   offerRecommendations,
@@ -83,7 +84,8 @@ export const maxDuration = 300;
  * POST op=substitutionSave | reservationConfirm. Kreator nowej oferty (`src/lib/native/offerWizard.ts`): GET op=wizardEvents |
  * wizardSetup&event=…; POST op=wizardPreview | wizardCreate | wizardContact. Szablony ofert (`src/lib/native/offerTemplates.ts`):
  * GET op=templates | templateEditor&id=…; POST op=templateCategorySave | templateCreate | templateDelete | templateBackground |
- * templateBackgroundDelete | templateFieldsSave | templateTableSave.
+ * templateBackgroundDelete | templateFieldsSave | templateTableSave. Konfigurator produktów modułowych — scena, LED
+ * (`src/lib/native/modularConfigurator.ts`): POST op=modular (konfiguracja po zmianach z widokiem dla Maca).
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -181,6 +183,7 @@ export async function POST(request: Request) {
       case 'wizardPreview': return nativeJson(await previewOfferWizard(ctx, body));
       case 'wizardCreate': return nativeJson(await createOfferFromWizard(ctx, body));
       case 'wizardContact': return nativeJson(await addOfferWizardContact(ctx, body));
+      case 'modular': return nativeJson(await configureModular(ctx, body));
       case 'templateCategorySave': return nativeJson(await saveOfferTemplateCategory(ctx, body));
       case 'templateCreate': return nativeJson(await createOfferPageTemplate(ctx, body));
       case 'templateDelete': return nativeJson(await deleteOfferPageTemplate(ctx, body));

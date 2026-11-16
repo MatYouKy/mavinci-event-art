@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: „Zobacz, co warto dobrać do takiego wydarzenia” (`OfferRecommendationsEditor`) — propozycje dodatkowe z indywidualnymi
 // cenami, poza wyceną i rezerwacją sprzętu. Jak pozycje oferty: „Dodaj produkt”, kolejność, układ w PDF, edycja i usuwanie
 // zapisują się od razu (`save_offer_recommendations` ze sprawdzeniem, że nikt w międzyczasie nie zmienił propozycji).
+// Propozycje z konfiguratorem (scena, LED) zmienia się w oknie edycji panelem konfiguratora (`ModularConfigurator.swift`).
 
 @MainActor struct OfferRecommendationsCard: View {
     @ObservedObject var store: OffersStore
@@ -223,6 +224,11 @@ import SwiftUI
     @State private var preview: OfferRecommendationPreview?
     @State private var saving = false
     @State private var problem: String?
+    /// Zestaw (scena, LED): konfigurator, konfiguracja po zmianach i własna cena zamiast ceny z kalkulatora.
+    @State private var configurator: ModularConfiguratorModel?
+    @State private var modularSnapshot: JSONValue?
+    @State private var modularRevision = 0
+    @State private var manual: Bool
 
     init(store: OffersStore, offerID: String, item: OfferRecommendationView, vatRate: Double, canEdit: Bool,
          onSave: @escaping ([String: JSONValue]) async -> String?) {
@@ -239,6 +245,7 @@ import SwiftUI
         _basePrice = State(initialValue: item.basePrice)
         _discount = State(initialValue: item.discountPercent)
         _addons = State(initialValue: item.addons)
+        _manual = State(initialValue: item.modularManual == true)
     }
 
     private static func value(_ number: Double?) -> JSONValue {
@@ -253,7 +260,12 @@ import SwiftUI
         if description != item.description { patch["description"] = .string(description) }
         if days != item.days { patch["days"] = Self.value(days) }
         if quantity != item.quantity { patch["quantity"] = Self.value(quantity) }
-        if !item.modular {
+        if item.modular {
+            if modularRevision > 0, let modularSnapshot { patch["modular"] = modularSnapshot }
+            if manual != (item.modularManual == true) { patch["modularManual"] = .bool(manual) }
+            if manual && basePrice != item.basePrice { patch["basePrice"] = Self.value(basePrice) }
+            if discount != item.discountPercent { patch["discountPercent"] = Self.value(discount) }
+        } else {
             if basePrice != item.basePrice { patch["basePrice"] = Self.value(basePrice) }
             if item.configured && discount != item.discountPercent { patch["discountPercent"] = Self.value(discount) }
             if item.configured && addons != item.addons { patch["addons"] = .array(addons.map(\.json)) }
@@ -262,10 +274,28 @@ import SwiftUI
     }
 
     private var previewKey: String {
+        var key = patch
+        if key["modular"] != nil { key["modular"] = .number(Double(modularRevision)) }
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
-        guard let data = try? encoder.encode(JSONValue.object(patch)) else { return "" }
+        guard let data = try? encoder.encode(JSONValue.object(key)) else { return "" }
         return String(decoding: data, as: UTF8.self)
+    }
+
+    /// Zmiana zestawu (jak `onChange` konfiguratora w oknie edycji CRM): nazwa i opis z konfiguracji.
+    private func applyConfiguration(_ snapshot: JSONValue, _ view: ModularView) {
+        modularSnapshot = snapshot
+        modularRevision += 1
+        name = String(view.title.prefix(160))
+        description = String(view.scopeText.prefix(5000))
+    }
+
+    /// Cena bazowa zestawu: własna albo z kalkulatora (po ostatnim podglądzie).
+    private var modularPrice: Binding<Double?> {
+        Binding(get: { manual ? basePrice : (preview?.item.basePrice ?? item.basePrice) }, set: { value in
+            manual = true
+            basePrice = value
+        })
     }
 
     private var shown: OfferRecommendationView { preview?.item ?? item }
@@ -279,12 +309,11 @@ import SwiftUI
             .padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 10)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    if item.modular {
-                        HStack {
-                            Text("Konfigurację sceny / LED i cenę tej propozycji zmienisz w CRM.").font(.callout).foregroundStyle(.secondary)
-                            Spacer()
-                            Button { state.openCRM("/crm/offers/\(offerID)") } label: { Label("Otwórz w CRM", systemImage: "safari") }
-                                .controlSize(.small)
+                    if item.modular, let configurator {
+                        ModularConfiguratorPanel(model: configurator, disabled: !canEdit || saving)
+                        ModularPriceHint(calculatorTotal: configurator.view?.calculatorTotal, manual: manual, disabled: !canEdit || saving) {
+                            manual = false
+                            basePrice = configurator.view?.calculatorTotal ?? basePrice
                         }
                     }
                     ProductField(label: "Nazwa proponowanego produktu") {
@@ -297,7 +326,10 @@ import SwiftUI
                     HStack(alignment: .top, spacing: 12) {
                         ProductField(label: "Liczba dni") { ProductNumberField(value: $days, nullable: true).frame(width: 90) }
                         ProductField(label: "Ilość (\(item.unit))") { ProductNumberField(value: $quantity, nullable: true).frame(width: 100) }
-                        if !item.modular {
+                        if item.modular {
+                            ProductField(label: "Cena bazowa netto") { ProductNumberField(value: modularPrice, nullable: true, suffix: "zł").frame(width: 150) }
+                            ProductField(label: "Rabat (%)") { ProductNumberField(value: $discount, nullable: true, suffix: "%").frame(width: 100) }
+                        } else {
                             ProductField(label: item.configured ? "Cena bazowa netto" : "Cena jednostkowa netto") {
                                 ProductNumberField(value: $basePrice, nullable: true, suffix: "zł").frame(width: 150)
                             }
@@ -340,8 +372,15 @@ import SwiftUI
             }
             .padding(18)
         }
-        .frame(width: 760)
+        .frame(width: item.modular ? 900 : 760)
         .background(theme.page)
+        .onAppear {
+            guard item.modular, configurator == nil, let snapshot = item.modularSnapshot else { return }
+            let next = ModularConfiguratorModel(store: store, snapshot: snapshot)
+            next.quantity = item.quantity
+            next.onChange = { snapshot, view in applyConfiguration(snapshot, view) }
+            configurator = next
+        }
         .task(id: previewKey) {
             if patch.isEmpty {
                 preview = nil
@@ -356,6 +395,7 @@ import SwiftUI
     private func save() async {
         problem = nil
         saving = true
+        await configurator?.settle()
         let failure = await onSave(patch)
         saving = false
         if let failure { problem = failure } else { dismiss() }

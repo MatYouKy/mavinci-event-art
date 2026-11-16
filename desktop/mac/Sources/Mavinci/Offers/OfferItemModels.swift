@@ -2,6 +2,7 @@ import Foundation
 
 // MARK: Oferty, część B2 — pozycje oferty: katalog do dodawania (`op=itemCatalog`), dane pozycji (`op=itemEditor`), szkic
 // wyceny i podgląd liczony na serwerze (`op=itemPreview`, te same funkcje co okna CRM), liczba osób do wyceny (`op=audienceSave`).
+// Produkty z konfiguratorem (scena, LED): szkic niesie konfigurację (`modular`, z `op=modular`) i znacznik własnej ceny.
 
 /// Liczba osób i stołów oferty (jak `OfferAudience`).
 struct OfferAudience: Codable, Equatable {
@@ -45,8 +46,31 @@ struct OfferItemDraft: Codable, Equatable {
     var showVariantPrices: Bool
     var name: String?
     var vatRate: Double?
+    /// Konfiguracja produktu modułowego (scena, LED) — wtedy bez pakietów, wariantów i dodatków.
+    var modular: JSONValue? = nil
+    /// Własna cena bazowa zamiast ceny z kalkulatora.
+    var modularManual: Bool? = nil
+    /// Licznik zmian konfiguracji — klucz podglądu bez kodowania całej konfiguracji (poza JSON).
+    var modularRevision = 0
+    /// Pakiety zmienione w tej ofercie (cena, zakres, cena z liczby osób, sprzęt i obsada, koszty); `nil` — jak zapisane.
+    var packageOptions: [JSONValue]? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case variantId, packageId, quantity, quantitySource, days, unitPrice, discountPercent, addons, variantPrices, showVariants
+        case showVariantPrices, name, vatRate, modular, modularManual, packageOptions
+    }
 
     private static func value(_ number: Double) -> JSONValue { number.isFinite ? .number(number) : .null }
+
+    /// Zmiana szkicu do odświeżenia podglądu (konfiguracja jako numer zmiany, klucze posortowane).
+    var signature: String {
+        var object = json.object
+        if modular != nil { object["modular"] = .number(Double(modularRevision)) }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard let data = try? encoder.encode(JSONValue.object(object)) else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
 
     var json: JSONValue {
         var object: [String: JSONValue] = [
@@ -64,6 +88,11 @@ struct OfferItemDraft: Codable, Equatable {
         ]
         if let name { object["name"] = .string(name) }
         if let vatRate { object["vatRate"] = Self.value(vatRate) }
+        if let modular {
+            object["modular"] = modular
+            object["modularManual"] = .bool(modularManual == true)
+        }
+        if let packageOptions { object["packageOptions"] = .array(packageOptions) }
         return .object(object)
     }
 }
@@ -81,6 +110,8 @@ struct OfferCatalogProduct: Decodable, Identifiable, Hashable {
     var quantitySource: String
     var variants: [OfferItemVariant]
     var packages: [OfferItemPackage]
+    /// Pełne pakiety (sprzęt i obsada, koszty, cena z liczby osób) do zmian tylko w tej ofercie.
+    var packageOptions: [JSONValue]?
     var productAddons: [ProductAddonItem]
     var proposal: String?
     var initial: OfferItemDraft
@@ -111,10 +142,15 @@ struct OfferItemEditorData: Decodable {
     var vatRate: Double
     var variants: [OfferItemVariant]
     var packages: [OfferItemPackage]
+    var packageOptions: [JSONValue]?
+    /// Sprzęt i obsada pakietów z karty produktu („Pobierz sprzęt i obsadę z produktu”).
+    var catalogResources: [String: JSONValue]?
     var productAddons: [ProductAddonItem]
     var productQuantitySource: String
     var productBasePrice: Double
     var canLoadProductAddons: Bool
+    /// „Przejdź na konfigurator — przelicz tę pozycję”: wcześniejsza wycena produktu, który ma teraz konfigurator.
+    var canUseConfigurator: Bool?
     var allowIndividual: Bool
     var draft: OfferItemDraft
 }
