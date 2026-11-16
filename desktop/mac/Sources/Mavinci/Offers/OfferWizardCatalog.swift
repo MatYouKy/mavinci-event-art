@@ -368,6 +368,7 @@ import SwiftUI
                     if !product.readiness.ready {
                         Label("Niegotowy do oferty — \(product.readiness.summary.lowercased())", systemImage: "exclamationmark.triangle")
                             .font(.caption).foregroundStyle(.orange).lineLimit(2)
+                            .help("Niegotowy do oferty — \(product.readiness.summary.lowercased())")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -379,10 +380,22 @@ import SwiftUI
                     Text("dni")
                 }
                 .font(.caption).foregroundStyle(.secondary)
-                Text("\(OfferText.amount(evaluated?.unitPrice ?? item.draft.unitPrice)) zł").font(.caption).foregroundStyle(.secondary)
-                    .frame(width: 90, alignment: .trailing)
-                Text("\(OfferText.amount(evaluated?.subtotal ?? 0)) zł").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+                // Cena bazowa netto / dzień edytowana wprost w wierszu — to samo pole co w „Konfiguruj zakres i dodatki”.
+                VStack(alignment: .trailing, spacing: 1) {
+                    ProductNumberField(value: Binding(get: { Optional(item.draft.unitPrice) }, set: { value in
+                        model.update(itemID) { entry in entry.draft.unitPrice = max(0, value ?? 0) }
+                    }), suffix: "zł")
+                    .help("Cena bazowa netto za dzień, bez dodatków")
+                    if let evaluated, evaluated.unitPrice - evaluated.baseUnitPrice > 0.004 {
+                        Text("z dodatkami \(OfferText.amount(evaluated.unitPrice)) zł").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                .font(.caption)
+                .frame(width: 120, alignment: .trailing)
+                // Bez przeliczenia z serwera nie pokazujemy 0,00 zł — wartość pojawi się po przeliczeniu.
+                Text(Self.subtotalText(evaluated)).font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
                     .frame(width: 100, alignment: .trailing)
+                    .help(evaluated == nil ? "Wartość pojawi się po przeliczeniu oferty" : "")
                 Button(role: .destructive) { model.remove(itemID) } label: { Image(systemName: "trash") }
                     .buttonStyle(.borderless).help("Usuń z oferty")
             }
@@ -455,6 +468,11 @@ import SwiftUI
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
+    }
+
+    static func subtotalText(_ evaluated: OfferWizardPreview.Item?) -> String {
+        guard let evaluated else { return "—" }
+        return "\(OfferText.amount(evaluated.subtotal)) zł"
     }
 
     private func configureLabel(_ item: OfferWizardItem) -> String {
@@ -548,7 +566,14 @@ import SwiftUI
             }
         }
         if let error = model.previewError {
-            Text(error).font(.caption).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 8) {
+                Text(error).font(.caption).foregroundStyle(.red)
+                Button("Przelicz ponownie") { model.schedulePreview() }
+                    .controlSize(.small)
+                    .disabled(model.previewing)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -649,7 +674,7 @@ import SwiftUI
                     if !item.description.isEmpty { Text(item.description).font(.caption).foregroundStyle(.secondary) }
                     Text("Ilość: \(OfferText.number(evaluated?.quantity ?? item.draft.quantity)) × \(OfferText.number(evaluated?.days ?? item.draft.days)) dni × \(OfferText.amount(evaluated?.unitPrice ?? item.draft.unitPrice)) zł netto")
                         .font(.caption)
-                    Text("Netto: \(OfferText.amount(evaluated?.subtotal ?? 0)) zł").font(.callout.weight(.medium)).foregroundStyle(theme.accent)
+                    Text("Netto: \(OfferWizardAddedRow.subtotalText(evaluated))").font(.callout.weight(.medium)).foregroundStyle(theme.accent)
                 }
                 if let product, !product.readiness.ready {
                     Label("Niegotowy do oferty — \(product.readiness.summary.lowercased())", systemImage: "exclamationmark.triangle")

@@ -289,20 +289,39 @@ extension OffersStore {
 
     private func runPreview(_ current: Int) async {
         previewing = true
-        do {
-            let next = try await store.wizardPreview(draftBody)
-            guard current == revision else { return }
-            preview = next
-            previewError = nil
-            if warnConflicts, !next.conflicts.isEmpty {
-                store.workspace?.notice = "Uwaga: braki sprzętu w terminie eventu. Zobacz szczegóły poniżej."
+        // Chwilowa niedostępność serwera (502/503/504, zerwane połączenie, np. przy restarcie CRM) — jedna ponowna próba
+        // po 1,5 s, zanim pokażemy błąd. Błędy danych (4xx) od razu.
+        for attempt in 0..<2 {
+            do {
+                let next = try await store.wizardPreview(draftBody)
+                guard current == revision else { return }
+                preview = next
+                previewError = nil
+                if warnConflicts, !next.conflicts.isEmpty {
+                    store.workspace?.notice = "Uwaga: braki sprzętu w terminie eventu. Zobacz szczegóły poniżej."
+                }
+                warnConflicts = false
+                break
+            } catch {
+                guard current == revision else { return }
+                if attempt == 0, Self.isTransient(error) {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    guard current == revision, !Task.isCancelled else { return }
+                    continue
+                }
+                previewError = store.failureText(error, "Nie udało się przeliczyć oferty.")
             }
-            warnConflicts = false
-        } catch {
-            guard current == revision else { return }
-            previewError = store.failureText(error, "Nie udało się przeliczyć oferty.")
         }
         if current == revision { previewing = false }
+    }
+
+    private static func isTransient(_ error: Error) -> Bool {
+        if let failure = error as? NativeFailure { return [502, 503, 504].contains(failure.status) }
+        if let url = error as? URLError {
+            let codes: [URLError.Code] = [.timedOut, .networkConnectionLost, .cannotConnectToHost]
+            return codes.contains(url.code)
+        }
+        return false
     }
 
     func evaluated(_ item: OfferWizardItem) -> OfferWizardPreview.Item? {

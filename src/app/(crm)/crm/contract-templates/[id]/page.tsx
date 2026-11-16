@@ -4,6 +4,16 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { ArrowLeft, Edit, Printer } from 'lucide-react';
+import { contractFooterLogoSrc, contractLogoSrc } from '@/lib/CRM/contracts/contractPagination';
+
+// Stopka jak w edytorze szablonu, gdy szablon nie ma własnej (stare szablony).
+const DEFAULT_FOOTER = {
+  companyName: 'EVENT RULERS',
+  tagline: 'Więcej niż Wodzireje!',
+  website: 'www.eventrulers.pl',
+  email: 'biuro@eventrulers.pl',
+  phone: '698-212-279',
+};
 
 interface ContractTemplate {
   id: string;
@@ -70,6 +80,14 @@ export default function ContractTemplateViewPage() {
     );
   }
 
+  // Logo i stopka z ustawień szablonu — ta sama reguła co edytor, wydruk i umowa (contractLogoSrc).
+  const settings = template.page_settings || {};
+  const headerLogo = contractLogoSrc(settings.selectedLogo);
+  const showFooter = settings.selectedFooter !== 'none';
+  const footerLogo = settings.selectedFooter === 'minimal' ? null : contractFooterLogoSrc(settings);
+  const footer = { ...DEFAULT_FOOTER, ...(settings.footerContent || {}) };
+  const footerContact = [footer.website, footer.email, footer.phone ? `tel: ${footer.phone}` : ''].filter(Boolean).join(' | ');
+
   return (
     <div className="min-h-screen bg-[#0a0d1a]">
       <div className="mx-auto max-w-5xl p-6 print:p-0">
@@ -118,13 +136,16 @@ export default function ContractTemplateViewPage() {
         </div>
 
         <div className="contract-document bg-white shadow-lg print:shadow-none">
+          {/* Logo z ustawień szablonu („Logo w nagłówku”, także „Bez logo”) — jak w edytorze i wydruku. */}
           <div className="contract-header mb-8 text-center">
-            <img
-              src="/erulers_logo_vect.png"
-              alt="EVENT RULERS"
-              className="mx-auto mb-4"
-              style={{ height: '60px' }}
-            />
+            {headerLogo && (
+              <img
+                src={headerLogo}
+                alt="Logo"
+                className="mx-auto mb-4"
+                style={{ height: '60px' }}
+              />
+            )}
           </div>
 
           {/* Render logos */}
@@ -172,7 +193,7 @@ export default function ContractTemplateViewPage() {
                     dangerouslySetInnerHTML={{ __html: pageContent }}
                   />
 
-                  <div
+                  {showFooter && <div
                     style={{
                       position: 'absolute',
                       bottom: '15mm',
@@ -185,21 +206,22 @@ export default function ContractTemplateViewPage() {
                       paddingTop: '10px',
                     }}
                   >
-                    <div
-                      style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}
-                    >
-                      <img
-                        src="/erulers_logo_vect.png"
-                        alt="EVENT RULERS"
-                        style={{ height: '30px' }}
-                      />
-                    </div>
+                    {footerLogo && (
+                      <div
+                        style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}
+                      >
+                        <img
+                          src={footerLogo}
+                          alt="Logo"
+                          style={{ height: '30px' }}
+                        />
+                      </div>
+                    )}
                     <p style={{ margin: 0 }}>
-                      <strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em>
+                      <strong>{footer.companyName}</strong>
+                      {footer.tagline && <> – <em>{footer.tagline}</em></>}
                     </p>
-                    <p style={{ margin: '5px 0 0 0' }}>
-                      www.eventrulers.pl | biuro@eventrulers.pl | tel: 698-212-279
-                    </p>
+                    {footerContact && <p style={{ margin: '5px 0 0 0' }}>{footerContact}</p>}
                     {pageIndex > 0 && template.page_settings.pages.length > 1 && (
                       <div
                         style={{
@@ -213,7 +235,7 @@ export default function ContractTemplateViewPage() {
                         Strona {pageIndex + 1}
                       </div>
                     )}
-                  </div>
+                  </div>}
                 </div>
               ))}
             </div>

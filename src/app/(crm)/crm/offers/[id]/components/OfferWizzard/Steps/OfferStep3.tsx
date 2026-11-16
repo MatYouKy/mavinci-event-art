@@ -588,7 +588,7 @@ export default function OfferStep3({
                 <tr className="h-9">
                   <th className="w-[31%] px-3 font-medium">Produkt</th>
                   <th className="w-[8%] px-3 font-medium">Ilość</th>
-                  <th className="w-[14%] px-3 font-medium">Cena netto</th>
+                  <th className="w-[14%] px-3 font-medium">Cena netto / dzień</th>
                   <th className="w-[14%] px-3 font-medium">Wartość</th>
                   <th className="w-[28%] px-3 font-medium">Ustawienia PDF</th>
                   <th className="w-[5%] px-2" aria-label="Akcje" />
@@ -599,6 +599,11 @@ export default function OfferStep3({
                   const product = productById.get(item.product_id);
                   const selection = item.pricing_configuration?.product_package;
                   const selectedPackage = selection?.options.find(p=>p.id===selection.selected_id);
+                  // Cena bazowa netto / dzień — wiersz i „Konfiguruj zakres i dodatki” zmieniają ją tak samo (z dodatkami i modułami).
+                  const setBasePrice = (target: typeof item, value: number) => {
+                    const c = target.pricing_configuration?.modular ? createModularConfiguration(target.pricing_configuration.modular, value) : { ...(target.pricing_configuration || createConfiguration(target.unit_price)), base_unit_price: value };
+                    updateOfferItem(target.id, { pricing_configuration: c, unit_price: configurationPrice(c) });
+                  };
                   const updatePackage = (patch: Partial<ProductSalesPackage>) => {
                     if (!selection || !selectedPackage || !item.pricing_configuration) return;
                     updateOfferItem(item.id, {pricing_configuration: {...item.pricing_configuration, product_package: {...selection, options: selection.options.map(p=>p.id===selectedPackage.id?{...p,...patch}:p)}}});
@@ -612,7 +617,9 @@ export default function OfferStep3({
                         {item.quantity} {item.unit || 'szt.'} × <input aria-label={`Liczba dni: ${item.name}`} type="number" min="1" max="3650" step="1" value={item.days ?? 1} onChange={e => updateOfferItem(item.id, { days: Number(e.target.value) })} className="w-16 rounded-md bg-black/15 px-2 py-1" /> dni
                       </td>
                       <td className="whitespace-nowrap px-3 text-[#e5e4e2]/65">
-                        {formatMoney(item.unit_price)} zł
+                        {/* Cena bazowa netto / dzień edytowana wprost w wierszu — to samo pole co w „Konfiguruj zakres i dodatki”. */}
+                        <input aria-label={`Cena bazowa netto za dzień: ${item.name}`} title="Cena bazowa netto za dzień, bez dodatków" type="number" min="0" step="0.01" value={item.pricing_configuration?.base_unit_price ?? item.unit_price} onChange={e => setBasePrice(item, e.target.valueAsNumber)} className="w-24 rounded-md bg-black/15 px-2 py-1 text-right" /> zł
+                        {item.pricing_configuration && Math.abs(item.unit_price - item.pricing_configuration.base_unit_price) > 0.004 && <span className="block text-[11px] text-[#e5e4e2]/45">z dodatkami {formatMoney(item.unit_price)} zł</span>}
                       </td>
                       <td className="whitespace-nowrap px-3 font-medium text-[#d3bb73]">
                         {formatMoney(item.subtotal)} zł
@@ -634,10 +641,7 @@ export default function OfferStep3({
                       {item.pricing_configuration?.modular && <ModularProductConfigurator quantity={item.quantity} value={item.pricing_configuration.modular} onChange={modular => updateOfferItem(item.id, { pricing_configuration:createModularConfiguration(modular, item.pricing_configuration?.modular_price_source === 'manual' ? item.pricing_configuration.base_unit_price : undefined), name:modularTitle(modular), description:modularScope(modular).join('\n') })} />}
                       {item.pricing_configuration?.modular && <ModularPriceHint value={item.pricing_configuration.modular} manual={item.pricing_configuration.modular_price_source === 'manual'} onReset={() => updateOfferItem(item.id, { pricing_configuration: createModularConfiguration(item.pricing_configuration!.modular!) })} />}
                       {renderAddedSelection(item, product)}
-                      <label className="block py-2">Liczba dni<input type="number" min="1" max="3650" step="1" value={item.days ?? 1} onChange={e => updateOfferItem(item.id, { days: Number(e.target.value) })} className="ml-2 rounded-lg bg-black/15 px-2 py-1" /></label><label className="block py-2">Cena bazowa netto / dzień<input type="number" min="0" step="0.01" value={item.pricing_configuration?.base_unit_price ?? item.unit_price} onChange={e => {
-                        const c = item.pricing_configuration?.modular ? createModularConfiguration(item.pricing_configuration.modular, e.target.valueAsNumber) : { ...(item.pricing_configuration || createConfiguration(item.unit_price)), base_unit_price: e.target.valueAsNumber };
-                        updateOfferItem(item.id, { pricing_configuration: c, unit_price: configurationPrice(c) });
-                      }} className="ml-3 rounded bg-black/20 p-2" /></label>
+                      <label className="block py-2">Liczba dni<input type="number" min="1" max="3650" step="1" value={item.days ?? 1} onChange={e => updateOfferItem(item.id, { days: Number(e.target.value) })} className="ml-2 rounded-lg bg-black/15 px-2 py-1" /></label><label className="block py-2">Cena bazowa netto / dzień<input type="number" min="0" step="0.01" value={item.pricing_configuration?.base_unit_price ?? item.unit_price} onChange={e => setBasePrice(item, e.target.valueAsNumber)} className="ml-3 rounded bg-black/20 p-2" /></label>
                       {!item.pricing_configuration?.modular && <ProductAddonsEditor value={item.pricing_configuration?.addons || []} onChange={addons => {
                         const c = { ...(item.pricing_configuration || createConfiguration(item.unit_price)), addons };
                         updateOfferItem(item.id, { pricing_configuration: c, unit_price: configurationPrice(c) });
