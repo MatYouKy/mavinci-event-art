@@ -38,7 +38,12 @@ import AppKit
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
 
-    @AppStorage("eventCard.overview") private var overviewShown = true
+    /// Przegląd jest domyślnie otwarty. Na stałe chowa go tylko przycisk „Przegląd” / ⌥⌘I (nowy klucz — dotychczas zapamiętane
+    /// ukrycie, także samoczynne przy wąskim oknie, nie obowiązuje). Zwinięcie panelu przeciągnięciem lub przez system działa
+    /// tylko w tej karcie — kolejne wydarzenie otwiera się z Przeglądem.
+    @AppStorage("eventCard.overviewHidden") private var overviewHidden = false
+    @State private var overviewCollapsed = false
+    private var overviewShown: Bool { !overviewHidden && !overviewCollapsed }
     /// Szuflada „Wydruki” pod przyciskiem drukarki.
     @State private var printsShown = false
     /// „Edytuj event” (`EditEventModalNew`).
@@ -328,7 +333,11 @@ import AppKit
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         if cached?.page.kind == "full" && flags?.tabs.contains(where: { $0.id == "overview" }) == true {
             ToolbarItem(placement: .primaryAction) {
-                Button { overviewShown.toggle() } label: { Label("Przegląd", systemImage: "sidebar.trailing") }
+                Button {
+                    // Jawny wybór pracownika — zapamiętany na tym Macu.
+                    overviewHidden = overviewShown
+                    overviewCollapsed = false
+                } label: { Label("Przegląd", systemImage: "sidebar.trailing") }
                     .help("Pokaż lub ukryj Przegląd: kroki realizacji, kontrolę przed wydarzeniem i najważniejsze informacje (⌥⌘I)")
                     .keyboardShortcut("i", modifiers: [.command, .option])
             }
@@ -430,7 +439,10 @@ import AppKit
         // Karta nie wymusza minimalnej szerokości: szerokie zakładki (Agenda, Sprzęt) nie mogą chować paska bocznego aplikacji
         // przy panelu Przegląd — treść dopasowuje się do miejsca, które zostaje (MacBook Air 13" i Pro 16").
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .inspector(isPresented: Binding(get: { hasOverview && overviewShown }, set: { if hasOverview { overviewShown = $0 } })) {
+        .inspector(isPresented: Binding(get: { hasOverview && overviewShown }, set: { shown in
+            guard hasOverview else { return }
+            if shown { overviewHidden = false; overviewCollapsed = false } else { overviewCollapsed = true }
+        })) {
             EventOverviewTab(store: store, eventID: eventID, page: page, navigate: { tab = $0 }, sidebar: true)
                 .inspectorColumnWidth(min: 300, ideal: 380, max: 560)
         }

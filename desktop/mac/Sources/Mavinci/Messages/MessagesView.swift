@@ -133,23 +133,23 @@ struct MessageActions {
     var body: some View {
         MessageActionHost(store: store) { actions in
             Group {
-                if let info = store.info {
-                    // Szerokości skrzynek i listy zapisują się po chwili od zmiany i wracają po ponownym uruchomieniu.
-                    PersistentSplitView(id: "messages", panes: [
-                        .init(view: pane(MailboxList(store: store, info: info)), min: 210, ideal: 250, max: 420),
-                        .init(view: pane(MessageListPane(store: store, actions: actions)), min: 320, ideal: 430, max: 760),
-                        .init(view: pane(MessagePreviewPane(store: store, key: store.selectedKey, actions: actions)), min: 380, ideal: 600),
-                    ])
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = store.infoError {
-                    ContentUnavailableView {
-                        Label("Wiadomości", systemImage: "envelope")
-                    } description: { Text(error) } actions: {
-                        Button("Spróbuj ponownie") { Task { await store.loadInfo() } }
+                    if let info = store.info {
+                        // Szerokości skrzynek i listy zapisują się po chwili od zmiany i wracają po ponownym uruchomieniu.
+                        PersistentSplitView(id: "messages", panes: [
+                            .init(view: pane(MailboxList(store: store, info: info)), min: 210, ideal: 250, max: 420),
+                            .init(view: pane(MessageListPane(store: store, actions: actions)), min: 320, ideal: 430, max: 760),
+                            .init(view: pane(MessagePreviewPane(store: store, key: store.selectedKey, actions: actions)), min: 380, ideal: 600),
+                        ])
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if let error = store.infoError {
+                        ContentUnavailableView {
+                            Label("Wiadomości", systemImage: "envelope")
+                        } description: { Text(error) } actions: {
+                            Button("Spróbuj ponownie") { Task { await store.loadInfo() } }
+                        }
+                    } else {
+                        ProgressView("Ładowanie wiadomości...").frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                } else {
-                    ProgressView("Ładowanie wiadomości...").frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
             }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -299,7 +299,7 @@ struct MessageActions {
             } else {
                 List(selection: Binding(get: { store.selectedKey }, set: { store.select($0) })) {
                     ForEach(visible, id: \.key) { message in
-                        MessageRow(message: message).tag(message.key)
+                        MessageRow(message: message, store: store, actions: actions).tag(message.key)
                             .listRowBackground(UnreadRowBackground(unread: !message.isRead))
                     }
                     Text("Koniec listy wiadomości").font(.caption2).foregroundStyle(.tertiary).frame(maxWidth: .infinity).padding(6)
@@ -314,13 +314,21 @@ struct MessageActions {
                         message.type == "draft" ? actions.browser(message) : actions.window(message)
                     }
                 }
+                // ⌫ — zaznaczona wiadomość do kosza (z potwierdzeniem), jak „Przenieś do kosza” w menu.
+                .onDeleteCommand {
+                    guard let key = store.selectedKey, let message = store.item(key), store.canTrash(message) else { return }
+                    actions.trash(message, store.scope.folder == .trash || message.isDeleted)
+                }
             }
         }
     }
 }
 
-struct MessageRow: View {
+@MainActor struct MessageRow: View {
     let message: MessageItem
+    /// Z magazynem i czynnościami wiersz ma „⋯” z menu wiadomości (jak `MessageActionsMenu` przy dacie w CRM).
+    var store: MessagesStore? = nil
+    var actions: MessageActions? = nil
     @Environment(\.crmTheme) private var theme
     var body: some View {
         let unread = !message.isRead
@@ -338,6 +346,18 @@ struct MessageRow: View {
                 Text(MailDates.list(message.date)).font(.caption2.weight(unread ? .semibold : .regular)).monospacedDigit()
                     .foregroundStyle(unread ? theme.accent : Color.secondary)
                     .help(MailDates.medium(message.date))
+                if let store, let actions {
+                    Menu {
+                        MessageMenuItems(store: store, message: message, actions: actions)
+                    } label: {
+                        Image(systemName: "ellipsis").font(.caption.weight(.semibold))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .foregroundStyle(.secondary)
+                    .help("Czynności: przeczytana / nieprzeczytana, przypisanie, kosz i inne")
+                }
             }
             Text(message.subjectLabel).font(.caption.weight(unread ? .medium : .regular)).lineLimit(1)
                 .foregroundStyle(unread ? theme.accent : Color.secondary)
@@ -387,32 +407,49 @@ struct UnreadRowBackground: View {
     var body: some View {
         let deleted = store.scope.folder == .trash || message.isDeleted
         let manage = store.info?.canManage == true
+        let linked = message.sales?.hasInquiry == true && message.sales?.inquiries.first != nil
         if message.type == "draft" {
             Button("Otwórz w przeglądarce") { actions.browser(message) }
         } else {
-            if message.type != "sent" && !deleted && store.canReply(message) { Button("Odpowiedz") { actions.reply(message) } }
-            if message.type == "received" && store.canReply(message) { Button("Przekaż dalej") { actions.forward(message) } }
-            if !deleted && message.type == "received" {
-                Button(message.isStarred ? "Usuń gwiazdkę" : "Oznacz gwiazdką") { actions.star(message) }
-            }
-            if message.inbound && !deleted {
-                Button(message.isRead ? "Oznacz jako nieprzeczytaną" : "Oznacz jako przeczytaną") {
-                    message.isRead ? actions.unread(message) : store.select(message.key)
+            // Najczęstsze czynności na górze: przeczytana / nieprzeczytana, przypisanie i kosz.
+            Group {
+                if message.inbound && !deleted {
+                    Button(message.isRead ? "Oznacz jako nieprzeczytaną" : "Oznacz jako przeczytaną",
+                           systemImage: message.isRead ? "envelope.badge" : "envelope.open") {
+                        message.isRead ? actions.unread(message) : store.select(message.key)
+                    }
+                }
+                if manage && message.type != "sent" && !deleted {
+                    // Wiadomość w lejku przypisuje się w zapytaniu (jak `handleAssign` w CRM) — pozycja otwiera zapytanie.
+                    Button(linked ? "Przypisz pracownika — w zapytaniu" : "Przypisz pracownika", systemImage: "person.badge.plus") { actions.assign(message) }
+                }
+                if store.canTrash(message) {
+                    Button(deleted ? "Przywróć z kosza" : "Przenieś do kosza", systemImage: deleted ? "arrow.uturn.backward" : "trash",
+                           role: deleted ? nil : .destructive) { actions.trash(message, deleted) }
                 }
             }
             Divider()
-            if manage && message.type != "sent" && !deleted { Button("Przypisz pracownika") { actions.assign(message) } }
-            if message.type != "sent" && !deleted { Button("Powiąż z zapytaniem") { actions.inquiry(message) } }
-            if message.type != "sent" && !deleted && store.info?.canCreateTasks == true { Button("Utwórz zadanie") { actions.task(message) } }
-            if !deleted && message.type == "received" {
-                Button("Archiwizuj") { actions.archive(message) }
-                Button("Przenieś do folderu") { actions.move(message) }
+            Group {
+                if message.type != "sent" && !deleted && store.canReply(message) { Button("Odpowiedz") { actions.reply(message) } }
+                if message.type == "received" && store.canReply(message) { Button("Przekaż dalej") { actions.forward(message) } }
+                if !deleted && message.type == "received" {
+                    Button(message.isStarred ? "Usuń gwiazdkę" : "Oznacz gwiazdką") { actions.star(message) }
+                }
+            }
+            Divider()
+            Group {
+                if message.type != "sent" && !deleted { Button("Powiąż z zapytaniem") { actions.inquiry(message) } }
+                if message.type != "sent" && !deleted && store.info?.canCreateTasks == true { Button("Utwórz zadanie") { actions.task(message) } }
+                if !deleted && message.type == "received" {
+                    Button("Archiwizuj") { actions.archive(message) }
+                    Button("Przenieś do folderu") { actions.move(message) }
+                }
             }
             Divider()
             Button("Otwórz w nowym oknie") { actions.window(message) }
             Button("Otwórz w przeglądarce") { actions.browser(message) }
         }
-        if store.canTrash(message) {
+        if message.type == "draft" && store.canTrash(message) {
             Divider()
             Button(deleted ? "Przywróć z kosza" : "Przenieś do kosza", role: deleted ? nil : .destructive) { actions.trash(message, deleted) }
         }

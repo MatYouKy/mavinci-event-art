@@ -251,16 +251,20 @@ enum CalculationPdf {
                     .buttonStyle(.borderedProminent)
             }
             .padding(.horizontal, 18).padding(.top, 12)
+            Divider()
             if data.calculations.isEmpty {
+                // Pusty stan na środku wolnego pola pod nagłówkiem.
                 ContentUnavailableView {
                     Label("Brak kalkulacji dla tego wydarzenia", systemImage: "function")
                 } description: { Text("Kalkulacja zbiera sprzęt, ludzi, transport i pozostałe koszty.") } actions: {
                     Button("Stwórz kalkulację") { Task { await create() } }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 table(data)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     /// Natywna tabela kalkulacji: dwuklik / ↩ otwiera edytor, czynności w menu „…” i pod prawym przyciskiem.

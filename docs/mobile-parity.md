@@ -628,3 +628,15 @@ Serwer: `src/lib/native/offerTravel.ts` — `GET /bridge/native/v1/offers?op=tra
 ### Mac 0.19: opis aktualnego zakresu i potwierdzenie realizacji z „Sprzedawców” (2026-11-16)
 
 `desktop/mac/README.md`: wersja 0.19.0 (`scripts/build-app.sh`) i sekcja „Aktualizacja 0.19 — aktualny zakres natywny” (oferty, produkty, szablony ofert, broszury, karta zapytania, nowe wydarzenie i edycja, umowa wydarzenia, szablony umów, ustalenia sprzedawcy, spotkania; lista tego, co zostaje w CRM; wymagania przed użyciem); w starszych sekcjach dopiski, co od 0.19 działa na Macu. Mac: w ocenie oferty z portalu („Sprzedawcy” i karta oferty) „Potwierdź realizację” i „Otwórz wydarzenie” otwierają zakładkę „Ustalenia” wydarzenia na tej ofercie zamiast CRM (gdy wydarzenie jest w zakresie uprawnień; inaczej jak dotąd „Potwierdź w CRM”). Mobile: bez zmian.
+
+### Mac: „⋯” przy każdej wiadomości na liście i szybkie czynności (2026-11-16)
+
+Wiadomości na Macu: każdy wiersz listy ma przy dacie przycisk „⋯” z menu wiadomości (jak `MessageActionsMenu` w wierszu listy CRM); to samo menu jest pod prawym przyciskiem i w „⋯” podglądu. Na górze menu najczęstsze czynności: „Oznacz jako nieprzeczytaną / przeczytaną”, „Przypisz pracownika” (wiadomość w lejku — „Przypisz pracownika — w zapytaniu”, otwiera zapytanie jak `handleAssign` w CRM) i „Przenieś do kosza” / „Przywróć z kosza”; dalej odpowiedź, przekazanie, gwiazdka, zapytanie, zadanie i pozostałe. Klawisz ⌫ na liście przenosi zaznaczoną wiadomość do kosza (z tym samym potwierdzeniem). Te same uprawnienia co dotąd (`canManage`, skrzynki z prawem do kosza). Mobile: bez zmian.
+
+### Mac: „Oferta i kalkulacje” — pusty stan na środku i linia pod nagłówkiem (2026-11-16)
+
+Karta wydarzenia → „Oferta i kalkulacje”: komunikat „Brak ofert dla tego eventu” / „Brak kalkulacji dla tego wydarzenia” z przyciskiem jest na środku wolnego pola, a pod nagłówkiem (tytuł, liczba, „Nowa oferta” / „Stwórz kalkulację”) jest linia oddzielająca nagłówek od listy. Tylko układ (`EventOfferTab.swift`, `EventCalculationsTab.swift`). Mobile: bez zmian.
+
+### Mac: Przegląd w karcie wydarzenia domyślnie otwarty (2026-11-16)
+
+Panel „Przegląd” w karcie wydarzenia otwiera się domyślnie. Na stałe (na tym Macu) chowa go tylko przycisk „Przegląd” albo ⌥⌘I — nowy klucz ustawienia `eventCard.overviewHidden`, więc dotychczas zapamiętane ukrycie (także samoczynne przy wąskim oknie) nie obowiązuje. Zwinięcie panelu przeciągnięciem lub przez system dotyczy tylko otwartej karty. Mobile: bez zmian.

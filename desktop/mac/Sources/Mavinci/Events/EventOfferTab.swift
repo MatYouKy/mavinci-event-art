@@ -76,16 +76,20 @@ struct OfferTabData: Decodable {
                     .buttonStyle(.borderedProminent).help(nativeWizard ? "Kreator oferty dla tego wydarzenia" : "Kreator oferty otworzy się w CRM.")
             }
             .padding(.horizontal, 18).padding(.top, 12)
+            Divider()
             if data.offers.isEmpty {
+                // Pusty stan na środku wolnego pola pod nagłówkiem.
                 ContentUnavailableView {
                     Label("Brak ofert dla tego eventu", systemImage: "dollarsign.circle")
                 } description: { Text(nativeWizard ? "Utwórz ofertę kreatorem: klient, produkty i cena." : "Kreator oferty otwiera się w CRM.") } actions: {
                     Button("Utwórz pierwszą ofertę") { newOffer() }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 table(data)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     /// Natywna tabela ofert: dwuklik / ↩ otwiera ofertę, czynności w menu „…” i pod prawym przyciskiem.
