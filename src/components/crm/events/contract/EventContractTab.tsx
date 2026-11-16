@@ -43,7 +43,7 @@ import {
   getContractCssForPrint,
   getContractDocumentCss,
 } from '../calculations/helpers/getContractCssForPrint';
-import { renderContractDocument } from '@/lib/CRM/contracts/contractPagination';
+import { contractFooterLogoSrc, contractLogoSrc, renderContractDocument } from '@/lib/CRM/contracts/contractPagination';
 import {
   normalizeContractClauseHtml,
   normalizeContractClausePointListHtml,
@@ -563,18 +563,22 @@ const applyEventCompanyBranding = (
   // Umowa to wydruk: „Logo do druku” zaznaczone w brandbooku firmy wydarzenia ma pierwszeństwo przed logo
   // wybranym w szablonie (szablon bywa wspólny dla kilku marek). Bez zaznaczenia: logo z szablonu, jeśli należy
   // do firmy wydarzenia, potem primary-black, logo domyślne, logo firmy.
+  // „Bez logo” w szablonie ('') to świadoma decyzja o nagłówku bez logo — wygrywa także z „Logo do druku”.
+  // Stopka korzysta wtedy z logo firmy wydarzenia jak dotąd.
+  const noHeaderLogo = settings.selectedLogo === '';
   const forcedPrintLogo = printLogoExplicit && printLogoUrl ? printLogoUrl : null;
   const fallbackLogo = printLogoUrl || logoUrl || resolveCompanyLogoUrl(company.logo_url) || settings.selectedLogo;
-  const selectedLogo =
+  const brandLogo =
     forcedPrintLogo ||
     (savedHeaderLogo && normalizedCompanyLogos.has(savedHeaderLogo)
       ? savedHeaderLogo
       : fallbackLogo);
+  const selectedLogo = noHeaderLogo ? '' : brandLogo;
   const selectedFooterLogo =
     forcedPrintLogo ||
     (savedFooterLogo && normalizedCompanyLogos.has(savedFooterLogo)
       ? savedFooterLogo
-      : selectedLogo);
+      : brandLogo);
   const hasExplicitFooterTemplate = Boolean(settings.selectedFooterTemplateId);
 
   return {
@@ -583,7 +587,7 @@ const applyEventCompanyBranding = (
     footerContent: hasExplicitFooterTemplate
       ? {
           ...settings.footerContent,
-          logoUrl: forcedPrintLogo || settings.footerContent?.logoUrl || selectedLogo,
+          logoUrl: forcedPrintLogo || settings.footerContent?.logoUrl || brandLogo,
         }
       : {
           companyName: company.legal_name || company.name || '',
@@ -3867,18 +3871,16 @@ export function EventContractTab({
                             marginTop: `${settings.logoPositionY}mm`,
                           }}
                         >
-                          <img
-                            src={
-                              settings.selectedLogo?.startsWith('http')
-                                ? settings.selectedLogo
-                                : `https://mavinci.pl${settings.selectedLogo || '/erulers_logo_vect.png'}`
-                            }
-                            alt="Logo"
-                            style={{
-                              maxWidth: `${settings.logoScale}%`,
-                              height: 'auto',
-                            }}
-                          />
+                          {contractLogoSrc(settings.selectedLogo) && (
+                            <img
+                              src={contractLogoSrc(settings.selectedLogo)!}
+                              alt="Logo"
+                              style={{
+                                maxWidth: `${settings.logoScale}%`,
+                                height: 'auto',
+                              }}
+                            />
+                          )}
                         </div>
 
                         <div className="contract-current-date">
@@ -3909,16 +3911,10 @@ export function EventContractTab({
                         className="contract-footer"
                         style={{ fontFamily: settings.selectedFont || 'Georgia, serif' }}
                       >
-                        {settings.selectedFooter === 'default' && (
+                        {settings.selectedFooter === 'default' && contractFooterLogoSrc(settings) && (
                           <div className="footer-logo">
                             <img
-                              src={
-                                (
-                                  settings.footerContent?.logoUrl || settings.selectedLogo
-                                )?.startsWith('http')
-                                  ? settings.footerContent?.logoUrl || settings.selectedLogo
-                                  : `https://mavinci.pl${settings.footerContent?.logoUrl || settings.selectedLogo || '/erulers_logo_vect.png'}`
-                              }
+                              src={contractFooterLogoSrc(settings)!}
                               alt="Logo"
                               style={{
                                 maxWidth: `${settings.footerLogoScale || 80}%`,

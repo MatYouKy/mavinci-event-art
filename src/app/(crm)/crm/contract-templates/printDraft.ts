@@ -1,6 +1,8 @@
 import { IContractTemplate } from './type';
 import { getContractCssForPrint } from '@/components/crm/events/calculations/helpers/getContractCssForPrint';
 import {
+  contractFooterLogoSrc,
+  contractLogoSrc,
   renderContractDocument,
   type ContractClauseTypography,
 } from '@/lib/CRM/contracts/contractPagination';
@@ -52,11 +54,6 @@ const getTemplateSettings = (pageSettings: any): TemplateSettings => ({
   clauseTypography: pageSettings?.clauseTypography,
   ...(pageSettings?.documentStyles ? { documentStyles: pageSettings.documentStyles } : {}),
 });
-
-const resolveLogoUrl = (url?: string) => {
-  const value = url || '/erulers_logo_vect.png';
-  return value.startsWith('http') ? value : `https://mavinci.pl${value}`;
-};
 
 const escapeHtml = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -177,6 +174,7 @@ const DRAFT_EXTRA_STYLES = `
 `;
 
 const buildHeader = (settings: TemplateSettings): string => {
+  const headerLogo = contractLogoSrc(settings.selectedLogo);
   const justify =
     settings.logoPositionX <= 33
       ? 'justify-start'
@@ -192,7 +190,7 @@ const buildHeader = (settings: TemplateSettings): string => {
 
   return `
     <div class="contract-header-logo ${justify}" style="margin-top:${settings.logoPositionY}mm">
-      <img src="${resolveLogoUrl(settings.selectedLogo)}" alt="Logo" style="max-width:${settings.logoScale}%;height:auto" />
+      ${headerLogo ? `<img src="${headerLogo}" alt="Logo" style="max-width:${settings.logoScale}%;height:auto" />` : ''}
     </div>
     <div class="contract-current-date">Olsztyn, ${dateStr}</div>`;
 };
@@ -201,10 +199,11 @@ const buildFooter = (settings: TemplateSettings): string => {
   if (settings.selectedFooter === 'none') return '';
 
   const footer = settings.footerContent || DEFAULT_FOOTER;
+  const footerLogo = contractFooterLogoSrc({ selectedLogo: settings.selectedLogo, footerContent: footer });
   const logoBlock =
-    settings.selectedFooter === 'default'
+    settings.selectedFooter === 'default' && footerLogo
       ? `<div class="footer-logo">
-          <img src="${resolveLogoUrl(footer.logoUrl || settings.selectedLogo)}" alt="Logo" style="max-width:${settings.footerLogoScale || 80}%;height:auto" />
+          <img src="${footerLogo}" alt="Logo" style="max-width:${settings.footerLogoScale || 80}%;height:auto" />
         </div>`
       : '';
 

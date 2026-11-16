@@ -526,6 +526,9 @@ struct ContractDocumentStats {
             ForEach(controller.payload.brandLogos ?? [], id: \.self) { logo in
                 Button("\(logo.companyName) — \(logo.label)") { controller.updateLayout { $0.selectedLogo = logo.url } }
             }
+            Divider()
+            // „Bez logo” jak w CRM: pusty adres — nagłówek bez obrazu (contractLogoSrc w contractPagination.ts).
+            Button("Bez logo") { controller.updateLayout { $0.selectedLogo = "" } }
         } label: {
             Text(logoName(layout.selectedLogo)).lineLimit(1)
         }
@@ -572,6 +575,7 @@ struct ContractDocumentStats {
     }
 
     private func logoName(_ url: String) -> String {
+        if url.isEmpty { return "Bez logo" }
         if url == ContractPageLayout.defaultLogo { return "Event Rulers (domyślne)" }
         if let logo = (controller.payload.brandLogos ?? []).first(where: { $0.url == url }) { return "\(logo.companyName) — \(logo.label)" }
         return "Własne logo"

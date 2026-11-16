@@ -275,7 +275,8 @@ const FOOTER_KEYS = ['companyName', 'tagline', 'website', 'email', 'phone', 'log
 function layoutFrom(settings: Row) {
   const footer: Row = settings.footerContent && typeof settings.footerContent === 'object' ? settings.footerContent : {};
   return {
-    selectedLogo: String(settings.selectedLogo || DEFAULT_LOGO),
+    // '' = „Bez logo” (jak w CRM: contractLogoSrc w contractPagination.ts); brak wartości — logo domyślne.
+    selectedLogo: settings.selectedLogo === '' ? '' : String(settings.selectedLogo || DEFAULT_LOGO),
     logoScale: Number(settings.logoScale ?? 80),
     logoPositionX: Number(settings.logoPositionX ?? 50),
     logoPositionY: Number(settings.logoPositionY ?? 0),
@@ -333,8 +334,8 @@ function cleanLayout(input: unknown) {
   if (!input || typeof input !== 'object') return {};
   const value = input as Row;
   const result: Row = {};
-  const logo = safeLogo(value.selectedLogo);
-  if (logo) result.selectedLogo = logo;
+  const logo = value.selectedLogo === '' ? '' : safeLogo(value.selectedLogo);
+  if (logo !== null) result.selectedLogo = logo;
   const numbers: Array<[string, number, number]> = [['logoScale', 20, 150], ['logoPositionX', 0, 100], ['logoPositionY', 0, 50], ['footerLogoScale', 20, 150]];
   numbers.forEach(([key, min, max]) => {
     const number = clamp(value[key], min, max);

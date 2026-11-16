@@ -798,7 +798,8 @@ final class ContractSheetHeaderView: NSView {
     private var logo: NSImage? { ContractImageStore.shared.image(settings.selectedLogo) }
 
     private var logoSize: NSSize {
-        guard let logo else { return NSSize(width: 0, height: 15 * ContractPage.mm) }
+        // „Bez logo” (pusty adres) — nagłówek bez miejsca na obraz, jak pusty `contract-header-logo` w PDF z CRM.
+        guard let logo else { return NSSize(width: 0, height: settings.selectedLogo.isEmpty ? 0 : 15 * ContractPage.mm) }
         let width = min(ContractImageStore.cssWidth(logo), ContractPage.contentWidth * CGFloat(settings.logoScale) / 100)
         return NSSize(width: width, height: width * ContractImageStore.aspect(logo))
     }

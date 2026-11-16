@@ -361,7 +361,8 @@ export default function EditTemplateWYSIWYGPage() {
         );
         setContentHtml(initialHtml);
 
-        setSelectedLogo(settings.selectedLogo || DEFAULT_LOGO);
+        // '' = „Bez logo” wybrane w szablonie — zostaje (wcześniej `||` przywracało logo domyślne).
+        setSelectedLogo(settings.selectedLogo ?? DEFAULT_LOGO);
         const templateFont = settings.selectedFont || 'Georgia, serif';
         const templateLineHeight = settings.lineHeight || CONTRACT_DEFAULT_LINE_HEIGHT;
         setClauseTypography(
@@ -2032,12 +2033,15 @@ export default function EditTemplateWYSIWYGPage() {
                     {selectedLogo.split('/').pop()} (niestandardowe)
                   </option>
                 )}
+                <option value="">Bez logo</option>
               </select>
             </div>
 
             <button
               onClick={insertLogo}
-              className="rounded bg-[#d3bb73] px-3 py-1.5 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+              disabled={!selectedLogo}
+              title={selectedLogo ? undefined : 'Wybierz logo, aby wstawić je do treści'}
+              className="rounded bg-[#d3bb73] px-3 py-1.5 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
               Wstaw Logo
             </button>
@@ -2734,17 +2738,19 @@ export default function EditTemplateWYSIWYGPage() {
                       marginTop: `${logoPositionY}mm`,
                     }}
                   >
-                    <Image
-                      src={selectedLogo}
-                      alt="Logo"
-                      width={300}
-                      height={120}
-                      style={{
-                        width: `${logoScale * 6}px`,
-                        height: 'auto',
-                        objectFit: 'contain',
-                      }}
-                    />
+                    {selectedLogo && (
+                      <Image
+                        src={selectedLogo}
+                        alt="Logo"
+                        width={300}
+                        height={120}
+                        style={{
+                          width: `${logoScale * 6}px`,
+                          height: 'auto',
+                          objectFit: 'contain',
+                        }}
+                      />
+                    )}
                   </div>
 
                   <div className="contract-current-date">
@@ -2803,10 +2809,10 @@ export default function EditTemplateWYSIWYGPage() {
 
               {selectedFooter !== 'none' && (
                 <div className="contract-footer">
-                  {selectedFooter === 'default' && (
+                  {selectedFooter === 'default' && (footerContent.logoUrl || selectedLogo) && (
                     <div className="footer-logo">
                       <Image
-                        src={footerContent.logoUrl}
+                        src={footerContent.logoUrl || selectedLogo}
                         alt="Logo"
                         style={{ maxWidth: `${footerLogoScale}%` }}
                         width={100}

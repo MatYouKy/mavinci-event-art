@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
+import { contractFooterLogoSrc, contractLogoSrc } from '@/lib/CRM/contracts/contractPagination';
 import {
   ArrowLeft,
   FileText,
@@ -285,18 +286,16 @@ export default function ContractDetailsPage() {
                             marginTop: `${settings.logoPositionY}mm`,
                           }}
                         >
-                          <img
-                            src={
-                              settings.selectedLogo?.startsWith('http')
-                                ? settings.selectedLogo
-                                : `https://mavinci.pl${settings.selectedLogo || '/erulers_logo_vect.png'}`
-                            }
-                            alt="Logo"
-                            style={{
-                              maxWidth: `${settings.logoScale}%`,
-                              height: 'auto',
-                            }}
-                          />
+                          {contractLogoSrc(settings.selectedLogo) && (
+                            <img
+                              src={contractLogoSrc(settings.selectedLogo)!}
+                              alt="Logo"
+                              style={{
+                                maxWidth: `${settings.logoScale}%`,
+                                height: 'auto',
+                              }}
+                            />
+                          )}
                         </div>
 
                         <div className="contract-current-date">
@@ -322,16 +321,10 @@ export default function ContractDetailsPage() {
 
                     {settings.selectedFooter !== 'none' && (
                       <div className="contract-footer">
-                        {settings.selectedFooter === 'default' && (
+                        {settings.selectedFooter === 'default' && contractFooterLogoSrc(settings) && (
                           <div className="footer-logo">
                             <img
-                              src={
-                                (
-                                  settings.footerContent?.logoUrl || settings.selectedLogo
-                                )?.startsWith('http')
-                                  ? settings.footerContent?.logoUrl || settings.selectedLogo
-                                  : `https://mavinci.pl${settings.footerContent?.logoUrl || settings.selectedLogo || '/erulers_logo_vect.png'}`
-                              }
+                              src={contractFooterLogoSrc(settings)!}
                               alt="Logo"
                               style={{
                                 maxWidth: `${settings.footerLogoScale || 80}%`,

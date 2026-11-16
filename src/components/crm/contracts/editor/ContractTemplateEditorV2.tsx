@@ -84,7 +84,8 @@ const FIELD_LABELS: Record<string, string> = {
 type Simulation = { klient: 'firma' | 'osoba'; kategoria: string; options: Record<string, boolean> };
 
 const layoutFrom = (settings: any) => ({
-  selectedLogo: settings?.selectedLogo || DEFAULT_LOGO,
+  // '' = „Bez logo” — zostaje po ponownym otwarciu (wcześniej `||` przywracało logo domyślne).
+  selectedLogo: settings?.selectedLogo ?? DEFAULT_LOGO,
   logoScale: settings?.logoScale ?? 80,
   logoPositionX: settings?.logoPositionX ?? 50,
   logoPositionY: settings?.logoPositionY ?? 0,

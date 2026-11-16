@@ -111,6 +111,7 @@ export interface ContractPageSettings {
   logoPositionY?: number;
   lineHeight?: number;
   selectedFont?: string;
+  /** Logo w nagłówku: '' = „Bez logo” wybrane w szablonie; brak wartości = logo domyślne (contractLogoSrc). */
   selectedLogo?: string;
   selectedFooter?: 'default' | 'minimal' | 'none';
   selectedFooterTemplateId?: string | null;
@@ -200,6 +201,17 @@ const absoluteLogoUrl = (url?: string) => {
   return value.startsWith('http') ? value : `https://mavinci.pl${value}`;
 };
 
+/**
+ * Adres logo umowy albo null. '' oznacza „Bez logo” wybrane w szablonie (brak obrazu); brak wartości (stare szablony)
+ * — logo domyślne. Ta sama reguła w edytorze, wydruku, podglądzie umowy, umowie wydarzenia i w aplikacji na Maca.
+ */
+export const contractLogoSrc = (url?: string | null): string | null =>
+  url === '' ? null : absoluteLogoUrl(url || undefined);
+
+/** Logo stopki: własne logo stopki, a bez niego logo nagłówka (z tą samą regułą „Bez logo”). */
+export const contractFooterLogoSrc = (settings: Pick<ContractPageSettings, 'selectedLogo' | 'footerContent'>): string | null =>
+  contractLogoSrc(settings.footerContent?.logoUrl || settings.selectedLogo);
+
 const escapeHtml = (value = '') =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -211,7 +223,8 @@ export const buildContractHeaderHtml = (settings: ContractPageSettings) => {
     month: 'long',
     day: 'numeric',
   });
-  return `<div class="contract-header-logo ${justify}" style="margin-top:${settings.logoPositionY ?? 0}mm"><img src="${absoluteLogoUrl(settings.selectedLogo)}" alt="Logo" style="max-width:${settings.logoScale ?? 80}%;height:auto" /></div><div class="contract-current-date">Olsztyn, ${date}</div>`;
+  const logo = contractLogoSrc(settings.selectedLogo);
+  return `<div class="contract-header-logo ${justify}" style="margin-top:${settings.logoPositionY ?? 0}mm">${logo ? `<img src="${logo}" alt="Logo" style="max-width:${settings.logoScale ?? 80}%;height:auto" />` : ''}</div><div class="contract-current-date">Olsztyn, ${date}</div>`;
 };
 
 export const buildContractFooterHtml = (settings: ContractPageSettings) => {
@@ -223,8 +236,9 @@ export const buildContractFooterHtml = (settings: ContractPageSettings) => {
   const phone = footer.phone ?? '698-212-279';
   const contactLine = [website, email].filter(Boolean).map(escapeHtml).join(' | ');
   const footerFont = escapeHtml(settings.selectedFont || 'Georgia, serif').replace(/"/g, '&quot;');
-  const logo = settings.selectedFooter !== 'minimal'
-    ? `<div class="footer-logo"><img src="${absoluteLogoUrl(footer.logoUrl || settings.selectedLogo)}" alt="Logo" style="max-width:${settings.footerLogoScale ?? 80}%;height:auto" /></div>`
+  const footerLogo = contractFooterLogoSrc(settings);
+  const logo = settings.selectedFooter !== 'minimal' && footerLogo
+    ? `<div class="footer-logo"><img src="${footerLogo}" alt="Logo" style="max-width:${settings.footerLogoScale ?? 80}%;height:auto" /></div>`
     : '';
   return `<div class="contract-footer" style="font-family:${footerFont}">${logo}<div class="footer-info"><p><strong>${escapeHtml(companyName)}</strong>${footer.tagline ? ` – <em>${escapeHtml(footer.tagline)}</em>` : ''}</p>${contactLine ? `<p>${contactLine}</p>` : ''}${phone ? `<p>tel: ${escapeHtml(phone)}</p>` : ''}</div></div>`;
 };
@@ -756,12 +770,8 @@ export async function paginateContractHtml(
 
   // Wysokość nagłówka i stopki zależy od faktycznych wymiarów obrazów.
   // Bez preloadu pierwsze liczenie stron mogło odbyć się, gdy logo miało 0 px wysokości.
-  const logoUrls = [
-    settings.selectedLogo,
-    settings.footerContent?.logoUrl || settings.selectedLogo,
-  ]
-    .filter(Boolean)
-    .map((url) => absoluteLogoUrl(url));
+  const logoUrls = [contractLogoSrc(settings.selectedLogo), contractFooterLogoSrc(settings)]
+    .filter((url): url is string => Boolean(url));
   await Promise.all(
     Array.from(new Set(logoUrls)).map(
       (url) =>
