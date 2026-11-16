@@ -191,7 +191,7 @@ function OfferWizardContent({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
-      <div className="flex h-[90vh] max-h-[90vh] w-full max-w-[1500px] flex-col rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]">
+      <div className="flex h-[90vh] max-h-[90vh] w-full max-w-[1880px] flex-col rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6">
           <div>

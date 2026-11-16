@@ -353,7 +353,8 @@ export default function OfferStep3({
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2">
+      {/* Dodane produkty dostają więcej miejsca: ilość z dniami, cena w wierszu, wartość i ustawienia PDF nie mogą na siebie zachodzić. */}
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#151827]">
           <div className="flex items-center justify-between border-b border-[#d3bb73]/15 px-3 py-2">
             <div className="flex items-center gap-2">
@@ -583,15 +584,15 @@ export default function OfferStep3({
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             {addedCatalogItems.length > 0 ? (
-            <table className="w-full min-w-[680px] table-fixed text-left text-xs">
+            <table className="w-full min-w-[900px] table-fixed text-left text-xs">
               <thead className="sticky top-0 z-10 bg-[#1c1f33] uppercase text-[#e5e4e2]/45">
                 <tr className="h-9">
-                  <th className="w-[31%] px-3 font-medium">Produkt</th>
-                  <th className="w-[8%] px-3 font-medium">Ilość</th>
-                  <th className="w-[14%] px-3 font-medium">Cena netto / dzień</th>
-                  <th className="w-[14%] px-3 font-medium">Wartość</th>
-                  <th className="w-[28%] px-3 font-medium">Ustawienia PDF</th>
-                  <th className="w-[5%] px-2" aria-label="Akcje" />
+                  <th className="px-3 font-medium">Produkt</th>
+                  <th className="w-[160px] px-3 font-medium">Ilość</th>
+                  <th className="w-[150px] px-3 font-medium">Cena netto / dzień</th>
+                  <th className="w-[124px] px-3 font-medium">Wartość</th>
+                  <th className="w-[236px] px-3 font-medium">Ustawienia PDF</th>
+                  <th className="w-[44px] px-2" aria-label="Akcje" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#d3bb73]/10">
