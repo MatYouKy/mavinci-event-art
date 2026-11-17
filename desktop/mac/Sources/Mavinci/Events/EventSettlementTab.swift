@@ -219,6 +219,7 @@ struct SettlementConfirm: Identifiable {
                 ContentUnavailableView {
                     Label("Nie udało się wczytać podsumowania wydarzenia.", systemImage: "sum")
                 } description: { Text(error) } actions: { Button("Spróbuj ponownie") { Task { await store.loadTab(eventID, "summary") } } }
+                .frame(maxWidth: .infinity)
             } else if part != nil {
                 ProgressView("Wczytuję podsumowanie wydarzenia…").controlSize(.small).frame(maxWidth: .infinity).padding(20)
             } else {

@@ -117,6 +117,7 @@ enum FinanceText {
                 ContentUnavailableView {
                     Label("Błąd podczas ładowania danych finansowych", systemImage: "banknote")
                 } description: { Text(error) } actions: { Button("Spróbuj ponownie") { Task { await store.loadTab(eventID, "finances") } } }
+                .frame(maxWidth: .infinity)
             } else if part != nil {
                 ProgressView("Ładowanie danych finansowych...").controlSize(.small).frame(maxWidth: .infinity).padding(20)
             } else {

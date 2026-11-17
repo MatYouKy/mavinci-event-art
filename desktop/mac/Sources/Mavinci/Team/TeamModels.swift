@@ -235,18 +235,20 @@ enum TeamViewMode: String, CaseIterable, Identifiable {
 }
 
 enum EmployeeTab: String, CaseIterable, Identifiable {
-    case overview, personnel, qualifications, emails, permissions, documents, tasks, events, timeline
+    case overview, personnel, commissions, qualifications, emails, permissions, documents, tasks, events, timeline
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .overview: return "Przegląd"; case .personnel: return "Umowy i rozliczenia"; case .qualifications: return "Kwalifikacje"
+        case .overview: return "Przegląd"; case .personnel: return "Umowy i rozliczenia"; case .commissions: return "Prowizje"
+        case .qualifications: return "Kwalifikacje"
         case .emails: return "Konta Email"; case .permissions: return "Uprawnienia"; case .documents: return "Dokumenty"
         case .tasks: return "Zadania"; case .events: return "Wydarzenia"; case .timeline: return "Oś czasu"
         }
     }
     var symbol: String {
         switch self {
-        case .overview: return "person"; case .personnel: return "doc.text"; case .qualifications: return "rosette"; case .emails: return "envelope"
+        case .overview: return "person"; case .personnel: return "doc.text"; case .commissions: return "percent"
+        case .qualifications: return "rosette"; case .emails: return "envelope"
         case .permissions: return "lock"; case .documents: return "doc"; case .tasks: return "checklist"; case .events: return "calendar"
         case .timeline: return "clock"
         }

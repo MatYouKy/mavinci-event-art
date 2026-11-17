@@ -60,12 +60,39 @@ enum RozliczeniePart: String, CaseIterable, Identifiable {
     @Environment(\.crmTheme) private var theme
     @AppStorage("eventSettlement.part") private var partRaw = RozliczeniePart.result.rawValue
     @State private var helpFor: RozliczeniePart?
+    @State private var reloading = false
 
     private var part: RozliczeniePart { RozliczeniePart(rawValue: partRaw) ?? .result }
     private var finances: FinancesTabData? { members.contains("finances") ? store.tab(eventID, "finances", as: FinancesTabData.self) : nil }
     private var settlement: Settlement? {
         guard members.contains("summary"), let data = store.tab(eventID, "summary", as: SettlementTabData.self), data.state == "ready" else { return nil }
         return data.settlement
+    }
+
+    /// Zakładki rozliczenia dostępne dla użytkownika, w kolejności wczytywania.
+    private var available: [String] { ["finances", "summary"].filter { members.contains($0) } }
+    private func loaded(_ tab: String) -> Bool {
+        tab == "finances" ? store.tab(eventID, "finances", as: FinancesTabData.self) != nil : store.tab(eventID, "summary", as: SettlementTabData.self) != nil
+    }
+    /// Nic się nie wczytało i każda część ma błąd — jeden komunikat na środku zamiast osobnego przy każdej części.
+    private var failure: String? {
+        guard !available.isEmpty else { return nil }
+        var messages: [String] = []
+        for tab in available {
+            if loaded(tab) { return nil }
+            guard let error = store.tabErrors["\(eventID)|\(tab)"] else { return nil }
+            if !messages.contains(error) { messages.append(error) }
+        }
+        return messages.joined(separator: "\n")
+    }
+    /// Pierwsze wczytanie — jeszcze bez danych i bez błędów.
+    private var waiting: Bool {
+        !available.isEmpty && available.allSatisfy { !loaded($0) && store.tabErrors["\(eventID)|\($0)"] == nil }
+    }
+    private func reload() async {
+        reloading = true
+        defer { reloading = false }
+        for tab in available { await store.loadTab(eventID, tab) }
     }
 
     var body: some View {
@@ -106,20 +133,39 @@ enum RozliczeniePart: String, CaseIterable, Identifiable {
                 .scrollContentBackground(.hidden)
                 .frame(width: 230)
                 .background(Color.primary.opacity(0.03))
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if members.contains("finances") {
-                            EventFinancesTab(store: store, eventID: eventID, navigate: { target in
-                                if target == "summary" { partRaw = RozliczeniePart.commissions.rawValue }
-                            }, part: part)
+                // Komunikaty (wczytywanie, błąd) na środku obszaru treści; sekcje z danymi — od góry, na całą szerokość.
+                Group {
+                    if reloading && failure != nil {
+                        ProgressView("Wczytuję rozliczenie…").controlSize(.small)
+                    } else if let failure {
+                        ContentUnavailableView {
+                            Label("Nie udało się wczytać rozliczenia", systemImage: "banknote")
+                        } description: {
+                            Text(failure)
+                        } actions: {
+                            Button("Spróbuj ponownie") { Task { await reload() } }
                         }
-                        if members.contains("summary") {
-                            EventSettlementTab(store: store, eventID: eventID, part: part)
+                    } else if waiting {
+                        ProgressView("Wczytuję rozliczenie…").controlSize(.small)
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 16) {
+                                if members.contains("finances") {
+                                    EventFinancesTab(store: store, eventID: eventID, navigate: { target in
+                                        if target == "summary" { partRaw = RozliczeniePart.commissions.rawValue }
+                                    }, part: part)
+                                }
+                                if members.contains("summary") {
+                                    EventSettlementTab(store: store, eventID: eventID, part: part)
+                                }
+                            }
+                            .padding(18)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    .padding(18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .task(id: eventID) { await reload() }
             }
         }
     }

@@ -58,13 +58,6 @@ import AppKit
     private var cached: CachedEventCard? { store.card(eventID) }
     private var flags: EventCardFlags? { cached?.page.flags }
 
-    /// Panel boczny otwarty na stronie „Rozliczenie i prowizje”.
-    private func showBilling() {
-        inspectorPage = "billing"
-        overviewHidden = false
-        overviewCollapsed = false
-    }
-
     /// Zakładki w kolejności pracy sprzedawcy; pokrewne połączone w jedną z przełącznikiem (Oferta + Kalkulacje, Zespół +
     /// Podwykonawcy, Finanse + Podsumowanie). Przegląd jest panelem z boku karty, nie zakładką.
     struct TabGroup: Identifiable {
@@ -561,8 +554,7 @@ import AppKit
 
     @ViewBuilder private func tabContent(_ id: String, _ page: EventCardPage, _ event: EventFields) -> some View {
         switch id {
-        case "overview", "details":
-            EventDetailsTab(store: store, eventID: eventID, page: page, openBilling: EventBillingText.available(page) ? { showBilling() } : nil)
+        case "overview", "details": EventDetailsTab(store: store, eventID: eventID, page: page)
         case "team": EventTeamTab(store: store, eventID: eventID, page: page)
         case "phases": EventPhasesTab(store: store, eventID: eventID)
         case "equipment": EventEquipmentTab(store: store, eventID: eventID)

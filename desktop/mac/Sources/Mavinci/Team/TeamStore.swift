@@ -27,6 +27,9 @@ struct TeamIndex: Codable {
     @Published var openedDate: Date?
     @Published private(set) var details: [String: EmployeeDetail] = [:]
     @Published var detailError: String?
+    /// Konto prowizji pracownika (zakładka „Prowizje”, `EmployeeCommissionModels.swift`) i błąd wczytania.
+    @Published var commissionAccounts: [String: EmployeeCommissionAccount] = [:]
+    @Published var commissionErrors: [String: String] = [:]
 
     private var namespace: String?
     private var file: SealedFile<TeamIndex>?
@@ -63,7 +66,7 @@ struct TeamIndex: Codable {
         if clearDisk, let file { try? file.clear() }
         file = nil; namespace = nil; index = TeamIndex(); recentLocal = [:]
         members = []; access = nil; syncing = false; lastSync = nil; loadError = nil; openedID = nil; openedTab = nil; openedDate = nil
-        details = [:]; detailError = nil
+        details = [:]; detailError = nil; commissionAccounts = [:]; commissionErrors = [:]
     }
     /// Kolejność jak `getEmployees`: order_index rosnąco, potem od najnowszych.
     private func publish() {

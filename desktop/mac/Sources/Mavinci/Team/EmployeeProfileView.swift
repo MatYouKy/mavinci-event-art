@@ -2,8 +2,8 @@ import SwiftUI
 import AppKit
 
 // MARK: Karta pracownika — 1:1 z `/crm/employees/[id]`: tło, zdjęcie, odznaki (aktywny, poziom dostępu, rola), kontakt i zakładki
-// widoczne według uprawnień: Przegląd (z edycją), Umowy i rozliczenia, Kwalifikacje, Konta Email, Uprawnienia, Dokumenty,
-// Zadania (własny profil), Wydarzenia, Oś czasu (plan dzień / tydzień i nieobecności).
+// widoczne według uprawnień: Przegląd (z edycją), Umowy i rozliczenia, Prowizje (własne konto albo dostęp do finansów — sprawdza baza),
+// Kwalifikacje, Konta Email, Uprawnienia, Dokumenty, Zadania (własny profil), Wydarzenia, Oś czasu (plan dzień / tydzień i nieobecności).
 
 /// Zdjęcie z adresu (pamięć podręczna jak awatary) z kadrem CRM (przesunięcie w %, skala).
 @MainActor struct CachedRemoteImage: View {
@@ -56,10 +56,17 @@ import AppKit
     private var canEdit: Bool { access?.canManage ?? false }
     private var canEditHere: Bool { canEdit || isOwn }
     private var canViewProfile: Bool { isOwn || canEdit || isAdmin }
+    /// Prowizje: własne konto i administrator od razu; pozostali, gdy baza udostępni konto (dostęp do finansów).
+    private var showsCommissions: Bool {
+        let account = store.commissionAccounts[employeeID]
+        if let account { return !account.hidden || isOwn }
+        return isOwn || isAdmin
+    }
     /// Zakładki w kolejności i według uprawnień jak w CRM.
     private var tabs: [EmployeeTab] {
         var list: [EmployeeTab] = [.overview]
         if isOwn || access?.canViewPersonnel == true { list.append(.personnel) }
+        if showsCommissions { list.append(.commissions) }
         if isAdmin { list += [.qualifications, .emails, .permissions] }
         if isOwn || isAdmin || canEdit { list.append(.documents) }
         if isOwn { list.append(.tasks) }
@@ -114,7 +121,12 @@ import AppKit
         .task(id: employeeID) {
             tab = initialTab ?? .overview
             if !tabs.contains(tab) { tab = .overview }
-            await store.loadDetail(employeeID)
+            async let detail: Void = store.loadDetail(employeeID)
+            async let commissions: Void = store.loadCommissions(employeeID)
+            _ = await (detail, commissions)
+            // Zakładka „Prowizje” pojawia się po odpowiedzi bazy (dostęp do finansów) — otwórz ją, gdy o nią proszono.
+            if let initialTab, tab == .overview, initialTab != .overview, tabs.contains(initialTab) { tab = initialTab }
+            if !tabs.contains(tab) { tab = .overview }
         }
         .onChange(of: store.lastSync) { _, _ in if !editing, let member { prepare(member) } }
     }
@@ -246,6 +258,7 @@ import AppKit
         case .qualifications: EmployeeQualificationsView(store: store, employeeID: m.id, canEdit: canEdit)
         case .emails: EmployeeEmailAccountsView(store: store, employeeID: m.id)
         case .permissions: EmployeePermissionsView(store: store, employeeID: m.id)
+        case .commissions: EmployeeCommissionsView(store: store, employeeID: m.id, employeeName: m.fullName)
         case .personnel: laterTab(m)
         }
     }
@@ -294,12 +307,53 @@ import AppKit
             if isAdmin { websiteCard(m) }
             if !m.notes.isEmpty || editing { notesCard(m) }
             if let accounts = detail?.emailAccounts, !accounts.isEmpty { emailCard(accounts) }
-            card("Wynagrodzenie i prowizje", symbol: "banknote") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Warunki wynagrodzenia, prowizje i rozliczenia trafią do aplikacji w kolejnym etapie.").font(.callout).foregroundStyle(.secondary)
-                    Button("Otwórz w CRM", systemImage: "safari") { state.openCRM("/crm/employees/\(m.id)") }.buttonStyle(.link).linkCursor()
+            compensationCard(m)
+        }
+    }
+
+    /// „Wynagrodzenie i prowizje”: dorobek z prowizji (sumy całej historii) z przejściem do zakładki „Prowizje”;
+    /// warunki wynagrodzenia (umowy, stawki) — w CRM.
+    private func compensationCard(_ m: TeamMember) -> some View {
+        let account = store.commissionAccounts[m.id]
+        let stats = account?.hidden == false ? account?.stats?.all : nil
+        return card("Wynagrodzenie i prowizje", symbol: "banknote") {
+            VStack(alignment: .leading, spacing: 10) {
+                if let account, let stats {
+                    if let terms = account.terms {
+                        Text(verbatim: terms.enabled
+                             ? "Prowizja od sprzedaży: " + CommissionText.percent(terms.standardRate) + " zysku netto, " + CommissionText.percent(terms.ownClientRate) + " przy kliencie własnym · " + CommissionText.method(terms.paymentMethod)
+                             : "Prowizja od sprzedaży wyłączona — widoczne są wcześniejsze naliczenia.")
+                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                        GridRow {
+                            commissionFigure("Zarobione", stats.earnedCents, theme.accent)
+                            commissionFigure("Wypłacone", stats.paidCents, CrmTheme.rgb(0x6ee7b7))
+                        }
+                        GridRow {
+                            commissionFigure("Do wypłaty", stats.outstandingCents, CrmTheme.rgb(0xc4b5fd))
+                            commissionFigure("Prognoza", stats.plannedCents, Color.primary.opacity(0.75))
+                        }
+                    }
+                    if stats.toOffsetCents > 0 {
+                        Text(verbatim: "Do potrącenia z kolejnych prowizji: " + CommissionText.money(cents: stats.toOffsetCents)).font(.caption).foregroundStyle(CrmTheme.rgb(0xfda4af))
+                    }
+                    if tabs.contains(.commissions) {
+                        Button("Wszystkie prowizje i wypłaty", systemImage: "arrow.right.circle") { tab = .commissions }.buttonStyle(.link).linkCursor()
+                    }
+                } else if account == nil && store.commissionErrors[m.id] == nil && (isOwn || isAdmin) {
+                    ProgressView().controlSize(.small)
                 }
+                Text("Warunki wynagrodzenia (umowy i stawki) — w CRM.").font(.callout).foregroundStyle(.secondary)
+                Button("Otwórz w CRM", systemImage: "safari") { state.openCRM("/crm/employees/\(m.id)") }.buttonStyle(.link).linkCursor()
             }
+        }
+    }
+
+    private func commissionFigure(_ label: String, _ cents: Int, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(verbatim: CommissionText.money(cents: cents)).font(.headline).monospacedDigit().foregroundStyle(color)
         }
     }
 

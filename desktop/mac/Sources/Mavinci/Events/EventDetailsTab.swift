@@ -9,8 +9,6 @@ import AppKit
     @ObservedObject var store: EventCardStore
     let eventID: String
     let page: EventCardPage
-    /// Otwiera panel boczny karty na stronie „Rozliczenie i prowizje”.
-    var openBilling: (() -> Void)? = nil
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var editingDates = false
@@ -70,10 +68,6 @@ import AppKit
     private var left: some View {
         VStack(alignment: .leading, spacing: 16) {
             basics
-            if EventBillingText.available(page) {
-                // Rozliczenie i prowizje są w panelu bocznym karty (obok Przeglądu) — tu skrót i przejście do panelu.
-                EventBillingSummaryCard(store: store, eventID: eventID, open: openBilling)
-            }
             textCard("Opis wydarzenia", text: event["description"], editing: $editingDescription, draft: $description, field: "description")
             textCard("Notatki", text: event["notes"], editing: $editingNotes, draft: $notes, field: "notes")
         }

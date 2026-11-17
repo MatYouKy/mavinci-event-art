@@ -163,12 +163,6 @@ enum EventBillingText {
         date(value).map { MeetingDates.format($0, "d.MM.yyyy") } ?? empty
     }
 
-    static func plural(_ count: Int, _ one: String, _ few: String, _ many: String) -> String {
-        if count == 1 { return one }
-        let tens = count % 100, units = count % 10
-        return (2...4).contains(units) && !(12...14).contains(tens) ? few : many
-    }
-
     static func reply(_ data: Data) -> EventBillingQuery.Reply? { try? JSONDecoder().decode(EventBillingQuery.Reply.self, from: data) }
 
     /// Po zmianie prowizji odświeżane są także już pobrane zakładki, które je pokazują (Finanse, Podsumowanie).
@@ -634,49 +628,5 @@ enum EventBillingSheet: Identifiable {
         case .settlement: return "settlement"
         case .commission(let commission): return "commission-\(commission?.id ?? "new")"
         }
-    }
-}
-
-/// Karta „Rozliczenie i prowizje” w Szczegółach — skrót z kopii zakładki i przejście do panelu bocznego.
-@MainActor struct EventBillingSummaryCard: View {
-    @ObservedObject var store: EventCardStore
-    let eventID: String
-    var open: (() -> Void)?
-
-    var body: some View {
-        let data = store.tab(eventID, "billing", as: EventBillingData.self)
-        TeamCard(title: "Rozliczenie i prowizje") {
-            if let data {
-                summary(data)
-            } else {
-                Text("Kto rozlicza i nabywca faktury, numer PO / zamówienia klienta, wspólne rozliczenie oraz sprzedawcy i prowizje.")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
-            if let open {
-                Button("Pokaż w panelu bocznym", systemImage: "sidebar.trailing") { open() }
-                    .help("Rozliczenie i prowizje w panelu obok karty — widoczne przy każdej zakładce")
-            }
-        }
-    }
-
-    @ViewBuilder private func summary(_ data: EventBillingData) -> some View {
-        let billing = data.billing
-        let payer = billing.arrangement == "direct" ? billing.clientName?.nonEmpty ?? "Klient przypisany do wydarzenia"
-            : billing.billingOrganizationName?.nonEmpty ?? "Nie wybrano organizacji"
-        let active = data.commissions.rows.filter { $0.status != "cancelled" }
-        VStack(alignment: .leading, spacing: 4) {
-            Label("\(payer) · \(billing.arrangementLabel)", systemImage: "building.2")
-            Label("Numer PO: " + (billing.purchaseOrderNumber?.nonEmpty ?? "nie podano"), systemImage: "number")
-            if let referral = billing.referral { Label("Pozyskał: \(referral.label)", systemImage: "person.badge.shield.checkmark") }
-            if let settlement = data.settlement {
-                let count = settlement.events.count
-                Label("Wspólne rozliczenie: \(settlement.name) (\(count) \(EventBillingText.plural(count, "wydarzenie", "wydarzenia", "wydarzeń")))", systemImage: "link")
-            }
-            if data.commissions.available && !active.isEmpty {
-                Label("Prowizje: \(active.count) \(EventBillingText.plural(active.count, "pozycja", "pozycje", "pozycji")) · do wypłaty \(EventBillingText.money(data.commissions.totals.nominal))",
-                      systemImage: "person.2")
-            }
-        }
-        .font(.callout).foregroundStyle(.secondary)
     }
 }

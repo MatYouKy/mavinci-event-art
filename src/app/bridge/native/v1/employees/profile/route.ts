@@ -4,14 +4,18 @@ import { invalidateTeam, teamAccess } from '@/lib/native/team';
 import {
   emailAccounts, employeePermissions, qualifications, saveCertification, saveLicense, savePermissions, savePersonalAccount, saveSkill,
 } from '@/lib/native/teamProfile';
+import {
+  approveCommission, commissionAccount, commissionPayroll, deductCommission, payoutCommission, saveCommissionTerms, type CommissionReply,
+} from '@/lib/native/teamCommissions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 /*
- * Zakładki karty pracownika w aplikacji na Maca: Kwalifikacje, Konta Email, Uprawnienia (`src/lib/native/teamProfile.ts`).
- * Zapisy jak w CRM, tokenem pracownika (RLS). Kwalifikacje zmienia `employees_manage`, konta e-mail i uprawnienia — administrator.
+ * Zakładki karty pracownika w aplikacji na Maca: Kwalifikacje, Konta Email, Uprawnienia (`src/lib/native/teamProfile.ts`) i Prowizje
+ * (`src/lib/native/teamCommissions.ts`). Zapisy jak w CRM, tokenem pracownika (RLS). Kwalifikacje zmienia `employees_manage`, konta
+ * e-mail i uprawnienia — administrator; dostęp do prowizji i ich rozliczanie sprawdza baza (finanse wydarzeń albo własne konto).
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -19,6 +23,7 @@ const failure = (message: string, status = 400) => nativeJson({ error: message }
 const errorText = (error: unknown, fallback: string) =>
   (error as { message?: string })?.message || (typeof error === 'string' ? error : fallback);
 const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const reply = (result: CommissionReply<unknown>) => (result.ok ? nativeJson(result.data) : failure(result.error, result.status));
 
 export async function GET(request: Request) {
   const ctx = await nativeContext(request);
@@ -42,6 +47,7 @@ export async function GET(request: Request) {
       const data = await employeePermissions(ctx, id);
       return data ? nativeJson(data) : failure('Nie znaleziono pracownika.', 404);
     }
+    if (op === 'commissions') return reply(await commissionAccount(ctx, id));
     return failure('Nieznana operacja.');
   } catch (error) {
     console.error('[native-employee-profile]', op, error);
@@ -170,6 +176,19 @@ export async function POST(request: Request) {
         if (result.error) return nativeJson({ error: result.error, updatedAt: result.updatedAt || null }, 400);
         return nativeJson({ ok: true, updatedAt: result.updatedAt });
       }
+
+      // Prowizje (uprawnienia sprawdza baza: rozliczanie — „Zarządzanie finansami” wydarzenia, warunki — administrator)
+      case 'commissionApprove':
+        return reply(await approveCommission(ctx, body));
+      case 'commissionPayout':
+        return reply(await payoutCommission(ctx, body));
+      case 'commissionDeduct':
+        return reply(await deductCommission(ctx, body));
+      case 'commissionPayroll':
+        return reply(await commissionPayroll(ctx, employeeId, body));
+      case 'commissionTerms':
+        if (!access.isAdmin) return failure('Prowizję pracownika ustawia administrator.', 403);
+        return reply(await saveCommissionTerms(ctx, employeeId, data));
 
       default:
         return failure('Nieznana operacja.');
