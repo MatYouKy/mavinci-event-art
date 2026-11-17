@@ -1,13 +1,16 @@
 import SwiftUI
 
 // MARK: Finanse (`/crm/invoices`) — dane z `/bridge/native/v1/finance` (`src/lib/native/finance.ts`): działalności z „Podglądem
-// finansów”, Centrum finansów (get_finance_center), terminy i monity (get_finance_deadlines), biała lista VAT
-// (get_vat_whitelist_status) i zamknięcia miesięcy (get_finance_periods). Kształt odpowiedzi ustala serwer (camelCase,
-// liczby i null). Obliczenia ekranów (wiekowanie, prognoza 13 tygodni) — 1:1 z `FinanceCenterPanel.tsx`.
+// finansów” (firmy z NIP — marki bez NIP, np. Event Rulers, są pomijane), Centrum finansów (get_finance_center), terminy
+// i monity (get_finance_deadlines), biała lista VAT (get_vat_whitelist_status) i zamknięcia miesięcy (get_finance_periods).
+// Kształt odpowiedzi ustala serwer (camelCase, liczby i null). Obliczenia ekranów (wiekowanie, prognoza 13 tygodni) — 1:1
+// z `FinanceCenterPanel.tsx`; przy kilku wybranych działalnościach pozycje są łączone i oznaczone działalnością (`company`).
 
 struct FinCompany: Codable, Identifiable, Hashable {
     var id: String
     var name: String
+    /// Domyślna działalność (`my_companies.is_default`) — wybrana przy pierwszym otwarciu, jak filtr firm w CRM.
+    var isDefault: Bool?
     /// „Zarządzanie finansami” działalności (ustawienia, terminy, zamknięcia).
     var canManage: Bool
     /// „Wystawianie faktur” działalności (przypomnienia o płatności).
@@ -22,7 +25,9 @@ struct FinCenter: Codable {
         var currency: String
         var balance: Double?
         var asOf: String?
-        var id: String { key }
+        /// Działalność (ustawiana po połączeniu kilku działalności, nie przychodzi z serwera).
+        var company: String?
+        var id: String { "\(company ?? "")|\(key)" }
     }
     struct Cash: Codable {
         var accounts: [Account]
@@ -44,6 +49,7 @@ struct FinCenter: Codable {
         var estimated: Bool
         var note: String?
         var daysOverdue: Double?
+        var company: String?
         var isPLN: Bool { currency.isEmpty || currency == "PLN" }
         var overdueDays: Int { Int(daysOverdue ?? 0) }
     }
@@ -58,7 +64,8 @@ struct FinCenter: Codable {
         var estimated: Bool
         var status: String
         var overdue: Bool
-        var key: String { "\(kind):\(form):\(periodKind):\(periodStart)" }
+        var company: String?
+        var key: String { "\(company ?? ""):\(kind):\(form):\(periodKind):\(periodStart)" }
     }
     struct VatMonth: Codable, Hashable {
         var periodStart: String
@@ -94,6 +101,8 @@ struct FinCenter: Codable {
         var text: String
         var tab: String
         var section: String?
+        var company: String?
+        var id: String { "\(company ?? "")|\(key)" }
     }
     struct CheckItem: Codable, Hashable {
         var key: String
@@ -136,7 +145,8 @@ struct FinDeadlines: Codable {
         var paid: Double
         var status: String
         var overdue: Bool
-        var id: String { "\(kind)|\(form)|\(periodKind)|\(periodStart)" }
+        var company: String?
+        var id: String { "\(company ?? "")|\(kind)|\(form)|\(periodKind)|\(periodStart)" }
         var sortAmount: Double { amountDue ?? -1 }
     }
     struct Receivable: Codable, Hashable, Identifiable {
@@ -155,6 +165,7 @@ struct FinDeadlines: Codable {
         var daysOverdue: Double
         var reminders: Double
         var lastReminderAt: String?
+        var company: String?
         var sortBuyer: String { buyerName ?? "" }
         var sortLastReminder: String { lastReminderAt ?? "" }
     }
@@ -171,6 +182,7 @@ struct FinDeadlines: Codable {
         var bankAccount: String?
         var daysLeft: Double?
         var supplierDays: Double?
+        var company: String?
         var sortSeller: String { sellerName ?? "" }
         /// Bez terminu na początku (jak w CRM: NULLS FIRST).
         var sortDue: String { dueDate ?? "" }
@@ -180,7 +192,8 @@ struct FinDeadlines: Codable {
         var sellerNip: String
         var sellerName: String?
         var days: Double
-        var id: String { sellerNip }
+        var company: String?
+        var id: String { "\(company ?? "")|\(sellerNip)" }
     }
     struct Setting: Codable, Hashable {
         var kind: String
@@ -212,6 +225,7 @@ struct FinWhitelist: Codable {
         var checkDate: String?
         var requestId: String?
         var fresh: Bool
+        var company: String?
     }
     struct Payment: Codable, Hashable, Identifiable {
         var bankTransactionId: String
@@ -225,6 +239,7 @@ struct FinWhitelist: Codable {
         var verdict: String?
         var statusVat: String?
         var requestId: String?
+        var company: String?
         var id: String { "\(bankTransactionId):\(documentNumber ?? "")" }
         var sortSeller: String { sellerName ?? "" }
         var sortDocument: String { documentNumber ?? "" }
@@ -451,6 +466,8 @@ struct FinFlow: Identifiable, Hashable {
     var estimated: Bool
     var href: String?
     var unassigned: Bool
+    /// Nazwa działalności (tylko przy kilku wybranych działalnościach).
+    var companyName: String?
     var incoming: Bool { direction == "in" }
 }
 
@@ -464,7 +481,40 @@ struct FinWeek: Identifiable {
     var id: Int { index }
 }
 
-/// Widok Centrum: pozycje w PLN, wiekowanie, prognoza 13 tygodni z przełącznikami jak w CRM.
+// MARK: Wybrane działalności
+
+/// Stan jednej działalności z jej uprawnieniami.
+struct FinCompanyState: Identifiable {
+    let company: FinCompany
+    let state: FinState
+    var id: String { company.id }
+}
+
+/// Centrum finansów jednej działalności.
+struct FinCompanyCenter: Identifiable {
+    let company: FinCompany
+    let center: FinCenter
+    var id: String { company.id }
+}
+
+/// Działalności wybrane w filtrze (jak filtr firm w CRM): jedna albo kilka — wtedy pozycje są łączone i oznaczone działalnością.
+struct FinScope {
+    let entries: [FinCompanyState]
+    var multi: Bool { entries.count > 1 }
+    var companies: [FinCompany] { entries.map(\.company) }
+    var centers: [FinCompanyCenter] {
+        entries.compactMap { entry in entry.state.center.map { FinCompanyCenter(company: entry.company, center: $0) } }
+    }
+    var today: String {
+        entries.compactMap { $0.state.center?.today ?? $0.state.deadlines?.today }.max() ?? FinanceText.dayString(Date())
+    }
+    func company(_ id: String?) -> FinCompany? { entries.first { $0.company.id == id }?.company }
+    /// Nazwa działalności do opisu pozycji — tylko przy kilku działalnościach.
+    func label(_ id: String?) -> String? { multi ? company(id)?.name : nil }
+}
+
+/// Widok Centrum: pozycje w PLN, wiekowanie, prognoza 13 tygodni z przełącznikami jak w CRM — dla jednej albo kilku działalności
+/// (gotówka, należności, zobowiązania, ZUS i podatki i prognoza sumowane; VAT, CIT i zamknięcie miesiąca — osobno dla każdej).
 struct FinCenterModel {
     static let kindLabels: [String: String] = [
         "receivable": "Należność", "receivable_ksef_paid": "Do wyjaśnienia", "proforma": "Pro forma",
@@ -473,6 +523,13 @@ struct FinCenterModel {
     ]
 
     var today: String
+    var accounts: [FinCenter.Account]
+    var quality: [FinCenter.Quality]
+    var cashTotal: Double
+    var cashAsOf: String?
+    var cashDaysOld: Double?
+    /// Działalności bez wczytanych wyciągów (ich saldo nie wchodzi do gotówki i prognozy).
+    var withoutStatements: [String]
     var receivables: [FinCenter.Item]
     var payables: [FinCenter.Item]
     var conflicts: [FinCenter.Item]
@@ -495,26 +552,66 @@ struct FinCenterModel {
     var lowestIndex: Int
     var maxFlow: Double
     var firstNegative: Int?
-    var vatCurrent: FinCenter.VatMonth?
-    var vatPrevious: FinCenter.VatMonth?
     var upcomingObligations: [FinCenter.Obligation]
     var overdueObligations: [FinCenter.Obligation]
 
-    init(_ data: FinCenter, includeOverdueIn: Bool, includeUnassigned: Bool) {
-        let today = data.today
+    init(_ parts: [FinCompanyCenter], includeOverdueIn: Bool, includeUnassigned: Bool) {
+        let multi = parts.count > 1
+        let today = parts.map(\.center.today).max() ?? FinanceText.dayString(Date())
         self.today = today
-        receivables = data.items.filter { $0.kind == "receivable" && $0.isPLN }
-        payables = data.items.filter { $0.kind == "payable" && $0.isPLN }
-        conflicts = data.items.filter { $0.kind == "receivable_ksef_paid" }
-        foreign = data.items.filter { !$0.isPLN && $0.kind != "receivable_ksef_paid" }
+        var names: [String: String] = [:]
+        for part in parts { names[part.company.id] = part.company.name }
+
+        var items: [FinCenter.Item] = []
+        var obligations: [FinCenter.Obligation] = []
+        var accounts: [FinCenter.Account] = []
+        var quality: [FinCenter.Quality] = []
+        var total: Double = 0
+        var asOf: String?
+        var daysOld: Double?
+        var missing: [String] = []
+        for part in parts {
+            let id = part.company.id
+            for var item in part.center.items { item.company = id; items.append(item) }
+            for var obligation in part.center.obligations {
+                obligation.company = id
+                if multi { obligation.label = "\(part.company.name): \(obligation.label)" }
+                obligations.append(obligation)
+            }
+            for var account in part.center.cash.accounts {
+                account.company = id
+                if multi { account.label = "\(part.company.name) · \(account.label)" }
+                accounts.append(account)
+            }
+            for var item in part.center.quality {
+                item.company = id
+                if multi { item.text = "\(part.company.name): \(item.text)" }
+                quality.append(item)
+            }
+            total += part.center.cash.total
+            if let value = part.center.cash.asOf { asOf = asOf.map { min($0, value) } ?? value }
+            if let value = part.center.cash.daysOld { daysOld = daysOld.map { max($0, value) } ?? value }
+            if part.center.cash.accounts.isEmpty { missing.append(part.company.name) }
+        }
+        self.accounts = accounts
+        self.quality = quality
+        cashTotal = total
+        cashAsOf = asOf
+        cashDaysOld = daysOld
+        withoutStatements = missing
+
+        receivables = items.filter { $0.kind == "receivable" && $0.isPLN }
+        payables = items.filter { $0.kind == "payable" && $0.isPLN }
+        conflicts = items.filter { $0.kind == "receivable_ksef_paid" }
+        foreign = items.filter { !$0.isPLN && $0.kind != "receivable_ksef_paid" }
         receivableAging = FinAging(receivables, today: today)
         payableAging = FinAging(payables, today: today)
 
         // Prognoza: pozycje w PLN (bez faktur do wyjaśnienia) i ZUS/podatki z kwotą.
         var flows: [FinFlow] = []
-        for (index, item) in data.items.enumerated() where item.isPLN && item.kind != "receivable_ksef_paid" {
+        for (index, item) in items.enumerated() where item.isPLN && item.kind != "receivable_ksef_paid" {
             flows.append(FinFlow(
-                id: "\(index)|\(item.kind):\(item.id):\(item.dueDate ?? ""):\(item.label ?? "")",
+                id: "\(index)|\(item.company ?? ""):\(item.kind):\(item.id):\(item.dueDate ?? ""):\(item.label ?? "")",
                 direction: item.direction,
                 kindLabel: Self.kindLabels[item.kind] ?? item.kind,
                 label: item.label ?? "—",
@@ -523,11 +620,12 @@ struct FinCenterModel {
                 amount: item.amount,
                 estimated: item.estimated,
                 href: FinLink.item(item),
-                unassigned: false
+                unassigned: false,
+                companyName: multi ? item.company.flatMap { names[$0] } : nil
             ))
         }
         var unknown: [FinCenter.Obligation] = []
-        for obligation in data.obligations {
+        for obligation in obligations {
             guard let amount = obligation.amount else { unknown.append(obligation); continue }
             if amount <= 0.009 { continue }
             flows.append(FinFlow(
@@ -541,13 +639,15 @@ struct FinCenterModel {
                 estimated: obligation.estimated,
                 href: FinLink.section("external", "deadlines"),
                 // Brak jakiejkolwiek zapłaty mimo wyciągu za termin — zwykle nieprzypisany przelew; częściowa zapłata = realna reszta.
-                unassigned: obligation.status == "unpaid" && obligation.overdue
+                unassigned: obligation.status == "unpaid" && obligation.overdue,
+                companyName: nil
             ))
         }
         unknownObligations = unknown
 
-        let week0 = data.forecast.week0
-        var weeks: [FinWeek] = (0..<max(data.forecast.weeks, 0)).map { index in
+        let forecast = parts.first?.center.forecast ?? FinCenter.Forecast(week0: today, until: today, weeks: 0)
+        let week0 = forecast.week0
+        var weeks: [FinWeek] = (0..<max(forecast.weeks, 0)).map { index in
             let start = FinFormat.addDays(week0, index * 7)
             return FinWeek(index: index, start: start, end: FinFormat.addDays(start, 6))
         }
@@ -564,14 +664,14 @@ struct FinCenterModel {
                 else { overdueOutflows += flow.amount }
                 continue
             }
-            if due > data.forecast.until { continue }
+            if due > forecast.until { continue }
             let index = Int((Double(FinFormat.daysBetween(week0, due)) / 7).rounded(.down))
             guard weeks.indices.contains(index) else { continue }
             weeks[index].flows.append(flow)
             if flow.incoming { weeks[index].inflows += flow.amount } else { weeks[index].outflows += flow.amount }
         }
         self.weeks = weeks
-        opening = data.cash.total
+        opening = total
         start = opening + (includeOverdueIn ? overdueInflows : 0) - overdueOutflows - (includeUnassigned ? overdueUnassigned : 0)
         var running = start
         var balances: [Double] = []
@@ -591,13 +691,71 @@ struct FinCenterModel {
         maxFlow = max(1, weeks.map { max($0.inflows, $0.outflows) }.max() ?? 0)
         firstNegative = balances.firstIndex { $0 < 0 }
 
-        let month = String(today.prefix(7))
-        vatCurrent = data.vat?.first { String($0.periodStart.prefix(7)) == month }
-        vatPrevious = data.vat?.first { String($0.periodStart.prefix(7)) != month }
-        upcomingObligations = data.obligations
+        upcomingObligations = obligations
             .filter { $0.dueDate >= today && FinFormat.daysBetween(today, $0.dueDate) <= 45 }
             .sorted { $0.dueDate < $1.dueDate }
-        overdueObligations = data.obligations.filter { $0.dueDate < today }
+        overdueObligations = obligations.filter { $0.dueDate < today }
+    }
+
+    /// VAT bieżącego i poprzedniego miesiąca działalności.
+    static func vat(_ center: FinCenter) -> (current: FinCenter.VatMonth?, previous: FinCenter.VatMonth?) {
+        let month = String(center.today.prefix(7))
+        return (center.vat?.first { String($0.periodStart.prefix(7)) == month }, center.vat?.first { String($0.periodStart.prefix(7)) != month })
+    }
+}
+
+/// Terminy i monity wybranych działalności — listy połączone, każda pozycja z działalnością.
+struct FinDeadlinesModel {
+    struct StatementGap: Identifiable {
+        let company: FinCompany
+        let end: String?
+        var id: String { company.id }
+    }
+    struct Failure: Identifiable {
+        let company: FinCompany
+        let message: String
+        var id: String { company.id }
+    }
+    var today: String
+    var obligations: [FinDeadlines.Obligation] = []
+    var receivables: [FinDeadlines.Receivable] = []
+    var payables: [FinDeadlines.Payable] = []
+    var supplierTerms: [FinDeadlines.SupplierTerm] = []
+    var payments: [FinWhitelist.Payment] = []
+    /// Ostatnie sprawdzenie białej listy faktur do zapłaty (po identyfikatorze faktury KSeF).
+    var checks: [String: FinWhitelist.Payable] = [:]
+    var whitelistAvailable = false
+    var anySettingsEnabled = false
+    var statementGaps: [StatementGap] = []
+    var failures: [Failure] = []
+    var loaded = false
+
+    init(_ scope: FinScope) {
+        today = scope.today
+        for entry in scope.entries {
+            let id = entry.company.id
+            guard let deadlines = entry.state.deadlines else {
+                failures.append(Failure(company: entry.company, message: entry.state.deadlinesError ?? "Brak danych."))
+                continue
+            }
+            loaded = true
+            for var item in deadlines.obligations {
+                item.company = id
+                if scope.multi { item.label = "\(entry.company.name): \(item.label)" }
+                obligations.append(item)
+            }
+            for var item in deadlines.receivables { item.company = id; receivables.append(item) }
+            for var item in deadlines.payables { item.company = id; payables.append(item) }
+            for var item in deadlines.supplierTerms { item.company = id; supplierTerms.append(item) }
+            if deadlines.settings.contains(where: \.enabled) { anySettingsEnabled = true }
+            let gap = deadlines.statementEnd.map { FinFormat.daysBetween($0, deadlines.today) }
+            if gap == nil || (gap ?? 0) > 31 { statementGaps.append(StatementGap(company: entry.company, end: deadlines.statementEnd)) }
+            if let whitelist = entry.state.whitelist {
+                whitelistAvailable = true
+                for var check in whitelist.payables { check.company = id; checks[check.ksefInvoiceId] = check }
+                for var payment in whitelist.payments { payment.company = id; payments.append(payment) }
+            }
+        }
     }
 }
 

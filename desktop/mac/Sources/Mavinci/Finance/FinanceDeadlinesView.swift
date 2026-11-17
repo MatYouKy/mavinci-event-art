@@ -3,11 +3,12 @@ import AppKit
 
 // MARK: Terminy i monity — 1:1 z `FinanceDeadlinesPanel.tsx`: kafle spraw po terminie, ostrzeżenie o wyciągach, natywne tabele
 // (ZUS i podatki, należności z przypomnieniami e-mail, faktury kosztowe do zapłaty z terminem dostawcy i białą listą VAT,
-// przelewy ponad 15 000 zł), „Obowiązki działalności” i domyślne terminy dostawców.
+// przelewy ponad 15 000 zł), „Obowiązki działalności” i domyślne terminy dostawców. Kilka wybranych działalności — listy
+// połączone, przy każdej pozycji nazwa działalności, czynności według uprawnień w jej działalności.
 
 @MainActor struct FinanceDeadlinesView: View {
     @ObservedObject var store: FinanceStore
-    let data: FinState
+    let scope: FinScope
     @EnvironmentObject private var state: Workspace
     @State private var showPaidObligations = false
     @State private var obligationSelection: String?
@@ -18,7 +19,7 @@ import AppKit
     @State private var receivableSort = [KeyPathComparator(\FinDeadlines.Receivable.dueDate)]
     @State private var payableSort = [KeyPathComparator(\FinDeadlines.Payable.sortDue)]
     @State private var paymentSort = [KeyPathComparator(\FinWhitelist.Payment.transactionDate, order: .reverse)]
-    @State private var settingsOpen = false
+    @State private var settingsCompany: FinCompany?
     @State private var dueEdit: FinDeadlines.Payable?
     @State private var reminder: FinDeadlines.Receivable?
     @State private var termsOpen = false
@@ -27,26 +28,28 @@ import AppKit
     private static let red = CrmTheme.rgb(0xf87171)
     private static let amber = CrmTheme.rgb(0xfbbf24)
 
-    private var company: FinCompany? { store.company }
-    private var canManage: Bool { company?.canManage ?? false }
-    private var canRemind: Bool { company?.canRemind ?? false }
+    /// Działalności, w których pracownik zarządza finansami (ustawienia obowiązków, terminy, zamknięcia).
+    private var manageable: [FinCompany] { scope.companies.filter(\.canManage) }
+    private func canManage(_ company: String?) -> Bool { scope.company(company)?.canManage ?? false }
+    private func canRemind(_ company: String?) -> Bool { scope.company(company)?.canRemind ?? false }
 
     var body: some View {
-        Group {
-            if let deadlines = data.deadlines {
-                content(deadlines)
+        let model = FinDeadlinesModel(scope)
+        return Group {
+            if model.loaded {
+                content(model)
             } else {
                 ContentUnavailableView {
                     Label("Nie udało się wczytać terminów", systemImage: "exclamationmark.triangle")
-                } description: { Text(data.deadlinesError ?? "Brak danych.") } actions: {
+                } description: { Text(model.failures.map(\.message).joined(separator: "\n")) } actions: {
                     Button("Spróbuj ponownie") { Task { await store.sync(force: true) } }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .sheet(isPresented: $settingsOpen) {
-            if let deadlines = data.deadlines, let company {
-                FinObligationSettingsSheet(store: store, companyID: company.id, deadlines: deadlines)
+        .sheet(item: $settingsCompany) { company in
+            if let deadlines = scope.entries.first(where: { $0.company.id == company.id })?.state.deadlines {
+                FinObligationSettingsSheet(store: store, company: company, deadlines: deadlines)
             }
         }
         .sheet(item: $dueEdit) { payable in
@@ -63,17 +66,16 @@ import AppKit
         }
     }
 
-    private func content(_ deadlines: FinDeadlines) -> some View {
-        let today = deadlines.today
-        let overdueReceivables = deadlines.receivables.filter { $0.daysOverdue > 0 }
-        let overduePayables = deadlines.payables.filter { ($0.dueDate ?? "9999") < today }
-        let noDue = deadlines.payables.filter { $0.dueDate == nil }.count
-        let gap: Int? = deadlines.statementEnd.map { FinFormat.daysBetween($0, today) }
+    private func content(_ model: FinDeadlinesModel) -> some View {
+        let today = model.today
+        let overdueReceivables = model.receivables.filter { $0.daysOverdue > 0 }
+        let overduePayables = model.payables.filter { ($0.dueDate ?? "9999") < today }
+        let noDue = model.payables.filter { $0.dueDate == nil }.count
         return VStack(alignment: .leading, spacing: 10) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], spacing: 10) {
                 tileButton(.obligations, FinTile(symbol: "building.columns", label: "ZUS i podatki po terminie",
-                                                 value: "\(deadlines.obligations.filter(\.overdue).count)",
-                                                 warn: deadlines.obligations.contains(where: \.overdue)))
+                                                 value: "\(model.obligations.filter(\.overdue).count)",
+                                                 warn: model.obligations.contains(where: \.overdue)))
                 tileButton(.receivables, FinTile(symbol: "bell.badge", label: "Należności po terminie",
                                                  value: "\(overdueReceivables.count) · \(FinFormat.money(overdueReceivables.reduce(0) { $0 + $1.outstanding }))",
                                                  warn: !overdueReceivables.isEmpty))
@@ -83,25 +85,41 @@ import AppKit
                 tileButton(.payables, FinTile(symbol: "calendar.badge.exclamationmark", label: "Faktury kosztowe bez terminu",
                                               value: "\(noDue)", warn: noDue > 0))
             }
-            if gap == nil || (gap ?? 0) > 31 {
+            ForEach(model.failures) { failure in
+                FinBanner(text: "\(failure.company.name): nie udało się wczytać terminów — \(failure.message)", tone: .bad)
+            }
+            if !model.statementGaps.isEmpty {
                 HStack(alignment: .top, spacing: 10) {
-                    FinBanner(text: deadlines.statementEnd.map {
-                        "Wyciągi są wczytane do \(FinFormat.day($0)). Zapłat po tej dacie CRM nie widzi — obowiązki z późniejszym terminem mają stan „brak wyciągu”, a należności i zobowiązania mogą być już zapłacone."
-                    } ?? "Brak wczytanych wyciągów — CRM nie potwierdzi żadnej zapłaty ZUS i podatków.")
-                    Button("Wczytaj wyciąg") { state.openCRM(FinLink.section("external", "reconciliation")) }
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(model.statementGaps) { gap in
+                            FinBanner(text: statementText(gap))
+                        }
+                    }
+                    Button("Wczytaj wyciąg") { store.open(FinLink.section("external", "statements")) }
+                        .fixedSize()
                         .help("Uzgadnianie wyciągów — w CRM")
                 }
             }
-            toolbar(deadlines)
+            listPicker(model)
+            actions(model)
             switch store.list {
-            case .obligations: obligationsTable(deadlines)
-            case .receivables: receivablesTable(deadlines)
-            case .payables: payablesTable(deadlines)
-            case .payments: paymentsTable(deadlines)
+            case .obligations: obligationsTable(model)
+            case .receivables: receivablesTable(model)
+            case .payables: payablesTable(model)
+            case .payments: paymentsTable(model)
             }
             Text(footnote).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(18)
+    }
+
+    private func statementText(_ gap: FinDeadlinesModel.StatementGap) -> String {
+        let prefix = scope.multi ? "\(gap.company.name): " : ""
+        if let end = gap.end {
+            return prefix + "Wyciągi są wczytane do \(FinFormat.day(end)). Zapłat po tej dacie CRM nie widzi — obowiązki z późniejszym terminem mają stan „brak wyciągu”, a należności i zobowiązania mogą być już zapłacone."
+        }
+        return prefix + "Brak wczytanych wyciągów — CRM nie potwierdzi żadnej zapłaty ZUS i podatków."
     }
 
     private func tileButton(_ list: FinDeadlinesList, _ tile: FinTile) -> some View {
@@ -110,58 +128,82 @@ import AppKit
             .help("Pokaż listę „\(list.label)”")
     }
 
-    // MARK: Pasek nad tabelą
+    // MARK: Wybór listy i czynności (w osobnych wierszach — bez ściskania i zawijania napisów)
 
-    private func toolbar(_ deadlines: FinDeadlines) -> some View {
-        HStack(spacing: 10) {
+    private func listPicker(_ model: FinDeadlinesModel) -> some View {
+        HStack {
             Picker("Lista", selection: $store.list) {
                 ForEach(FinDeadlinesList.allCases) { item in
-                    Text("\(item.label) (\(count(item, deadlines)))").tag(item)
+                    Text("\(item.label) (\(count(item, model)))").tag(item)
                 }
             }
             .pickerStyle(.segmented).labelsHidden().fixedSize()
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder private func actions(_ model: FinDeadlinesModel) -> some View {
+        HStack(spacing: 10) {
             switch store.list {
             case .obligations:
-                Toggle("Pokaż zapłacone z ostatniego roku", isOn: $showPaidObligations).toggleStyle(.checkbox)
-                Button("Deklaracje i kwoty") { state.openCRM(FinLink.section("external", "declarations")) }
-                    .help("Kwoty z deklaracji i pliki — w CRM")
-                if canManage {
-                    Button { settingsOpen = true } label: { Label("Obowiązki działalności", systemImage: "gearshape") }
-                }
+                Toggle("Pokaż zapłacone z ostatniego roku", isOn: $showPaidObligations).toggleStyle(.checkbox).fixedSize()
+                Spacer(minLength: 8)
+                Button("Deklaracje i kwoty") { store.open(FinLink.section("external", "declarations")) }
+                    .fixedSize().help("Kwoty z deklaracji i pliki — w CRM")
+                settingsButton
             case .receivables:
-                Button { if let item = selectedReceivable(deadlines) { reminder = item } } label: { Label("Wyślij przypomnienie", systemImage: "envelope") }
-                    .disabled(!(selectedReceivable(deadlines).map { canSend($0) } ?? false) || !state.canWrite)
+                Spacer(minLength: 8)
+                Button { if let item = selectedReceivable(model) { reminder = item } } label: { Label("Wyślij przypomnienie", systemImage: "envelope") }
+                    .fixedSize()
+                    .disabled(!(selectedReceivable(model).map { canSend($0) } ?? false) || !state.canWrite)
+                    .help("Zaznacz fakturę na liście")
             case .payables:
-                if !deadlines.supplierTerms.isEmpty {
-                    Button("Domyślne terminy dostawców (\(deadlines.supplierTerms.count))") { termsOpen = true }
-                        .popover(isPresented: $termsOpen, arrowEdge: .bottom) { supplierTerms(deadlines) }
+                if !model.supplierTerms.isEmpty {
+                    Button("Domyślne terminy dostawców (\(model.supplierTerms.count))") { termsOpen = true }
+                        .fixedSize()
+                        .popover(isPresented: $termsOpen, arrowEdge: .bottom) { supplierTerms(model) }
                 }
-                if let payable = selectedPayable(deadlines), editable(payable) {
-                    Button(payable.dueDate == nil ? "Ustaw termin…" : "Zmień termin…") { dueEdit = payable }.disabled(!state.canWrite)
+                Spacer(minLength: 8)
+                if let payable = selectedPayable(model), editable(payable) {
+                    Button(payable.dueDate == nil ? "Ustaw termin…" : "Zmień termin…") { dueEdit = payable }.fixedSize().disabled(!state.canWrite)
                 }
-                if data.whitelist != nil {
+                if model.whitelistAvailable {
                     Button { Task { await store.checkWhitelist("payables") } } label: { Label("Sprawdź na białej liście", systemImage: "checkmark.shield") }
-                        .disabled(!state.canWrite)
+                        .fixedSize().disabled(!state.canWrite)
                         .help("Sprawdza NIP i rachunek z faktury w wykazie podatników VAT (API MF) na dziś — rób to w dniu zlecenia przelewu.")
                 }
             case .payments:
-                if !(data.whitelist?.payments.isEmpty ?? true) {
+                Spacer(minLength: 8)
+                if !model.payments.isEmpty {
                     Button { Task { await store.checkWhitelist("payments") } } label: { Label("Sprawdź przelewy", systemImage: "checkmark.shield") }
-                        .disabled(!state.canWrite)
+                        .fixedSize().disabled(!state.canWrite)
                         .help("Sprawdza rachunek z wyciągu w wykazie podatników VAT na dzień przelewu (tylko niesprawdzone).")
                 }
             }
         }
-        .controlSize(.regular)
+        .lineLimit(1)
     }
 
-    private func count(_ list: FinDeadlinesList, _ deadlines: FinDeadlines) -> Int {
+    /// „Obowiązki działalności” — przy kilku działalnościach wybór działalności.
+    @ViewBuilder private var settingsButton: some View {
+        if manageable.count == 1, let company = manageable.first {
+            Button { settingsCompany = company } label: { Label("Obowiązki działalności", systemImage: "gearshape") }.fixedSize()
+        } else if manageable.count > 1 {
+            Menu {
+                ForEach(manageable) { company in Button(company.name) { settingsCompany = company } }
+            } label: {
+                Label("Obowiązki działalności", systemImage: "gearshape")
+            }
+            .fixedSize()
+        }
+    }
+
+    private func count(_ list: FinDeadlinesList, _ model: FinDeadlinesModel) -> Int {
         switch list {
-        case .obligations: return visibleObligations(deadlines).count
-        case .receivables: return deadlines.receivables.count
-        case .payables: return deadlines.payables.count
-        case .payments: return data.whitelist?.payments.count ?? 0
+        case .obligations: return visibleObligations(model).count
+        case .receivables: return model.receivables.count
+        case .payables: return model.payables.count
+        case .payments: return model.payments.count
         }
     }
 
@@ -178,11 +220,16 @@ import AppKit
         }
     }
 
+    /// Nazwa działalności dopisywana do opisu pozycji przy kilku działalnościach.
+    private func companySuffix(_ id: String?) -> String {
+        scope.label(id).map { " · \($0)" } ?? ""
+    }
+
     // MARK: ZUS i podatki
 
-    private func visibleObligations(_ deadlines: FinDeadlines) -> [FinDeadlines.Obligation] {
-        if showPaidObligations { return deadlines.obligations }
-        return deadlines.obligations.filter { !["paid", "paid_no_amount"].contains($0.status) || $0.dueDate >= deadlines.today }
+    private func visibleObligations(_ model: FinDeadlinesModel) -> [FinDeadlines.Obligation] {
+        if showPaidObligations { return model.obligations }
+        return model.obligations.filter { !["paid", "paid_no_amount"].contains($0.status) || $0.dueDate >= model.today }
     }
 
     private func relative(_ due: String, today: String) -> String {
@@ -192,10 +239,9 @@ import AppKit
         return "\(-left) \(FinFormat.dayWord(left)) temu"
     }
 
-    private func obligationsTable(_ deadlines: FinDeadlines) -> some View {
-        let rows = visibleObligations(deadlines).sorted(using: obligationSort)
-        let today = deadlines.today
-        let enabled = deadlines.settings.contains(where: \.enabled)
+    private func obligationsTable(_ model: FinDeadlinesModel) -> some View {
+        let rows = visibleObligations(model).sorted(using: obligationSort)
+        let today = model.today
         return Table(rows, selection: $obligationSelection, sortOrder: $obligationSort) {
             TableColumn("Obowiązek", value: \.label) { item in
                 VStack(alignment: .leading, spacing: 2) {
@@ -229,12 +275,12 @@ import AppKit
             .width(min: 160, ideal: 240)
         }
         .contextMenu(forSelectionType: String.self) { _ in
-            Button("Deklaracje i kwoty (CRM)") { state.openCRM(FinLink.section("external", "declarations")) }
-            Button("Uzgadnianie wyciągu (CRM)") { state.openCRM(FinLink.section("external", "reconciliation")) }
+            Button("Deklaracje i kwoty") { store.open(FinLink.section("external", "declarations")) }
+            Button("Uzgadnianie wyciągu") { store.open(FinLink.section("external", "reconciliation")) }
         }
         .overlay {
-            if !enabled {
-                emptyState("Ta działalność nie ma ustawionych obowiązków ZUS i podatkowych." + (canManage ? " Włącz je w „Obowiązki działalności”." : " Ustawia je osoba z „Zarządzaniem finansami”."))
+            if !model.anySettingsEnabled {
+                emptyState("Wybrane działalności nie mają ustawionych obowiązków ZUS i podatkowych." + (manageable.isEmpty ? " Ustawia je osoba z „Zarządzaniem finansami”." : " Włącz je w „Obowiązki działalności”."))
             } else if rows.isEmpty {
                 emptyState("Wszystkie obowiązki z ostatniego roku są zapłacone.", symbol: "checkmark.circle")
             }
@@ -245,6 +291,7 @@ import AppKit
         VStack(spacing: 8) {
             Image(systemName: symbol).font(.title2).foregroundStyle(.secondary)
             Text(text).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(20)
         .allowsHitTesting(false)
@@ -253,25 +300,26 @@ import AppKit
     // MARK: Należności
 
     private func canSend(_ item: FinDeadlines.Receivable) -> Bool {
-        canRemind && item.source == "local" && item.invoiceId != nil
+        canRemind(item.company) && item.source == "local" && item.invoiceId != nil
     }
 
-    private func selectedReceivable(_ deadlines: FinDeadlines) -> FinDeadlines.Receivable? {
-        receivableSelection.flatMap { id in deadlines.receivables.first { $0.id == id } }
+    private func selectedReceivable(_ model: FinDeadlinesModel) -> FinDeadlines.Receivable? {
+        receivableSelection.flatMap { id in model.receivables.first { $0.id == id } }
     }
 
-    private func receivablesTable(_ deadlines: FinDeadlines) -> some View {
-        let rows = deadlines.receivables.sorted(using: receivableSort)
-        let today = deadlines.today
+    private func receivablesTable(_ model: FinDeadlinesModel) -> some View {
+        let rows = model.receivables.sorted(using: receivableSort)
+        let today = model.today
         return Table(rows, selection: $receivableSelection, sortOrder: $receivableSort) {
             TableColumn("Faktura", value: \.invoiceNumber) { item in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.invoiceNumber).fontWeight(.medium).lineLimit(1)
-                    Text("wystawiona \(FinFormat.day(item.issueDate))" + (item.inKsef ? " · KSeF" : "")).font(.caption).foregroundStyle(.secondary)
+                    Text("wystawiona \(FinFormat.day(item.issueDate))" + (item.inKsef ? " · KSeF" : "") + companySuffix(item.company))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 .padding(.vertical, 2)
             }
-            .width(min: 150, ideal: 190)
+            .width(min: 150, ideal: 200)
             TableColumn("Klient", value: \.sortBuyer) { item in
                 Text(item.buyerName ?? "—").lineLimit(2)
             }
@@ -293,7 +341,7 @@ import AppKit
             .width(min: 110, ideal: 130, max: 170)
             TableColumn("Monity", value: \.reminders) { item in
                 if item.reminders > 0 {
-                    Text("\(Int(item.reminders))× · ostatni \(FinFormat.day(item.lastReminderAt))")
+                    Text("\(Int(item.reminders))× · ostatni \(FinFormat.day(item.lastReminderAt))").lineLimit(1)
                 } else {
                     Text("brak").foregroundStyle(.secondary)
                 }
@@ -310,7 +358,7 @@ import AppKit
             .width(min: 170, ideal: 200)
         }
         .contextMenu(forSelectionType: String.self) { ids in
-            if let id = ids.first, let item = deadlines.receivables.first(where: { $0.id == id }) {
+            if let id = ids.first, let item = model.receivables.first(where: { $0.id == id }) {
                 if canSend(item) {
                     Button("Wyślij przypomnienie…") { reminder = item }.disabled(!state.canWrite)
                 }
@@ -321,7 +369,7 @@ import AppKit
                 }
             }
         } primaryAction: { ids in
-            guard let id = ids.first, let item = deadlines.receivables.first(where: { $0.id == id }) else { return }
+            guard let id = ids.first, let item = model.receivables.first(where: { $0.id == id }) else { return }
             state.openCRM(item.invoiceId.map { "/crm/invoices/\($0)" } ?? FinLink.section("ksef", nil))
         }
         .overlay {
@@ -332,19 +380,18 @@ import AppKit
     // MARK: Faktury kosztowe do zapłaty
 
     private func editable(_ payable: FinDeadlines.Payable) -> Bool {
-        canManage && (payable.dueDate == nil || payable.dueSource != nil)
+        canManage(payable.company) && (payable.dueDate == nil || payable.dueSource != nil)
     }
 
-    private func selectedPayable(_ deadlines: FinDeadlines) -> FinDeadlines.Payable? {
-        payableSelection.flatMap { id in deadlines.payables.first { $0.id == id } }
+    private func selectedPayable(_ model: FinDeadlinesModel) -> FinDeadlines.Payable? {
+        payableSelection.flatMap { id in model.payables.first { $0.id == id } }
     }
 
-    private func payablesTable(_ deadlines: FinDeadlines) -> some View {
-        let rows = deadlines.payables.sorted(using: payableSort)
-        let today = deadlines.today
-        let checks: [String: FinWhitelist.Payable] = Dictionary((data.whitelist?.payables ?? []).map { ($0.ksefInvoiceId, $0) },
-                                                                uniquingKeysWith: { first, _ in first })
-        let showWhitelist = data.whitelist != nil
+    private func payablesTable(_ model: FinDeadlinesModel) -> some View {
+        let rows = model.payables.sorted(using: payableSort)
+        let today = model.today
+        let checks = model.checks
+        let showWhitelist = model.whitelistAvailable
         return Table(rows, selection: $payableSelection, sortOrder: $payableSort) {
             TableColumn("Dostawca", value: \.sortSeller) { item in
                 VStack(alignment: .leading, spacing: 2) {
@@ -357,10 +404,10 @@ import AppKit
             TableColumn("Faktura", value: \.invoiceNumber) { item in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.invoiceNumber).lineLimit(1)
-                    Text("wystawiona \(FinFormat.day(item.issueDate))").font(.caption).foregroundStyle(.secondary)
+                    Text("wystawiona \(FinFormat.day(item.issueDate))" + companySuffix(item.company)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            .width(min: 130, ideal: 170)
+            .width(min: 130, ideal: 180)
             TableColumn("Termin", value: \.sortDue) { item in
                 dueCell(item, today: today)
             }
@@ -389,13 +436,15 @@ import AppKit
             .width(min: 170, ideal: 230)
         }
         .contextMenu(forSelectionType: String.self) { ids in
-            if let id = ids.first, let item = deadlines.payables.first(where: { $0.id == id }) {
+            if let id = ids.first, let item = model.payables.first(where: { $0.id == id }) {
                 if editable(item) {
                     Button(item.dueDate == nil ? "Ustaw termin…" : "Zmień termin…") { dueEdit = item }.disabled(!state.canWrite)
                 }
                 if showWhitelist && item.sellerNip != nil {
-                    Button("Sprawdź tę fakturę na białej liście") { Task { await store.checkWhitelist("payables", ids: [item.id], force: true) } }
-                        .disabled(!state.canWrite)
+                    Button("Sprawdź tę fakturę na białej liście") {
+                        Task { await store.checkWhitelist("payables", company: item.company, ids: [item.id], force: true) }
+                    }
+                    .disabled(!state.canWrite)
                 }
                 if let account = item.bankAccount {
                     Button("Kopiuj numer rachunku") {
@@ -406,7 +455,7 @@ import AppKit
                 Button("Faktury kosztowe KSeF w CRM") { state.openCRM(FinLink.section("ksef", nil)) }
             }
         } primaryAction: { ids in
-            guard let id = ids.first, let item = deadlines.payables.first(where: { $0.id == id }), editable(item), state.canWrite else { return }
+            guard let id = ids.first, let item = model.payables.first(where: { $0.id == id }), editable(item), state.canWrite else { return }
             dueEdit = item
         }
         .overlay {
@@ -420,7 +469,7 @@ import AppKit
                 Text(FinFormat.day(due)).monospacedDigit().foregroundStyle(due < today ? Self.red : Color.primary)
                 Text(dueSourceText(item)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             } else {
-                Text("brak terminu w fakturze").foregroundStyle(Self.amber)
+                Text("brak terminu w fakturze").foregroundStyle(Self.amber).lineLimit(1)
                 if editable(item) {
                     Button("Ustaw termin") { dueEdit = item }.buttonStyle(.link).font(.caption).disabled(!state.canWrite)
                 }
@@ -438,37 +487,37 @@ import AppKit
         return text
     }
 
-    private func supplierTerms(_ deadlines: FinDeadlines) -> some View {
+    private func supplierTerms(_ model: FinDeadlinesModel) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Domyślne terminy dostawców").font(.headline)
-            ForEach(deadlines.supplierTerms) { term in
+            ForEach(model.supplierTerms) { term in
                 HStack(spacing: 10) {
-                    Text("\(term.sellerName ?? "Dostawca") · NIP \(term.sellerNip) · \(Int(term.days)) dni od wystawienia")
+                    Text("\(term.sellerName ?? "Dostawca") · NIP \(term.sellerNip) · \(Int(term.days)) dni od wystawienia" + companySuffix(term.company))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 8)
-                    if canManage {
+                    if canManage(term.company) {
                         Button(role: .destructive) { termsOpen = false; removingTerm = term } label: { Label("Usuń", systemImage: "trash") }
-                            .controlSize(.small).disabled(!state.canWrite)
+                            .controlSize(.small).fixedSize().disabled(!state.canWrite)
                     }
                 }
                 .font(.callout)
             }
         }
         .padding(14)
-        .frame(width: 520, alignment: .leading)
+        .frame(width: 540, alignment: .leading)
     }
 
     private func removeTerm(_ term: FinDeadlines.SupplierTerm) {
-        guard let company else { return }
+        guard let company = term.company else { return }
         Task {
-            await store.run("Usuwanie terminu dostawcy…", "supplierTermDelete", ["companyId": .string(company.id), "nip": .string(term.sellerNip)])
+            await store.run("Usuwanie terminu dostawcy…", "supplierTermDelete", ["companyId": .string(company), "nip": .string(term.sellerNip)])
         }
     }
 
     // MARK: Przelewy ponad 15 000 zł
 
-    private func paymentsTable(_ deadlines: FinDeadlines) -> some View {
-        let rows = (data.whitelist?.payments ?? []).sorted(using: paymentSort)
+    private func paymentsTable(_ model: FinDeadlinesModel) -> some View {
+        let rows = model.payments.sorted(using: paymentSort)
         return Table(rows, selection: $paymentSelection, sortOrder: $paymentSort) {
             TableColumn("Data przelewu", value: \.transactionDate) { item in
                 Text(FinFormat.day(item.transactionDate)).monospacedDigit()
@@ -485,10 +534,10 @@ import AppKit
             TableColumn("Dokument", value: \.sortDocument) { item in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.documentNumber ?? "—").lineLimit(1)
-                    Text("wartość \(FinFormat.money(item.documentGross))").font(.caption).foregroundStyle(.secondary)
+                    Text("wartość \(FinFormat.money(item.documentGross))" + companySuffix(item.company)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            .width(min: 140, ideal: 180)
+            .width(min: 140, ideal: 190)
             TableColumn("Przelew", value: \.amount) { item in
                 Text(FinFormat.money(item.amount)).monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -508,14 +557,14 @@ import AppKit
         .contextMenu(forSelectionType: String.self) { ids in
             if let id = ids.first, let item = rows.first(where: { $0.id == id }), item.nip != nil {
                 Button("Sprawdź ten przelew na białej liście") {
-                    Task { await store.checkWhitelist("payments", ids: [item.bankTransactionId], force: true) }
+                    Task { await store.checkWhitelist("payments", company: item.company, ids: [item.bankTransactionId], force: true) }
                 }
                 .disabled(!state.canWrite)
             }
-            Button("Uzgadnianie wyciągów (CRM)") { state.openCRM(FinLink.section("external", "reconciliation")) }
+            Button("Uzgadnianie wyciągów") { store.open(FinLink.section("external", "reconciliation")) }
         }
         .overlay {
-            if data.whitelist == nil {
+            if !model.whitelistAvailable {
                 emptyState("Kontrola białej listy jest niedostępna — wymaga aktualizacji bazy (migracja kroku 4).")
             } else if rows.isEmpty {
                 emptyState("Brak przelewów ponad 15 000 zł dopasowanych do faktur kosztowych w ostatnich 90 dniach (według wczytanych wyciągów).", symbol: "checkmark.circle")
@@ -608,7 +657,7 @@ import AppKit
 
 @MainActor struct FinObligationSettingsSheet: View {
     @ObservedObject var store: FinanceStore
-    let companyID: String
+    let company: FinCompany
     let deadlines: FinDeadlines
     @Environment(\.dismiss) private var dismiss
     @State private var draft: [FinDeadlines.Setting] = []
@@ -626,7 +675,7 @@ import AppKit
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Obowiązki działalności", systemImage: "gearshape").font(.title3.bold())
+            Label("Obowiązki działalności — \(company.name)", systemImage: "gearshape").font(.title3.bold())
             Text("Termin = wskazany dzień miesiąca, który przypada tyle miesięcy po ostatnim miesiącu okresu. Spółka: ZUS do 15., PIT-4R i zaliczka CIT do 20., VAT do 25. następnego miesiąca, CIT-8 do końca 3. miesiąca po roku. Jednoosobowa działalność płaci ZUS do 20. Zaliczki kwartalne lub uproszczone — ustal z biurem rachunkowym.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             FinanceListHeader(columns: [("Włączony", 70, .leading), ("Obowiązek", nil, .leading), ("Okres", 90, .leading), ("Dzień terminu", 110, .leading), ("Miesięcy po okresie", 140, .leading)])
@@ -714,6 +763,6 @@ import AppKit
             dismiss()
             return
         }
-        if await store.run("Zapisywanie obowiązków…", "obligations", ["companyId": .string(companyID), "settings": .array(changed)]) { dismiss() }
+        if await store.run("Zapisywanie obowiązków…", "obligations", ["companyId": .string(company.id), "settings": .array(changed)]) { dismiss() }
     }
 }

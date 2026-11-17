@@ -382,6 +382,14 @@ export default function InvoicesPage() {
     return sortDirection === 'asc' ? '↑' : '↓';
   };
 
+  // Zakres paneli finansów: wybrane działalności, a bez wyboru („Wszystkie firmy”) — wszystkie działalności z listy
+  // (bez marek bez NIP); do wczytania listy — dotychczasowy zakres uprawnień.
+  const financeScopeIds = useMemo<string[] | null>(() => {
+    if (selectedCompanyIds.size > 0) return Array.from(selectedCompanyIds);
+    if (myCompanies.length > 0) return myCompanies.map((c) => c.id);
+    return allowedCompanyIds;
+  }, [selectedCompanyIds, myCompanies, allowedCompanyIds]);
+
   const issuableCompanyIds = useMemo<string[]>(() => {
     if (!financeAccess) return [];
     if (financeAccess.isAdmin) return myCompanies.map((c) => c.id);
@@ -488,14 +496,16 @@ export default function InvoicesPage() {
     try {
       const { data, error } = await supabase
         .from('my_companies')
-        .select('id, name, is_default')
+        .select('id, name, is_default, nip')
         .eq('is_active', true)
         .order('is_default', { ascending: false });
 
       if (error) throw error;
+      // Finanse prowadzi się dla działalności (firm z NIP) — marki bez NIP (np. Event Rulers) są pomijane.
+      const entities = (data || []).filter((c: any) => String(c.nip || '').trim() !== '');
       const filtered = allowedCompanyIds
-        ? (data || []).filter((c: any) => allowedCompanyIds.includes(c.id))
-        : data || [];
+        ? entities.filter((c: any) => allowedCompanyIds.includes(c.id))
+        : entities;
       setMyCompanies(filtered);
       if (!companySelectionInitializedRef.current && filtered.length > 0) {
         const defaultCompany = filtered.find((company: any) => company.is_default) || filtered[0];
@@ -894,9 +904,7 @@ export default function InvoicesPage() {
           </div>
 
           {visibleTab === 'center' && financeAccess.canViewCompanyFinance ? (
-            <FinanceCenterPanel
-              filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : allowedCompanyIds}
-            />
+            <FinanceCenterPanel filterCompanyIds={financeScopeIds} />
           ) : visibleTab === 'dashboard' ? (
             <CanonicalFinancialDashboard
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
@@ -906,16 +914,12 @@ export default function InvoicesPage() {
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
             />
           ) : visibleTab === 'external' && canAccessKSeF ? (
-            <AccountingWorkspaceTab
-              filterCompanyIds={
-                selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : allowedCompanyIds
-              }
-            />
+            <AccountingWorkspaceTab filterCompanyIds={financeScopeIds} />
           ) : visibleTab === 'expenses' && financeAccess.canViewCompanyFinance ? (
             <FinancialEntriesTab />
           ) : visibleTab === 'commissions' ? (
             <CommissionRegisterPanel
-              filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : allowedCompanyIds}
+              filterCompanyIds={financeScopeIds}
               canManage={financeAccess.canManageCompanyFinance}
             />
           ) : visibleTab === 'settings' && canManageInvoices ? (
@@ -930,7 +934,7 @@ export default function InvoicesPage() {
               </div>
 
               {financeAccess.canViewCompanyFinance && <KsefLocalSalesSyncIssues
-                companyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : allowedCompanyIds}
+                companyIds={financeScopeIds}
                 canManage={canManageInvoices && financeAccess.canManageCompanyFinance}
                 onSynced={() => void fetchInvoices()}
               />}

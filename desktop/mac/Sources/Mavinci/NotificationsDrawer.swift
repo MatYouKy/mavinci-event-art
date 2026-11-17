@@ -84,12 +84,12 @@ import SwiftUI
                     return true
                 }
                 // Finanse: /crm/invoices (Centrum), ?tab=external&section=deadlines (terminy, monity, ZUS i podatki) i section=accountant
-                // (zamknięcie miesięcy) — na Macu; karta faktury i pozostałe zakładki — w CRM.
+                // (przekazanie księgowej) — na Macu; karta faktury i pozostałe zakładki — w CRM.
                 if section=="invoices"{
                     let tab=q["tab"] ?? ""
                     let part=q["section"] ?? ""
                     if next.isEmpty && (tab.isEmpty || tab=="center" || (tab=="external" && (part=="deadlines" || part=="accountant"))){
-                        showFinance(part=="deadlines" ? .deadlines : part=="accountant" ? .periods : .center)
+                        showFinance(part=="deadlines" ? .deadlines : part=="accountant" ? .accountant : .center)
                     }else{openCRM(raw)}
                     return true
                 }

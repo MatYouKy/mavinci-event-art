@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { getCredentials, supabase } from '@/lib/ksef/db';
-import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { requestSupabaseClient } from '@/lib/supabase/requestClient.server';
 import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 import { getKSeFInvoices, getKSeFInvoiceXml } from '../../client';
 import { parsePaymentData } from '../../parsePaymentData';
@@ -75,9 +74,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const userClient = createSupabaseServerClient(cookies());
-    const { data: authData } = await userClient.auth.getUser();
-    if (!authData.user) {
+    // Sesja przeglądarki albo token aplikacji na Maca (Bearer) — te same uprawnienia konta.
+    const { client: userClient, user: authUser } = await requestSupabaseClient(req);
+    if (!authUser) {
       return NextResponse.json({ success: false, error: 'Wymagane logowanie.' }, { status: 401 });
     }
     // KSeF działalności (synchronizacja, token): „Zarządzanie finansami” w tej działalności (finance_company_manageable).

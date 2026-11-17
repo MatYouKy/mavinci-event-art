@@ -65,12 +65,14 @@ export default function FinancePeriodClosePanel({ filterCompanyIds = null }: { f
     let cancelled = false;
     if (!access) return () => { cancelled = true; };
     (async () => {
-      let query = supabase.from('my_companies').select('id,name').eq('is_active', true).order('name');
+      let query = supabase.from('my_companies').select('id,name,nip').eq('is_active', true).order('name');
       if (filterCompanyIds) query = query.in('id', filterCompanyIds.length ? filterCompanyIds : ['00000000-0000-0000-0000-000000000000']);
       const { data: rows, error } = await query;
       if (cancelled) return;
       if (error) { showSnackbar('Nie udało się wczytać firm.', 'error'); setLoading(false); return; }
-      const list = filterFinanceCompanies(access, (rows || []) as Company[], 'finance_view');
+      // Tylko działalności (firmy z NIP) — marki bez NIP (np. Event Rulers) nie mają własnych finansów.
+      const entities = ((rows || []) as Array<Company & { nip: string | null }>).filter((c) => String(c.nip || '').trim() !== '');
+      const list = filterFinanceCompanies(access, entities, 'finance_view');
       setCompanies(list);
       setCompanyId((current) => (current && list.some((c) => c.id === current) ? current : list[0]?.id || ''));
       if (list.length === 0) setLoading(false);

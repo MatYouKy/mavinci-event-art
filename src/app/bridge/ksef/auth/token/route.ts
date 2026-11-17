@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createSupabaseServerClient } from "@/lib/supabase/server.app";
+import { requestSupabaseClient } from "@/lib/supabase/requestClient.server";
 import { supabase as ksefServiceClient } from "@/lib/ksef/db";
 import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 import {
@@ -39,11 +38,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const cookieStore = await cookies();
-    const userSupabase = createSupabaseServerClient(cookieStore);
-
-    const { data: authData } = await userSupabase.auth.getUser();
-    if (!authData.user) {
+    // Sesja przeglądarki albo token aplikacji na Maca (Bearer) — te same uprawnienia konta.
+    const { client: userSupabase, user: authUser } = await requestSupabaseClient(req);
+    if (!authUser) {
       return NextResponse.json(
         { success: false, error: "Wymagane logowanie." },
         { status: 401 },

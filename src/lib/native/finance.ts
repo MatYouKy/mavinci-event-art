@@ -67,16 +67,20 @@ const warsawToday = () =>
 
 // MARK: Działalności i stan sekcji
 
-/** Działalności z „Podglądem finansów” (jak `filterFinanceCompanies(access, companies, 'finance_view')` w CRM). */
+/**
+ * Działalności z „Podglądem finansów” (jak `filterFinanceCompanies(access, companies, 'finance_view')` w CRM). Finanse
+ * prowadzi się dla działalności, czyli firm z NIP — marki bez NIP (np. Event Rulers) są pomijane, jak w sekcji Finanse CRM.
+ */
 async function financeCompanies(ctx: NativeContext) {
   const access = await loadInvoiceFinanceAccess(ctx.supabase);
-  const { data, error } = await ctx.supabase.from('my_companies').select('id,name').eq('is_active', true).order('name');
+  const { data, error } = await ctx.supabase.from('my_companies').select('id,name,nip,is_default').eq('is_active', true).order('name');
   if (error) fail('Nie udało się wczytać firm.', 500);
   return rows(data)
-    .filter((company) => canFinanceCompany(access, String(company.id), 'finance_view'))
+    .filter((company) => str(company.nip).trim() !== '' && canFinanceCompany(access, String(company.id), 'finance_view'))
     .map((company) => ({
       id: String(company.id),
       name: str(company.name),
+      isDefault: company.is_default === true,
       canManage: canFinanceCompany(access, String(company.id), 'finance_manage'),
       canRemind: canFinanceCompany(access, String(company.id), 'invoices_issue'),
     }));

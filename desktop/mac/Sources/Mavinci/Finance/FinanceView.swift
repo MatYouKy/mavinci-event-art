@@ -1,31 +1,16 @@
 import SwiftUI
 
-// MARK: Finanse (`/crm/invoices`) — natywnie: Centrum finansów, Terminy i monity, Zamknięcie miesięcy (jak sekcje CRM
-// „Centrum finansów”, „Dokumenty i rozliczenia → Terminy i monity”, „Dla księgowej → Zamknięcie miesięcy”). Wystawianie
-// i karty faktur, KSeF, wyciągi i uzgadnianie, deklaracje, przekazanie księgowej — w CRM (przyciski z lewej kolumny).
+// MARK: Finanse (`/crm/invoices`) — natywnie: Centrum finansów, Wyciągi, Uzgodnienie wyciągów, Terminy i monity,
+// Deklaracje ZUS i podatki, Zamknięcie miesięcy, Koszty i wypłaty (jak sekcje CRM „Centrum finansów”, „Dokumenty
+// i rozliczenia” i „Koszty i wypłaty”), rejestr faktur z kartą faktury, faktury KSeF (wpłaty, synchronizacja) i przekazanie
+// księgowej (Saldeo). W CRM zostają wystawianie i edycja faktur oraz konfiguracja KSeF.
 
 @MainActor struct FinanceView: View {
     @ObservedObject var store: FinanceStore
+    @ObservedObject var bank: FinanceBankStore
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var helpFor: FinancePart?
-
-    private struct WebLink: Identifiable {
-        let title: String
-        let symbol: String
-        let href: String
-        var id: String { href }
-    }
-    /// Części CRM bez ekranu natywnego (otwierane w przeglądarce).
-    private let webLinks: [WebLink] = [
-        WebLink(title: "Faktury lokalne", symbol: "doc.text", href: "/crm/invoices?tab=local"),
-        WebLink(title: "KSeF", symbol: "doc.badge.arrow.up", href: "/crm/invoices?tab=ksef"),
-        WebLink(title: "Wyciągi bankowe", symbol: "building.columns", href: "/crm/invoices?tab=external&section=statements"),
-        WebLink(title: "Uzgadnianie wyciągów", symbol: "arrow.left.arrow.right", href: "/crm/invoices?tab=external&section=reconciliation"),
-        WebLink(title: "ZUS i podatki — deklaracje", symbol: "doc.plaintext", href: "/crm/invoices?tab=external&section=declarations"),
-        WebLink(title: "Przekazanie księgowej", symbol: "paperplane", href: "/crm/invoices?tab=external&section=accountant"),
-        WebLink(title: "Koszty i wypłaty", symbol: "creditcard", href: "/crm/invoices?tab=expenses"),
-    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -40,14 +25,14 @@ import SwiftUI
                     Button("Otwórz Finanse w przeglądarce") { state.openCRM("/crm/invoices") }.buttonStyle(.borderedProminent)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if store.state == nil, let error = store.loadError {
+            } else if store.scope.entries.isEmpty, let error = store.loadError {
                 ContentUnavailableView {
                     Label("Nie udało się wczytać finansów", systemImage: "exclamationmark.triangle")
                 } description: { Text(error) } actions: {
                     Button("Spróbuj ponownie") { Task { await store.sync(force: true) } }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if store.state == nil {
+            } else if store.scope.entries.isEmpty {
                 ProgressView("Ładowanie finansów…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HStack(spacing: 0) {
@@ -70,14 +55,23 @@ import SwiftUI
             }
             Spacer()
             if store.companies.count > 1 {
-                Picker("Działalność", selection: Binding(get: { store.company?.id ?? "" }, set: { store.select($0) })) {
-                    ForEach(store.companies) { company in Text(company.name).tag(company.id) }
+                Menu {
+                    Button("Wszystkie działalności") { store.selectAll() }.disabled(store.allSelected)
+                    Divider()
+                    ForEach(store.companies) { company in
+                        Toggle(company.name, isOn: Binding(get: { store.isSelected(company.id) }, set: { _ in store.toggle(company.id) }))
+                    }
+                    Divider()
+                    ForEach(store.companies) { company in
+                        Button("Tylko \(company.name)") { store.selectOnly(company.id) }
+                    }
+                } label: {
+                    Label(store.scopeTitle, systemImage: "building.2")
                 }
-                .labelsHidden()
-                .frame(maxWidth: 260)
-                .help("Działalność")
-            } else if let company = store.company {
-                Text(company.name).foregroundStyle(.secondary)
+                .fixedSize()
+                .help("Działalności do rozliczenia — jedna albo kilka razem (sumy, prognoza i listy łączą wybrane)")
+            } else if let company = store.companies.first {
+                Text(company.name).foregroundStyle(.secondary).lineLimit(1)
             }
             Button { Task { await store.sync(force: true) } } label: {
                 if store.syncing { ProgressView().controlSize(.small) } else { Label("Odśwież", systemImage: "arrow.clockwise") }
@@ -89,16 +83,25 @@ import SwiftUI
     }
 
     private var subtitle: String {
-        guard let state = store.state else { return "Gotówka, należności, zobowiązania, podatki i terminy" }
-        let today = state.center?.today ?? state.deadlines?.today
-        let stamp = FinFormat.dateTime(state.loadedAt)
-        return (today.map { "Stan na \(FinFormat.day($0))" } ?? "Finanse działalności") + (stamp.isEmpty ? "" : " · pobrano \(stamp)")
+        let scope = store.scope
+        guard !scope.entries.isEmpty else { return "Gotówka, należności, zobowiązania, podatki i terminy" }
+        let stamp = FinFormat.dateTime(store.loadedAt)
+        return "Stan na \(FinFormat.day(scope.today))" + (stamp.isEmpty ? "" : " · pobrano \(stamp)")
+    }
+
+    private var groups: [(String, [FinancePart])] {
+        var result: [(String, [FinancePart])] = []
+        for part in FinancePart.allCases {
+            if let index = result.firstIndex(where: { $0.0 == part.group }) { result[index].1.append(part) } else { result.append((part.group, [part])) }
+        }
+        return result
     }
 
     private var sidebar: some View {
         List(selection: Binding(get: { Optional(store.part) }, set: { if let value = $0 { store.part = value } })) {
-            Section {
-                ForEach(FinancePart.allCases) { item in
+            ForEach(groups, id: \.0) { group in
+            Section(group.0) {
+                ForEach(group.1) { item in
                     HStack(spacing: 4) {
                         Label {
                             VStack(alignment: .leading, spacing: 1) {
@@ -127,19 +130,6 @@ import SwiftUI
                     .tag(item)
                 }
             }
-            Section("W CRM (przeglądarka)") {
-                ForEach(webLinks) { link in
-                    Button { state.openCRM(link.href) } label: {
-                        HStack {
-                            Label(link.title, systemImage: link.symbol)
-                            Spacer()
-                            Image(systemName: "arrow.up.forward.square").font(.caption).foregroundStyle(.tertiary)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help("Otwiera się w przeglądarce")
-                }
             }
         }
         .listStyle(.sidebar)
@@ -150,30 +140,68 @@ import SwiftUI
 
     /// Liczba pozycji wymagających uwagi (błędy kompletności danych, sprawy po terminie, otwarty poprzedni miesiąc).
     private func badge(_ part: FinancePart) -> Int? {
-        guard let state = store.state else { return nil }
+        let scope = store.scope
+        guard !scope.entries.isEmpty else { return nil }
         switch part {
         case .center:
-            return state.center?.quality.filter { $0.level == "error" }.count
+            return scope.entries.reduce(0) { total, entry in total + (entry.state.center?.quality.filter { $0.level == "error" }.count ?? 0) }
         case .deadlines:
-            guard let deadlines = state.deadlines else { return nil }
-            let obligations = deadlines.obligations.filter(\.overdue).count
-            let receivables = deadlines.receivables.filter { $0.daysOverdue > 0 }.count
-            let payables = deadlines.payables.filter { ($0.dueDate ?? "9999") < deadlines.today }.count
-            return obligations + receivables + payables
-        case .periods:
+            var count = 0
+            for entry in scope.entries {
+                guard let deadlines = entry.state.deadlines else { continue }
+                count += deadlines.obligations.filter(\.overdue).count
+                count += deadlines.receivables.filter { $0.daysOverdue > 0 }.count
+                count += deadlines.payables.filter { ($0.dueDate ?? "9999") < deadlines.today }.count
+            }
+            return count
+        case .periods, .accountant:
             return nil
+        case .statements:
+            return nil
+        case .reconciliation:
+            // Operacje do zrobienia w otwartym miesiącu uzgodnienia (gdy wczytany).
+            guard let month = bank.month, month.companyId == bank.company?.id else { return nil }
+            return month.transactions.filter(\.isOpen).count
+        case .entries, .invoices:
+            return nil
+        case .ksef:
+            // Faktury KSeF z uwagą do płatności we wczytanych działalnościach z filtra.
+            let ids = Set(store.scopeCompanies.map(\.id))
+            var count = 0
+            for (company, list) in bank.ksefLists where ids.contains(company) {
+                count += list.invoices.filter(\.needsReview).count
+            }
+            return count
+        case .declarations:
+            guard let list = bank.declarationList else { return nil }
+            return list.declarations.filter { DeclarationStatus.attention.contains($0.status) }.count
         }
     }
 
     @ViewBuilder private var content: some View {
-        if let state = store.state {
+        let scope = store.scope
+        if !scope.entries.isEmpty {
             switch store.part {
             case .center:
-                FinanceCenterView(store: store, data: state)
+                FinanceCenterView(store: store, scope: scope)
             case .deadlines:
-                FinanceDeadlinesView(store: store, data: state)
+                FinanceDeadlinesView(store: store, scope: scope)
             case .periods:
-                FinancePeriodsView(store: store, data: state)
+                FinancePeriodsView(store: store, scope: scope)
+            case .statements:
+                FinanceStatementsView(store: bank, finance: store)
+            case .reconciliation:
+                FinanceReconciliationView(store: bank, finance: store)
+            case .declarations:
+                FinanceDeclarationsView(store: bank, finance: store)
+            case .accountant:
+                FinanceAccountantView(store: store.saldeo, finance: store)
+            case .entries:
+                FinanceEntriesView(store: bank, finance: store)
+            case .invoices:
+                FinanceInvoicesView(store: bank, finance: store)
+            case .ksef:
+                FinanceKsefView(store: bank, finance: store)
             }
         }
     }
@@ -202,7 +230,7 @@ struct FinCard<Content: View, Accessory: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: symbol).foregroundStyle(theme.accent)
-                Text(title).font(.headline)
+                Text(title).font(.headline).lineLimit(1).layoutPriority(1)
                 Spacer(minLength: 8)
                 accessory()
             }

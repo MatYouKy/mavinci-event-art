@@ -6,74 +6,81 @@ import SwiftUI
 
 @MainActor struct FinancePeriodsView: View {
     @ObservedObject var store: FinanceStore
-    let data: FinState
+    let scope: FinScope
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
-    @State private var locking: FinPeriod?
-    @State private var unlocking: FinPeriod?
+    @State private var locking: FinPeriodTarget?
+    @State private var unlocking: FinPeriodTarget?
 
     private static let green = CrmTheme.rgb(0x4ade80)
     private static let amber = CrmTheme.rgb(0xfbbf24)
 
-    private var canManage: Bool { store.company?.canManage ?? false }
-    private var today: String { data.center?.today ?? data.deadlines?.today ?? FinanceText.dayString(Date()) }
+    private var today: String { scope.today }
     private var currentYear: Int { Int(today.prefix(4)) ?? Calendar.current.component(.year, from: Date()) }
     private var currentMonth: Int { Int(today.dropFirst(5).prefix(2)) ?? 1 }
+    /// Rok pokazanych zamknięć (wspólny dla wybranych działalności).
+    private var year: Int { scope.entries.first?.state.periodsYear ?? currentYear }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                FinCard("Zamknięcie miesięcy", symbol: "lock",
-                        note: "Zamyka i otwiera osoba z „Zarządzaniem finansami” działalności. Blokadę sprawdza baza — obowiązuje w CRM, na Macu i w telefonie. Miesiąc wyciągu decyduje o operacjach bankowych, data wystawienia — o fakturach.") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Po przekazaniu księgowej zamknij miesiąc — wyciągi, dopasowania i faktury z tego miesiąca nie zmienią się bez śladu.")
-                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        if let error = data.periodsError {
-                            FinBanner(text: error, tone: .bad)
-                        }
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 10, alignment: .top)], spacing: 10) {
-                            ForEach(data.periods) { period in monthCard(period) }
-                        }
+                HStack(spacing: 10) {
+                    Text("Po przekazaniu księgowej zamknij miesiąc — wyciągi, dopasowania i faktury z tego miesiąca nie zmienią się bez śladu.")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Picker("Rok", selection: Binding(get: { year }, set: { value in Task { await store.loadPeriods(year: value) } })) {
+                        ForEach([currentYear, currentYear - 1, currentYear - 2], id: \.self) { item in Text(String(item)).tag(item) }
                     }
-                    .padding(14)
-                } accessory: {
-                    HStack(spacing: 8) {
-                        Picker("Rok", selection: Binding(get: { data.periodsYear }, set: { year in Task { await store.loadPeriods(year: year) } })) {
-                            ForEach([currentYear, currentYear - 1, currentYear - 2], id: \.self) { year in Text(String(year)).tag(year) }
-                        }
-                        .labelsHidden().frame(width: 90)
-                        if store.periodsLoading { ProgressView().controlSize(.small) }
-                        Button("Przekazanie księgowej (CRM)") { state.openCRM(FinLink.section("external", "accountant")) }
-                            .controlSize(.small).help("Wysyłka miesiąca do Saldeo — w CRM")
-                    }
+                    .labelsHidden().fixedSize()
+                    if store.periodsLoading { ProgressView().controlSize(.small) }
+                    Button("Przekazanie księgowej") { store.part = .accountant }
+                        .fixedSize().help("Paczka miesiąca dla księgowej — Saldeo, wyciągi i opisy płatności zbiorczych")
                 }
+                ForEach(scope.entries) { entry in companyCard(entry) }
+                Text("Zamyka i otwiera osoba z „Zarządzaniem finansami” działalności. Blokadę sprawdza baza — obowiązuje w CRM, na Macu i w telefonie. Miesiąc wyciągu decyduje o operacjach bankowych, data wystawienia — o fakturach.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .sheet(item: $locking) { period in
-            FinPeriodSheet(store: store, year: data.periodsYear, period: period, unlock: false)
+        .sheet(item: $locking) { target in
+            FinPeriodSheet(store: store, company: target.company, year: target.year, period: target.period, unlock: false)
         }
-        .sheet(item: $unlocking) { period in
-            FinPeriodSheet(store: store, year: data.periodsYear, period: period, unlock: true)
+        .sheet(item: $unlocking) { target in
+            FinPeriodSheet(store: store, company: target.company, year: target.year, period: target.period, unlock: true)
         }
     }
 
-    private func monthCard(_ period: FinPeriod) -> some View {
-        let year = data.periodsYear
+    private func companyCard(_ entry: FinCompanyState) -> some View {
+        FinCard(scope.multi ? "Zamknięcie miesięcy — \(entry.company.name)" : "Zamknięcie miesięcy", symbol: "lock") {
+            VStack(alignment: .leading, spacing: 10) {
+                if let error = entry.state.periodsError {
+                    FinBanner(text: error, tone: .bad)
+                }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 10, alignment: .top)], spacing: 10) {
+                    ForEach(entry.state.periods) { period in monthCard(period, entry: entry) }
+                }
+            }
+            .padding(14)
+        }
+    }
+
+    private func monthCard(_ period: FinPeriod, entry: FinCompanyState) -> some View {
+        let year = entry.state.periodsYear
         let future = year > currentYear || (year == currentYear && period.month > currentMonth)
         let handedOverOpen = !period.locked && period.handedOverAt != nil
         let name = (1...12).contains(period.month) ? FinFormat.monthsTitle[period.month - 1] : "\(period.month)"
         let border: Color = period.locked ? Self.green.opacity(0.35) : handedOverOpen ? Self.amber.opacity(0.4) : Color.primary.opacity(0.08)
         let fill: Color = period.locked ? Self.green.opacity(0.06) : handedOverOpen ? Self.amber.opacity(0.06) : Color.primary.opacity(0.03)
+        let target = FinPeriodTarget(company: entry.company, year: year, period: period)
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(name).font(.headline)
-                Spacer()
+                Text(name).font(.headline).lineLimit(1)
+                Spacer(minLength: 6)
                 if period.locked {
-                    Label("Zamknięty", systemImage: "lock.fill").font(.caption).foregroundStyle(Self.green)
+                    Label("Zamknięty", systemImage: "lock.fill").font(.caption).foregroundStyle(Self.green).lineLimit(1)
                 } else if handedOverOpen {
-                    Text("Przekazany · otwarty").font(.caption).foregroundStyle(Self.amber)
+                    Text("Przekazany · otwarty").font(.caption).foregroundStyle(Self.amber).lineLimit(1)
                 } else {
                     Text(future ? "Przyszły" : "Otwarty").font(.caption).foregroundStyle(.secondary)
                 }
@@ -100,12 +107,12 @@ import SwiftUI
                     Label("Otwierany ponownie: \(period.reopenings.count)×", systemImage: "clock.arrow.circlepath").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            if canManage && !future {
+            if entry.company.canManage && !future {
                 if period.locked {
-                    Button { unlocking = period } label: { Label("Otwórz ponownie", systemImage: "lock.open") }
+                    Button { unlocking = target } label: { Label("Otwórz ponownie", systemImage: "lock.open") }
                         .controlSize(.small).disabled(!state.canWrite)
                 } else {
-                    Button { locking = period } label: { Label("Zamknij miesiąc", systemImage: "lock") }
+                    Button { locking = target } label: { Label("Zamknij miesiąc", systemImage: "lock") }
                         .controlSize(.small).disabled(!state.canWrite)
                 }
             }
@@ -118,9 +125,18 @@ import SwiftUI
     }
 }
 
+/// Miesiąc działalności do zamknięcia albo ponownego otwarcia.
+struct FinPeriodTarget: Identifiable {
+    let company: FinCompany
+    let year: Int
+    let period: FinPeriod
+    var id: String { "\(company.id)|\(year)|\(period.month)" }
+}
+
 /// Okno „Zamknięcie: <miesiąc>” (notatka opcjonalna) albo „Ponowne otwarcie: <miesiąc>” (uzasadnienie co najmniej 10 znaków).
 @MainActor struct FinPeriodSheet: View {
     @ObservedObject var store: FinanceStore
+    let company: FinCompany
     let year: Int
     let period: FinPeriod
     let unlock: Bool
@@ -130,7 +146,7 @@ import SwiftUI
 
     private var label: String {
         let name = (1...12).contains(period.month) ? FinFormat.months[period.month - 1] : "\(period.month)"
-        return "\(name) \(year)"
+        return "\(name) \(year)" + (store.companies.count > 1 ? " — \(company.name)" : "")
     }
 
     var body: some View {
@@ -169,7 +185,6 @@ import SwiftUI
     }
 
     private func save() async {
-        guard let company = store.company else { return }
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if unlock && value.count < 10 { problem = "Podaj uzasadnienie ponownego otwarcia (co najmniej 10 znaków)."; return }
         var body: [String: JSONValue] = ["companyId": .string(company.id), "year": .number(Double(year)), "month": .number(Double(period.month))]

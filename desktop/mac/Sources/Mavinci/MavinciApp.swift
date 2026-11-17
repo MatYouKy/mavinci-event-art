@@ -139,7 +139,7 @@ struct RootView: View {
                         else if state.screen == .locations { LocationsView(store: state.locations) }
                         else if state.screen == .website { WebsiteView(store: state.website) }
                         else if state.screen == .campaigns { MailCampaignsView(store: state.mailCampaigns) }
-                        else if state.screen == .finance { FinanceView(store: state.finance) }
+                        else if state.screen == .finance { FinanceView(store: state.finance, bank: state.finance.bank) }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
