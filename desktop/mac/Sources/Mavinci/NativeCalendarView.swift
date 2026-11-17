@@ -22,6 +22,25 @@ import AppKit
         };return nil
     }
     static func title(_ date:Date,format:String) -> String { let f=DateFormatter();f.locale=calendar.locale;f.timeZone=calendar.timeZone;f.dateFormat=format;return f.string(from:date) }
+    /// Dni kalendarza zajmowane przez wpis — ta sama reguła co `calendarDaySpan` w CRM (`src/lib/CRM/calendar/calendarDays.ts`)
+    /// i w aplikacji mobilnej: noc kończąca się najpóźniej o 5:00 należy do dnia rozpoczęcia, więc impreza 18:00–02:00 zajmuje
+    /// jeden dzień (w miesiącu nie wygląda jak dwa zarezerwowane terminy). Godziny wpisu bez zmian.
+    static func daySpan(start:Date,end:Date?,in c:Calendar) -> (first:Date,count:Int) {
+        let first=c.startOfDay(for:start)
+        guard let end,end>start else {return (first,1)}
+        var extra:Int=c.dateComponents([.day],from:first,to:c.startOfDay(for:end)).day ?? 0
+        let time=c.dateComponents([.hour,.minute],from:end)
+        let minutes:Int=(time.hour ?? 0)*60+(time.minute ?? 0)
+        if extra>0 && minutes<=overnightEndLimit {extra-=1}
+        return (first,max(extra,0)+1)
+    }
+    /// Najpóźniejsze zakończenie nocy (minuty od północy): 5:00.
+    static let overnightEndLimit=5*60
+    static func occupies(_ day:Date,start:Date,end:Date?,in c:Calendar) -> Bool {
+        let span=daySpan(start:start,end:end,in:c)
+        let offset:Int=c.dateComponents([.day],from:span.first,to:c.startOfDay(for:day)).day ?? -1
+        return offset>=0 && offset<span.count
+    }
 }
 struct CalendarDay:Identifiable { let id:Int;let date:Date? }
 struct CalendarLink:Codable {
@@ -117,6 +136,10 @@ struct CalendarLink:Codable {
     @State private var selectedDate=Date()
     @State private var calendarSheet=false
     @State private var meeting:Row?
+    /// Nowy wpis z kalendarza: wybór rodzaju, kreator wydarzenia albo formularz spotkania.
+    @State private var creation:CalendarCreation?
+    /// Dzień pod kursorem — pokazuje „+” w komórce.
+    @State private var hoveredDay:Date?
     /// „Potencjalne zapytania: widoczne / ukryte” jak filtr kalendarza w CRM.
     @AppStorage("calendar.potentialInquiries") private var showInquiries=true
     private var c:Calendar {CalendarDates.calendar}
@@ -155,47 +178,50 @@ struct CalendarLink:Codable {
         f["inquiry_details"] = .string(details.joined(separator:" · "))
         return Row(f)
     }
-    private var days:[CalendarDay] {
-        guard let first=c.date(from:c.dateComponents([.year,.month],from:month)),let range=c.range(of:.day,in:.month,for:first) else {return []}
+    private var monthStart:Date {c.date(from:c.dateComponents([.year,.month],from:month)) ?? month}
+    /// Dni siatki miesiąca (od poniedziałku; puste pola przed pierwszym dniem).
+    private func gridDays(_ anyDay:Date) -> [CalendarDay] {
+        guard let first=c.date(from:c.dateComponents([.year,.month],from:anyDay)),let range=c.range(of:.day,in:.month,for:first) else {return []}
         let leading=(c.component(.weekday,from:first)-c.firstWeekday+7)%7
         let total=((leading+range.count+6)/7)*7
         return (0..<total).map { n in CalendarDay(id:n,date:n>=leading && n<leading+range.count ? c.date(byAdding:.day,value:n-leading,to:first):nil) }
     }
+    /// Wpisy dni widocznych w miesiącu i dwóch kolejnych (miniatury) — liczone raz na odświeżenie widoku, ta sama reguła dni.
+    private func dayIndex() -> [Date:[Row]] {
+        let calendar=c
+        let rangeStart=monthStart
+        guard let rangeEnd=calendar.date(byAdding:.month,value:3,to:rangeStart) else {return [:]}
+        var index:[Date:[Row]]=[:]
+        for row in rows {
+            guard let begin=CalendarDates.date(row["event_date"]) else {continue}
+            let span=CalendarDates.daySpan(start:begin,end:CalendarDates.date(row["event_end_date"]),in:calendar)
+            guard span.first<rangeEnd else {continue}
+            for offset in 0..<min(span.count,400) {
+                guard let day=calendar.date(byAdding:.day,value:offset,to:span.first),day<rangeEnd else {break}
+                if day>=rangeStart {index[day,default:[]].append(row)}
+            }
+        }
+        return index
+    }
+    /// Kto może tworzyć wydarzenia z kalendarza — jak `canCreateEvents` w CRM (administrator albo `calendar_manage`)
+    /// lub uprawnienie z listy wydarzeń.
+    private var canCreateEvents:Bool {workspace.employee?.has("calendar_manage") == true || workspace.events.access?.canCreate == true}
     var body:some View {
+        let byDay:[Date:[Row]]=dayIndex()
         VStack(spacing:0) {
             if let error=workspace.moduleErrors["calendar"] { Text(error).foregroundStyle(.orange).padding(10) }
-            HStack {
-                Button { move(-1) } label:{Image(systemName:"chevron.left")}.help("Poprzedni miesiąc")
-                Button("Dziś") {month=Date();selectedDate=Date()}
-                Button {move(1)} label:{Image(systemName:"chevron.right")}.help("Następny miesiąc")
-                Text(CalendarDates.title(month,format:"LLLL yyyy").capitalized).font(.title2.bold()).padding(.leading,12)
-                Spacer()
-                if canSeeInquiries {
-                    Toggle(isOn:$showInquiries) {Label("Potencjalne zapytania",systemImage:"tray")}.toggleStyle(.button)
-                        .help(showInquiries ? "Potencjalne zapytania: widoczne (kliknij, aby ukryć)":"Potencjalne zapytania: ukryte (kliknij, aby pokazać)")
-                }
-                Button("Połącz z Kalendarzem Apple…",systemImage:"calendar.badge.clock") {calendarSheet=true}
-            }.padding(16).crmBar()
+            toolbar
             GeometryReader { available in
               let detailWidth=min(340,max(245,available.size.width*0.33))
               HStack(alignment:.top,spacing:0) {
                 ScrollView {
-                    LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:4),count:7),spacing:5) {
-                        ForEach(["Pon","Wt","Śr","Czw","Pt","Sob","Nd"],id:\.self) {Text($0).font(.caption.bold()).foregroundStyle(.secondary).frame(maxWidth:.infinity).padding(.vertical,8)}
-                        ForEach(days) { day in
-                            if let date=day.date {dayCell(date)} else {Color.clear.frame(height:104)}
-                        }
+                    VStack(alignment:.leading,spacing:18) {
+                        monthGrid(byDay)
+                        upcomingMonths(byDay)
                     }.padding(14)
                 }.frame(width:max(1,available.size.width-detailWidth-1),height:available.size.height)
                 Divider()
-                VStack(alignment:.leading,spacing:0) {
-                    Text(CalendarDates.title(selectedDate,format:"EEEE, d MMMM").capitalized).font(.headline).padding(16)
-                    List(dayRows(selectedDate)) { row in
-                        Button {open(row)} label: {
-                            calendarEntry(row,compact:false)
-                        }.buttonStyle(.plain)
-                    }.overlay {if dayRows(selectedDate).isEmpty {ContentUnavailableView("Brak spraw tego dnia",systemImage:"calendar")}}
-                }.frame(width:detailWidth,height:available.size.height)
+                dayPanel.frame(width:detailWidth,height:available.size.height)
               }.frame(width:available.size.width,height:available.size.height,alignment:.topLeading)
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
         }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.top).navigationTitle("Kalendarz")
@@ -204,21 +230,122 @@ struct CalendarLink:Codable {
         .onChange(of:workspace.focusedID) {_,_ in revealTarget()}
         .sheet(isPresented:$calendarSheet) {calendarSettings}
         .sheet(item:$meeting) {row in VStack(alignment:.leading,spacing:16) {Text(row.title).font(.title2.bold());EventRecordFields(row:row);Button("Zamknij") {meeting=nil}}.padding(24).frame(width:540)}
+        .sheet(item:$creation,onDismiss:{if creation == nil {Task {await workspace.refresh()}}}) {item in creationSheet(item)}
     }
-    private func dayRows(_ day:Date) -> [Row] {
-        let interval=c.dateInterval(of:.day,for:day)!
-        return rows.filter { row in
-            guard let start=CalendarDates.date(row["event_date"]) else {return false}
-            let end=CalendarDates.date(row["event_end_date"]) ?? start.addingTimeInterval(1)
-            return start<interval.end && max(start.addingTimeInterval(1),end)>interval.start
+    private var toolbar:some View {
+        HStack {
+            Button { move(-1) } label:{Image(systemName:"chevron.left")}.help("Poprzedni miesiąc")
+            Button("Dziś") {month=Date();selectedDate=Date()}
+            Button {move(1)} label:{Image(systemName:"chevron.right")}.help("Następny miesiąc")
+            Text(CalendarDates.title(month,format:"LLLL yyyy").capitalized).font(.title2.bold()).padding(.leading,12)
+            Spacer()
+            if canSeeInquiries {
+                Toggle(isOn:$showInquiries) {Label("Potencjalne zapytania",systemImage:"tray")}.toggleStyle(.button)
+                    .help(showInquiries ? "Potencjalne zapytania: widoczne (kliknij, aby ukryć)":"Potencjalne zapytania: ukryte (kliknij, aby pokazać)")
+            }
+            Button("Połącz z Kalendarzem Apple…",systemImage:"calendar.badge.clock") {calendarSheet=true}
+            Button {creation = .chooser(selectedDate)} label:{Label("Dodaj",systemImage:"plus")}
+                .buttonStyle(.borderedProminent).keyboardShortcut("n")
+                .help("Co chcesz dodać? — wydarzenie, spotkanie albo zapytanie na wybrany dzień (⌘N)")
+        }.padding(16).crmBar()
+    }
+    private func monthGrid(_ byDay:[Date:[Row]]) -> some View {
+        LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:4),count:7),spacing:5) {
+            ForEach(["Pon","Wt","Śr","Czw","Pt","Sob","Nd"],id:\.self) {Text($0).font(.caption.bold()).foregroundStyle(.secondary).frame(maxWidth:.infinity).padding(.vertical,8)}
+            ForEach(gridDays(month)) { day in
+                if let date=day.date {dayCell(date,items:byDay[date] ?? [])} else {Color.clear.frame(height:104)}
+            }
         }
     }
-    private func dayCell(_ date:Date) -> some View {
-        let items=dayRows(date)
+    /// Dwa kolejne miesiące w miniaturach (wolne miejsce pod siatką): kropka — dzień z wpisami; kliknięcie przenosi do dnia,
+    /// dwuklik — „Co chcesz dodać?” na ten dzień.
+    private func upcomingMonths(_ byDay:[Date:[Row]]) -> some View {
+        HStack(alignment:.top,spacing:14) {
+            ForEach([1,2],id:\.self) { offset in
+                miniMonth(c.date(byAdding:.month,value:offset,to:monthStart) ?? monthStart,byDay:byDay)
+            }
+            Spacer(minLength:0)
+        }
+    }
+    private func miniMonth(_ first:Date,byDay:[Date:[Row]]) -> some View {
+        VStack(alignment:.leading,spacing:8) {
+            Button {month=first;selectedDate=first} label:{
+                Text(CalendarDates.title(first,format:"LLLL yyyy").capitalized).font(.headline)
+            }.buttonStyle(.plain).help("Pokaż ten miesiąc")
+            LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:2),count:7),spacing:4) {
+                ForEach(Array(["P","W","Ś","C","P","S","N"].enumerated()),id:\.offset) {Text($0.element).font(.caption2.bold()).foregroundStyle(.secondary).frame(maxWidth:.infinity)}
+                ForEach(gridDays(first)) { day in
+                    if let date=day.date {miniDay(date,items:byDay[date] ?? [])} else {Color.clear.frame(height:30)}
+                }
+            }
+        }
+        .padding(12).frame(maxWidth:340,alignment:.topLeading)
+        .background(RoundedRectangle(cornerRadius:8).fill(Color.secondary.opacity(0.04)))
+    }
+    private func miniDay(_ date:Date,items:[Row]) -> some View {
+        let today:Bool=c.isDateInToday(date)
+        let selected:Bool=c.isDate(date,inSameDayAs:selectedDate)
+        let dot:Color=items.first.map {WorkspacePresentation.calendarColor($0)} ?? .clear
+        let label:String=CalendarDates.title(date,format:"d MMMM")
+        let names:String=items.prefix(4).map(\.title).joined(separator:", ")+(items.count>4 ? "…":"")
+        let tip:String=items.isEmpty ? label : label+": "+names
+        return VStack(spacing:2) {
+            Text("\(c.component(.day,from:date))").font(.caption.weight(today ? .bold:.regular)).monospacedDigit()
+                .foregroundStyle(today ? Color.accentColor:Color.primary)
+            Circle().fill(dot).frame(width:5,height:5)
+        }
+        .frame(maxWidth:.infinity,minHeight:30)
+        .background(RoundedRectangle(cornerRadius:5).fill(selected ? Color.accentColor.opacity(0.15):Color.clear))
+        .contentShape(Rectangle())
+        .onTapGesture(count:2) {month=date;selectedDate=date;creation = .chooser(date)}
+        .onTapGesture {month=date;selectedDate=date}
+        .help(tip)
+    }
+    private var dayPanel:some View {
+        VStack(alignment:.leading,spacing:0) {
+            HStack {
+                Text(CalendarDates.title(selectedDate,format:"EEEE, d MMMM").capitalized).font(.headline)
+                Spacer()
+                Button {creation = .chooser(selectedDate)} label:{Image(systemName:"plus")}
+                    .buttonStyle(.borderless).help("Dodaj wydarzenie, spotkanie albo zapytanie na ten dzień")
+            }.padding(16)
+            List(dayRows(selectedDate)) { row in
+                Button {open(row)} label: {
+                    calendarEntry(row,compact:false)
+                }.buttonStyle(.plain)
+            }.overlay {
+                if dayRows(selectedDate).isEmpty {
+                    ContentUnavailableView {
+                        Label("Brak spraw tego dnia",systemImage:"calendar")
+                    } description: {
+                        Text("Kliknij dwukrotnie dzień w kalendarzu albo „Dodaj”, aby utworzyć wpis.")
+                    } actions: {
+                        Button("Dodaj…") {creation = .chooser(selectedDate)}
+                    }
+                }
+            }
+        }
+    }
+    /// Wpisy dnia — dni zajmowane jak w CRM (`CalendarDates.occupies`): noc do 5:00 należy do dnia rozpoczęcia.
+    private func dayRows(_ day:Date) -> [Row] {
+        let calendar=c
+        return rows.filter { row in
+            guard let start=CalendarDates.date(row["event_date"]) else {return false}
+            return CalendarDates.occupies(day,start:start,end:CalendarDates.date(row["event_end_date"]),in:calendar)
+        }
+    }
+    /// Dzień siatki: klik — wybór dnia, dwuklik albo „+” (po najechaniu) — „Co chcesz dodać?” jak kliknięcie dnia w CRM,
+    /// menu pod prawym przyciskiem — od razu wybrany rodzaj.
+    private func dayCell(_ date:Date,items:[Row]) -> some View {
+        let hovered:Bool=hoveredDay == date
         return VStack(alignment:.leading,spacing:5){
             HStack{
                 Button{selectedDate=date}label:{Text("\(c.component(.day,from:date))").font(.callout.bold()).foregroundStyle(c.isDateInToday(date) ? Color.accentColor:Color.primary)}.buttonStyle(.plain)
                 Spacer()
+                if hovered {
+                    Button {selectedDate=date;creation = .chooser(date)} label:{Image(systemName:"plus.circle.fill")}
+                        .buttonStyle(.plain).foregroundStyle(Color.accentColor).help("Dodaj na ten dzień")
+                }
                 if items.count>2{Button("+\(items.count-2)"){selectedDate=date}.font(.caption2).buttonStyle(.plain).help("Pokaż wszystkie sprawy tego dnia")}
             }
             ForEach(Array(items.prefix(2))){row in
@@ -227,8 +354,50 @@ struct CalendarLink:Codable {
             Spacer(minLength:0)
         }.padding(7).frame(maxWidth:.infinity,minHeight:132,maxHeight:132,alignment:.topLeading)
           .background{
-              RoundedRectangle(cornerRadius:6).fill(c.isDate(date,inSameDayAs:selectedDate) ? Color.accentColor.opacity(0.12):Color.secondary.opacity(0.04)).onTapGesture{selectedDate=date}
-          }.accessibilityElement(children:.contain).accessibilityLabel(CalendarDates.title(date,format:"d MMMM yyyy"))
+              RoundedRectangle(cornerRadius:6).fill(c.isDate(date,inSameDayAs:selectedDate) ? Color.accentColor.opacity(0.12):Color.secondary.opacity(0.04))
+                  .onTapGesture(count:2){selectedDate=date;creation = .chooser(date)}
+                  .onTapGesture{selectedDate=date}
+          }
+          .onHover {inside in if inside {hoveredDay=date} else if hoveredDay == date {hoveredDay=nil}}
+          .contextMenu {createMenu(date)}
+          .accessibilityElement(children:.contain).accessibilityLabel(CalendarDates.title(date,format:"d MMMM yyyy"))
+    }
+    /// Rodzaje nowych wpisów — jak „Co chcesz dodać?” (`EventTypeSelector`) w CRM.
+    @ViewBuilder private func createMenu(_ date:Date) -> some View {
+        if canCreateEvents {
+            Button("Nowe wydarzenie biznesowe…",systemImage:"building.2") {selectedDate=date;start(.business,on:date)}
+            Button("Nowe wydarzenie indywidualne…",systemImage:"person") {selectedDate=date;start(.individual,on:date)}
+        }
+        Button("Nowe spotkanie…",systemImage:"calendar.badge.plus") {selectedDate=date;start(.meeting,on:date)}
+        if canSeeInquiries {
+            Button("Nowe zapytanie (w CRM)…",systemImage:"phone.arrow.down.left") {selectedDate=date;start(.inquiry,on:date)}
+        }
+    }
+    @ViewBuilder private func creationSheet(_ item:CalendarCreation) -> some View {
+        switch item {
+        case .chooser(let date):
+            CalendarCreateChooser(date:date,canCreateEvents:canCreateEvents,canCreateInquiries:canSeeInquiries) { kind in start(kind,on:date) }
+                .warehouseSheetStyle(workspace)
+        case .event(let date,let clientType):
+            EventCreateSheet(store:workspace.events,initialDate:date,initialClientType:clientType).warehouseSheetStyle(workspace)
+        case .meeting(let request):
+            MeetingEditorSheet(store:workspace.meetings,request:request).warehouseSheetStyle(workspace)
+        }
+    }
+    /// Wybrany rodzaj na dzień z kalendarza: wydarzenie (kreator z terminem tego dnia), spotkanie (9:00–10:00 jak w CRM)
+    /// albo zapytanie — formularz „Dodaj zapytanie” w CRM z terminem tego dnia.
+    private func start(_ kind:CalendarCreateKind,on date:Date) {
+        let day=c.startOfDay(for:date)
+        switch kind {
+        case .business,.individual:
+            creation = .event(day,kind.rawValue)
+        case .meeting:
+            let begin=c.date(bySettingHour:9,minute:0,second:0,of:day) ?? day
+            creation = .meeting(MeetingEditorRequest(start:begin,end:begin.addingTimeInterval(3600)))
+        case .inquiry:
+            creation=nil
+            workspace.openCRM("/crm/inquiries?new=1&termin=\(EventFormDates.day(day))")
+        }
     }
     private func calendarEntry(_ row:Row,compact:Bool) -> some View {
         let color=WorkspacePresentation.calendarColor(row)

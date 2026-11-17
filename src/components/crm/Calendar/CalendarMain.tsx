@@ -39,6 +39,7 @@ import {
   useGetTimelineResourcesQuery,
 } from '@/store/api/calendarApi';
 import { getWeekBounds } from '@/lib/timeline';
+import { occupiesCalendarDay } from '@/lib/CRM/calendar/calendarDays';
 import { isEventVisibleToOperationalRole } from '@/lib/CRM/events/eventVisibility';
 
 const INQUIRY_STAGE_LABELS: Record<string, string> = {
@@ -514,16 +515,9 @@ export default function CalendarMain({
     return '';
   };
 
-  const getEventsForDate = (date: Date): CalendarEvent[] => {
-    return events.filter((event) => {
-      const eventDate = new Date(event.event_date);
-      return (
-        eventDate.getDate() === date.getDate() &&
-        eventDate.getMonth() === date.getMonth() &&
-        eventDate.getFullYear() === date.getFullYear()
-      );
-    });
-  };
+  // „Plan dnia”: te same dni co w widoku miesiąca (wspólna reguła — noc do 5:00 należy do dnia rozpoczęcia).
+  const getEventsForDate = (date: Date): CalendarEvent[] =>
+    events.filter((event) => occupiesCalendarDay(date, event.event_date, event.event_end_date));
 
   if (isMobile) {
     return (

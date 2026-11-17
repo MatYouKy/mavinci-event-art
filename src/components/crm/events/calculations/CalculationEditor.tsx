@@ -10,6 +10,7 @@ import { useCallback } from 'react';
 import { useEffect } from 'react';
 import { useMemo } from 'react';
 import { supabase } from '@/lib/supabase/browser';
+import { availableUnitCounts } from '@/lib/CRM/equipment/availableUnitCounts';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { Category, CalcItem } from './EventCalculationsTab';
@@ -152,21 +153,9 @@ export function CalculationEditor({
             .filter((eq: any) => Number(eq.cable_stock_quantity ?? 0) <= 0)
             .map((eq: any) => eq.id);
 
-          const unitCounts: Record<string, number> = {};
-
-          if (unitItemIds.length > 0) {
-            const { data: units, error: unitsError } = await supabase
-              .from('equipment_units')
-              .select('equipment_id')
-              .in('equipment_id', unitItemIds)
-              .eq('status', 'available');
-
-            if (unitsError) throw unitsError;
-
-            for (const unit of units ?? []) {
-              unitCounts[unit.equipment_id] = (unitCounts[unit.equipment_id] || 0) + 1;
-            }
-          }
+          // Wszystkie strony egzemplarzy (jedno zapytanie zwraca najwyżej 1000 wierszy).
+          const unitCounts: Record<string, number> =
+            unitItemIds.length > 0 ? await availableUnitCounts(supabase, unitItemIds) : {};
 
           for (const eq of eqData ?? []) {
             const simpleQuantity = Number(eq.cable_stock_quantity ?? 0);
@@ -351,6 +340,24 @@ export function CalculationEditor({
   };
 
   const addItemFromModal = async (item: CalcItem) => {
+    // Sprzęt, który już jest w kalkulacji (ta sama kategoria): ilość trafia do istniejącej pozycji zamiast drugiej linii
+    // z tym samym sprzętem — nazwa, cena, dni i VAT tej pozycji bez zmian.
+    const target =
+      item.source === 'warehouse' && item.source_ref
+        ? items.find((row) => row.id && row.category === item.category && row.source === 'warehouse' && row.source_ref === item.source_ref)
+        : undefined;
+    if (target?.id) {
+      const quantity = round2(Number(target.quantity || 0) + Number(item.quantity || 0));
+      const saved = await persistItem({ ...target, quantity }, target.position ?? 0);
+      if (!saved) throw new Error('Nie udało się zwiększyć ilości pozycji. Spróbuj ponownie.');
+      setItems((prev) => prev.map((row) => (row.id === target.id ? { ...row, quantity } : row)));
+      await supabase
+        .from('event_calculations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', calculationId);
+      showSnackbar(`Sprzęt był już w kalkulacji — zwiększono ilość do ${quantity} ${target.unit || 'szt.'}`, 'success');
+      return;
+    }
     const position = Math.max(-1, ...items.map((it) => it.position ?? -1)) + 1;
     const newId = await persistItem(item, position);
     if (!newId) throw new Error('Nie udało się dodać pozycji. Spróbuj ponownie.');

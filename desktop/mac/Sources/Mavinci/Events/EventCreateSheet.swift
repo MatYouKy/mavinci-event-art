@@ -269,6 +269,10 @@ struct EventFormField<Content: View>: View {
 
 @MainActor struct EventCreateSheet: View {
     @ObservedObject var store: EventsStore
+    /// Dzień kliknięty w kalendarzu (jak `initialDate` w `EventWizard`): termin od razu ustawiony na ten dzień, 18:00.
+    var initialDate: Date? = nil
+    /// Rodzaj klienta z „Co chcesz dodać?” w kalendarzu: `business` albo `individual`.
+    var initialClientType: String? = nil
     @EnvironmentObject private var state: Workspace
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
@@ -314,6 +318,7 @@ struct EventFormField<Content: View>: View {
     // Krok 2: Oferta
     @State private var offerWizard: OfferWizardRoute?
     @State private var offerCreated = false
+    @State private var initialApplied = false
 
     private static let steps = ["Szczegóły", "Oferta", "Sprzęt"]
 
@@ -351,7 +356,10 @@ struct EventFormField<Content: View>: View {
             footer
         }
         .frame(minWidth: 760, idealWidth: 820, minHeight: 760, idealHeight: 860)
-        .task { await load() }
+        .task {
+            applyInitialValues()
+            await load()
+        }
         .interactiveDismissDisabled(working)
         .sheet(isPresented: $addingLocation) {
             AddEventLocationSheet(service: .events(store)) { id in
@@ -733,6 +741,20 @@ struct EventFormField<Content: View>: View {
     }
 
     // MARK: Czynności
+
+    /// Wartości z kalendarza — raz, przy otwarciu kreatora (ponowne wczytanie danych ich nie nadpisuje).
+    private func applyInitialValues() {
+        guard !initialApplied else { return }
+        initialApplied = true
+        if let initialDate {
+            let calendar = MeetingDates.calendar
+            let day = calendar.startOfDay(for: initialDate)
+            start = calendar.date(bySettingHour: 18, minute: 0, second: 0, of: day) ?? day
+            hasStart = true
+            end = start.addingTimeInterval(6 * 3600)
+        }
+        if let initialClientType, ["business", "individual"].contains(initialClientType) { clientType = initialClientType }
+    }
 
     private func load() async {
         loadError = nil

@@ -1,7 +1,5 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { Buffer } from 'node:buffer';
-import { X509Certificate, constants, publicEncrypt } from 'node:crypto';
 
 const KSEF_TEST_URL = 'https://api-test.ksef.mf.gov.pl/v2';
 const KSEF_PROD_URL = 'https://api.ksef.mf.gov.pl/v2';
@@ -74,25 +72,79 @@ async function ksefJson<T>(
   return (raw ? JSON.parse(raw) : null) as T;
 }
 
-function certificateToPem(certificate: string) {
+// Szyfrowanie tokenu KSeF kluczem publicznym z certyfikatu MF (RSA-OAEP, SHA-256) przez Web Crypto.
+// Bez node:crypto: w środowisku Edge Functions (Deno) publicEncrypt z kluczem X509Certificate kończył się błędem
+// „Invalid key type”, więc pełne logowanie automatu nie działało (działało tylko odświeżenie sesji z CRM).
+function certificateDer(certificate: string) {
   const normalized = certificate
     .replace(/-----BEGIN CERTIFICATE-----/g, '')
     .replace(/-----END CERTIFICATE-----/g, '')
     .replace(/\s+/g, '');
-  const chunks = normalized.match(/.{1,64}/g) || [];
-  return ['-----BEGIN CERTIFICATE-----', ...chunks, '-----END CERTIFICATE-----'].join('\n');
+  if (!normalized) throw new Error('Pusty certyfikat KsefTokenEncryption.');
+  return Uint8Array.from(atob(normalized), (char) => char.charCodeAt(0));
 }
 
-function encryptKSeFToken(payload: string, certificate: string) {
-  const x509 = new X509Certificate(certificateToPem(certificate));
-  return publicEncrypt(
-    {
-      key: x509.publicKey,
-      padding: constants.RSA_PKCS1_OAEP_PADDING,
-      oaepHash: 'sha256',
-    },
-    Buffer.from(payload, 'utf8'),
-  ).toString('base64');
+type DerElement = { tag: number; start: number; contentStart: number; end: number };
+
+function derElement(bytes: Uint8Array, start: number, limit: number): DerElement {
+  if (start + 2 > limit) throw new Error('Nieprawidłowy certyfikat KSeF (DER).');
+  const tag = bytes[start];
+  const first = bytes[start + 1];
+  let length = first;
+  let header = 2;
+  if (first & 0x80) {
+    const count = first & 0x7f;
+    if (count < 1 || count > 4 || start + 2 + count > limit) throw new Error('Nieprawidłowy certyfikat KSeF (DER).');
+    length = 0;
+    for (let index = 0; index < count; index += 1) length = length * 256 + bytes[start + 2 + index];
+    header = 2 + count;
+  }
+  const end = start + header + length;
+  if (end > limit) throw new Error('Nieprawidłowy certyfikat KSeF (DER).');
+  return { tag, start, contentStart: start + header, end };
+}
+
+function derChildren(bytes: Uint8Array, parent: DerElement) {
+  const children: DerElement[] = [];
+  let offset = parent.contentStart;
+  while (offset < parent.end) {
+    const child = derElement(bytes, offset, parent.end);
+    children.push(child);
+    offset = child.end;
+  }
+  return children;
+}
+
+// Certificate ::= SEQUENCE { tbsCertificate, … }; tbsCertificate ::= SEQUENCE { [0] version (opcjonalnie),
+// serialNumber, signature, issuer, validity, subject, subjectPublicKeyInfo, … }.
+function subjectPublicKeyInfo(der: Uint8Array) {
+  const certificate = derElement(der, 0, der.length);
+  const tbs = derChildren(der, certificate)[0];
+  if (certificate.tag !== 0x30 || tbs?.tag !== 0x30) throw new Error('Nieprawidłowy certyfikat KSeF (X.509).');
+  const fields = derChildren(der, tbs);
+  const spki = fields[(fields[0]?.tag === 0xa0 ? 1 : 0) + 5];
+  if (spki?.tag !== 0x30) throw new Error('Nieprawidłowy certyfikat KSeF (klucz publiczny).');
+  return der.slice(spki.start, spki.end);
+}
+
+function base64(bytes: Uint8Array) {
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+  return btoa(binary);
+}
+
+async function encryptKSeFToken(payload: string, certificate: string) {
+  const key = await crypto.subtle.importKey(
+    'spki',
+    subjectPublicKeyInfo(certificateDer(certificate)),
+    { name: 'RSA-OAEP', hash: 'SHA-256' },
+    false,
+    ['encrypt'],
+  );
+  const encrypted = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, key, new TextEncoder().encode(payload));
+  return base64(new Uint8Array(encrypted));
 }
 
 async function fullAuthentication(supabase: any, credentials: Credentials) {
@@ -118,7 +170,7 @@ async function fullAuthentication(supabase: any, credentials: Credentials) {
     body: JSON.stringify({
       challenge: challenge.challenge,
       contextIdentifier: { type: 'Nip', value: credentials.nip },
-      encryptedToken: encryptKSeFToken(
+      encryptedToken: await encryptKSeFToken(
         `${credentials.token}|${challenge.timestampMs}`,
         encryptionCertificate.certificate,
       ),
@@ -541,18 +593,6 @@ Deno.serve(async (request: Request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-  const providedToken = request.headers
-    .get('authorization')
-    ?.replace(/^Bearer\s+/i, '')
-    .trim() || '';
-
-  if (!serviceRoleKey || providedToken !== serviceRoleKey) {
-    return new Response(JSON.stringify({ error: 'Forbidden' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
   if (!supabaseUrl || !serviceRoleKey) {
     return new Response(JSON.stringify({ error: 'Missing Supabase configuration' }), { status: 500 });
   }
@@ -560,6 +600,27 @@ Deno.serve(async (request: Request) => {
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  // Wywołanie z harmonogramu (pg_cron → public.invoke_daily_ksef_sync) jest podpisane sekretem z Vault, który
+  // sprawdza baza — bez porównywania kluczy API (po przeniesieniu projektu klucz zapisany w Vault różnił się od
+  // klucza funkcji i każde wywołanie kończyło się odmową 403).
+  const suppliedSecret = request.headers.get('X-Ksef-Daily-Worker-Secret') || '';
+  if (!suppliedSecret) {
+    return new Response(JSON.stringify({ error: 'Forbidden' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  const { data: authorized, error: authorizationError } = await supabase.rpc('verify_ksef_daily_worker_secret', {
+    p_secret: suppliedSecret,
+  });
+  if (authorizationError || authorized !== true) {
+    if (authorizationError) console.error('[KSEF_DAILY] worker secret check failed', authorizationError.message);
+    return new Response(JSON.stringify({ error: 'Forbidden' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
   const { data: credentials, error } = await supabase
     .from('ksef_credentials')
     .select('*')

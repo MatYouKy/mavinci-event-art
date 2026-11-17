@@ -1,4 +1,5 @@
 import { CalendarEvent } from './types';
+import { calendarDaySpan } from '@/lib/CRM/calendar/calendarDays';
 
 export const getDaysInMonth = (date: Date): (Date | null)[] => {
   const year = date.getFullYear();
@@ -49,38 +50,15 @@ export const getEventsForDate = (date: Date, events: CalendarEvent[]): CalendarE
   });
 };
 
-const EARLY_MORNING_CUTOFF_HOUR = 6;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/**
+ * Dni kalendarza zajmowane przez wydarzenie — wspólna reguła (`calendarDaySpan`): noc kończąca się najpóźniej o 5:00
+ * należy do poprzedniego dnia, więc impreza do rana zajmuje w widoku miesiąca tylko dzień rozpoczęcia.
+ */
 export const getEventDaySpan = (
   event: CalendarEvent,
-): { startDay: Date; totalDays: number } => {
-  const start = new Date(event.event_date);
-  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-
-  if (!event.event_end_date) {
-    return { startDay, totalDays: 1 };
-  }
-
-  const end = new Date(event.event_end_date);
-  if (end.getTime() <= start.getTime()) {
-    return { startDay, totalDays: 1 };
-  }
-
-  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-  const isNextDay = endDay.getTime() === startDay.getTime() + MS_PER_DAY;
-
-  if (isNextDay && end.getHours() < EARLY_MORNING_CUTOFF_HOUR) {
-    return { startDay, totalDays: 1 };
-  }
-
-  const totalDays = Math.max(
-    1,
-    Math.round((endDay.getTime() - startDay.getTime()) / MS_PER_DAY) + 1,
-  );
-
-  return { startDay, totalDays };
-};
+): { startDay: Date; totalDays: number } => calendarDaySpan(event.event_date, event.event_end_date);
 
 export interface CalendarEventOccurrence {
   event: CalendarEvent;

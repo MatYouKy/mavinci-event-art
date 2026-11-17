@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowRight,
+  BellRing,
   Briefcase,
   CalendarClock,
   CheckCircle2,
@@ -32,12 +33,15 @@ import SaldeoDeliveryPanel from './SaldeoDeliveryPanel';
 import BankReconciliationPanel from './BankReconciliationPanel';
 import FinanceDeclarationsPanel from './FinanceDeclarationsPanel';
 import RecurringContractsPanel from './RecurringContractsPanel';
+import FinanceDeadlinesPanel from './FinanceDeadlinesPanel';
+import FinancePeriodClosePanel from './FinancePeriodClosePanel';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import { decodeTextEntities } from '@/lib/textEncoding';
 import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
 
 type WorkspaceSection =
   | 'reconciliation'
+  | 'deadlines'
   | 'declarations'
   | 'recurring'
   | 'control'
@@ -80,6 +84,7 @@ const SECTIONS: Array<{
   icon: typeof FileText;
 }> = [
   { id: 'reconciliation', label: 'Uzgodnienie wyciągów', shortLabel: 'Uzgodnienie', icon: ListChecks },
+  { id: 'deadlines', label: 'Terminy i monity', shortLabel: 'Terminy', icon: BellRing },
   { id: 'declarations', label: 'ZUS i podatki', shortLabel: 'ZUS i podatki', icon: Landmark },
   { id: 'recurring', label: 'Umowy stałe', shortLabel: 'Umowy stałe', icon: CalendarClock },
   { id: 'documents', label: 'Wszystkie dokumenty', shortLabel: 'Dokumenty', icon: FolderOpen },
@@ -512,7 +517,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
         </div>
       </div>
 
-      {section !== 'reconciliation' && section !== 'declarations' && section !== 'recurring' && loading && documents.length === 0 ? (
+      {section !== 'reconciliation' && section !== 'deadlines' && section !== 'declarations' && section !== 'recurring' && loading && documents.length === 0 ? (
         <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] text-[#e5e4e2]/50">
           <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#d3bb73]" /> Ładowanie rejestrów…
         </div>
@@ -522,6 +527,12 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
           onOpenStatements={() => changeSection('statements')}
           onOpenDeclarations={() => changeSection('declarations')}
           onOpenContracts={() => changeSection('recurring')}
+        />
+      ) : section === 'deadlines' ? (
+        <FinanceDeadlinesPanel
+          filterCompanyIds={filterCompanyIds}
+          onOpenDeclarations={() => changeSection('declarations')}
+          onOpenReconciliation={() => changeSection('reconciliation')}
         />
       ) : section === 'declarations' ? (
         <FinanceDeclarationsPanel
@@ -603,7 +614,10 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
           />
         </div>
       ) : (
-        <SaldeoDeliveryPanel filterCompanyIds={filterCompanyIds} />
+        <div className="space-y-5">
+          <SaldeoDeliveryPanel filterCompanyIds={filterCompanyIds} />
+          <FinancePeriodClosePanel filterCompanyIds={filterCompanyIds} />
+        </div>
       )}
 
     </div>

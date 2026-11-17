@@ -473,6 +473,13 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
   // `?new=1` i `?sla=1` — otwarcie formularza z aplikacji na Maca („Dodaj zapytanie”, „SLA”).
   const [showSlaSettings, setShowSlaSettings] = useState(() => searchParams.get('sla') === '1');
   const [showNewInquiry, setShowNewInquiry] = useState(() => searchParams.get('new') === '1');
+  // `?new=1&termin=RRRR-MM-DD` — nowe zapytanie z kalendarza w aplikacji na Maca (dzień jak kliknięcie dnia w kalendarzu CRM).
+  const [newInquiryDate, setNewInquiryDate] = useState<Date | undefined>(() => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(searchParams.get('new') === '1' ? searchParams.get('termin') || '' : '');
+    if (!match) return undefined;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return Number.isNaN(date.getTime()) ? undefined : date;
+  });
   const [handoffInquiry, setHandoffInquiry] = useState<InquiryListItem | null>(null);
   const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>('all');
   const pipelineScrollRef = useRef<HTMLDivElement>(null);
@@ -868,7 +875,8 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
       {editingInquiry && <InquiryEditorModal inquiry={editingInquiry} employees={assignableEmployees} canAssign={canAssign} onClose={() => setEditingInquiry(null)} onSaved={updateInquiry} />}
       <NewInquiryModal
         isOpen={showNewInquiry}
-        onClose={() => setShowNewInquiry(false)}
+        initialDate={newInquiryDate}
+        onClose={() => { setShowNewInquiry(false); setNewInquiryDate(undefined); }}
         onSaved={async () => {
           setFilter('open');
           setAttentionFilter('all');

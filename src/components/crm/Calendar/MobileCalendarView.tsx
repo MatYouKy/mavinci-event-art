@@ -8,6 +8,7 @@ import { CalendarEvent } from './types';
 import SpecialDayNotice from '../SpecialDayNotice';
 import { usePublicHolidays } from '@/hooks/usePublicHolidays';
 import { toISODate } from '@/lib/CRM/calendar/publicHolidays';
+import { occupiesCalendarDay } from '@/lib/CRM/calendar/calendarDays';
 import { STATUS_COLORS, STATUS_LABELS, DAYS_OF_WEEK_SHORT } from './constants';
 
 interface MobileCalendarViewProps {
@@ -48,16 +49,9 @@ export default function MobileCalendarView({
 
   const days = getDaysInMonth(currentDate);
 
-  const getEventsForDate = (date: Date): CalendarEvent[] => {
-    return events.filter((event) => {
-      const eventDate = new Date(event.event_date);
-      return (
-        eventDate.getDate() === date.getDate() &&
-        eventDate.getMonth() === date.getMonth() &&
-        eventDate.getFullYear() === date.getFullYear()
-      );
-    });
-  };
+  // Dni zajmowane przez wydarzenie jak w widoku miesiąca na komputerze (noc do 5:00 należy do dnia rozpoczęcia).
+  const getEventsForDate = (date: Date): CalendarEvent[] =>
+    events.filter((event) => occupiesCalendarDay(date, event.event_date, event.event_end_date));
 
   const eventsForSelectedDate = useMemo(() => {
     return getEventsForDate(selectedDate);

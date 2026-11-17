@@ -60,6 +60,7 @@ import NewInquiryModal from './NewInquiryModal';
 import SpecialDayNotice from '../components/SpecialDayNotice';
 import { usePublicHolidays } from '../hooks/usePublicHolidays';
 import { holidayDateLabel, toISODate, workingTimeNorm, workingTimeNormSentence } from '../lib/publicHolidays';
+import { calendarDayKeys } from '../lib/calendarDays';
 import { STATUS_COLORS, STATUS_LABELS } from './EventsScreen';
 import {
   SALES_COLLEAGUE_BADGE_LABEL,
@@ -351,18 +352,21 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
     const marks: Record<string, any> = {};
 
     for (const event of events) {
-      const date = event.event_date?.split('T')[0];
-      if (!date) continue;
+      if (!event.event_date) continue;
 
       const color =
       event.category_color ||
       STATUS_COLORS[event.status] ||
       colors.primary.gold;
 
-      if (!marks[date]) {
-        marks[date] = { dots: [{ color }] };
-      } else if (marks[date].dots.length < 3) {
-        marks[date].dots.push({ color });
+      // Dni jak w kalendarzu CRM i na Macu (`calendarDayKeys`): data lokalna, wydarzenie wielodniowe na każdym swoim dniu,
+      // noc kończąca się najpóźniej o 5:00 należy do dnia rozpoczęcia.
+      for (const date of calendarDayKeys(event.event_date, event.event_end_date)) {
+        if (!marks[date]) {
+          marks[date] = { dots: [{ color }] };
+        } else if (marks[date].dots.length < 3) {
+          marks[date].dots.push({ color });
+        }
       }
     }
 
@@ -386,7 +390,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
   const eventsForSelectedDate = useMemo(() => {
     if (!selectedDate) return [];
     return events
-      .filter((e) => e.event_date?.startsWith(selectedDate))
+      .filter((e) => Boolean(e.event_date) && calendarDayKeys(e.event_date, e.event_end_date).includes(selectedDate))
       .sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
   }, [events, selectedDate]);
 

@@ -109,6 +109,12 @@ function getInvoiceDisplayStatus(invoice: Invoice): Invoice['status'] {
   return isPaidProforma(invoice) ? 'paid' : invoice.status;
 }
 
+/** Usunąć można tylko szkic i pro formę — wystawioną fakturę anuluje się na jej karcie albo koryguje (jak w bazie). */
+function isDeletableInvoiceDraft(invoice: Pick<Invoice, 'status' | 'invoice_type' | 'is_proforma'>) {
+  return invoice.status === 'draft' || invoice.status === 'proforma'
+    || invoice.invoice_type === 'proforma' || Boolean(invoice.is_proforma);
+}
+
 function InvoiceContextMenu({
   invoice,
   onView,
@@ -126,7 +132,7 @@ function InvoiceContextMenu({
   onIssueFinal: () => void;
   /** Wystawianie i edycja faktur tej działalności (poziom ≥ „Wystawianie faktur”). */
   canManage: boolean;
-  /** Usuwanie faktury — „Zarządzanie finansami” tej działalności. */
+  /** Usuwanie szkicu lub pro formy — „Zarządzanie finansami” tej działalności. */
   canDelete: boolean;
   isAdmin: boolean;
 }) {
@@ -222,7 +228,7 @@ function InvoiceContextMenu({
               className="flex w-full items-center gap-3 border-t border-[#d3bb73]/10 px-4 py-3 text-left text-sm text-red-400 transition-colors hover:bg-red-500/10"
             >
               <Trash2 className="h-4 w-4" />
-              Usun fakture
+              {invoice.status === 'draft' ? 'Usuń szkic' : 'Usuń pro formę'}
             </button>
           )}
         </div>
@@ -374,6 +380,13 @@ export default function InvoicesPage() {
   const { showSnackbar } = useSnackbar();
 
   const handleDeleteInvoice = async (invoice: Invoice) => {
+    if (!isDeletableInvoiceDraft(invoice)) {
+      showSnackbar(
+        `Wystawionej faktury ${invoice.invoice_number} nie usuwa się — anuluj ją na karcie faktury (jeśli nie trafiła do nabywcy) albo wystaw korektę.`,
+        'warning',
+      );
+      return;
+    }
     if (invoice.ksef_status === 'accepted') {
       showSnackbar(
         `Nie można usunąć faktury ${invoice.invoice_number}, ponieważ została już wysłana do KSeF.`,
@@ -411,7 +424,8 @@ export default function InvoicesPage() {
       fetchInvoices();
     } catch (err) {
       console.error('Error deleting invoice:', err);
-      showSnackbar('Błąd podczas usuwania faktury', 'error');
+      const message = err && typeof err === 'object' && 'message' in err ? String((err as { message?: unknown }).message || '') : '';
+      showSnackbar(message || 'Błąd podczas usuwania faktury', 'error');
     }
   };
 
@@ -1250,7 +1264,8 @@ export default function InvoicesPage() {
                                     setShowFinalInvoiceWizard(true);
                                   }}
                                   canManage={canFinanceCompany(financeAccess, invoice.my_company_id, 'invoices_issue')}
-                                  canDelete={canFinanceCompany(financeAccess, invoice.my_company_id, 'finance_manage')}
+                                  canDelete={isDeletableInvoiceDraft(invoice)
+                                    && canFinanceCompany(financeAccess, invoice.my_company_id, 'finance_manage')}
                                   isAdmin={isAdmin}
                                 />
                               </div>

@@ -1160,7 +1160,6 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                   <>
                     <option value="draft">Szkic</option>
                     <option value="proforma">Proforma</option>
-                    <option value="cancelled">Anulowana</option>
                   </>
                 ) : (
                   <>
@@ -1169,10 +1168,12 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                     <option value="sent">Wysłana</option>
                     <option value="paid">Opłacona</option>
                     <option value="overdue">Przeterminowana</option>
-                    <option value="cancelled">Anulowana</option>
                   </>
                 )}
               </select>
+              <p className="mt-1 text-xs text-[#e5e4e2]/45">
+                Anulowanie — przyciskiem „Anuluj fakturę” na karcie faktury (z powodem). Szkic można też usunąć z listy faktur.
+              </p>
             </div>
 
             {/* KSeF Info (read-only) */}

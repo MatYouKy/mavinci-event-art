@@ -89,6 +89,9 @@ interface Invoice {
   pdf_url: string | null;
   pdf_generated_at: string | null;
   updated_at?: string | null;
+  cancelled_at?: string | null;
+  cancelled_by?: string | null;
+  cancellation_reason?: string | null;
   event_id: string | null;
   organization_id: string | null;
   billing_arrangement: 'direct' | 'hotel' | 'agency' | 'other';
@@ -897,11 +900,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     setShowSendEmailModal(true);
   };
 
-  const handleStatusChange = async (newStatus: 'paid' | 'sent' | 'cancelled') => {
+  const handleStatusChange = async (newStatus: 'paid' | 'sent') => {
     if (!invoice || statusChangeInFlight.current || !canChangeInvoiceStatus) return;
     if (newStatus === 'paid' && !canMarkInvoicePaid) return;
     if (newStatus === 'sent' && !canMarkInvoiceSent) return;
-    if (newStatus === 'cancelled' && !canCancelInvoice) return;
 
     statusChangeInFlight.current = true;
     setChangingStatus(true);
@@ -954,9 +956,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         updateData.paid_amount = targetPaidAmount;
         updateData.paid_at = new Date(`${confirmedPaymentDate}T12:00:00`).toISOString();
         updateData.paid_date = confirmedPaymentDate;
-      } else if (newStatus === 'cancelled') {
-        const confirmed = await showConfirm(`Czy chcesz anulować fakturę ${invoice.invoice_number}?`, 'Anulowanie faktury');
-        if (!confirmed) return;
       }
 
       // Do not overwrite a payment/status changed by another user while this page was open.
@@ -983,6 +982,82 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     } catch (err) {
       console.error('Error updating status:', err);
       showSnackbar('Nie udało się zmienić statusu. Sprawdź płatności i powiązania faktury przed ponowną próbą.', 'error');
+    } finally {
+      statusChangeInFlight.current = false;
+      setChangingStatus(false);
+    }
+  };
+
+  // Anulowanie (cancel_local_invoice): numer zostaje, powód i potwierdzenie, że faktura nie trafiła do nabywcy, trafiają do
+  // historii. Fakturę, która trafiła do nabywcy, poprawia się korektą.
+  const handleCancelInvoice = async () => {
+    if (!invoice || statusChangeInFlight.current || !canCancelInvoice) return;
+    const needsNotDeliveredConfirmation = !isProformaDocument && invoice.status !== 'draft';
+    statusChangeInFlight.current = true;
+    setChangingStatus(true);
+    try {
+      let reason = '';
+      let notDelivered = false;
+      const confirmed = await showConfirm({
+        title: 'Anulowanie faktury',
+        confirmText: 'Anuluj fakturę',
+        message: (
+          <div className="space-y-3 text-left">
+            <p>Faktura <strong>{invoice.invoice_number}</strong> · {invoice.buyer_name}</p>
+            <p className="text-xs text-[#e5e4e2]/60">
+              Numer zostaje w ewidencji, faktura dostaje status „anulowana” i nie wchodzi do rozliczeń ani raportów.
+              Anulowanej faktury nie przywraca się. Jeśli faktura trafiła do nabywcy — nie anuluj jej, wystaw korektę.
+            </p>
+            <label className="block text-sm">
+              Powód anulowania
+              <textarea
+                required
+                rows={3}
+                maxLength={500}
+                onChange={(event) => { reason = event.target.value; }}
+                className="mt-1 block w-full rounded-lg border border-[#d3bb73]/10 bg-black/20 px-3 py-2 text-[#e5e4e2]"
+              />
+            </label>
+            {needsNotDeliveredConfirmation && (
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  onChange={(event) => { notDelivered = event.target.checked; }}
+                />
+                <span>Potwierdzam, że faktura nie trafiła do nabywcy (nie została wysłana ani przekazana).</span>
+              </label>
+            )}
+          </div>
+        ),
+        validate: () => {
+          if (reason.trim().length < 5) {
+            showSnackbar('Podaj powód anulowania (co najmniej 5 znaków).', 'warning');
+            return false;
+          }
+          if (needsNotDeliveredConfirmation && !notDelivered) {
+            showSnackbar('Potwierdź, że faktura nie trafiła do nabywcy. Jeśli ją otrzymał — wystaw korektę.', 'warning');
+            return false;
+          }
+          return true;
+        },
+      });
+      if (!confirmed) return;
+
+      const { error } = await supabase.rpc('cancel_local_invoice', {
+        p_invoice_id: invoice.id,
+        p_reason: reason.trim(),
+        p_not_delivered: notDelivered,
+      });
+      await fetchInvoice({ background: true });
+      if (error) {
+        showSnackbar(error.message || 'Nie udało się anulować faktury.', 'error');
+        return;
+      }
+      showSnackbar(`Faktura ${invoice.invoice_number} została anulowana.`, 'success');
+    } catch (err) {
+      console.error('Error cancelling invoice:', err);
+      showSnackbar('Nie udało się anulować faktury. Sprawdź odświeżoną fakturę.', 'error');
     } finally {
       statusChangeInFlight.current = false;
       setChangingStatus(false);
@@ -1213,8 +1288,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     && !isProformaDocument && !isRefund && hasPaymentBasis
     && Number.isFinite(paymentBaseAmount) && paymentBaseAmount > 0;
   const canMarkInvoiceSent = canChangeInvoiceStatus && invoice.status === 'issued';
+  // Anulować można szkic, wystawioną (niewysłaną) albo po terminie fakturę i proformę — bez zapłat i poza KSeF.
   const canCancelInvoice = canChangeInvoiceStatus
-    && !['paid', 'cancelled'].includes(invoice.status)
+    && (isProformaDocument ? invoice.status !== 'cancelled' : ['draft', 'issued', 'overdue'].includes(invoice.status))
     && !['paid', 'partially_paid', 'partially_refunded', 'refunded'].includes(paymentStatus)
     && paidAmount === 0 && !canonicalBankPayment
     && !invoice.ksef_reference_number && !['pending', 'sent', 'accepted'].includes(ksefStatus);
@@ -1300,6 +1376,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               )}
             </div>
 
+            {invoice.status === 'cancelled' && (
+              <p role="status" className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-200">
+                Faktura anulowana
+                {invoice.cancelled_at ? ` ${new Date(invoice.cancelled_at).toLocaleDateString('pl-PL')}` : ''}
+                {invoice.cancellation_reason ? ` — powód: ${invoice.cancellation_reason}` : ''}. Numer pozostaje w ewidencji,
+                dokument nie wchodzi do rozliczeń.
+              </p>
+            )}
             {invoice.is_proforma && (
               <p className="mt-3 text-xs text-[#e5e4e2]/55">
                 Pro forma nie jest wysyłana do KSeF.
@@ -1355,7 +1439,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                     </button>
                   )}
                   {canCancelInvoice && (
-                    <button type="button" disabled={changingStatus} onClick={() => handleStatusChange('cancelled')}
+                    <button type="button" disabled={changingStatus} onClick={() => void handleCancelInvoice()}
                       className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-300 hover:bg-red-400/10 disabled:opacity-50">
                       <XCircle className="h-4 w-4" />Anuluj fakturę
                     </button>

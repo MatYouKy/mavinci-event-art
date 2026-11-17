@@ -19,12 +19,22 @@ import UnifiedEmailComposer, {
   type UnifiedEmailDraft,
 } from './UnifiedEmailComposer';
 
+interface PaymentReminderDetails {
+  dueDate: string;
+  issueDate?: string | null;
+  outstanding: number;
+  currency?: string | null;
+}
+
 interface SendInvoiceEmailModalProps {
   invoiceId: string;
   invoiceNumber: string;
   clientEmail?: string;
   clientName?: string;
   pdfStoragePath?: string | null;
+  /** „reminder” — przypomnienie o płatności (monit) z fakturą w załączniku; zapisywane w historii monitów faktury. */
+  mode?: 'invoice' | 'reminder';
+  reminder?: PaymentReminderDetails;
   onClose: () => void;
   onSent?: () => void;
 }
@@ -45,6 +55,45 @@ interface EmailAccount {
   is_default?: boolean | null;
 }
 
+const formatReminderDate = (value: string) =>
+  new Date(`${value.slice(0, 10)}T12:00:00`).toLocaleDateString('pl-PL');
+
+const formatReminderAmount = (value: number, currency?: string | null) =>
+  `${Number(value || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${
+    !currency || currency === 'PLN' ? 'zł' : currency
+  }`;
+
+function localDateKey(date = new Date()) {
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function defaultEmailText(invoiceNumber: string, reminder?: PaymentReminderDetails) {
+  if (!reminder) {
+    return `Dzień dobry,
+
+W załączeniu przesyłam fakturę ${invoiceNumber}.
+
+W razie pytań proszę o kontakt.`;
+  }
+  const due = reminder.dueDate.slice(0, 10);
+  const today = localDateKey();
+  const dueText =
+    due < today
+      ? `minął ${formatReminderDate(due)}`
+      : due === today
+        ? `upływa dziś (${formatReminderDate(due)})`
+        : `upływa ${formatReminderDate(due)}`;
+  const issued = reminder.issueDate ? ` z dnia ${formatReminderDate(reminder.issueDate)}` : '';
+  return `Dzień dobry,
+
+Uprzejmie przypominam o płatności za fakturę ${invoiceNumber}${issued}. Termin płatności ${dueText}, do zapłaty pozostaje ${formatReminderAmount(reminder.outstanding, reminder.currency)}.
+
+Jeśli płatność została już zrealizowana, proszę potraktować tę wiadomość jako nieaktualną. Fakturę przesyłam ponownie w załączniku.
+
+W razie pytań proszę o kontakt.`;
+}
+
 // function getTypeLabel(type: string) {
 //   const labels: Record<string, string> = {
 //     standard: 'Faktura VAT',
@@ -60,9 +109,12 @@ export default function SendInvoiceEmailModal({
   clientEmail = '',
   clientName = '',
   pdfStoragePath,
+  mode = 'invoice',
+  reminder,
   onClose,
   onSent,
 }: SendInvoiceEmailModalProps) {
+  const isReminder = mode === 'reminder' && Boolean(reminder);
   const { showSnackbar } = useSnackbar();
   const { currentEmployee, loading: loadingEmployee } = useCurrentEmployee();
   const [loading, setLoading] = useState(false);
@@ -78,12 +130,8 @@ export default function SendInvoiceEmailModal({
     to: clientEmail,
     cc: '',
     bcc: '',
-    subject: `Faktura ${invoiceNumber}`,
-    messageHtml: plainTextToEmailHtml(`Dzień dobry,
-
-W załączeniu przesyłam fakturę ${invoiceNumber}.
-
-W razie pytań proszę o kontakt.`),
+    subject: isReminder ? `Przypomnienie o płatności — faktura ${invoiceNumber}` : `Faktura ${invoiceNumber}`,
+    messageHtml: plainTextToEmailHtml(defaultEmailText(invoiceNumber, isReminder ? reminder : undefined)),
   });
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
@@ -479,12 +527,34 @@ W razie pytań proszę o kontakt.`),
         },
       });
 
-      showSnackbar(
-        result.scheduled && result.scheduledAt
-          ? `Faktura zostanie wysłana ${formatScheduledEmailDate(result.scheduledAt)}`
-          : 'Faktura wysłana przez email z załącznikiem PDF',
-        'success',
-      );
+      const scheduledFor = result.scheduled && result.scheduledAt ? result.scheduledAt : null;
+      if (isReminder) {
+        // Historia monitów (sekcja „Terminy”): adresat, data i kwota pozostała do zapłaty w chwili wysyłki.
+        const { error: reminderLogError } = await supabase.rpc('record_invoice_payment_reminder', {
+          p_invoice_id: invoiceId,
+          p_recipient: formData.to.trim(),
+          p_scheduled_at: scheduledFor,
+        });
+        if (reminderLogError) {
+          console.error('Error recording payment reminder:', reminderLogError);
+        }
+        showSnackbar(
+          scheduledFor
+            ? `Przypomnienie zostanie wysłane ${formatScheduledEmailDate(scheduledFor)}`
+            : 'Przypomnienie o płatności wysłane z fakturą w załączniku',
+          'success',
+        );
+        if (reminderLogError) {
+          showSnackbar('Przypomnienie wysłane, ale nie zapisano go w historii monitów. Nie wysyłaj ponownie.', 'warning');
+        }
+      } else {
+        showSnackbar(
+          scheduledFor
+            ? `Faktura zostanie wysłana ${formatScheduledEmailDate(scheduledFor)}`
+            : 'Faktura wysłana przez email z załącznikiem PDF',
+          'success',
+        );
+      }
       if (result.warning) showSnackbar(String(result.warning), 'warning');
       onSent?.();
       onClose();
@@ -504,7 +574,9 @@ W razie pytań proszę o kontakt.`),
         <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6">
           <div className="flex items-center gap-3">
             <Mail className="h-6 w-6 text-[#d3bb73]" />
-            <h2 className="text-xl font-light text-[#e5e4e2]">Wyślij fakturę przez email</h2>
+            <h2 className="text-xl font-light text-[#e5e4e2]">
+              {isReminder ? 'Przypomnienie o płatności' : 'Wyślij fakturę przez email'}
+            </h2>
           </div>
           <button
             onClick={onClose}
@@ -516,6 +588,13 @@ W razie pytań proszę o kontakt.`),
         </div>
 
         <div className="space-y-4 p-6">
+          {isReminder && reminder && (
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-4 text-sm text-amber-100/90">
+              Faktura {invoiceNumber}: termin płatności {formatReminderDate(reminder.dueDate)}, do zapłaty{' '}
+              {formatReminderAmount(reminder.outstanding, reminder.currency)}. Zapłatę CRM widzi po wczytaniu wyciągu —
+              jeśli klient mógł zapłacić po ostatnim wyciągu, sprawdź konto przed wysłaniem.
+            </div>
+          )}
           <UnifiedEmailComposer
             draft={formData}
             onChange={(next) => {
@@ -622,7 +701,9 @@ W razie pytań proszę o kontakt.`),
             ) : (
               <>
                 <Send className="h-4 w-4" />
-                {formData.deliveryMode === 'scheduled' ? 'Zaplanuj fakturę' : 'Wyślij fakturę'}
+                {formData.deliveryMode === 'scheduled'
+                  ? isReminder ? 'Zaplanuj przypomnienie' : 'Zaplanuj fakturę'
+                  : isReminder ? 'Wyślij przypomnienie' : 'Wyślij fakturę'}
               </>
             )}
           </button>

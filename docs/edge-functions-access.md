@@ -49,7 +49,6 @@ Kolumna `verify_jwt` — wartość wdrożona (✔ true, ✘ false). „Wdrożyć
 | `generate-contract-pdf` | ✔ | brak w obecnym kodzie | zwracała cały rekord umowy | **brak** → odczyt klientem użytkownika: RLS `contracts` (`crm_contract_permission('view')`, marki, zakres rekordów, blokada portalu) | ❌ → ✅ | tak |
 | `generate-offer-pdf` | ✔ | starsze karty CRM (zgodność) | bez service_role — przekazuje żądanie z nagłówkiem użytkownika do `/bridge/offers/generate-pdf` | wymaga nagłówka; kontrola w bridge | ✅ | — |
 | `generate-subcontractor-guidelines` | ✔ | CRM `EventSubcontractorsPanel` | OpenAI (klient użytkownika) | sesja + `events_manage`/`subcontractors_manage`/admin (TS) + RLS `events` | ✅ ℹ️ TS | — |
-| `ksef-api` | ✔ | brak w obecnym kodzie (KSeF idzie przez `/bridge/ksef/*`) | operacje KSeF z tokenami firmy | `get_invoice_finance_access()` + `can_manage_invoice_company()` | ✅ | — |
 | `process-marketing-campaigns` | ✘ | pg_cron `process-marketing-campaigns` (anon + `X-Marketing-Worker-Secret`); CRM `CampaignsPageClient` (sesja) | wysyłka partii kampanii przez relay SMTP | `MARKETING_WORKER_SECRET` albo `marketing_campaigns_manage`/admin (TS, = `can_manage_marketing_campaigns()`) | ✅ | — |
 | `process-scheduled-emails` | ✘ | pg_cron `process-scheduled-emails` (`X-Scheduled-Email-Worker-Secret`) | wysyłka zaplanowanych wiadomości (przez `send-email`/`send-offer-email` z service_role) | `verify_scheduled_email_worker_secret()` (Vault); przy wysyłce ponowna kontrola nadawcy i dokumentu | ✅ | — |
 | `process-subcontractor-reminders` | ✔ (`config.toml`: ✘) | pg_cron `process-subcontractor-reminders` — **nie wysyła: brak `subcontractor_reminder_secret` w Vault** | przypomnienia e-mail do podwykonawców | `SUBCONTRACTOR_REMINDER_SECRET` | ✅ | — |
@@ -69,7 +68,7 @@ Kolumna `verify_jwt` — wartość wdrożona (✔ true, ✘ false). „Wdrożyć
 | `send-subcontractor-assignment` | ✔ | CRM `EventSubcontractorsPanel` | e-mail z wytycznymi i linkiem do podwykonawcy | `events_manage`/`subcontractors_manage`/admin (TS), bez sprawdzenia konkretnego wydarzenia | ⚠️ (drobne) → bez zmian | — |
 | `send-task-assignment-push` | ✔ | CRM i mobile (sesja) | push o przypisaniu zadania | przypisujący / autor zadania / `tasks_manage` / admin | ✅ | — |
 | `sync-email-read-state` | ✔ | CRM (sesja) | flagi IMAP przeczytane/nieprzeczytane | tylko własne i przypisane skrzynki | ✅ | — |
-| `sync-ksef-daily` | ✔ | pg_cron `daily-ksef-sync-0900-warsaw` (klucz service_role z Vault) | synchronizacja faktur KSeF | tylko service_role | ✅ | — |
+| `sync-ksef-daily` | ✘ | pg_cron `daily-ksef-sync-0900-warsaw` (`X-Ksef-Daily-Worker-Secret`) | synchronizacja faktur KSeF | `verify_ksef_daily_worker_secret()` (Vault, od 17.11.2026 — wcześniej porównanie klucza service_role, po przeniesieniu do Frankfurtu odmowa 403) | ✅ | — |
 | `track-marketing-event` | ✘ | piksel i linki w e-mailach kampanii | zapis otwarć/kliknięć, przekierowanie | zapis tylko z tokenem odbiorcy; przekierowanie na dowolny URL także bez tokenu (otwarte przekierowanie) → przekierowanie tylko z ważnym tokenem | ⚠️ → ✅ | tak |
 | `translate-offer` | ✔ | CRM `useOfferLanguage` | OpenAI, `offer_english_content` | `sales_can_manage_offer()` | ✅ | — |
 | `translate-product` | ✔ | CRM `ProductLanguagePanel` | OpenAI, zapis przez RLS (service_role tylko przy tłumaczeniu z oferty) | `offers_manage`/admin (TS) lub `sales_can_manage_offer()` + produkt w ofercie | ✅ ℹ️ TS | — |
@@ -87,11 +86,11 @@ Kolumna `verify_jwt` — wartość wdrożona (✔ true, ✘ false). „Wdrożyć
 | `invoke_marketing_campaign_worker()` | cron co minutę | `process-marketing-campaigns` | anon + `X-Marketing-Worker-Secret` (Vault `marketing_worker_secret`) | **pomijane** — w Vault brak `marketing_worker_secret` (funkcja zwraca NULL z ostrzeżeniem); kampanie przetwarza tylko przycisk w CRM |
 | `invoke_subcontractor_reminder_worker()` | cron `15 * * * *` | `process-subcontractor-reminders` | anon + `X-Subcontractor-Reminder-Secret` (Vault `subcontractor_reminder_secret`) | **pomijane** — brak sekretu w Vault; przypomnienia nie są wysyłane |
 | `invoke_scheduled_email_worker()` | cron co minutę | `process-scheduled-emails` | `X-Scheduled-Email-Worker-Secret` (Vault) | działa (bez zmian) |
-| `invoke_daily_ksef_sync()` | cron `0 7,8 * * *` (09:00 Warszawa) | `sync-ksef-daily` | klucz service_role z Vault (`ksef_daily_service_role_key`) | bez zmian |
+| `invoke_daily_ksef_sync(p_force)` | cron `0 7,8 * * *` (09:00 Warszawa); `p_force = true` — od razu (SQL Editor) | `sync-ksef-daily` | `X-Ksef-Daily-Worker-Secret` (Vault, `ksef_daily_worker_secret`) | `20261117121000` |
 | `notify_chat_message_push()` | trigger na `employee_messages` | `send-chat-push` | service_role z Vault `service_role_key` | **nieaktywny** — w Vault brak `service_role_key` i `supabase_url` (trigger kończy się bez wywołania); push wysyłają klienci |
 | `invoke_marketing_sync()` | cron `15 */6 * * *` | `/bridge/marketing/sync` (Next.js, nie Edge) | `x-marketing-cron-secret` | **pomijane** — brak `crm_base_url`/`marketing_cron_secret` |
 
-Sekrety w Vault (nazwy): `ksef_daily_project_url`, `ksef_daily_service_role_key`, `scheduled_email_worker_secret`, `supabase_anon_key`.
+Sekrety w Vault (nazwy): `ksef_daily_project_url`, `ksef_daily_worker_secret` (od 17.11.2026; tworzy go migracja `20261117121000`), `scheduled_email_worker_secret`, `supabase_anon_key`; `ksef_daily_service_role_key` — nieużywany od 17.11.2026 (do usunięcia).
 
 ## 5. Rozbieżności repo ↔ produkcja
 
@@ -102,7 +101,7 @@ Sekrety w Vault (nazwy): `ksef_daily_project_url`, `ksef_daily_service_role_key`
 - **Sprawdzone, identyczne z repo (przed tą zmianą):** `send-crm-notification-push`, `send-push-notification`, `generate-contract-pdf`, `generate-agenda-pdf`, `track-marketing-event`.
 - Pozostałych nie porównywano treścią. Historia git jest tu niewiarygodna: funkcje bywały wdrażane z niezacommitowanego stanu (snapshot `4db32540` z 31.10).
 - **`verify_jwt`:** `respond-subcontractor-assignment` i `process-subcontractor-reminders` — w `config.toml` `false`, wdrożone `true` (obie działają w obu trybach). `fetch-emails` i `fetch-tenders` — wdrożone `false`, brak wpisu w `config.toml` (wdrożenie przez CLI ustawi `true`; dla obu bezpieczne). Dodano wpis `fetch-tenders = true`.
-- **Nieużywane przez obecny kod:** `create-auth-for-employee`, `generate-agenda-pdf`, `generate-contract-pdf`, `ksef-api`, `send-push-notification` (oraz `generate-offer-pdf` jako zgodność starszych kart) — kandydaci do usunięcia (`supabase functions delete <nazwa>`) po decyzji właściciela.
+- **Nieużywane przez obecny kod:** `create-auth-for-employee`, `generate-agenda-pdf`, `generate-contract-pdf`, `send-push-notification` (oraz `generate-offer-pdf` jako zgodność starszych kart) — kandydaci do usunięcia (`supabase functions delete <nazwa>`) po decyzji właściciela.
 
 ## 6. Sekret wywołań wewnętrznych (`INTERNAL_FUNCTION_SECRET`)
 

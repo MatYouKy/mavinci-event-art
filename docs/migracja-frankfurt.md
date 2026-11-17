@@ -148,3 +148,22 @@ Do zrobienia przez właściciela projektu:
    Obrazki w stopkach maili wysłanych przed przeniesieniem przestaną się wyświetlać (nie da się ich przekierować).
 3. Przełączyć Supabase CLI: `supabase link --project-ref wjxnyvcxhhxjytfwpwvu` (plik `supabase/.temp/project-ref` wskazuje jeszcze Ohio).
 
+
+## Uprawnienia po przeniesieniu (wykryte 17.11.2026)
+
+Odtworzenie schematu w nowym projekcie nadało wszystkim tabelom, widokom, sekwencjom i funkcjom w `public` pełne
+uprawnienia ról `anon`, `authenticated` i `service_role` (domyślne uprawnienia Supabase), a domyślne uprawnienia
+nowych funkcji znów obejmowały `anon`. Przepadło utwardzenie z `20261101190000_security_p0` i późniejszych migracji:
+`anon` mógł wywołać 999 z 1013 funkcji SECURITY DEFINER (w Ohio 14), zalogowany czytał sekrety KSeF, a tabele „tylko
+serwer” / „tylko odczyt” przyjmowały zapis z API. Uprawnienia kolumn, schematów, reguły RLS i schemat `private`
+przeniosły się poprawnie. Naprawa: `20261117120000_restore_privileges_after_frankfurt.sql` — uprawnienia odtworzone
+dokładnie według starego projektu (listy są w pliku, stary projekt nie jest potrzebny do jej uruchomienia).
+
+Drugi skutek przenosin: `sync-ksef-daily` porównywała klucz service_role z Vault z kluczem w swoim środowisku — po
+przeniesieniu się różniły i od 11.11 każde wywołanie z harmonogramu kończyło się odmową 403 (bez wpisu w logu KSeF).
+Naprawa: `20261117121000_ksef_daily_sync_worker_secret.sql` (osobny sekret wywołania w Vault, jak worker e-maili)
+i nowa wersja funkcji.
+
+Lekcja na przyszłe przenosiny: po odtworzeniu porównać uprawnienia obu projektów (`has_function_privilege`,
+`aclexplode(relacl)`, `pg_default_acl`), a w funkcjach wołanych przez crony nie porównywać kluczy API — tylko
+sekret z Vault sprawdzany w bazie.

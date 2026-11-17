@@ -49,8 +49,9 @@ verify_jwt = false
 [functions.process-subcontractor-reminders]
 verify_jwt = false
 
+# Wywołuje pg_cron (public.invoke_daily_ksef_sync) z sekretem z Vault; funkcja sprawdza go sama (verify_ksef_daily_worker_secret).
 [functions.sync-ksef-daily]
-verify_jwt = true
+verify_jwt = false
 
 [functions.extract-external-invoice]
 verify_jwt = true

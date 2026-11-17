@@ -146,6 +146,15 @@ enum CalculationMath {
 
 private struct CalculationPdfFile: Decodable { var url: String; var name: String }
 
+/// Rozmiar okien kalkulacji („Dodaj / Edytuj pozycję”, „Importuj z oferty”): szerokie — cała tabela magazynu bez przewijania
+/// w bok — ale nie większe niż ekran. Arkusz na macOS otwiera się w rozmiarze minimalnym (rozmiar „idealny” jest pomijany),
+/// więc wyliczona szerokość i wysokość są minimum; okno można dalej powiększać.
+@MainActor enum CalculationSheetSize {
+    private static var screen: CGSize { NSScreen.main?.visibleFrame.size ?? CGSize(width: 1440, height: 900) }
+    static func width(_ preferred: CGFloat, minimum: CGFloat) -> CGFloat { max(minimum, min(preferred, screen.width - 120)) }
+    static func height(_ preferred: CGFloat, minimum: CGFloat) -> CGFloat { max(minimum, min(preferred, screen.height - 80)) }
+}
+
 enum CalculationPdf {
     /// Zapisany PDF kalkulacji (podpisany adres); `current` — tylko gdy rewizja dokumentu zgadza się z treścią.
     @MainActor static func fetch(_ backend: CalculationBackend, _ calculationID: String, current: Bool) async throws -> (Data, String) {
@@ -427,6 +436,10 @@ struct CalculationItemRequest: Identifiable {
     @State private var deleting = false
     @State private var preview: NativePreview?
     @State private var emailOpen = false
+    /// Wiersz, nad którym jest przeciągana pozycja (linia wstawienia).
+    @State private var dropTarget: String?
+    /// Treść przeciąganej pozycji — tylko pozycje tej kalkulacji (nie dowolny tekst upuszczony z innej aplikacji).
+    private static let dragPrefix = "mavinci-calculation-line:"
 
     private var working: Bool { saving || generating || pdfAction != nil }
     /// Edycja zablokowana: trwa zapis albo widok tylko do odczytu.
@@ -477,7 +490,8 @@ struct CalculationItemRequest: Identifiable {
                 Section {
                     summaryCards
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Przeciągnij pozycję, aby zmienić kolejność w sekcji. Kliknij „Zapisz”, aby ją zachować.")
+                        Text(readOnly ? "Kalkulacja tylko do podglądu."
+                             : "Przeciągnij pozycję za uchwyt ≡ (albo „Przesuń wyżej / niżej” w menu pozycji), aby zmienić kolejność w sekcji. Kliknij „Zapisz”, aby ją zachować.")
                         if orderChanged {
                             Text("Kolejność została zmieniona. Po zapisaniu wygeneruj ponownie PDF przed wysyłką.").foregroundStyle(theme.accent)
                         }
@@ -637,11 +651,11 @@ struct CalculationItemRequest: Identifiable {
             } else {
                 columns(transport)
             }
+            // Kolejność: uchwyt ≡ (przeciągnij i upuść na innej pozycji sekcji) oraz „Przesuń wyżej / niżej” w menu pozycji.
+            // Bez `onMove` listy — przeciąganie wierszy listy na macOS nie działało przy dwukliku na wierszu.
             ForEach(group) { line in
                 row(line, transport: transport)
             }
-            .onMove { from, to in reorder(category, from, to) }
-            .moveDisabled(locked)
         } header: {
             HStack(spacing: 8) {
                 Label(category.label, systemImage: category.symbol).font(.headline)
@@ -658,13 +672,16 @@ struct CalculationItemRequest: Identifiable {
 
     private func columns(_ transport: Bool) -> some View {
         HStack(spacing: 8) {
+            if !readOnly { Color.clear.frame(width: 16, height: 1) }
             Text("Nazwa").frame(minWidth: 160, maxWidth: .infinity, alignment: .leading)
             Text("Opis").frame(width: 150, alignment: .leading)
-            Text("Ilość").frame(width: 50, alignment: .leading)
-            Text("Jedn.").frame(width: 44, alignment: .leading)
-            Text(transport ? "Km" : "Dni").frame(width: 60, alignment: .leading)
-            Text(transport ? "Stawka" : "Cena jedn.").frame(width: 84, alignment: .leading)
-            Text("VAT %").frame(width: 46, alignment: .leading)
+            Group {
+                Text("Ilość").frame(width: 50, alignment: .leading)
+                Text("Jedn.").frame(width: 44, alignment: .leading)
+                Text(transport ? "Km" : "Dni").frame(width: 60, alignment: .leading)
+                Text(transport ? "Stawka" : "Cena jedn.").frame(width: 84, alignment: .leading)
+                Text("VAT %").frame(width: 46, alignment: .leading)
+            }
             Text("Netto").frame(width: 90, alignment: .trailing)
             Text("Brutto").frame(width: 90, alignment: .trailing)
             Color.clear.frame(width: 24, height: 1)
@@ -673,11 +690,33 @@ struct CalculationItemRequest: Identifiable {
         .moveDisabled(true)
     }
 
+    /// Wiersz pozycji: dwuklik — edycja, menu pod prawym przyciskiem, upuszczenie przeciąganej pozycji — zmiana kolejności.
     private func row(_ line: CalculationLine, transport: Bool) -> some View {
+        rowCells(line, transport: transport)
+            .font(.callout)
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { if !locked { request = CalculationItemRequest(category: CalculationCategory(rawValue: line.category) ?? .other, editing: line) } }
+            .contextMenu { lineActions(line) }
+            .overlay(alignment: .top) { dropMarker(line) }
+            .dropDestination(for: String.self) { values, _ in
+                guard let raw = values.first, raw.hasPrefix(Self.dragPrefix) else { return false }
+                return dropLine(String(raw.dropFirst(Self.dragPrefix.count)), onto: line)
+            } isTargeted: { hovering in
+                if hovering { dropTarget = line.id } else if dropTarget == line.id { dropTarget = nil }
+            }
+    }
+
+    @ViewBuilder private func dropMarker(_ line: CalculationLine) -> some View {
+        if dropTarget == line.id { Rectangle().fill(theme.accent).frame(height: 2).offset(y: -3) }
+    }
+
+    private func rowCells(_ line: CalculationLine, transport: Bool) -> some View {
         let fromWarehouse = line.source == "warehouse" && line.sourceRef != nil
         let exceeded = fromWarehouse && line.stock != nil && line.quantity > (line.stock ?? 0)
         let daysText: String = transport ? CalculationMath.plain(line.days) + " km" : CalculationMath.plain(line.days)
         return HStack(spacing: 8) {
+            if !readOnly { dragHandle(line) }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     if fromWarehouse {
@@ -696,22 +735,59 @@ struct CalculationItemRequest: Identifiable {
             .frame(minWidth: 160, maxWidth: .infinity, alignment: .leading)
             Text(line.description.isEmpty ? "—" : line.description).lineLimit(2).foregroundStyle(.secondary).frame(width: 150, alignment: .leading)
                 .help(line.description)
-            Text(CalculationMath.plain(line.quantity)).frame(width: 50, alignment: .leading)
-            Text(line.unit).frame(width: 44, alignment: .leading)
-            Text(daysText).frame(width: 60, alignment: .leading)
-            Text(CalculationMath.money(line.unitPrice)).frame(width: 84, alignment: .leading)
-            Text(CalculationMath.plain(line.vat) + "%").frame(width: 46, alignment: .leading)
+            Group {
+                Text(CalculationMath.plain(line.quantity)).frame(width: 50, alignment: .leading)
+                Text(line.unit).frame(width: 44, alignment: .leading)
+                Text(daysText).frame(width: 60, alignment: .leading)
+                Text(CalculationMath.money(line.unitPrice)).frame(width: 84, alignment: .leading)
+                Text(CalculationMath.plain(line.vat) + "%").frame(width: 46, alignment: .leading)
+            }
             Text(CalculationMath.money(line.net)).frame(width: 90, alignment: .trailing)
             Text(CalculationMath.money(line.gross)).foregroundStyle(theme.accent).frame(width: 90, alignment: .trailing)
             Menu { lineActions(line) } label: { Image(systemName: "ellipsis") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 24)
                 .disabled(locked)
         }
-        .font(.callout)
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2) { if !locked { request = CalculationItemRequest(category: CalculationCategory(rawValue: line.category) ?? .other, editing: line) } }
-        .contextMenu { lineActions(line) }
+    }
+
+    /// Uchwyt ≡ jak w CRM: przeciągnięcie pozycji na inną pozycję tej samej sekcji.
+    private func dragHandle(_ line: CalculationLine) -> some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.callout).foregroundStyle(locked ? Color.secondary.opacity(0.4) : Color.secondary)
+            .frame(width: 16, height: 26).contentShape(Rectangle())
+            .help("Przeciągnij, aby zmienić kolejność w sekcji")
+            .draggable(Self.dragPrefix + line.id) {
+                Label(line.name.isEmpty ? "Pozycja" : line.name, systemImage: "line.3.horizontal")
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+            }
+    }
+
+    /// Upuszczenie pozycji na inną pozycję tej samej sekcji — przeciągana zajmuje jej miejsce (jak w CRM).
+    private func dropLine(_ id: String, onto target: CalculationLine) -> Bool {
+        dropTarget = nil
+        guard !locked, id != target.id, let category = CalculationCategory(rawValue: target.category) else { return false }
+        let group = lines(category)
+        guard let from = group.firstIndex(where: { $0.id == id }), let to = group.firstIndex(where: { $0.id == target.id }) else { return false }
+        reorder(category, IndexSet(integer: from), to > from ? to + 1 : to)
+        return true
+    }
+
+    /// „Przesuń wyżej / niżej” w menu pozycji.
+    private func shift(_ line: CalculationLine, _ delta: Int) {
+        guard !locked, let category = CalculationCategory(rawValue: line.category) else { return }
+        let group = lines(category)
+        guard let index = group.firstIndex(where: { $0.id == line.id }) else { return }
+        let target = index + delta
+        guard target >= 0, target < group.count else { return }
+        reorder(category, IndexSet(integer: index), delta > 0 ? target + 1 : target)
+    }
+
+    private func canShift(_ line: CalculationLine, _ delta: Int) -> Bool {
+        guard let category = CalculationCategory(rawValue: line.category) else { return false }
+        let group = lines(category)
+        guard let index = group.firstIndex(where: { $0.id == line.id }) else { return false }
+        return index + delta >= 0 && index + delta < group.count
     }
 
     private func stockHelp(_ line: CalculationLine) -> String {
@@ -726,6 +802,13 @@ struct CalculationItemRequest: Identifiable {
             request = CalculationItemRequest(category: CalculationCategory(rawValue: line.category) ?? .other, editing: line)
         } label: { Label("Edytuj", systemImage: "pencil") }
         .disabled(locked)
+        if !readOnly {
+            Button { shift(line, -1) } label: { Label("Przesuń wyżej", systemImage: "arrow.up") }
+                .disabled(locked || !canShift(line, -1))
+            Button { shift(line, 1) } label: { Label("Przesuń niżej", systemImage: "arrow.down") }
+                .disabled(locked || !canShift(line, 1))
+            Divider()
+        }
         Button(role: .destructive) { Task { await removeLine(line) } } label: { Label("Usuń", systemImage: "trash") }
             .disabled(locked)
     }
@@ -975,6 +1058,8 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
     @State private var submitting = false
     /// „Z magazynu” przy nowej pozycji: ilości wybrane przy sprzęcie (jak „Zarządzaj sprzętem” w wydarzeniu) — kilka pozycji naraz.
     @State private var picks: [String: Int] = [:]
+    /// Cena netto wpisana przy sprzęcie (tekst pola; bez wpisu — cena rentalna z magazynu).
+    @State private var priceDrafts: [String: String] = [:]
     @State private var pickedRow: String?
     @State private var onlyPicked = false
     /// Lista katalogu otwarta ponownie przy już wybranej pozycji („Wybierz inny…”) — wybór i pola zostają do czasu nowego wyboru.
@@ -1062,7 +1147,8 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
             }
             .padding(20)
         }
-        .frame(width: 900, height: 780)
+        .frame(minWidth: CalculationSheetSize.width(1440, minimum: 1040), maxWidth: .infinity,
+               minHeight: CalculationSheetSize.height(920, minimum: 680), maxHeight: .infinity)
         .task(id: mode) { await loadCatalog() }
         .onChange(of: search) { _, _ in visibleCount = 30 }
     }
@@ -1245,6 +1331,16 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
 
     private func remaining(_ option: CalculationCatalogOption) -> Double { max((option.stock ?? 0) - alreadyAdded(option.id), 0) }
 
+    /// Pozycja tej kategorii z tym samym sprzętem — dodanie zwiększa jej ilość (`addItems` na serwerze), bez drugiej linii.
+    private func existingLine(_ id: String) -> CalculationLine? {
+        existing.first { $0.id != editing?.id && $0.category == category.rawValue && $0.source == "warehouse" && $0.sourceRef == id }
+    }
+
+    /// Wybrany sprzęt, który już jest w kalkulacji (zwiększy ilość istniejących pozycji).
+    private var batchMergeCount: Int {
+        (catalogs["warehouse"] ?? []).filter { (picks[$0.id] ?? 0) > 0 && existingLine($0.id) != nil }.count
+    }
+
     private var equipmentMatches: [CalculationCatalogOption] {
         let needle = search.trimmingCharacters(in: .whitespaces).lowercased(with: Locale(identifier: "pl_PL"))
         return (catalogs["warehouse"] ?? []).filter { option in
@@ -1382,7 +1478,42 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
     /// Suma netto za dzień wybranych pozycji (cena z magazynu jak w formularzu pojedynczej pozycji).
     private var batchNetPerDay: Double {
         (catalogs["warehouse"] ?? []).reduce(0.0) { sum, option in
-            sum + Double(picks[option.id] ?? 0) * CalculationMath.round2(option.price)
+            sum + Double(picks[option.id] ?? 0) * CalculationMath.round2(batchPrice(option) ?? 0)
+        }
+    }
+
+    /// Tekst pola ceny: wpis użytkownika albo cena rentalna z magazynu (pusta, gdy sprzęt nie ma ceny).
+    private func priceText(_ option: CalculationCatalogOption) -> String {
+        priceDrafts[option.id] ?? (option.price > 0 ? CalculationMath.plain(option.price) : "")
+    }
+
+    /// Cena netto pozycji z tabeli: sprzęt już w kalkulacji — cena tej pozycji; puste pole — 0 (jak domyślna cena w CRM);
+    /// `nil` — nieprawidłowy wpis.
+    private func batchPrice(_ option: CalculationCatalogOption) -> Double? {
+        if let line = existingLine(option.id) { return line.unitPrice }
+        let text = priceText(option).trimmingCharacters(in: .whitespaces)
+        if text.isEmpty { return 0 }
+        guard let value = CalculationMath.parse(text), value >= 0 else { return nil }
+        return value
+    }
+
+    /// Pole ceny netto w tabeli „Z magazynu” — cenę wpiszesz także przy sprzęcie bez ceny rentalnej.
+    @ViewBuilder private func batchPriceCell(_ option: CalculationCatalogOption) -> some View {
+        if let line = existingLine(option.id) {
+            Text(CalculationMath.money(line.unitPrice) + " zł").foregroundStyle(.secondary).monospacedDigit()
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .help("Cena z pozycji w kalkulacji — dodanie zwiększy tylko ilość. Cenę zmienisz przez „Edytuj” przy pozycji.")
+        } else {
+            let invalid: Bool = batchPrice(option) == nil
+            HStack(spacing: 4) {
+                TextField("", text: Binding(get: { priceText(option) }, set: { priceDrafts[option.id] = $0; formError = "" }),
+                          prompt: Text("0,00"))
+                    .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).monospacedDigit()
+                    .foregroundStyle(invalid ? Color.red : Color.primary)
+                Text("zł").foregroundStyle(.secondary)
+            }
+            .help(option.price > 0 ? "Cena netto za dzień — domyślnie cena rentalna z magazynu (\(CalculationMath.money(option.price)) zł)."
+                                   : "Sprzęt nie ma ceny rentalnej w magazynie — wpisz cenę netto za dzień.")
         }
     }
 
@@ -1455,18 +1586,8 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
                 }
             }.width(18)
             TableColumn("") { (option: CalculationCatalogOption) in WarehouseThumb(url: option.thumbnail, size: 30) }.width(36)
-            TableColumn("Nazwa / marka / model") { (option: CalculationCatalogOption) in
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(option.title.nonEmpty ?? option.label).fontWeight((picks[option.id] ?? 0) > 0 ? .semibold : .regular).lineLimit(1)
-                    Text(batchSubtitle(option)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-                .help(option.label)
-            }.width(min: 200, ideal: 300)
-            TableColumn("Cena rentalna") { (option: CalculationCatalogOption) in
-                Text(option.price > 0 ? String(format: "%.2f zł", option.price) : "—")
-                    .foregroundStyle(option.price > 0 ? theme.accent : Color.secondary).monospacedDigit()
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }.width(min: 80, ideal: 96)
+            TableColumn("Nazwa / marka / model") { (option: CalculationCatalogOption) in batchName(option) }.width(min: 240, ideal: 400)
+            TableColumn("Cena netto") { (option: CalculationCatalogOption) in batchPriceCell(option) }.width(min: 110, ideal: 130)
             TableColumn("Pobór prądu") { (option: CalculationCatalogOption) in
                 Group {
                     if let watts = option.power, watts > 0 {
@@ -1476,11 +1597,11 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
-            }.width(min: 70, ideal: 86)
-            TableColumn("Stan") { (option: CalculationCatalogOption) in batchStock(option) }.width(min: 96, ideal: 116)
+            }.width(min: 80, ideal: 100)
+            TableColumn("Stan") { (option: CalculationCatalogOption) in batchStock(option) }.width(min: 110, ideal: 160)
             TableColumn("Do kalkulacji") { (option: CalculationCatalogOption) in
                 EquipmentStepper(value: picks[option.id] ?? 0, lower: 0, upper: pickLimit(option), unit: "szt.") { setPick(option, $0) }
-            }.width(min: 150, ideal: 160)
+            }.width(min: 170, ideal: 190)
         }
         .contextMenu(forSelectionType: String.self) { ids in
             if let id = ids.first, let option = rows.first(where: { $0.id == id }) {
@@ -1501,6 +1622,30 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
             bumpPick(option, press.characters == "-" ? -1 : 1)
             return .handled
         }
+    }
+
+    /// Nazwa sprzętu; zielona kropka — sprzęt już jest w kalkulacji (dodanie zwiększy ilość tej pozycji).
+    private func batchName(_ option: CalculationCatalogOption) -> some View {
+        let line: CalculationLine? = existingLine(option.id)
+        let picked: Bool = (picks[option.id] ?? 0) > 0
+        let green: Color = CrmTheme.rgb(0x4ade80)
+        let note: String? = line.map { "Już w kalkulacji: \(CalculationMath.plain($0.quantity)) \($0.unit) — dodanie zwiększy ilość" }
+        let help: String = line == nil ? option.label
+            : option.label + "\nSprzęt jest już w kalkulacji — wybrana ilość zostanie dodana do tej pozycji (nazwa, cena, dni i VAT bez zmian)."
+        return HStack(spacing: 6) {
+            if line != nil {
+                Circle().fill(green).frame(width: 8, height: 8)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(option.title.nonEmpty ?? option.label).fontWeight(picked ? .semibold : .regular).lineLimit(1)
+                if let note {
+                    Text(note).font(.caption).foregroundStyle(green).lineLimit(1)
+                } else {
+                    Text(batchSubtitle(option)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+        }
+        .help(help)
     }
 
     private func batchStock(_ option: CalculationCatalogOption) -> some View {
@@ -1526,10 +1671,14 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
             VStack(alignment: .leading, spacing: 2) {
                 if batchCount == 0 {
                     Text("Ustaw ilość przy sprzęcie: − / +, wpisz liczbę albo kliknij dwukrotnie wiersz.").font(.callout)
-                    Text("Nazwę, opis i cenę każdej pozycji zmienisz po dodaniu („Edytuj” przy pozycji).").font(.caption).foregroundStyle(.secondary)
+                    Text("Cenę netto wpiszesz w tabeli (domyślnie cena rentalna z magazynu); nazwę i opis zmienisz po dodaniu („Edytuj” przy pozycji).").font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text("Wybrano: \(batchCount) poz. · \(batchPieces) szt.").font(.callout.weight(.medium))
                     Text(CalculationMath.money(net) + " PLN netto · " + CalculationMath.money(gross) + " PLN brutto").font(.caption).foregroundStyle(theme.accent)
+                    if batchMergeCount > 0 {
+                        Text("\(batchMergeCount) z nich już jest w kalkulacji — zwiększy się ilość tych pozycji (nazwa, cena, dni i VAT bez zmian).")
+                            .font(.caption).foregroundStyle(CrmTheme.rgb(0x4ade80))
+                    }
                 }
             }
             Spacer(minLength: 8)
@@ -1566,10 +1715,14 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
             formError = "Uzupełnij poprawną liczbę dni i VAT."
             return
         }
+        if let wrong = chosen.first(where: { batchPrice($0) == nil }) {
+            formError = "Popraw cenę netto: \(wrong.title.nonEmpty ?? wrong.label)"
+            return
+        }
         let items: [JSONValue] = chosen.map { option in
             var item: [String: JSONValue] = [
                 "category": .string(category.rawValue), "name": .string(option.label), "description": .string(""), "unit": .string("szt."),
-                "quantity": .number(Double(picks[option.id] ?? 0)), "unitPrice": .number(CalculationMath.round2(option.price)), "days": .number(span),
+                "quantity": .number(Double(picks[option.id] ?? 0)), "unitPrice": .number(CalculationMath.round2(batchPrice(option) ?? 0)), "days": .number(span),
                 "source": .string("warehouse"), "sourceRef": .string(option.id), "vat": .number(rate),
             ]
             item["power"] = option.power.map { JSONValue.number($0) } ?? JSONValue.null
@@ -1581,7 +1734,13 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
         formError = ""
         defer { submitting = false }
         do {
-            let message: String = chosen.count == 1 ? "Dodano pozycję" : "Dodano \(chosen.count) poz."
+            let merged: Int = chosen.filter { existingLine($0.id) != nil }.count
+            let added: Int = chosen.count - merged
+            var parts: [String] = []
+            if added > 0 { parts.append(added == 1 ? "Dodano pozycję" : "Dodano \(added) poz.") }
+            if merged > 0 { parts.append(merged == 1 ? "zwiększono ilość sprzętu już obecnego w kalkulacji" : "zwiększono ilość \(merged) poz. już obecnych w kalkulacji") }
+            let joined: String = parts.joined(separator: " · ")
+            let message: String = String(joined.prefix(1)).uppercased() + String(joined.dropFirst())
             try await backend.action("addItems", ["calculationId": .string(calculationID), "items": .array(items)],
                                       reload: [], success: message, pending: "Dodawanie pozycji…")
             await onSaved()
@@ -2232,7 +2391,8 @@ private struct CalculationImportSources: Decodable {
             }
             .padding(20)
         }
-        .frame(width: 900, height: 680)
+        .frame(minWidth: CalculationSheetSize.width(1240, minimum: 960), maxWidth: .infinity,
+               minHeight: CalculationSheetSize.height(820, minimum: 620), maxHeight: .infinity)
         .task { await load() }
     }
 

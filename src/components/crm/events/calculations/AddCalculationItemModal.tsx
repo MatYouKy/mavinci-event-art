@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { X, Search, Package, Zap, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { activeEquipmentItems, availableUnitCounts } from '@/lib/CRM/equipment/availableUnitCounts';
 import { CalcItem, Category } from './EventCalculationsTab';
 import { DEFAULT_VAT } from '../helpers/calculations/calculations.helper';
 import NextImage from 'next/image';
@@ -130,9 +131,13 @@ export function AddCalculationItemModal({
     if (equipmentList.length > 0) return;
     setLoadingEquipment(true);
 
-    const { data, error } = await supabase
-      .from('equipment_items')
-      .select(
+    // Cały magazyn i wszystkie egzemplarze — strony po 500. Jedno zapytanie zwraca najwyżej 1000 wierszy: przy ok. 2000
+    // egzemplarzy część sprzętu dostawała stan 0 i znikała z listy „Z magazynu”.
+    let data: any[];
+    let unitCounts: Record<string, number>;
+    try {
+      data = await activeEquipmentItems(
+        supabase,
         `
       id,
       name,
@@ -150,41 +155,22 @@ export function AddCalculationItemModal({
         special_properties
       )
     `,
-      )
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('name');
+      );
+      const itemIds = data
+        .filter((d: any) => {
+          const usesSimple =
+            d.warehouse_categories?.special_properties?.some(
+              (p: any) => p.name === 'uses_simple_quantity' && p.value === true,
+            ) ?? false;
 
-    if (error) {
+          return !usesSimple;
+        })
+        .map((d: any) => d.id);
+      unitCounts = await availableUnitCounts(supabase, itemIds);
+    } catch (error) {
       console.error(error);
       setLoadingEquipment(false);
       return;
-    }
-
-    const itemIds = data
-      .filter((d: any) => {
-        const usesSimple =
-          d.warehouse_categories?.special_properties?.some(
-            (p: any) => p.name === 'uses_simple_quantity' && p.value === true,
-          ) ?? false;
-
-        return !usesSimple;
-      })
-      .map((d: any) => d.id);
-
-    let unitCounts: Record<string, number> = {};
-    if (itemIds.length > 0) {
-      const { data: units } = await supabase
-        .from('equipment_units')
-        .select('equipment_id')
-        .in('equipment_id', itemIds)
-        .eq('status', 'available');
-
-      if (units) {
-        for (const u of units) {
-          unitCounts[u.equipment_id] = (unitCounts[u.equipment_id] || 0) + 1;
-        }
-      }
     }
 
     const mapped: EquipmentOption[] = data.map((item: any) => {
@@ -251,6 +237,16 @@ export function AddCalculationItemModal({
     return filteredEquipmentAll.slice(0, visibleCount);
   }, [filteredEquipmentAll, visibleCount]);
 
+  /**
+   * Pozycja kalkulacji z tym samym sprzętem (ta sama kategoria) przy dodawaniu nowej pozycji: podana ilość trafia do niej
+   * (`addItemFromModal` w `CalculationEditor`) zamiast drugiej linii z tym samym sprzętem.
+   */
+  const existingLineFor = (equipmentId: string | null | undefined) =>
+    !initialItem && equipmentId
+      ? existingItems.find((item) => item.category === category && item.source === 'warehouse' && item.source_ref === equipmentId) ?? null
+      : null;
+  const mergeTarget = mode === 'warehouse' ? existingLineFor(selectedEquipment?.id) : null;
+
   const handleSelectEquipment = (eq: EquipmentOption) => {
     setSelectedEquipment(eq);
     setSourceChanged(true);
@@ -258,6 +254,17 @@ export function AddCalculationItemModal({
     setName(fullName);
     setUnitPrice(Number(eq.rental_price_per_day ?? 0));
     setPowerWatts(eq.power_specs?.power_watts ?? null);
+    const line = existingLineFor(eq.id);
+    if (line) {
+      // Sprzęt już jest w kalkulacji: pola jak w tej pozycji, zmienia się tylko ilość (dodawana do pozycji).
+      setName(line.name || fullName);
+      setDescription(line.description || '');
+      setUnit(line.unit || 'szt.');
+      setUnitPrice(Number(line.unit_price) || 0);
+      setDays(Number(line.days) || 1);
+      setVatRate(Number(line.vat_rate ?? DEFAULT_VAT));
+      setQuantity(1);
+    }
   };
 
   const stockExceeded = selectedEquipment != null && quantity > selectedEquipment.stock_quantity;
@@ -472,7 +479,15 @@ export function AddCalculationItemModal({
                             </td>
 
                             <td className="min-w-0 px-3 py-3">
-                              <div className="font-medium text-[#e5e4e2]">{eq.name}</div>
+                              <div className="flex items-center gap-2 font-medium text-[#e5e4e2]">
+                                {alreadyAdded > 0 && (
+                                  <span
+                                    className="h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400"
+                                    title={`Już w kalkulacji: ${alreadyAdded} szt. — dodanie zwiększy ilość tej pozycji`}
+                                  />
+                                )}
+                                {eq.name}
+                              </div>
 
                               <div className="mt-0.5 text-xs text-[#e5e4e2]/50">
                                 {[eq.brand, eq.model].filter(Boolean).join(' ') || '—'}
@@ -528,8 +543,8 @@ export function AddCalculationItemModal({
                               </div>
 
                               {alreadyAdded > 0 && (
-                                <div className="text-[10px] text-[#d3bb73]">
-                                  Dodano: {alreadyAdded}
+                                <div className="text-[10px] font-medium text-emerald-400">
+                                  W kalkulacji: {alreadyAdded}
                                 </div>
                               )}
                             </td>
@@ -602,6 +617,17 @@ export function AddCalculationItemModal({
             </div>
           )}
 
+          {mergeTarget && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+              <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-emerald-400" />
+              <span>
+                Ten sprzęt jest już w kalkulacji: {Number(mergeTarget.quantity)} {mergeTarget.unit || 'szt.'}. Podana ilość
+                zostanie dodana do tej pozycji (razem {Number(mergeTarget.quantity) + (Number.isFinite(quantity) ? quantity : 0)}{' '}
+                {mergeTarget.unit || 'szt.'}) — nazwa, cena, dni i VAT bez zmian.
+              </span>
+            </div>
+          )}
+
           {/* Form fields */}
           {(mode === 'manual' || selectedEquipment || selectedCatalog) && (
             <div className="space-y-4">
@@ -610,6 +636,7 @@ export function AddCalculationItemModal({
                 <input
                   type="text"
                   value={name}
+                  disabled={Boolean(mergeTarget)}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Nazwa pozycji..."
                   className={inputClass}
@@ -621,6 +648,7 @@ export function AddCalculationItemModal({
                 <textarea
                   rows={5}
                   value={description}
+                  disabled={Boolean(mergeTarget)}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Opcjonalny opis..."
                   className={inputClass}
@@ -642,7 +670,7 @@ export function AddCalculationItemModal({
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div>
                   <label className="mb-1.5 block text-sm text-[#e5e4e2]/60">
-                    {isTransport ? 'Ilość aut' : 'Ilość'}
+                    {isTransport ? 'Ilość aut' : mergeTarget ? 'Ilość do dodania' : 'Ilość'}
                   </label>
                   {stockExceeded && (
                     <div className="mb-1.5 flex items-center gap-1.5 rounded-md bg-orange-500/10 px-2 py-1 text-xs text-orange-400">
@@ -664,6 +692,7 @@ export function AddCalculationItemModal({
                   <input
                     type="text"
                     value={unit}
+                    disabled={Boolean(mergeTarget)}
                     onChange={(e) => setUnit(e.target.value)}
                     className={inputClass}
                   />
@@ -677,7 +706,7 @@ export function AddCalculationItemModal({
                     step={isTransport ? '0.1' : '0.5'}
                     min={isTransport ? '0' : '0.5'}
                     value={days}
-                    disabled={travelBusy}
+                    disabled={travelBusy || Boolean(mergeTarget)}
                     onChange={(e) => { setDays(Number(e.target.value)); if (isTransport) { setTransportEstimate(null); setTravelPending(false); } }}
                     className={inputClass}
                   />
@@ -688,6 +717,7 @@ export function AddCalculationItemModal({
                     type="number"
                     step="1"
                     value={vatRate}
+                    disabled={Boolean(mergeTarget)}
                     onChange={(e) => setVatRate(Number(e.target.value))}
                     className={inputClass}
                   />
@@ -703,7 +733,7 @@ export function AddCalculationItemModal({
                     type="number"
                     step={isTransport ? '0.000001' : '0.01'}
                     value={unitPrice}
-                    disabled={travelBusy}
+                    disabled={travelBusy || Boolean(mergeTarget)}
                     onChange={(e) => { setUnitPrice(Number(e.target.value)); if (isTransport) { setTransportEstimate(null); setTravelPending(false); } }}
                     className={inputClass}
                   />
@@ -717,6 +747,7 @@ export function AddCalculationItemModal({
                     type="number"
                     step="1"
                     value={powerWatts ?? ''}
+                    disabled={Boolean(mergeTarget)}
                     onChange={(e) => setPowerWatts(e.target.value ? Number(e.target.value) : null)}
                     placeholder="np. 575"
                     className={inputClass}
@@ -761,7 +792,7 @@ export function AddCalculationItemModal({
             disabled={submitting || travelBusy || travelPending || !name.trim() || (mode === 'warehouse' && !selectedEquipment) || (['product', 'vehicle'].includes(mode) && !selectedCatalog)}
             className="rounded-lg bg-[#d3bb73] px-5 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-40"
           >
-            {submitting ? 'Zapisuję…' : initialItem ? 'Zapisz zmiany' : 'Dodaj pozycję'}
+            {submitting ? 'Zapisuję…' : initialItem ? 'Zapisz zmiany' : mergeTarget ? 'Dodaj do pozycji' : 'Dodaj pozycję'}
           </button>
         </div>
       </div>

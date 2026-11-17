@@ -10,6 +10,7 @@ import { emailPreviewDocument } from './messages';
 import { dispatchCrmEmail } from '@/lib/emailScheduling';
 import { fuelPriceQuote, vehicleConsumption } from './eventLogistics';
 import { inquiryCalculationContext } from './inquiryWorkspace';
+import { activeEquipmentItems, availableUnitCounts } from '@/lib/CRM/equipment/availableUnitCounts';
 
 /**
  * Zakładka „Kalkulacje” (`EventCalculationsTab` + `CalculationEditor` + `AddCalculationItemModal`): lista z sumą netto,
@@ -76,11 +77,8 @@ async function editor(ctx: NativeContext, scope: CalcScope, params: URLSearchPar
   if (equipmentIds.length) {
     const { data: eq } = await s.from('equipment_items').select('id, thumbnail_url, cable_stock_quantity, weight_kg').in('id', equipmentIds);
     const unitIds = ((eq || []) as Row[]).filter((e) => Number(e.cable_stock_quantity ?? 0) <= 0).map((e) => e.id);
-    const counts: Record<string, number> = {};
-    if (unitIds.length) {
-      const { data: units } = await s.from('equipment_units').select('equipment_id').in('equipment_id', unitIds).eq('status', 'available');
-      for (const unit of (units || []) as Row[]) counts[unit.equipment_id] = (counts[unit.equipment_id] || 0) + 1;
-    }
+    // Wszystkie strony egzemplarzy (jedno zapytanie zwraca najwyżej 1000 wierszy).
+    const counts: Record<string, number> = unitIds.length ? await availableUnitCounts(s, unitIds).catch(() => ({})) : {};
     for (const e of (eq || []) as Row[]) {
       const simple = Number(e.cable_stock_quantity ?? 0);
       equipment[e.id] = { thumbnail: e.thumbnail_url ?? null, stock: simple > 0 ? simple : counts[e.id] ?? 0, weight: e.weight_kg != null ? Number(e.weight_kg) : null };
@@ -116,17 +114,11 @@ async function catalog(ctx: NativeContext, _scope: CalcScope, params: URLSearchP
   const s = ctx.supabase;
   const kind = params.get('kind');
   if (kind === 'equipment') {
-    const { data, error } = await s.from('equipment_items')
-      .select('id,name,brand,model,thumbnail_url,rental_price_per_day,power_specs,weight_kg,cable_stock_quantity,warehouse_categories:warehouse_category_id(id,name,special_properties)')
-      .eq('is_active', true).is('deleted_at', null).order('name');
-    if (error) throw error;
+    // Cały magazyn i wszystkie egzemplarze — strony po 500 (jedno zapytanie zwraca najwyżej 1000 wierszy; przy ok. 2000
+    // egzemplarzy część sprzętu dostawała stan 0 i znikała z listy „Z magazynu”).
+    const data = await activeEquipmentItems<Row>(s, 'id,name,brand,model,thumbnail_url,rental_price_per_day,power_specs,weight_kg,cable_stock_quantity,warehouse_categories:warehouse_category_id(id,name,special_properties)');
     const simple = (row: Row) => (row.warehouse_categories?.special_properties || []).some((p: Row) => p.name === 'uses_simple_quantity' && p.value === true);
-    const unitIds = ((data || []) as Row[]).filter((d) => !simple(d)).map((d) => d.id);
-    const counts: Record<string, number> = {};
-    for (let i = 0; i < unitIds.length; i += 300) {
-      const { data: units } = await s.from('equipment_units').select('equipment_id').in('equipment_id', unitIds.slice(i, i + 300)).eq('status', 'available');
-      for (const unit of (units || []) as Row[]) counts[unit.equipment_id] = (counts[unit.equipment_id] || 0) + 1;
-    }
+    const counts = await availableUnitCounts(s, data.filter((d) => !simple(d)).map((d) => d.id));
     return {
       options: ((data || []) as Row[]).map((d) => ({
         id: d.id, label: [d.brand, d.model, d.name].filter(Boolean).join(' ') || d.name, name: [d.brand, d.model, d.name].filter(Boolean).join(' ') || d.name,
@@ -590,7 +582,9 @@ async function saveItem(ctx: NativeContext, scope: CalcScope, body: Row) {
 
 /**
  * Kilka pozycji ze sprzętu naraz (Mac: „Dodaj pozycję” → „Z magazynu” — ilości przy sprzęcie jak w „Zarządzaj sprzętem”):
- * te same pola i walidacja co `saveItem`, jedno wstawienie na końcu kalkulacji — wszystkie albo żadna.
+ * te same pola i walidacja co `saveItem`. Sprzęt, który już jest w kalkulacji (ta sama kategoria i pozycja magazynu),
+ * zwiększa ilość istniejącej pozycji (nazwa, cena, dni i VAT bez zmian) zamiast drugiej linii z tym samym sprzętem — jak
+ * `addItemFromModal` w CRM. Nowe pozycje — jedno wstawienie na końcu kalkulacji.
  */
 async function addItems(ctx: NativeContext, scope: CalcScope, body: Row) {
   const calc = await ownCalculation(ctx, scope, String(body.calculationId || ''));
@@ -602,14 +596,48 @@ async function addItems(ctx: NativeContext, scope: CalcScope, body: Row) {
     validItem(item);
   }
   const s = ctx.supabase;
-  const { data: last } = await s.from('event_calculation_items').select('position').eq('calculation_id', calc.id).order('position', { ascending: false }).limit(1).maybeSingle();
-  const start = last ? Number((last as Row).position) + 1 : 0;
-  const rows = items.map((item, index) => serialize(calc.id, item, start + index));
-  const { data, error } = await s.from('event_calculation_items').insert(rows).select('id');
-  if (error) fail('Błąd dodawania pozycji');
-  if ((data || []).length !== rows.length) fail('Nie udało się potwierdzić zapisu wszystkich pozycji.');
+  const refs = Array.from(new Set(items.filter((item) => item.source === 'warehouse' && UUID.test(String(item.sourceRef || ''))).map((item) => String(item.sourceRef))));
+  const lines = new Map<string, Row>();
+  if (refs.length) {
+    const { data: current, error: readError } = await s.from('event_calculation_items').select('id,category,source_ref,quantity,position')
+      .eq('calculation_id', calc.id).eq('source', 'warehouse').in('source_ref', refs).order('position').order('id');
+    if (readError) fail('Błąd dodawania pozycji');
+    for (const line of (current || []) as Row[]) {
+      const key = `${line.category}|${line.source_ref}`;
+      if (!lines.has(key)) lines.set(key, line);
+    }
+  }
+  const increments = new Map<string, { line: Row; quantity: number }>();
+  const fresh: Row[] = [];
+  for (const item of items) {
+    const category = CATEGORIES.includes(item.category) ? item.category : 'other';
+    const line = item.source === 'warehouse' ? lines.get(`${category}|${item.sourceRef}`) : undefined;
+    if (!line) { fresh.push(item); continue; }
+    const entry = increments.get(String(line.id)) ?? { line, quantity: 0 };
+    entry.quantity += Number(item.quantity) || 0;
+    increments.set(String(line.id), entry);
+  }
+  for (const { line, quantity } of increments.values()) {
+    const before = Number(line.quantity) || 0;
+    const next = Math.round((before + quantity) * 100) / 100;
+    // Tylko gdy ilość nie zmieniła się w międzyczasie (inna karta / osoba) — bez nadpisania cudzej zmiany.
+    const { data: updated, error: updateError } = await s.from('event_calculation_items').update({ quantity: next })
+      .eq('id', line.id).eq('calculation_id', calc.id).eq('quantity', line.quantity).select('id');
+    if (updateError || (updated || []).length !== 1) fail('Kalkulacja zmieniła się w międzyczasie. Odśwież ją i dodaj sprzęt ponownie.');
+  }
+  if (fresh.length) {
+    const { data: last } = await s.from('event_calculation_items').select('position').eq('calculation_id', calc.id).order('position', { ascending: false }).limit(1).maybeSingle();
+    const start = last ? Number((last as Row).position) + 1 : 0;
+    const rows = fresh.map((item, index) => serialize(calc.id, item, start + index));
+    const { data, error } = await s.from('event_calculation_items').insert(rows).select('id');
+    if (error || (data || []).length !== rows.length) {
+      fail(increments.size
+        ? 'Zwiększono ilość sprzętu, który już był w kalkulacji, ale nie dodano nowych pozycji. Dodaj je ponownie.'
+        : (error ? 'Błąd dodawania pozycji' : 'Nie udało się potwierdzić zapisu wszystkich pozycji.'));
+    }
+  }
   await s.from('event_calculations').update({ updated_at: new Date().toISOString() }).eq('id', calc.id);
-  return { ok: true, count: rows.length };
+  return { ok: true, count: fresh.length, merged: increments.size };
 }
 
 async function removeItem(ctx: NativeContext, scope: CalcScope, body: Row) {
