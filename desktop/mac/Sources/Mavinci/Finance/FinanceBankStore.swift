@@ -92,6 +92,43 @@ enum BankPreviewItem: Identifiable {
         statementMonth = nil
     }
 
+    // MARK: Przejścia z „Terminów i monitów” (działalność pozycji i właściwy miesiąc / rok)
+
+    /// Uzgodnienie miesiąca: operacje do zrobienia bez filtrów. Bez wyciągu za ten miesiąc — ekran wyciągów z komunikatem.
+    func openReconciliation(company: String, year: Int, month: Int) async {
+        selectCompany(company)
+        if !periodsLoaded { await loadPeriods() }
+        statusFilter = "todo"
+        accountFilter = "all"
+        search = ""
+        selectedTx = nil
+        let target = BankPeriod(companyId: company, year: year, month: month)
+        if periods.contains(target) {
+            period = target
+            finance?.part = .reconciliation
+        } else {
+            openStatements(company: company, year: year, month: month)
+            workspace?.notice = "Brak wczytanego wyciągu za \(FinFormat.months[max(0, min(11, month - 1))]) \(year) — wczytaj go, a uzgodnienie samo dopasuje płatności."
+        }
+    }
+
+    /// Wyciągi działalności za rok (z zaznaczonym miesiącem).
+    func openStatements(company: String, year: Int, month: Int?) {
+        selectCompany(company)
+        statementsYear = year
+        statementMonth = month
+        finance?.part = .statements
+    }
+
+    /// Rejestr deklaracji działalności za rok, zawężony do rodzaju (ZUS, PIT, VAT, CIT).
+    func openDeclarations(company: String, year: Int, kind: String) {
+        selectCompany(company)
+        declarationsYear = year
+        declarationKind = DeclarationKinds.all.contains(where: { $0.0 == kind }) ? kind : "all"
+        openDeclaration = nil
+        finance?.part = .declarations
+    }
+
     func reset() {
         companyID = nil
         periods = []; periodsLoaded = false; periodsLoading = false; period = nil

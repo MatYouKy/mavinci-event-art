@@ -727,6 +727,8 @@ struct FinDeadlinesModel {
     var whitelistAvailable = false
     var anySettingsEnabled = false
     var statementGaps: [StatementGap] = []
+    /// Ostatni dzień wczytanych wyciągów każdej działalności (brak klucza — brak wyciągów).
+    var statementEnds: [String: String] = [:]
     var failures: [Failure] = []
     var loaded = false
 
@@ -748,6 +750,7 @@ struct FinDeadlinesModel {
             for var item in deadlines.payables { item.company = id; payables.append(item) }
             for var item in deadlines.supplierTerms { item.company = id; supplierTerms.append(item) }
             if deadlines.settings.contains(where: \.enabled) { anySettingsEnabled = true }
+            if let end = deadlines.statementEnd { statementEnds[id] = end }
             let gap = deadlines.statementEnd.map { FinFormat.daysBetween($0, deadlines.today) }
             if gap == nil || (gap ?? 0) > 31 { statementGaps.append(StatementGap(company: entry.company, end: deadlines.statementEnd)) }
             if let whitelist = entry.state.whitelist {
@@ -778,7 +781,8 @@ struct FinChip {
     /// Biała lista VAT (próg 15 000 zł — wartość transakcji).
     static func whitelist(verdict: String?, statusVat: String?, nip: String?, fresh: Bool, big: Bool) -> FinChip {
         guard nip != nil else { return FinChip(text: "bez polskiego NIP — nie dotyczy", tone: .muted) }
-        guard let verdict else { return FinChip(text: big ? "niesprawdzone — ponad 15 000 zł" : "niesprawdzone", tone: big ? .warn : .neutral) }
+        // Obowiązek dotyczy transakcji ponad 15 000 zł — przy mniejszych sprawdzenie jest tylko informacyjne.
+        guard let verdict else { return big ? FinChip(text: "niesprawdzone — ponad 15 000 zł", tone: .warn) : FinChip(text: "nieobowiązkowe — do 15 000 zł", tone: .muted) }
         switch verdict {
         case "error": return FinChip(text: "błąd sprawdzenia — powtórz", tone: .neutral)
         case "not_found": return FinChip(text: "NIP poza wykazem VAT", tone: .bad)

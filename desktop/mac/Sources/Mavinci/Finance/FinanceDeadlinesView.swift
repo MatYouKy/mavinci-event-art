@@ -4,7 +4,8 @@ import AppKit
 // MARK: Terminy i monity — 1:1 z `FinanceDeadlinesPanel.tsx`: kafle spraw po terminie, ostrzeżenie o wyciągach, natywne tabele
 // (ZUS i podatki, należności z przypomnieniami e-mail, faktury kosztowe do zapłaty z terminem dostawcy i białą listą VAT,
 // przelewy ponad 15 000 zł), „Obowiązki działalności” i domyślne terminy dostawców. Kilka wybranych działalności — listy
-// połączone, przy każdej pozycji nazwa działalności, czynności według uprawnień w jej działalności.
+// połączone, przy każdej pozycji nazwa działalności, czynności według uprawnień w jej działalności. Z prawej panel „Co z tym
+// zrobić” (`FinanceDeadlinesGuide.swift`): co to za pozycja, skąd się wzięła, stan i przyciski do załatwienia jej.
 
 @MainActor struct FinanceDeadlinesView: View {
     @ObservedObject var store: FinanceStore
@@ -24,6 +25,10 @@ import AppKit
     @State private var reminder: FinDeadlines.Receivable?
     @State private var termsOpen = false
     @State private var removingTerm: FinDeadlines.SupplierTerm?
+    @State private var paidTarget: FinDeadlinePaidTarget?
+    @State private var declarationTarget: FinDeadlines.Obligation?
+    /// Panel „Co z tym zrobić” obok tabeli (zapamiętany na tym Macu).
+    @AppStorage("finance.deadlinesGuide") private var guideShown = true
 
     private static let red = CrmTheme.rgb(0xf87171)
     private static let amber = CrmTheme.rgb(0xfbbf24)
@@ -57,6 +62,18 @@ import AppKit
         }
         .sheet(item: $reminder) { receivable in
             FinanceReminderSheet(store: store, receivable: receivable)
+        }
+        .sheet(item: $paidTarget) { target in
+            FinDeadlinePaidSheet(store: store, target: target)
+        }
+        .sheet(item: $declarationTarget) { item in
+            if let company = item.company {
+                DeclarationFormSheet(store: store.bank, companyID: company, declaration: nil,
+                                     initial: DeclarationFormSheet.Initial(kind: item.kind, form: item.form, periodKind: item.periodKind,
+                                                                           periodStart: item.periodStart, dueDate: item.dueDate)) { _ in
+                    Task { await store.sync(force: true) }
+                }
+            }
         }
         .confirmationDialog("Usunąć domyślny termin dostawcy?", isPresented: Binding(get: { removingTerm != nil }, set: { if !$0 { removingTerm = nil } }), presenting: removingTerm) { term in
             Button("Usuń", role: .destructive) { removeTerm(term) }
@@ -102,16 +119,105 @@ import AppKit
             }
             listPicker(model)
             actions(model)
-            switch store.list {
-            case .obligations: obligationsTable(model)
-            case .receivables: receivablesTable(model)
-            case .payables: payablesTable(model)
-            case .payments: paymentsTable(model)
+            HStack(alignment: .top, spacing: 0) {
+                Group {
+                    switch store.list {
+                    case .obligations: obligationsTable(model)
+                    case .receivables: receivablesTable(model)
+                    case .payables: payablesTable(model)
+                    case .payments: paymentsTable(model)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if guideShown {
+                    Divider()
+                    FinDeadlinesGuidePanel(list: store.list, item: selectedItem(model), context: guideContext(model), footnote: footnote) { perform($0) }
+                        .frame(width: 340)
+                        .frame(maxHeight: .infinity)
+                }
             }
-            Text(footnote).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if !guideShown {
+                Text(footnote).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(18)
+    }
+
+    // MARK: Panel „Co z tym zrobić”
+
+    private func selectedItem(_ model: FinDeadlinesModel) -> FinDeadlineItem? {
+        switch store.list {
+        case .obligations:
+            guard let id = obligationSelection, let item = visibleObligations(model).first(where: { $0.id == id }) else { return nil }
+            return FinDeadlineItem.obligation(item)
+        case .receivables:
+            guard let item = selectedReceivable(model) else { return nil }
+            return FinDeadlineItem.receivable(item)
+        case .payables:
+            guard let item = selectedPayable(model) else { return nil }
+            return FinDeadlineItem.payable(item, model.checks[item.id])
+        case .payments:
+            guard let id = paymentSelection, let item = model.payments.first(where: { $0.id == id }) else { return nil }
+            return FinDeadlineItem.payment(item)
+        }
+    }
+
+    private func guideContext(_ model: FinDeadlinesModel) -> FinDeadlineContext {
+        let ends = model.statementEnds
+        return FinDeadlineContext(
+            today: model.today,
+            statementEnd: { company in ends[company ?? ""] },
+            canManage: { company in canManage(company) },
+            canSend: { item in canSend(item) },
+            editable: { item in editable(item) },
+            canWrite: state.canWrite,
+            whitelistAvailable: model.whitelistAvailable
+        )
+    }
+
+    /// Rok i miesiąc z daty „rrrr-MM-dd”.
+    private static func yearMonth(_ day: String) -> (year: Int, month: Int)? {
+        let parts = day.prefix(10).split(separator: "-").compactMap { Int($0) }
+        guard parts.count >= 2, (1...12).contains(parts[1]) else { return nil }
+        return (parts[0], parts[1])
+    }
+
+    private func perform(_ action: FinDeadlineAction) {
+        switch action {
+        case .declaration(let item):
+            declarationTarget = item
+        case .reconcile(let company, let day):
+            guard let company, let parts = Self.yearMonth(day) else { return }
+            Task { await store.bank.openReconciliation(company: company, year: parts.year, month: parts.month) }
+        case .statements(let company, let day):
+            guard let company else { return }
+            let parts = day.flatMap { Self.yearMonth($0) }
+            store.bank.openStatements(company: company, year: parts?.year ?? Calendar.current.component(.year, from: Date()), month: parts?.month)
+        case .declarations(let company, let periodStart, let kind):
+            guard let company, let parts = Self.yearMonth(periodStart) else { return }
+            store.bank.openDeclarations(company: company, year: parts.year, kind: kind)
+        case .settings(let company):
+            settingsCompany = scope.company(company)
+        case .reminder(let item):
+            reminder = item
+        case .markPaid(let target):
+            paidTarget = target
+        case .invoice(let id):
+            store.open("/crm/invoices/\(id)")
+        case .ksef:
+            store.open(FinLink.section("ksef", nil))
+        case .dueDate(let item):
+            dueEdit = item
+        case .checkPayable(let item):
+            Task { await store.checkWhitelist("payables", company: item.company, ids: [item.id], force: true) }
+        case .checkPayment(let item):
+            Task { await store.checkWhitelist("payments", company: item.company, ids: [item.bankTransactionId], force: true) }
+        case .copy(let text):
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            state.succeed("Skopiowano numer rachunku.")
+        }
     }
 
     private func statementText(_ gap: FinDeadlinesModel.StatementGap) -> String {
@@ -138,7 +244,10 @@ import AppKit
                 }
             }
             .pickerStyle(.segmented).labelsHidden().fixedSize()
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            Toggle(isOn: $guideShown) { Label("Co z tym zrobić?", systemImage: "lightbulb") }
+                .toggleStyle(.button).fixedSize()
+                .help("Panel z prawej: co to za pozycja, skąd się wzięła i jak ją załatwić (zaznacz pozycję na liście)")
         }
     }
 

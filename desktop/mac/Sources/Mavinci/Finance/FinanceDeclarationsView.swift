@@ -453,7 +453,7 @@ enum DeclarationLineTarget: Identifiable {
 // MARK: Deklaracja — nowa albo kwota i dane (`DeclarationFormModal`)
 
 @MainActor struct DeclarationFormSheet: View {
-    struct Initial { var kind: String; var form: String; var periodKind: String; var periodStart: String }
+    struct Initial { var kind: String; var form: String; var periodKind: String; var periodStart: String; var dueDate: String? = nil }
 
     @ObservedObject var store: FinanceBankStore
     let companyID: String
@@ -541,6 +541,7 @@ enum DeclarationLineTarget: Identifiable {
             formSymbol = initial.form
             periodKind = initial.periodKind
             if !initial.periodStart.isEmpty { start = initial.periodStart }
+            if let date = initial.dueDate.flatMap({ FinFormat.date($0) }) { hasDue = true; due = date }
         }
         let parts = start.prefix(10).split(separator: "-").compactMap { Int($0) }
         if parts.count >= 2 {
