@@ -79,6 +79,10 @@ struct Inquiry: Codable, Hashable, Identifiable {
     var sourceName: String
     var member: Bool
     var createdAt: String
+    /// Termin wydarzenia z zapytania (`inquiry_details.termin`, czasem z godziną), termin zadania i klient — do kalendarza.
+    var termin: String?
+    var dueDate: String?
+    var clientLabel: String?
 
     var inquiryStage: InquiryStage { InquiryStage(raw: stage) }
     var isOpen: Bool { !inquiryStage.closed }

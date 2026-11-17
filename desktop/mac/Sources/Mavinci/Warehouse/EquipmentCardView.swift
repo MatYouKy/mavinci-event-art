@@ -5,7 +5,8 @@ import UniformTypeIdentifiers
 // MARK: Karta sprzętu — 1:1 z `/crm/equipment/[id]`: nagłówek (nazwa, dostępne / wszystkie, marka i model), zakładki Podstawowe,
 // Parametry techniczne (z prądem i wtykami), Informacje zakupowe (z amortyzacją), Skład zestawu, Jednostki (sztuki, statusy,
 // zdarzenia), Galeria, Pliki i Historia zmian; edycja (`equipment_manage`) z zapisem historii i usuwaniem. Karta z kopii na dysku
-// (zbiór `warehouse-details`) — otwiera się od razu, synchronizacja w tle.
+// (zbiór `warehouse-details`) — otwiera się od razu, synchronizacja w tle. Bez identyfikatora ta sama karta służy do dodawania
+// sprzętu: wszystkie pola edycji, stan początkowy (jednostki, minimum), galeria i pliki przed zapisem — nie ma osobnego okna.
 
 /// Formularz edycji karty (liczby jako tekst — wpisywane z przecinkiem lub kropką).
 struct EquipmentDraft: Equatable {
@@ -89,7 +90,8 @@ struct UnitEditorRequest: Identifiable {
 
 @MainActor struct EquipmentCardView: View {
     @ObservedObject var store: WarehouseStore
-    let equipmentID: String
+    /// `nil` — nowy sprzęt (karta w trybie dodawania).
+    let equipmentID: String?
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var tab: EquipmentCardTab = .details
@@ -103,75 +105,211 @@ struct UnitEditorRequest: Identifiable {
     @State private var removingUnits: [String] = []
     @State private var selectedUnits: Set<String> = []
     @State private var quantity = 0
+    // Nowy sprzęt: stan początkowy, zdjęcia i pliki do wysłania po utworzeniu, porzucenie formularza.
+    @State private var initialDraft = EquipmentDraft()
+    @State private var initialQuantity = "1"
+    @State private var minStock = "0"
+    @State private var pendingImages: [URL] = []
+    @State private var pendingFiles: [URL] = []
+    @State private var discarding = false
 
-    private var detail: EquipmentDetail? { store.details[equipmentID] }
-    private var canEdit: Bool { store.canManage }
+    private var isNew: Bool { equipmentID == nil }
+    private var currentID: String { equipmentID ?? "" }
+    private var detail: EquipmentDetail? {
+        guard let equipmentID else { return blank }
+        return store.details[equipmentID]
+    }
+    private var canEdit: Bool { isNew ? store.access?.canCreate == true : store.canManage }
+    private var dirty: Bool { draft != initialDraft || !pendingImages.isEmpty || !pendingFiles.isEmpty }
+
+    /// Karta nowego sprzętu z wartości formularza — flagi kategorii (ilość bez numerów, numery seryjne) jak dla zapisanego sprzętu.
+    private var blank: EquipmentDetail {
+        let category = store.category(draft.categoryId.nonEmpty)
+        let parent = store.category(category?.parentId)
+        func flag(_ key: String) -> Bool { category?.flags[key] ?? parent?.flags[key] ?? false }
+        return EquipmentDetail(
+            id: "", name: draft.name, brand: draft.brand, model: draft.model, description: draft.description, notes: draft.notes,
+            thumbnailUrl: draft.thumbnailUrl.nonEmpty, manualUrl: draft.manualUrl, categoryId: draft.categoryId.nonEmpty, locationId: draft.locationId.nonEmpty,
+            weightKg: nil, dimensions: nil, cable: nil, cableStockQuantity: 0, purchaseDate: "", purchasePrice: nil, currentValue: nil,
+            depreciationRate: nil, rentalPricePerDay: nil, warrantyUntil: "", serialNumber: "", barcode: "", active: true,
+            power: EquipmentPower(watts: nil, amps: nil, volts: 230, phase: "single_phase", inputConnectorId: nil, outputConnectorId: nil, notes: ""),
+            preCheckAvailable: true, requiresPreCheck: false, preCheckInstructions: "",
+            flags: EquipmentFlags(simpleQuantity: flag("simple_quantity"), requiresSerial: flag("requires_serial"), hideEvents: flag("hide_events"),
+                                  disableUnits: flag("disable_units"), readOnly: flag("read_only")),
+            counts: EquipmentCounts(images: pendingImages.count, files: pendingFiles.count, components: 0),
+            units: [], components: [], compatible: [], images: [], files: [], history: [])
+    }
 
     var body: some View {
-        Group {
-            if let d = detail {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        header(d)
-                        tabBar(d)
-                        content(d)
-                    }
-                    .padding(16)
+        dialogs(sheets(page))
+    }
+
+    @ViewBuilder private var pageContent: some View {
+        if let d = detail {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    header(d)
+                    tabBar(d)
+                    content(d)
                 }
-            } else if let error = store.detailError {
-                ContentUnavailableView {
-                    Label("Sprzęt", systemImage: "shippingbox")
-                } description: { Text(error) } actions: {
-                    Button("Spróbuj ponownie") { Task { await store.loadDetail(equipmentID) } }
-                }
+                .padding(16)
+            }
+        } else if let error = store.detailError {
+            ContentUnavailableView {
+                Label("Sprzęt", systemImage: "shippingbox")
+            } description: { Text(error) } actions: {
+                Button("Spróbuj ponownie") { Task { await store.loadDetail(currentID) } }
+            }
+        } else {
+            ProgressView("Ładowanie...").frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var page: some View {
+        pageContent
+            .navigationTitle(pageTitle)
+            .navigationSubtitle(pageSubtitle)
+            .toolbar { toolbar }
+            .overlay { if saving { PendingOverlay(text: savingText) } }
+            .task(id: equipmentID ?? "new") { await prepare() }
+    }
+
+    private func sheets<Content: View>(_ content: Content) -> some View {
+        content
+            .fileImporter(isPresented: $importingThumb, allowedContentTypes: [.image]) { result in
+                if case .success(let url) = result { Task { await uploadThumb(url) } }
+            }
+            .sheet(item: $unitEditor) { request in
+                UnitEditorSheet(store: store, equipmentID: currentID, unit: request.unit, requiresSerial: requiresSerial)
+                    .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+            }
+            .sheet(item: $eventsFor) { unit in
+                UnitEventsSheet(store: store, equipmentID: currentID, unit: unit, canEdit: canEdit)
+                    .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+            }
+    }
+
+    private func dialogs<Content: View>(_ content: Content) -> some View {
+        content
+            .confirmationDialog("Porzucić nowy sprzęt?", isPresented: $discarding, titleVisibility: .visible) {
+                Button("Porzuć", role: .destructive) { store.creatingEquipment = false }
+                Button("Wróć do formularza", role: .cancel) {}
+            } message: { Text("Wpisane dane, wybrane zdjęcia i pliki nie zostaną zapisane.") }
+            .confirmationDialog("Usuń sprzęt", isPresented: $removing, titleVisibility: .visible) {
+                Button("Usuń sprzęt", role: .destructive) { deleteEquipment() }
+                Button("Anuluj", role: .cancel) {}
+            } message: { Text(removeEquipmentMessage) }
+            .confirmationDialog(removeUnitsTitle, isPresented: removingUnitsShown, titleVisibility: .visible) {
+                removeUnitsActions(removingUnits)
+            }
+    }
+
+    /// Przyciski okna usuwania jednostek — lista zapamiętana przy otwarciu okna (stan czyści się przy jego zamknięciu).
+    @ViewBuilder private func removeUnitsActions(_ ids: [String]) -> some View {
+        Button("Usuń", role: .destructive) { deleteUnits(ids) }
+        Button("Anuluj", role: .cancel) {}
+    }
+
+    // MARK: Teksty i akcje karty (wydzielone — krótsze wyrażenia dla kompilatora)
+
+    private var pageTitle: String {
+        if isNew { return draft.name.trimmingCharacters(in: .whitespaces).nonEmpty ?? "Nowy sprzęt" }
+        return detail?.name ?? "Sprzęt"
+    }
+
+    private var pageSubtitle: String {
+        if isNew { return "Dodawanie sprzętu" }
+        let parts: [String] = [detail?.brand ?? "", detail?.model ?? ""].filter { !$0.isEmpty }
+        return parts.joined(separator: " ")
+    }
+
+    private var savingText: String { isNew ? "Tworzenie sprzętu…" : "Zapisywanie…" }
+    private var requiresSerial: Bool { detail?.flags.requiresSerial ?? false }
+
+    private var removeEquipmentMessage: String {
+        let name: String = detail?.name ?? ""
+        return "Czy na pewno chcesz usunąć sprzęt „\(name)”? Ta operacja jest nieodwracalna."
+    }
+
+    private var removeUnitsTitle: String {
+        let count: Int = removingUnits.count
+        return count > 1 ? "Usuń \(count) jednostek" : "Usuń jednostkę"
+    }
+
+    private var removingUnitsShown: Binding<Bool> {
+        Binding(get: { !removingUnits.isEmpty }, set: { shown in if !shown { removingUnits = [] } })
+    }
+
+    private func prepare() async {
+        guard let equipmentID else {
+            // Nowy sprzęt: od razu formularz edycji; kategoria z listy magazynu, jeśli była wybrana.
+            var start = EquipmentDraft()
+            if let preset = store.newEquipmentCategoryID, store.category(preset) != nil { start.categoryId = preset }
+            draft = start
+            initialDraft = start
+            editing = true
+            return
+        }
+        if let d = detail { quantity = d.cableStockQuantity }
+        await store.openDetail(equipmentID)
+        if let d = detail { quantity = d.cableStockQuantity }
+        // Po utworzeniu sprzętu karta może otworzyć konkretną zakładkę w trybie edycji (np. skład).
+        if let intent = store.cardIntent {
+            store.cardIntent = nil
+            tab = intent.tab
+            if intent.edit, let d = detail, canEdit {
+                draft = EquipmentDraft(d)
+                editing = true
+            }
+        }
+    }
+
+    private func deleteEquipment() {
+        let id = currentID
+        Task {
+            if let entry = store.entry(id) {
+                _ = await store.delete(entry)
             } else {
-                ProgressView("Ładowanie...").frame(maxWidth: .infinity, maxHeight: .infinity)
+                let body: [String: JSONValue] = ["id": .string(id), "kind": .string("item")]
+                await store.run("Usuwanie…", "delete", body, success: "Sprzęt został usunięty")
+                store.openedID = nil
             }
         }
-        .navigationTitle(detail?.name ?? "Sprzęt")
-        .navigationSubtitle([detail?.brand ?? "", detail?.model ?? ""].filter { !$0.isEmpty }.joined(separator: " "))
-        .toolbar { toolbar }
-        .overlay { if saving { PendingOverlay(text: "Zapisywanie…") } }
-        .task(id: equipmentID) {
-            if let d = detail { quantity = d.cableStockQuantity }
-            await store.openDetail(equipmentID)
-            if let d = detail { quantity = d.cableStockQuantity }
-        }
-        .fileImporter(isPresented: $importingThumb, allowedContentTypes: [.image]) { result in
-            if case .success(let url) = result { Task { await uploadThumb(url) } }
-        }
-        .sheet(item: $unitEditor) { request in
-            UnitEditorSheet(store: store, equipmentID: equipmentID, unit: request.unit, requiresSerial: detail?.flags.requiresSerial ?? false)
-                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
-        }
-        .sheet(item: $eventsFor) { unit in
-            UnitEventsSheet(store: store, equipmentID: equipmentID, unit: unit, canEdit: canEdit)
-                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
-        }
-        .confirmationDialog("Usuń sprzęt", isPresented: $removing, titleVisibility: .visible) {
-            Button("Usuń sprzęt", role: .destructive) {
-                Task {
-                    if let entry = store.entry(equipmentID) { _ = await store.delete(entry) }
-                    else { await store.run("Usuwanie…", "delete", ["id": .string(equipmentID), "kind": .string("item")], success: "Sprzęt został usunięty"); store.openedID = nil }
-                }
-            }
-            Button("Anuluj", role: .cancel) {}
-        } message: { Text("Czy na pewno chcesz usunąć sprzęt „\(detail?.name ?? "")”? Ta operacja jest nieodwracalna.") }
-        .confirmationDialog(removingUnits.count > 1 ? "Usuń \(removingUnits.count) jednostek" : "Usuń jednostkę",
-                            isPresented: Binding(get: { !removingUnits.isEmpty }, set: { if !$0 { removingUnits = [] } }), titleVisibility: .visible) {
-            Button("Usuń", role: .destructive) {
-                let ids = removingUnits
-                Task {
-                    await store.run("Usuwanie jednostek…", "unitDelete", ["ids": .array(ids.map { .string($0) })], success: ids.count > 1 ? "Usunięto \(ids.count) jednostek" : "Jednostka usunięta", reload: equipmentID)
-                    selectedUnits.subtract(ids)
-                }
-            }
-            Button("Anuluj", role: .cancel) {}
+    }
+
+    private func deleteUnits(_ ids: [String]) {
+        guard !ids.isEmpty else { return }
+        let values: [JSONValue] = ids.map { JSONValue.string($0) }
+        let body: [String: JSONValue] = ["ids": .array(values)]
+        let success: String = ids.count > 1 ? "Usunięto \(ids.count) jednostek" : "Jednostka usunięta"
+        let equipmentID = currentID
+        Task {
+            await store.run("Usuwanie jednostek…", "unitDelete", body, success: success, reload: equipmentID)
+            selectedUnits.subtract(ids)
         }
     }
 
     // MARK: Pasek narzędzi
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        if isNew {
+            ToolbarItem(placement: .navigation) {
+                Button { leaveNew() } label: { Label("Magazyn", systemImage: "chevron.left") }.help("Wróć do listy sprzętu").disabled(saving)
+            }
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button("Anuluj") { leaveNew() }.disabled(saving)
+                Button { Task { await create() } } label: { Label(saving ? "Tworzenie…" : "Utwórz sprzęt", systemImage: "checkmark") }
+                    .labelStyle(.titleAndIcon).buttonStyle(.borderedProminent).keyboardShortcut("s").disabled(saving || !canEdit)
+            }
+        } else {
+            existingToolbar
+        }
+    }
+
+    private func leaveNew() {
+        if dirty { discarding = true } else { store.creatingEquipment = false }
+    }
+
+    @ToolbarContentBuilder private var existingToolbar: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
             Button { store.openedID = nil } label: { Label("Magazyn", systemImage: "chevron.left") }.help("Wróć do listy sprzętu")
         }
@@ -187,8 +325,8 @@ struct UnitEditorRequest: Identifiable {
                 }
             }
             Menu {
-                Button("Otwórz w CRM", systemImage: "safari") { state.openCRM("/crm/equipment/\(equipmentID)") }
-                Button("Odśwież", systemImage: "arrow.clockwise") { Task { await store.loadDetail(equipmentID) } }
+                Button("Otwórz w CRM", systemImage: "safari") { state.openCRM("/crm/equipment/\(currentID)") }
+                Button("Odśwież", systemImage: "arrow.clockwise") { Task { await store.loadDetail(currentID) } }
             } label: { Label("Więcej", systemImage: "ellipsis.circle") }
         }
     }
@@ -198,14 +336,52 @@ struct UnitEditorRequest: Identifiable {
         saving = true
         defer { saving = false }
         do {
-            try await store.post("update", ["id": .string(equipmentID), "data": .object(draft.json)])
-            await store.loadDetail(equipmentID)
+            try await store.post("update", ["id": .string(currentID), "data": .object(draft.json)])
+            await store.loadDetail(currentID)
             Task { await store.sync(force: true) }
             editing = false
             state.succeed("Zmiany zostały zapisane")
         } catch {
             state.error = store.failureText(error, "Błąd podczas zapisywania")
         }
+    }
+
+    /// Nowy sprzęt: wszystkie pola karty i stan początkowy jednym zapisem (`op=create`), potem zdjęcia i pliki — karta otwiera się
+    /// na utworzonym sprzęcie (opcjonalnie od razu na wskazanej zakładce w trybie edycji, np. skład).
+    private func create(then next: EquipmentCardTab? = nil) async {
+        guard !draft.name.trimmingCharacters(in: .whitespaces).isEmpty, !draft.categoryId.isEmpty else {
+            state.error = "Wypełnij wymagane pola: Nazwa i Kategoria"
+            tab = .details
+            return
+        }
+        guard let count = Int(initialQuantity.trimmingCharacters(in: .whitespaces).nonEmpty ?? "0"), (0...500).contains(count),
+              let minimum = Int(minStock.trimmingCharacters(in: .whitespaces).nonEmpty ?? "0"), minimum >= 0 else {
+            state.error = "Podaj poprawną liczbę jednostek (0–500) i minimalny stan."
+            tab = .units
+            return
+        }
+        saving = true
+        var data = draft.json
+        data["initialQuantity"] = .number(Double(count))
+        data["minStockLevel"] = .number(Double(minimum))
+        let reply: [String: JSONValue]
+        do {
+            reply = try await store.post("create", ["data": .object(data)])
+        } catch {
+            saving = false
+            state.error = store.failureText(error, "Nie udało się dodać sprzętu.")
+            return
+        }
+        saving = false
+        guard let id = reply["id"]?.text.nonEmpty else { state.error = "Nie udało się dodać sprzętu."; return }
+        if !pendingImages.isEmpty { await store.uploadEquipmentFiles(pendingImages, equipmentID: id, gallery: true) }
+        if !pendingFiles.isEmpty { await store.uploadEquipmentFiles(pendingFiles, equipmentID: id, gallery: false) }
+        await store.sync(force: true)
+        let warnings = (reply["warnings"]?.array ?? []).map(\.text).filter { !$0.isEmpty }
+        if warnings.isEmpty { state.succeed("Sprzęt dodany") } else { state.error = "Sprzęt dodany, ale: " + warnings.joined(separator: "\n") }
+        store.cardIntent = next.map { EquipmentCardIntent(tab: $0, edit: true) }
+        store.creatingEquipment = false
+        store.openedID = id
     }
 
     private func uploadThumb(_ url: URL) async {
@@ -224,10 +400,12 @@ struct UnitEditorRequest: Identifiable {
             WarehouseThumb(url: editing ? draft.thumbnailUrl.nonEmpty : d.thumbnailUrl, size: 64)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(d.name).font(.title2.weight(.light))
-                    Text(d.simpleStock ? "\(d.unitsCount) szt." : "\(d.availableUnits)/\(d.units.count)")
-                        .font(.callout.weight(.medium).monospacedDigit()).padding(.horizontal, 8).padding(.vertical, 2)
-                        .background(theme.accent.opacity(0.15), in: Capsule()).foregroundStyle(theme.accent)
+                    Text(isNew ? (d.name.trimmingCharacters(in: .whitespaces).nonEmpty ?? "Nowy sprzęt") : d.name).font(.title2.weight(.light))
+                    if !isNew {
+                        Text(d.simpleStock ? "\(d.unitsCount) szt." : "\(d.availableUnits)/\(d.units.count)")
+                            .font(.callout.weight(.medium).monospacedDigit()).padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(theme.accent.opacity(0.15), in: Capsule()).foregroundStyle(theme.accent)
+                    }
                     if !d.active { Text("NIEAKTYWNY").font(.caption2.weight(.bold)).foregroundStyle(.secondary) }
                 }
                 let subtitle = [d.brand, d.model].filter { !$0.isEmpty }.joined(separator: " ")
@@ -240,12 +418,12 @@ struct UnitEditorRequest: Identifiable {
     }
 
     private func tabs(_ d: EquipmentDetail) -> [EquipmentCardTab] {
-        EquipmentCardTab.allCases.filter { !(d.cable != nil && $0 == .components) }
+        EquipmentCardTab.allCases.filter { !(d.cable != nil && $0 == .components) && !(isNew && $0 == .history) }
     }
     private func tabLabel(_ t: EquipmentCardTab, _ d: EquipmentDetail) -> String {
         switch t {
-        case .components: return "\(t.label) (\(d.counts.components))"
-        case .units: return "\(t.label) (\(d.unitsCount))"
+        case .components: return isNew ? t.label : "\(t.label) (\(d.counts.components))"
+        case .units: return isNew ? t.label : "\(t.label) (\(d.unitsCount))"
         case .gallery: return "\(t.label) (\(d.counts.images))"
         case .files: return "\(t.label) (\(d.counts.files))"
         default: return t.label
@@ -273,11 +451,11 @@ struct UnitEditorRequest: Identifiable {
         case .details: detailsTab(d)
         case .technical: technicalTab(d)
         case .purchase: purchaseTab(d)
-        case .units: unitsTab(d)
+        case .units: if isNew { newUnitsTab(d) } else { unitsTab(d) }
         case .history: historyTab(d)
-        case .components: EquipmentComponentsTab(store: store, detail: d, editing: editing && canEdit)
-        case .gallery: EquipmentGalleryTab(store: store, detail: d)
-        case .files: EquipmentFilesTab(store: store, detail: d)
+        case .components: if isNew { newComponentsTab } else { EquipmentComponentsTab(store: store, detail: d, editing: editing && canEdit) }
+        case .gallery: if isNew { PendingGalleryCard(urls: $pendingImages) } else { EquipmentGalleryTab(store: store, detail: d) }
+        case .files: if isNew { PendingFilesCard(urls: $pendingFiles) } else { EquipmentFilesTab(store: store, detail: d) }
         }
     }
 
@@ -306,9 +484,9 @@ struct UnitEditorRequest: Identifiable {
             TeamCard(title: "Podstawowe informacje") {
                 if editing {
                     LazyVGrid(columns: grid, alignment: .leading, spacing: 12) {
-                        input("Nazwa", $draft.name)
+                        input(isNew ? "Nazwa *" : "Nazwa", $draft.name)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Kategoria").font(.caption).foregroundStyle(.secondary)
+                            Text(isNew ? "Kategoria *" : "Kategoria").font(.caption).foregroundStyle(.secondary)
                             Picker("Kategoria", selection: $draft.categoryId) {
                                 Text("Brak").tag("")
                                 ForEach(store.categoryTree) { c in Text(String(repeating: "   ", count: max(0, c.level - 1)) + c.name).tag(c.id) }
@@ -495,7 +673,7 @@ struct UnitEditorRequest: Identifiable {
                         Stepper(value: $quantity, in: 0...100_000) { Text("\(quantity) szt.").font(.title3.monospacedDigit()) }
                         Spacer()
                         Button("Zapisz") {
-                            Task { await store.run("Zapisywanie ilości…", "cableQuantity", ["equipmentId": .string(equipmentID), "quantity": .number(Double(quantity))], success: "Ilość zapisana", reload: equipmentID) }
+                            Task { await store.run("Zapisywanie ilości…", "cableQuantity", ["equipmentId": .string(currentID), "quantity": .number(Double(quantity))], success: "Ilość zapisana", reload: currentID) }
                         }.buttonStyle(.borderedProminent).disabled(quantity == d.cableStockQuantity)
                     }
                 } else {
@@ -514,7 +692,7 @@ struct UnitEditorRequest: Identifiable {
                     if editable && !selectedUnits.isEmpty {
                         Button("Duplikuj zaznaczone (\(selectedUnits.count))") {
                             let ids = Array(selectedUnits)
-                            Task { await store.run("Duplikowanie…", "unitDuplicate", ["ids": .array(ids.map { .string($0) })], success: "Zduplikowano \(ids.count) jednostek", reload: equipmentID); selectedUnits = [] }
+                            Task { await store.run("Duplikowanie…", "unitDuplicate", ["ids": .array(ids.map { .string($0) })], success: "Zduplikowano \(ids.count) jednostek", reload: currentID); selectedUnits = [] }
                         }
                         Button("Usuń zaznaczone (\(selectedUnits.count))", role: .destructive) { removingUnits = Array(selectedUnits) }
                     }
@@ -530,6 +708,32 @@ struct UnitEditorRequest: Identifiable {
                 }
                 ForEach(d.units) { unit in unitRow(unit, editable: editable, hideEvents: d.flags.hideEvents) }
             }
+        }
+    }
+
+    /// Nowy sprzęt: stan początkowy jak `/crm/equipment/new` — jednostki z numerami albo ilość bez numerów (kategoria z „simple_quantity”).
+    private func newUnitsTab(_ d: EquipmentDetail) -> some View {
+        TeamCard(title: "Stan początkowy") {
+            LazyVGrid(columns: grid, alignment: .leading, spacing: 12) {
+                input(d.simpleStock ? "Ilość na stanie (szt.)" : "Liczba jednostek do utworzenia", $initialQuantity, prompt: "0")
+                input("Minimalny stan magazynowy", $minStock, prompt: "0")
+            }
+            if d.simpleStock {
+                Text("Kategoria liczy sprzęt bez numerów sztuk — zapiszemy samą ilość.").font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("Każda jednostka dostanie numer seryjny (np. ABCD1234-001), status „Dostępny”, lokalizację magazynową i datę zakupu z karty. Numery, statusy i notatki poszczególnych sztuk zmienisz potem w tej zakładce.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Nowy sprzęt: skład (elementy z magazynu, wymagane / rekomendowane / opcjonalne) zapisuje się przy istniejącym sprzęcie.
+    private var newComponentsTab: some View {
+        TeamCard(title: "Skład zestawu") {
+            Text("Elementy składu i powiązany sprzęt (wymagany, rekomendowany, opcjonalny) zapisują się przy sprzęcie. Utwórz sprzęt — karta otworzy się od razu na tej zakładce w trybie edycji.")
+                .foregroundStyle(.secondary)
+            Button { Task { await create(then: .components) } } label: { Label("Utwórz sprzęt i dodaj skład", systemImage: "square.stack.3d.up") }
+                .buttonStyle(.borderedProminent).disabled(saving || !canEdit)
         }
     }
 
@@ -569,7 +773,7 @@ struct UnitEditorRequest: Identifiable {
                 if editable {
                     Button("Edytuj", systemImage: "pencil") { unitEditor = UnitEditorRequest(unit: u) }
                     Button("Duplikuj jednostkę", systemImage: "doc.on.doc") {
-                        Task { await store.run("Duplikowanie…", "unitDuplicate", ["id": .string(u.id)], success: "Jednostka zduplikowana", reload: equipmentID) }
+                        Task { await store.run("Duplikowanie…", "unitDuplicate", ["id": .string(u.id)], success: "Jednostka zduplikowana", reload: currentID) }
                     }
                     Divider()
                     Button("Usuń", systemImage: "trash", role: .destructive) { removingUnits = [u.id] }

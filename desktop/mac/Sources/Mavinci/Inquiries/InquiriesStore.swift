@@ -22,6 +22,8 @@ struct InquiryIndex: Codable {
     @Published var loadError: String?
     @Published var busy: Set<String> = []
     @Published var employees: [MeetingPerson] = []
+    /// Karta zapytania do otwarcia od razu (np. z kalendarza — jak `/crm/inquiries/<id>` w CRM).
+    @Published var workspaceRequest: String?
 
     private var namespace: String?
     private var file: SealedFile<InquiryIndex>?
@@ -58,7 +60,7 @@ struct InquiryIndex: Codable {
         syncTask?.cancel(); saveTask?.cancel(); syncTask = nil; saveTask = nil
         if clearDisk, let file { try? file.clear() }
         file = nil; namespace = nil; index = InquiryIndex(); recentLocal = [:]
-        inquiries = []; access = nil; syncing = false; lastSync = nil; loadError = nil; busy = []; employees = []
+        inquiries = []; access = nil; syncing = false; lastSync = nil; loadError = nil; busy = []; employees = []; workspaceRequest = nil
     }
     private func publish() { inquiries = index.items.sorted { $0.createdAt > $1.createdAt } }
     private func scheduleSave() {
@@ -252,5 +254,14 @@ struct InquiryIndex: Codable {
         if let data = try? await api.get("/inquiries", query: ["op": "employees"]), let reply = try? JSONDecoder().decode(Reply.self, from: data) {
             employees = reply.employees
         }
+    }
+}
+
+extension Workspace {
+    /// Karta zapytania („Obsługa zapytania”) — z kalendarza i innych miejsc, jak przejście do `/crm/inquiries/<id>` w CRM.
+    func showInquiryWorkspace(_ id: String) {
+        guard UUID(uuidString: id) != nil else { return }
+        inquiries.workspaceRequest = id
+        open(.inquiries, id: id)
     }
 }

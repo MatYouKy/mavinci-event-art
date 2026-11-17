@@ -148,10 +148,10 @@ private struct CalculationPdfFile: Decodable { var url: String; var name: String
 
 enum CalculationPdf {
     /// Zapisany PDF kalkulacji (podpisany adres); `current` — tylko gdy rewizja dokumentu zgadza się z treścią.
-    @MainActor static func fetch(_ store: EventCardStore, _ eventID: String, _ calculationID: String, current: Bool) async throws -> (Data, String) {
+    @MainActor static func fetch(_ backend: CalculationBackend, _ calculationID: String, current: Bool) async throws -> (Data, String) {
         var params = ["calculationId": calculationID]
         if current { params["current"] = "1" }
-        let file = try await store.tabQuery(eventID, "calculations", "pdf", params, as: CalculationPdfFile.self)
+        let file = try await backend.query("pdf", params, as: CalculationPdfFile.self)
         guard let url = URL(string: file.url) else { throw AppError.invalidResponse }
         let (data, response) = try await URLSession.shared.data(from: url)
         guard (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { throw URLError(.badServerResponse) }
@@ -198,7 +198,7 @@ enum CalculationPdf {
     var body: some View {
         Group {
             if let openID {
-                CalculationEditorView(store: store, eventID: eventID, calculationID: openID) {
+                CalculationEditorView(backend: .event(store, eventID), calculationID: openID) {
                     self.openID = nil
                     Task { await store.loadTab(eventID, "calculations") }
                 }
@@ -218,7 +218,7 @@ enum CalculationPdf {
             if openID == nil { Task { await store.loadTab(eventID, "calculations") } }
         }
         .sheet(item: $preview) { NativeDocumentPreview(preview: $0) }
-        .sheet(item: $emailing) { route in CalculationEmailSheet(store: store, eventID: eventID, calculationID: route.calculationID, name: route.name) }
+        .sheet(item: $emailing) { route in CalculationEmailSheet(backend: .event(store, eventID), calculationID: route.calculationID, name: route.name) }
         .confirmationDialog("Usunąć kalkulację?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             if let calculation = deleting { Button("Usuń", role: .destructive) { Task { await remove(calculation) } } }
             Button("Anuluj", role: .cancel) { state.snack = Snack(kind: .info, text: "Anulowano usuwanie kalkulacji") }
@@ -371,7 +371,7 @@ enum CalculationPdf {
         }
         let fetched: (Data, String)? = await state.withPending("Otwieram PDF...") { () async -> (Data, String)? in
             do {
-                return try await CalculationPdf.fetch(store, eventID, calculation.id, current: false)
+                return try await CalculationPdf.fetch(.event(store, eventID), calculation.id, current: false)
             } catch {
                 state.error = store.failureText(error, "Nie udało się otworzyć PDF")
                 return nil
@@ -403,10 +403,11 @@ struct CalculationItemRequest: Identifiable {
 }
 
 @MainActor struct CalculationEditorView: View {
-    @ObservedObject var store: EventCardStore
-    let eventID: String
+    let backend: CalculationBackend
     let calculationID: String
     let onBack: () -> Void
+    /// Podgląd bez edycji (`readOnly` w `CalculationEditor` — zapytanie, którego pracownik nie prowadzi).
+    var readOnly = false
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var loaded = false
@@ -428,6 +429,8 @@ struct CalculationItemRequest: Identifiable {
     @State private var emailOpen = false
 
     private var working: Bool { saving || generating || pdfAction != nil }
+    /// Edycja zablokowana: trwa zapis albo widok tylko do odczytu.
+    private var locked: Bool { working || readOnly }
     private var pdfVisible: Bool { pdfReady && !orderChanged }
     private var dirty: Bool { orderChanged || name != savedName || notes != savedNotes }
 
@@ -448,19 +451,19 @@ struct CalculationItemRequest: Identifiable {
         }
         .task { if !loaded { await load(initial: true) } }
         .sheet(item: $request) { request in
-            CalculationItemSheet(store: store, eventID: eventID, calculationID: calculationID, category: request.category,
+            CalculationItemSheet(backend: backend, calculationID: calculationID, category: request.category,
                                  editing: request.editing, existing: items) {
                 pdfReady = false
                 await load(initial: false)
             }
         }
         .sheet(isPresented: $showImport) {
-            CalculationImportSheet(store: store, eventID: eventID, existingRefs: Set(items.compactMap(\.sourceRef))) { picked in
+            CalculationImportSheet(backend: backend, existingRefs: Set(items.compactMap(\.sourceRef))) { picked in
                 await importItems(picked)
             }
         }
         .sheet(item: $preview) { NativeDocumentPreview(preview: $0) }
-        .sheet(isPresented: $emailOpen) { CalculationEmailSheet(store: store, eventID: eventID, calculationID: calculationID, name: name) }
+        .sheet(isPresented: $emailOpen) { CalculationEmailSheet(backend: backend, calculationID: calculationID, name: name) }
         .confirmationDialog("Usunąć kalkulację?", isPresented: $deleting, titleVisibility: .visible) {
             Button("Usuń", role: .destructive) { Task { await deleteCalculation() } }
             Button("Anuluj", role: .cancel) { state.snack = Snack(kind: .info, text: "Anulowano usuwanie kalkulacji") }
@@ -493,7 +496,7 @@ struct CalculationItemRequest: Identifiable {
                                 Text("Dodatkowe uwagi do kalkulacji...").font(.callout).foregroundStyle(.tertiary).padding(.horizontal, 11).padding(.vertical, 6).allowsHitTesting(false)
                             }
                         }
-                        .disabled(working)
+                        .disabled(locked)
                 }
                 Section { totals }
             }
@@ -507,31 +510,40 @@ struct CalculationItemRequest: Identifiable {
         HStack(spacing: 8) {
             Button { onBack() } label: { Image(systemName: "chevron.left") }.help("Wróć do listy kalkulacji")
             TextField("Nazwa kalkulacji", text: Binding(get: { name }, set: { name = $0; pdfReady = false }))
-                .textFieldStyle(.roundedBorder).font(.title3.weight(.light)).frame(maxWidth: 380).disabled(working)
+                .textFieldStyle(.roundedBorder).font(.title3.weight(.light)).frame(maxWidth: 380).disabled(locked)
+            if readOnly { Text("Tylko podgląd").font(.caption).foregroundStyle(.secondary) }
             Spacer()
-            Button { showImport = true } label: { Label("Importuj z oferty", systemImage: "square.and.arrow.down") }.disabled(working)
-            Button { Task { await generate() } } label: {
-                Label(generating ? "Generuję..." : "Generuj PDF", systemImage: "doc.text")
+            if !readOnly {
+                Button { showImport = true } label: { Label("Importuj z oferty", systemImage: "square.and.arrow.down") }.disabled(working)
+                Button { Task { await generate() } } label: {
+                    Label(generating ? "Generuję..." : "Generuj PDF", systemImage: "doc.text")
+                }
+                .disabled(working)
             }
-            .disabled(working)
             if pdfVisible {
                 Button { Task { await openPdf(download: false) } } label: {
                     Label(pdfAction == "preview" ? "Otwieram PDF…" : "Podgląd PDF", systemImage: "eye")
                 }
                 .disabled(working)
             }
-            Button { Task { await save() } } label: {
-                Label(saving ? "Zapisywanie..." : "Zapisz", systemImage: "checkmark")
+            if !readOnly {
+                Button { Task { await save() } } label: {
+                    Label(saving ? "Zapisywanie..." : "Zapisz", systemImage: "checkmark")
+                }
+                .buttonStyle(.borderedProminent).keyboardShortcut("s", modifiers: .command).disabled(working)
             }
-            .buttonStyle(.borderedProminent).keyboardShortcut("s", modifiers: .command).disabled(working)
             Menu {
-                Button { Task { await printCalculation() } } label: { Label("Drukuj", systemImage: "printer") }
+                if !readOnly {
+                    Button { Task { await printCalculation() } } label: { Label("Drukuj", systemImage: "printer") }
+                }
                 if pdfVisible {
                     Button { Task { await openPdf(download: true) } } label: { Label("Pobierz PDF", systemImage: "arrow.down.circle") }
                 }
-                Button { sendEmail() } label: { Label("Wyślij email", systemImage: "envelope") }
-                Divider()
-                Button(role: .destructive) { deleting = true } label: { Label("Usuń kalkulację", systemImage: "trash") }
+                if !readOnly {
+                    Button { sendEmail() } label: { Label("Wyślij email", systemImage: "envelope") }
+                    Divider()
+                    Button(role: .destructive) { deleting = true } label: { Label("Usuń kalkulację", systemImage: "trash") }
+                }
             } label: { Image(systemName: "ellipsis.circle") }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().disabled(working)
         }
@@ -629,14 +641,16 @@ struct CalculationItemRequest: Identifiable {
                 row(line, transport: transport)
             }
             .onMove { from, to in reorder(category, from, to) }
-            .moveDisabled(working)
+            .moveDisabled(locked)
         } header: {
             HStack(spacing: 8) {
                 Label(category.label, systemImage: category.symbol).font(.headline)
                 Text("(\(group.count))").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button { request = CalculationItemRequest(category: category, editing: nil) } label: { Label("Dodaj", systemImage: "plus") }
-                    .controlSize(.small).disabled(working)
+                if !readOnly {
+                    Button { request = CalculationItemRequest(category: category, editing: nil) } label: { Label("Dodaj", systemImage: "plus") }
+                        .controlSize(.small).disabled(working)
+                }
             }
             .padding(.top, 6)
         }
@@ -691,12 +705,12 @@ struct CalculationItemRequest: Identifiable {
             Text(CalculationMath.money(line.gross)).foregroundStyle(theme.accent).frame(width: 90, alignment: .trailing)
             Menu { lineActions(line) } label: { Image(systemName: "ellipsis") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 24)
-                .disabled(working)
+                .disabled(locked)
         }
         .font(.callout)
         .padding(.vertical, 2)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { if !working { request = CalculationItemRequest(category: CalculationCategory(rawValue: line.category) ?? .other, editing: line) } }
+        .onTapGesture(count: 2) { if !locked { request = CalculationItemRequest(category: CalculationCategory(rawValue: line.category) ?? .other, editing: line) } }
         .contextMenu { lineActions(line) }
     }
 
@@ -711,16 +725,16 @@ struct CalculationItemRequest: Identifiable {
         Button {
             request = CalculationItemRequest(category: CalculationCategory(rawValue: line.category) ?? .other, editing: line)
         } label: { Label("Edytuj", systemImage: "pencil") }
-        .disabled(working)
+        .disabled(locked)
         Button(role: .destructive) { Task { await removeLine(line) } } label: { Label("Usuń", systemImage: "trash") }
-            .disabled(working)
+            .disabled(locked)
     }
 
     // MARK: Dane i zapis
 
     private func load(initial: Bool) async {
         do {
-            let data = try await store.tabQuery(eventID, "calculations", "editor", ["calculationId": calculationID], as: CalculationEditorData.self)
+            let data = try await backend.query("editor", ["calculationId": calculationID], as: CalculationEditorData.self)
             if initial || !loaded {
                 name = data.name
                 notes = data.notes
@@ -734,8 +748,8 @@ struct CalculationItemRequest: Identifiable {
             loaded = true
             loadError = nil
         } catch {
-            if loaded { state.error = store.failureText(error, "Nie udało się odświeżyć kalkulacji") }
-            else { loadError = store.failureText(error, "Nie udało się wczytać kalkulacji") }
+            if loaded { state.error = backend.failureText(error, "Nie udało się odświeżyć kalkulacji") }
+            else { loadError = backend.failureText(error, "Nie udało się wczytać kalkulacji") }
         }
     }
 
@@ -777,33 +791,33 @@ struct CalculationItemRequest: Identifiable {
             "orderChanged": .bool(orderChanged), "items": .array(items.map(\.payload)),
         ]
         do {
-            try await store.tabAction(eventID, "calculations", "save", body, reload: [], success: "Zapisano kalkulację", pending: "Zapisywanie…")
+            try await backend.action("save", body, reload: [], success: "Zapisano kalkulację", pending: "Zapisywanie…")
             orderChanged = false
             pdfReady = false
             savedName = name
             savedNotes = notes
             return true
         } catch {
-            state.error = store.failureText(error, "Błąd zapisu")
+            state.error = backend.failureText(error, "Błąd zapisu")
             return false
         }
     }
 
     private func removeLine(_ line: CalculationLine) async {
         do {
-            try await store.tabAction(eventID, "calculations", "removeItem", ["calculationId": .string(calculationID), "itemId": .string(line.id)],
+            try await backend.action("removeItem", ["calculationId": .string(calculationID), "itemId": .string(line.id)],
                                       reload: [], success: nil, pending: "Usuwanie pozycji…")
             items.removeAll { $0.id == line.id }
             pdfReady = false
         } catch {
-            state.error = store.failureText(error, "Błąd usuwania pozycji")
+            state.error = backend.failureText(error, "Błąd usuwania pozycji")
         }
     }
 
     private func importItems(_ picked: [JSONValue]) async -> Bool {
         struct Reply: Decodable { var count: Int }
         do {
-            let data = try await store.tabAction(eventID, "calculations", "importItems", ["calculationId": .string(calculationID), "items": .array(picked)],
+            let data = try await backend.action("importItems", ["calculationId": .string(calculationID), "items": .array(picked)],
                                                  reload: [], success: nil, pending: "Importowanie pozycji…")
             let count = (try? JSONDecoder().decode(Reply.self, from: data))?.count ?? picked.count
             if count > 0 { state.succeed("Zaimportowano \(count) pozycji") }
@@ -811,17 +825,17 @@ struct CalculationItemRequest: Identifiable {
             await load(initial: false)
             return true
         } catch {
-            state.error = store.failureText(error, "Błąd dodawania pozycji")
+            state.error = backend.failureText(error, "Błąd dodawania pozycji")
             return false
         }
     }
 
     private func deleteCalculation() async {
         do {
-            try await store.tabAction(eventID, "calculations", "remove", ["id": .string(calculationID)], reload: ["calculations"], success: nil, pending: "Usuwanie…")
+            try await backend.action("remove", ["id": .string(calculationID)], reload: ["calculations"], success: nil, pending: "Usuwanie…")
             onBack()
         } catch {
-            state.error = store.failureText(error, "Nie udało się usunąć kalkulacji")
+            state.error = backend.failureText(error, "Nie udało się usunąć kalkulacji")
         }
     }
 
@@ -838,12 +852,12 @@ struct CalculationItemRequest: Identifiable {
         guard await save() else { return }
         await state.withPending(ChromePdfEngine.available ? "Generuję PDF kalkulacji…" : "Generuję PDF kalkulacji na serwerze…") {
             do {
-                let payload = try await store.tabQueryData(eventID, "calculations", "pdfPayload", ["calculationId": calculationID])
+                let payload = try await backend.queryData("pdfPayload", ["calculationId": calculationID])
                 _ = try await state.generateStoredDocument(path: "/bridge/events/calculation-pdf", body: payload)
                 pdfReady = true
-                state.succeed("PDF kalkulacji zapisany w plikach wydarzenia")
+                state.succeed(backend.savedPdfMessage)
             } catch {
-                state.error = store.failureText(error, "Błąd generowania PDF")
+                state.error = backend.failureText(error, "Błąd generowania PDF")
             }
         }
     }
@@ -854,9 +868,9 @@ struct CalculationItemRequest: Identifiable {
         defer { pdfAction = nil }
         let fetched: (Data, String)? = await state.withPending(download ? "Pobieram PDF…" : "Otwieram PDF…") { () async -> (Data, String)? in
             do {
-                return try await CalculationPdf.fetch(store, eventID, calculationID, current: true)
+                return try await CalculationPdf.fetch(backend, calculationID, current: true)
             } catch {
-                let message = store.failureText(error, "Nie udało się odczytać PDF kalkulacji.")
+                let message = backend.failureText(error, "Nie udało się odczytać PDF kalkulacji.")
                 if message.contains("zmieniła się") { pdfReady = false }
                 state.error = message
                 return nil
@@ -869,7 +883,7 @@ struct CalculationItemRequest: Identifiable {
                 NSWorkspace.shared.activateFileViewerSelecting([target])
                 state.succeed("Pobrano: \(target.lastPathComponent)")
             } catch {
-                state.error = store.failureText(error, "Nie udało się pobrać PDF.")
+                state.error = backend.failureText(error, "Nie udało się pobrać PDF.")
             }
         } else {
             preview = NativePreview(name: file.1, data: file.0)
@@ -884,15 +898,15 @@ struct CalculationItemRequest: Identifiable {
         defer { pdfAction = nil }
         let printed: URL? = await state.withPending("Przygotowuję wydruk…") { () async -> URL? in
             do {
-                return try await state.printDocument(path: "/bridge/events/calculation-pdf", query: ["eventId": eventID, "calculationId": calculationID],
+                return try await state.printDocument(path: "/bridge/events/calculation-pdf", query: backend.printQuery(calculationID),
                                                      fallbackName: "kalkulacja.pdf")
             } catch {
-                state.error = store.failureText(error, "Nie udało się przygotować wydruku.")
+                state.error = backend.failureText(error, "Nie udało się przygotować wydruku.")
                 return nil
             }
         }
         guard let url = printed else { return }
-        do { try CalculationPdf.printDocument(PDFDocument(url: url)) } catch { state.error = store.failureText(error, "Nie udało się przygotować wydruku.") }
+        do { try CalculationPdf.printDocument(PDFDocument(url: url)) } catch { state.error = backend.failureText(error, "Nie udało się przygotować wydruku.") }
     }
 
     private func sendEmail() {
@@ -929,8 +943,7 @@ struct CalculationCatalogOption: Decodable, Identifiable, Equatable {
 private struct CalculationCatalogReply: Decodable { var options: [CalculationCatalogOption] }
 
 @MainActor struct CalculationItemSheet: View {
-    @ObservedObject var store: EventCardStore
-    let eventID: String
+    let backend: CalculationBackend
     let calculationID: String
     let category: CalculationCategory
     let editing: CalculationLine?
@@ -960,11 +973,16 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
     @State private var travelPending = false
     @State private var formError = ""
     @State private var submitting = false
+    /// „Z magazynu” przy nowej pozycji: ilości wybrane przy sprzęcie (jak „Zarządzaj sprzętem” w wydarzeniu) — kilka pozycji naraz.
+    @State private var picks: [String: Int] = [:]
+    @State private var pickedRow: String?
+    @State private var onlyPicked = false
+    /// Lista katalogu otwarta ponownie przy już wybranej pozycji („Wybierz inny…”) — wybór i pola zostają do czasu nowego wyboru.
+    @State private var browsing = false
 
-    init(store: EventCardStore, eventID: String, calculationID: String, category: CalculationCategory, editing: CalculationLine?,
+    init(backend: CalculationBackend, calculationID: String, category: CalculationCategory, editing: CalculationLine?,
          existing: [CalculationLine], onSaved: @escaping () async -> Void) {
-        _store = ObservedObject(wrappedValue: store)
-        self.eventID = eventID
+        self.backend = backend
         self.calculationID = calculationID
         self.category = category
         self.editing = editing
@@ -1009,22 +1027,42 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
                 Button { dismiss() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).keyboardShortcut(.cancelAction).disabled(submitting)
             }
             .padding(20)
-            ScrollView {
-                content.padding(.horizontal, 20).padding(.bottom, 12)
+            Group {
+                if batchMode {
+                    VStack(alignment: .leading, spacing: 12) {
+                        modePicker(["warehouse", "manual"])
+                        warehouseBatch
+                    }
+                    .padding(.horizontal, 20).padding(.bottom, 4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                } else {
+                    ScrollView {
+                        content.padding(.horizontal, 20).padding(.bottom, 12)
+                    }
+                }
             }
             .disabled(submitting)
             if !formError.isEmpty {
                 Text(formError).font(.callout).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20).padding(.top, 6)
             }
             HStack {
+                if batchMode {
+                    Text("Dwuklik dodaje 1 szt. · + / − zmienia ilość zaznaczonego wiersza · ⌘↩ dodaje pozycje")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button("Anuluj") { dismiss() }.disabled(submitting)
-                Button(submitting ? "Zapisuję…" : editing != nil ? "Zapisz zmiany" : "Dodaj pozycję") { Task { await submit() } }
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!canSubmit)
+                if batchMode {
+                    Button(submitting ? "Dodaję…" : batchCount == 0 ? "Dodaj pozycje" : "Dodaj pozycje (\(batchCount))") { Task { await submitBatch() } }
+                        .buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command).disabled(submitting || batchCount == 0)
+                } else {
+                    Button(submitting ? "Zapisuję…" : editing != nil ? "Zapisz zmiany" : "Dodaj pozycję") { Task { await submit() } }
+                        .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(!canSubmit)
+                }
             }
             .padding(20)
         }
-        .frame(width: 840, height: 780)
+        .frame(width: 900, height: 780)
         .task(id: mode) { await loadCatalog() }
         .onChange(of: search) { _, _ in visibleCount = 30 }
     }
@@ -1061,6 +1099,8 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
         mode = value
         sourceChanged = true
         selected = nil
+        browsing = false
+        formError = ""
         name = ""
         if category == .equipment {
             if value == "warehouse" { details = "" } else { power = "" }
@@ -1081,10 +1121,10 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
         catalogError = ""
         defer { catalogLoading = false }
         do {
-            let reply = try await store.tabQuery(eventID, "calculations", "catalog", ["kind": current == "warehouse" ? "equipment" : current], as: CalculationCatalogReply.self)
+            let reply = try await backend.query("catalog", ["kind": current == "warehouse" ? "equipment" : current], as: CalculationCatalogReply.self)
             catalogs[current] = reply.options
         } catch {
-            catalogError = store.failureText(error, "Nie udało się pobrać katalogu. Zamknij formularz i spróbuj ponownie.")
+            catalogError = backend.failureText(error, "Nie udało się pobrać katalogu. Zamknij formularz i spróbuj ponownie.")
         }
     }
 
@@ -1096,25 +1136,26 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
     }
 
     @ViewBuilder private var catalogSection: some View {
-        if let chosen = selected {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(selectionText(chosen))
-                if mode == "vehicle" {
-                    Text("W kalkulacji dla klienta pojawią się wyłącznie nazwa i opis pozycji poniżej. Wybór pojazdu nie rezerwuje go.")
-                        .font(.caption).foregroundStyle(.secondary)
+        if let chosen = selected, !browsing {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(selectionText(chosen))
+                    if mode == "vehicle" {
+                        Text("W kalkulacji dla klienta pojawią się wyłącznie nazwa i opis pozycji poniżej. Wybór pojazdu nie rezerwuje go.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                Button("Zmień") {
-                    selected = nil
-                    estimate = nil
-                    travelPending = false
-                    name = ""
+                Spacer(minLength: 0)
+                Button { browsing = true } label: {
+                    Label(mode == "vehicle" ? "Wybierz inny pojazd" : "Wybierz inną usługę", systemImage: "arrow.left.arrow.right")
                 }
-                .buttonStyle(.link).linkCursor()
+                .buttonStyle(.bordered).controlSize(.small)
             }
             .font(.callout).padding(10).frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
         } else {
             VStack(alignment: .leading, spacing: 8) {
+                if let chosen = selected { backToChosen(chosen.label) }
                 TextField(mode == "product" ? "Szukaj usługi personelu…" : "Szukaj pojazdu…", text: $search).textFieldStyle(.roundedBorder)
                 Group {
                     if catalogLoading {
@@ -1134,13 +1175,24 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
                                 }
                             }
                         }
-                        .frame(height: 260)
+                        // Bez wybranej pozycji formularza jeszcze nie ma — lista zajmuje całe okno.
+                        .frame(height: selected == nil ? 500 : 260)
                     }
                 }
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
             }
+        }
+    }
+
+    /// Powrót z listy do wybranej wcześniej pozycji (bez zmian w polach formularza).
+    private func backToChosen(_ label: String) -> some View {
+        HStack(spacing: 8) {
+            Button { browsing = false } label: { Label("Wróć do wybranej pozycji", systemImage: "chevron.left") }
+                .buttonStyle(.bordered).controlSize(.small)
+            Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Spacer(minLength: 0)
         }
     }
 
@@ -1173,6 +1225,7 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
 
     private func pick(_ option: CalculationCatalogOption) {
         selected = option
+        browsing = false
         estimate = nil
         travelPending = false
         sourceChanged = true
@@ -1203,7 +1256,7 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
     }
 
     @ViewBuilder private var warehouseSection: some View {
-        if let chosen = selected {
+        if let chosen = selected, !browsing {
             HStack(spacing: 10) {
                 WarehouseThumb(url: chosen.thumbnail, size: 44)
                 VStack(alignment: .leading, spacing: 2) {
@@ -1218,18 +1271,14 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
                     .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Zmień") {
-                    selected = nil
-                    name = ""
-                    power = ""
-                    unitPrice = "0"
-                }
-                .buttonStyle(.link).linkCursor()
+                Button { browsing = true } label: { Label("Wybierz inny sprzęt", systemImage: "arrow.left.arrow.right") }
+                    .buttonStyle(.bordered).controlSize(.small)
             }
             .padding(10)
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
         } else {
             VStack(alignment: .leading, spacing: 8) {
+                if let chosen = selected { backToChosen(chosen.subtitle.nonEmpty ?? chosen.label) }
                 TextField("Szukaj sprzętu...", text: $search).textFieldStyle(.roundedBorder)
                 equipmentList
             }
@@ -1267,7 +1316,7 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
                         }
                     }
                 }
-                .frame(height: 380)
+                .frame(height: selected == nil ? 500 : 300)
             }
         }
         .font(.callout)
@@ -1315,10 +1364,231 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
         var chosen = option
         chosen.stock = remaining(option)
         selected = chosen
+        browsing = false
         sourceChanged = true
         name = option.label
         unitPrice = CalculationMath.plain(option.price)
         power = option.power.map { CalculationMath.plain($0) } ?? ""
+    }
+
+    // MARK: Sprzęt z magazynu — kilka pozycji naraz (nowa pozycja)
+
+    /// Nowa pozycja sprzętu z magazynu: tabela z ilościami jak „Zarządzaj sprzętem” w wydarzeniu zamiast wyboru jednej pozycji.
+    private var batchMode: Bool { editing == nil && category == .equipment && mode == "warehouse" }
+
+    private var batchCount: Int { picks.values.filter { $0 > 0 }.count }
+    private var batchPieces: Int { picks.values.reduce(0, +) }
+
+    /// Suma netto za dzień wybranych pozycji (cena z magazynu jak w formularzu pojedynczej pozycji).
+    private var batchNetPerDay: Double {
+        (catalogs["warehouse"] ?? []).reduce(0.0) { sum, option in
+            sum + Double(picks[option.id] ?? 0) * CalculationMath.round2(option.price)
+        }
+    }
+
+    private func pickLimit(_ option: CalculationCatalogOption) -> Int { max(Int(remaining(option).rounded(.down)), 0) }
+
+    private var batchRows: [CalculationCatalogOption] {
+        let needle = search.trimmingCharacters(in: .whitespaces).lowercased(with: Locale(identifier: "pl_PL"))
+        return (catalogs["warehouse"] ?? []).filter { option in
+            let chosen = (picks[option.id] ?? 0) > 0
+            if onlyPicked && !chosen { return false }
+            guard chosen || remaining(option) > 0 else { return false }
+            if needle.isEmpty { return true }
+            let full: String = [option.title, option.subtitle, option.detail ?? ""].joined(separator: " ").lowercased(with: Locale(identifier: "pl_PL"))
+            return full.contains(needle)
+        }
+    }
+
+    private func setPick(_ option: CalculationCatalogOption, _ value: Int) {
+        let clamped = min(max(value, 0), pickLimit(option))
+        picks[option.id] = clamped > 0 ? clamped : nil
+        formError = ""
+        if picks.isEmpty { onlyPicked = false }
+    }
+
+    private func bumpPick(_ option: CalculationCatalogOption, _ delta: Int) {
+        let next = (picks[option.id] ?? 0) + delta
+        if next < 0 { return }
+        if delta > 0 && next > pickLimit(option) {
+            formError = "Brak kolejnych sztuk: \(option.title.nonEmpty ?? option.label)"
+            return
+        }
+        setPick(option, next)
+    }
+
+    @ViewBuilder private var warehouseBatch: some View {
+        let rows = batchRows
+        HStack(spacing: 12) {
+            TextField("Szukaj sprzętu: nazwa, marka, model, kategoria…", text: $search).textFieldStyle(.roundedBorder)
+            Toggle("Tylko wybrane (\(batchCount))", isOn: $onlyPicked).toggleStyle(.checkbox).disabled(batchCount == 0 && !onlyPicked)
+        }
+        Group {
+            if catalogs["warehouse"] == nil && catalogError.isEmpty {
+                ProgressView("Wczytywanie sprzętu…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if !catalogError.isEmpty {
+                ContentUnavailableView {
+                    Label("Nie udało się wczytać sprzętu", systemImage: "shippingbox")
+                } description: { Text(catalogError) } actions: {
+                    Button("Spróbuj ponownie") { Task { await loadCatalog() } }
+                }
+            } else if rows.isEmpty {
+                ContentUnavailableView("Brak pozycji", systemImage: "magnifyingglass",
+                                       description: Text(search.isEmpty ? "Brak sprzętu z dostępnym stanem." : "Nic nie pasuje do „\(search)”."))
+            } else {
+                batchTable(rows)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        batchSummary
+    }
+
+    private func batchSubtitle(_ option: CalculationCatalogOption) -> String {
+        [option.subtitle, option.detail ?? ""].filter { !$0.isEmpty }.joined(separator: " · ").nonEmpty ?? " "
+    }
+
+    private func batchTable(_ rows: [CalculationCatalogOption]) -> some View {
+        Table(rows, selection: $pickedRow) {
+            TableColumn("") { (option: CalculationCatalogOption) in
+                if (picks[option.id] ?? 0) > 0 {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(CrmTheme.rgb(0x4ade80))
+                }
+            }.width(18)
+            TableColumn("") { (option: CalculationCatalogOption) in WarehouseThumb(url: option.thumbnail, size: 30) }.width(36)
+            TableColumn("Nazwa / marka / model") { (option: CalculationCatalogOption) in
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(option.title.nonEmpty ?? option.label).fontWeight((picks[option.id] ?? 0) > 0 ? .semibold : .regular).lineLimit(1)
+                    Text(batchSubtitle(option)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                .help(option.label)
+            }.width(min: 200, ideal: 300)
+            TableColumn("Cena rentalna") { (option: CalculationCatalogOption) in
+                Text(option.price > 0 ? String(format: "%.2f zł", option.price) : "—")
+                    .foregroundStyle(option.price > 0 ? theme.accent : Color.secondary).monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }.width(min: 80, ideal: 96)
+            TableColumn("Pobór prądu") { (option: CalculationCatalogOption) in
+                Group {
+                    if let watts = option.power, watts > 0 {
+                        Label(CalculationMath.power(watts), systemImage: "bolt.fill").foregroundStyle(.orange)
+                    } else {
+                        Text("—").foregroundStyle(.tertiary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }.width(min: 70, ideal: 86)
+            TableColumn("Stan") { (option: CalculationCatalogOption) in batchStock(option) }.width(min: 96, ideal: 116)
+            TableColumn("Do kalkulacji") { (option: CalculationCatalogOption) in
+                EquipmentStepper(value: picks[option.id] ?? 0, lower: 0, upper: pickLimit(option), unit: "szt.") { setPick(option, $0) }
+            }.width(min: 150, ideal: 160)
+        }
+        .contextMenu(forSelectionType: String.self) { ids in
+            if let id = ids.first, let option = rows.first(where: { $0.id == id }) {
+                let amount = picks[option.id] ?? 0
+                Button("Dodaj 1 szt.", systemImage: "plus") { bumpPick(option, 1) }.disabled(amount >= pickLimit(option))
+                if amount > 0 {
+                    Button("Odejmij 1 szt.", systemImage: "minus") { bumpPick(option, -1) }
+                    Button("Usuń z wyboru", systemImage: "xmark", role: .destructive) { setPick(option, 0) }
+                }
+            }
+        } primaryAction: { ids in
+            // Dwuklik (albo ↩ na zaznaczonym wierszu) dodaje 1 szt.
+            guard let id = ids.first, let option = rows.first(where: { $0.id == id }) else { return }
+            bumpPick(option, 1)
+        }
+        .onKeyPress(characters: CharacterSet(charactersIn: "+=-")) { press in
+            guard let id = pickedRow, let option = rows.first(where: { $0.id == id }) else { return .ignored }
+            bumpPick(option, press.characters == "-" ? -1 : 1)
+            return .handled
+        }
+    }
+
+    private func batchStock(_ option: CalculationCatalogOption) -> some View {
+        let added = alreadyAdded(option.id)
+        let left = remaining(option) - Double(picks[option.id] ?? 0)
+        let stock: String = "Stan: " + CalculationMath.plain(option.stock ?? 0)
+        let inCalculation: String = added > 0 ? " · w kalk.: " + CalculationMath.plain(added) : ""
+        return VStack(alignment: .trailing, spacing: 1) {
+            Text("Pozostało: " + CalculationMath.plain(max(left, 0))).foregroundStyle(left > 0 ? Color.green : Color.secondary)
+            Text(stock + inCalculation).foregroundStyle(.secondary)
+        }
+        .font(.caption).monospacedDigit()
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .help("Dostępne sztuki w magazynie minus sztuki tego sprzętu już dodane do kalkulacji i wybrane teraz")
+    }
+
+    private var batchSummary: some View {
+        let span = CalculationMath.parse(days) ?? 0
+        let rate = CalculationMath.parse(vat) ?? 0
+        let net = batchNetPerDay * (span == 0 ? 1 : span)
+        let gross = net * (1 + rate / 100)
+        return HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                if batchCount == 0 {
+                    Text("Ustaw ilość przy sprzęcie: − / +, wpisz liczbę albo kliknij dwukrotnie wiersz.").font(.callout)
+                    Text("Nazwę, opis i cenę każdej pozycji zmienisz po dodaniu („Edytuj” przy pozycji).").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Wybrano: \(batchCount) poz. · \(batchPieces) szt.").font(.callout.weight(.medium))
+                    Text(CalculationMath.money(net) + " PLN netto · " + CalculationMath.money(gross) + " PLN brutto").font(.caption).foregroundStyle(theme.accent)
+                }
+            }
+            Spacer(minLength: 8)
+            HStack(spacing: 6) {
+                Text("Dni").foregroundStyle(.secondary)
+                TextField("", text: $days).textFieldStyle(.roundedBorder).frame(width: 56)
+            }
+            HStack(spacing: 6) {
+                Text("VAT %").foregroundStyle(.secondary)
+                TextField("", text: $vat).textFieldStyle(.roundedBorder).frame(width: 56)
+            }
+            if batchCount > 0 {
+                Button("Wyczyść wybór") {
+                    picks = [:]
+                    onlyPicked = false
+                }
+                .buttonStyle(.link).linkCursor()
+            }
+        }
+        .font(.callout)
+        .padding(10)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// Wszystkie wybrane pozycje jednym żądaniem (`addItems`) — te same pola co pojedyncza pozycja z magazynu.
+    private func submitBatch() async {
+        guard !submitting else { return }
+        let chosen = (catalogs["warehouse"] ?? []).filter { (picks[$0.id] ?? 0) > 0 }
+        guard !chosen.isEmpty else {
+            formError = "Ustaw ilość przy co najmniej jednej pozycji."
+            return
+        }
+        guard let span = CalculationMath.parse(days), span > 0, let rate = CalculationMath.parse(vat), rate >= 0, rate <= 100 else {
+            formError = "Uzupełnij poprawną liczbę dni i VAT."
+            return
+        }
+        let items: [JSONValue] = chosen.map { option in
+            var item: [String: JSONValue] = [
+                "category": .string(category.rawValue), "name": .string(option.label), "description": .string(""), "unit": .string("szt."),
+                "quantity": .number(Double(picks[option.id] ?? 0)), "unitPrice": .number(CalculationMath.round2(option.price)), "days": .number(span),
+                "source": .string("warehouse"), "sourceRef": .string(option.id), "vat": .number(rate),
+            ]
+            item["power"] = option.power.map { JSONValue.number($0) } ?? JSONValue.null
+            item["weight"] = option.weight.map { JSONValue.number($0) } ?? JSONValue.null
+            item["transportEstimate"] = JSONValue.null
+            return JSONValue.object(item)
+        }
+        submitting = true
+        formError = ""
+        defer { submitting = false }
+        do {
+            let message: String = chosen.count == 1 ? "Dodano pozycję" : "Dodano \(chosen.count) poz."
+            try await backend.action("addItems", ["calculationId": .string(calculationID), "items": .array(items)],
+                                      reload: [], success: message, pending: "Dodawanie pozycji…")
+            await onSaved()
+            dismiss()
+        } catch {
+            formError = backend.failureText(error, "Nie udało się dodać pozycji.")
+        }
     }
 
     // MARK: Pola pozycji
@@ -1354,7 +1624,7 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
                     }
             }
             if category == .transport {
-                CalculationTravelPanel(store: store, eventID: eventID, calculationID: calculationID,
+                CalculationTravelPanel(backend: backend, calculationID: calculationID,
                                        vehicleID: mode == "vehicle" ? selected?.id ?? "" : "", vehicleFuelType: vehicleFuelType,
                                        initial: sourceChanged ? nil : editing?.transportEstimate,
                                        days: $days, unitPrice: $unitPrice, estimate: $estimate, busy: $travelBusy, pending: $travelPending)
@@ -1433,7 +1703,7 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
     }
 
     private var canSubmit: Bool {
-        if submitting || travelBusy || travelPending { return false }
+        if submitting || travelBusy || travelPending || browsing { return false }
         if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
         if mode == "warehouse" && selected == nil { return false }
         if (mode == "product" || mode == "vehicle") && selected == nil { return false }
@@ -1473,12 +1743,12 @@ private struct CalculationCatalogReply: Decodable { var options: [CalculationCat
         formError = ""
         defer { submitting = false }
         do {
-            try await store.tabAction(eventID, "calculations", "saveItem", ["calculationId": .string(calculationID), "item": .object(item)],
+            try await backend.action("saveItem", ["calculationId": .string(calculationID), "item": .object(item)],
                                       reload: [], success: nil, pending: editing != nil ? "Zapisywanie pozycji…" : "Dodawanie pozycji…")
             await onSaved()
             dismiss()
         } catch {
-            formError = store.failureText(error, "Nie udało się zapisać pozycji.")
+            formError = backend.failureText(error, "Nie udało się zapisać pozycji.")
         }
     }
 }
@@ -1499,8 +1769,7 @@ private struct CalculationTravelContext: Decodable {
 private struct CalculationConsumption: Decodable { var value: Double?; var source: String?; var error: String? }
 
 @MainActor struct CalculationTravelPanel: View {
-    @ObservedObject var store: EventCardStore
-    let eventID: String
+    let backend: CalculationBackend
     let calculationID: String
     let vehicleID: String
     let vehicleFuelType: String?
@@ -1800,17 +2069,17 @@ private struct CalculationConsumption: Decodable { var value: Double?; var sourc
 
     private func loadContext() async {
         do {
-            let reply = try await store.tabQuery(eventID, "calculations", "travel", ["calculationId": calculationID, "action": "destination"], as: CalculationTravelContext.self)
+            let reply = try await backend.query("travel", ["calculationId": calculationID, "action": "destination"], as: CalculationTravelContext.self)
             suggested = reply.destination
             if !manual { destination = reply.destination?.label ?? "" }
         } catch {
-            contextError = store.failureText(error, "Wpisz cel ręcznie.")
+            contextError = backend.failureText(error, "Wpisz cel ręcznie.")
         }
     }
 
     private func loadConsumption() async {
         guard !vehicleID.isEmpty else { consumptionInfo = nil; return }
-        consumptionInfo = try? await store.tabQuery(eventID, "logistics", "consumption", ["vehicleId": vehicleID], as: CalculationConsumption.self)
+        consumptionInfo = try? await backend.logisticsQuery("consumption", ["vehicleId": vehicleID], as: CalculationConsumption.self)
     }
 
     private func loadQuote() async {
@@ -1818,10 +2087,10 @@ private struct CalculationConsumption: Decodable { var value: Double?; var sourc
         quoteError = ""
         defer { priceLoading = false }
         do {
-            quote = try await store.tabQuery(eventID, "logistics", "fuel", as: JSONValue.self)
+            quote = try await backend.logisticsQuery("fuel", as: JSONValue.self)
         } catch {
             quote = nil
-            quoteError = store.failureText(error, "Wpisz cenę paliwa ręcznie.")
+            quoteError = backend.failureText(error, "Wpisz cenę paliwa ręcznie.")
         }
     }
 
@@ -1837,11 +2106,11 @@ private struct CalculationConsumption: Decodable { var value: Double?; var sourc
         var params: [String: String] = ["calculationId": calculationID, "action": "route", "origin": origin, "roundTrip": roundTrip ? "1" : "0"]
         if manual { params["destination"] = destination }
         do {
-            let reply = try await store.tabQuery(eventID, "calculations", "travel", params, as: JSONValue.self)
+            let reply = try await backend.query("travel", params, as: JSONValue.self)
             guard case .number(let km)? = reply.object["distanceKm"] else { throw AppError.invalidResponse }
             apply(distanceKm: km, newRoute: reply)
         } catch {
-            routeError = store.failureText(error, "Nie udało się obliczyć trasy.")
+            routeError = backend.failureText(error, "Nie udało się obliczyć trasy.")
         }
     }
 }
@@ -1901,8 +2170,7 @@ private struct CalculationImportSources: Decodable {
 }
 
 @MainActor struct CalculationImportSheet: View {
-    @ObservedObject var store: EventCardStore
-    let eventID: String
+    let backend: CalculationBackend
     let existingRefs: Set<String>
     let onImport: ([JSONValue]) async -> Bool
     @Environment(\.dismiss) private var dismiss
@@ -1978,9 +2246,9 @@ private struct CalculationImportSources: Decodable {
 
     private func load() async {
         do {
-            sources = try await store.tabQuery(eventID, "calculations", "importSources", as: CalculationImportSources.self)
+            sources = try await backend.query("importSources", as: CalculationImportSources.self)
         } catch {
-            loadError = store.failureText(error, "Nie udało się wczytać ofert wydarzenia.")
+            loadError = backend.failureText(error, "Nie udało się wczytać \(backend.importSourceName).")
         }
     }
 

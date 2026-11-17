@@ -69,7 +69,7 @@ struct RootView: View {
     var body: some View {
         Group {
             if state.employee != nil {
-                NavigationSplitView {
+                NavigationSplitView(columnVisibility: $state.sidebarVisibility) {
                     Group {
                     if !state.navigation.isEmpty { CrmSidebar() }
                     else {
@@ -133,6 +133,12 @@ struct RootView: View {
                         else if state.screen == .offerTemplates { OfferTemplatesView() }
                         else if state.screen == .brochures { BrochuresView() }
                         else if state.screen == .sellers { SellersView(store: state.sellers) }
+                        else if state.screen == .fleet { FleetView(store: state.fleet) }
+                        else if state.screen == .timeTracking { TimeTrackingView(store: state.timeTracking) }
+                        else if state.screen == .databases { CustomDatabasesView(store: state.databases) }
+                        else if state.screen == .locations { LocationsView(store: state.locations) }
+                        else if state.screen == .website { WebsiteView(store: state.website) }
+                        else if state.screen == .campaigns { MailCampaignsView(store: state.mailCampaigns) }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -168,7 +174,7 @@ struct RootView: View {
                             }.help("Powiadomienia: \(state.unread) nieprzeczytanych").accessibilityLabel("Powiadomienia")
                         }
                         ToolbarItem(placement: .primaryAction) {
-                            Button { Task { await state.refresh(); if state.screen == .messages { await state.messages.refresh() }; if state.screen == .meetings { await state.meetings.sync(force: true) }; if state.selection == .inquiries { await state.inquiries.sync(force: true) }; if state.selection == .tasks || state.screen == .myTasks { await state.myTasks.sync(force: true) }; if state.screen == .companyTasks { await state.companyTasks.sync(force: true) }; if state.screen == .sellers { await state.sellers.load() }; if state.selection == .contacts { await state.contacts.sync(force: true) }; if state.selection == .events { await state.events.sync(force: true) }; if state.screen == .team { await state.team.sync(force: true); if let id = state.team.openedID { await state.team.loadDetail(id) } }; if state.screen?.isWarehouse == true { await state.warehouse.sync(force: true); if state.screen == .warehouse, let id = state.warehouse.openedID { await state.warehouse.loadDetail(id) } } } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
+                            Button { Task { await state.refresh(); if state.screen == .messages { await state.messages.refresh() }; if state.screen == .meetings { await state.meetings.sync(force: true) }; if state.selection == .inquiries { await state.inquiries.sync(force: true) }; if state.selection == .tasks || state.screen == .myTasks { await state.myTasks.sync(force: true) }; if state.screen == .companyTasks { await state.companyTasks.sync(force: true) }; if state.screen == .sellers { await state.sellers.load() }; if state.screen == .fleet { await state.fleet.load(); if let id = state.fleet.openedID { await state.fleet.loadDetail(id) } }; if state.screen == .timeTracking { await state.timeTracking.reloadVisible() }; if state.screen == .databases { await state.databases.load(); if let id = state.databases.openedID { await state.databases.loadDetail(id) } }; if state.screen == .locations { await state.locations.load(); if let id = state.locations.openedID { await state.locations.loadDetail(id) } }; if state.screen == .website { await state.website.refreshVisible() }; if state.screen == .campaigns { await state.mailCampaigns.load(); if let id = state.mailCampaigns.selectedID { await state.mailCampaigns.loadRecipients(id) } }; if state.selection == .contacts { await state.contacts.sync(force: true) }; if state.selection == .events { await state.events.sync(force: true) }; if state.screen == .team { await state.team.sync(force: true); if let id = state.team.openedID { await state.team.loadDetail(id) } }; if state.screen?.isWarehouse == true { await state.warehouse.sync(force: true); if state.screen == .warehouse, let id = state.warehouse.openedID { await state.warehouse.loadDetail(id) } } } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
                                 .disabled(state.syncing || state.acting || state.editing)
                         }
                         ToolbarItem(placement: .primaryAction) { if state.syncing { ProgressView().controlSize(.small) } }

@@ -51,6 +51,29 @@ async function loadInquiry(ctx: NativeContext, id: string) {
   return data as Row;
 }
 
+/**
+ * Kontekst kalkulacji zapytania jak `calculationContext` w `InquiryWorkspaceClient`: wydarzenie zapytania (gdy powstało),
+ * nazwa (tytuł zapytania), termin (`termin` albo termin zadania) i klient (osoba, organizacja albo dane z formularza).
+ */
+export async function inquiryCalculationContext(ctx: NativeContext, rawId: unknown) {
+  const inquiry = await loadInquiry(ctx, inquiryId(rawId));
+  const details: Row = inquiry.inquiry_details && typeof inquiry.inquiry_details === 'object' ? inquiry.inquiry_details : {};
+  const contact = one(inquiry.contact);
+  const organization = one(inquiry.organization);
+  const parsed = parseInquiryContact(details.client_text, details.client_email);
+  return {
+    id: String(inquiry.id),
+    eventId: typeof inquiry.event_id === 'string' ? (inquiry.event_id as string) : null,
+    name: inquiryTitleLabel(inquiry.title),
+    date: text(details.termin) || text(inquiry.due_date) || null,
+    client: {
+      name: text(contact?.full_name) || text(organization?.alias) || text(organization?.name) || parsed.fullName || inquiryTitleLabel(inquiry.title),
+      email: text(contact?.email) || parsed.email || text(organization?.email),
+      phone: text(contact?.mobile) || text(contact?.phone) || text(organization?.phone) || text(details.client_phone),
+    },
+  };
+}
+
 /** `canLead` / `canManage` jak w `InquiryWorkspaceClient`. */
 async function permissions(ctx: NativeContext, inquiry: Row, team: Row | null) {
   const has = (scope: string) => ctx.employee.permissions.includes(scope);
@@ -127,7 +150,7 @@ export async function inquiryWorkspace(ctx: NativeContext, rawId: unknown) {
       .select('id, title, event_id, guest_count, offer_number, status, total_amount, package_mode, accepted_package_id, pricing_source, offer_packages!offer_packages_offer_id_fkey(id,name,price_net), valid_until, created_at')
       .eq('inquiry_id', id).order('created_at', { ascending: false }),
     ctx.supabase.from('event_calculations')
-      .select('id, name, created_at, is_accepted, event_calculation_items(quantity, unit_price, days)')
+      .select('id, name, created_at, is_accepted, generated_pdf_path, event_calculation_items(quantity, unit_price, days)')
       .eq('inquiry_id', id).order('created_at', { ascending: false }),
     ctx.supabase.from('inquiry_stage_history')
       .select('id, from_stage, to_stage, reason, created_at, changed_by_employee:employees!changed_by(id, name, surname)')
@@ -221,6 +244,10 @@ export async function inquiryWorkspace(ctx: NativeContext, rawId: unknown) {
       accepted: Boolean(calculation.is_accepted) || calculation.id === inquiry.accepted_calculation_id,
       total: ((calculation.event_calculation_items || []) as Row[])
         .reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price || 0) * Number(item.days || 1), 0),
+      // Lista jak `InquiryCalculationsPanel`: liczba pozycji, „PDF gotowy” / „Robocza”, „Wybrana kalkulacja”.
+      itemsCount: ((calculation.event_calculation_items || []) as Row[]).length,
+      pdf: Boolean(calculation.generated_pdf_path),
+      selected: calculation.id === inquiry.accepted_calculation_id,
     })),
     activity: ((activityRes.data || []) as Row[]).map((entry) => ({
       id: String(entry.id), kind: text(entry.kind), kindLabel: ACTIVITY_LABELS[text(entry.kind)] || 'Wpis', body: text(entry.body), at: entry.created_at,

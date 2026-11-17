@@ -323,6 +323,9 @@ registerEventQueries('logistics', {
   route,
 });
 
+/** Spalanie pojazdu i cena paliwa — także kalkulator trasy w kalkulacji zapytania (`eventCalculations.ts`). */
+export { consumption as vehicleConsumption, fuel as fuelPriceQuote };
+
 // ---------------------------------------------------------------------------------------------------------------
 // Zapisy: pojazd (`handleSubmit`), usunięcie (`handleDeleteVehicle`), odbiór / zdanie (`VehicleHandoverModal`)
 // ---------------------------------------------------------------------------------------------------------------

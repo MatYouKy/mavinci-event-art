@@ -4,6 +4,8 @@ import AppKit
 // MARK: Magazyn — „Sprzęt” 1:1 ze stroną `/crm/equipment`: sprzęt i zestawy razem, filtr typu, wyszukiwanie (nazwa, marka, model),
 // widoki Kafelki / Lista / Tabela, stan dostępnych sztuk, ścieżka kategorii, duplikowanie i usuwanie. Kliknięcie otwiera kartę
 // sprzętu (`EquipmentCardView`), zestaw — ekran Zestawy (`KitsView`). Wszystko z kopii na dysku, synchronizacja przyrostowa.
+// Po lewej kategorie (z podkategoriami i liczbą pozycji) jak w „Zarządzaj sprzętem”; u góry wyraźne „Dodaj sprzęt” / „Dodaj zestaw”.
+// Nowy sprzęt to ta sama karta co edycja (`EquipmentCardView` bez identyfikatora).
 
 struct WarehouseActions {
     let open: (WarehouseEntry) -> Void
@@ -16,35 +18,55 @@ struct WarehouseActions {
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @AppStorage("warehouse.mode") private var mode: WarehouseViewMode = .grid
-    @State private var type: WarehouseTypeFilter = .all
+    /// Zakres listy: `all`, `equipment`, `kits`, `cat:<id>` (kategoria z podkategoriami) albo `none` (bez kategorii).
+    @AppStorage("warehouse.scope") private var scope = "all"
     @State private var search = ""
     @State private var selectedID: String?
     @State private var removing: WarehouseEntry?
     @State private var duplicating: WarehouseEntry?
-    @State private var adding = false
+
+    private var categoryIDs: Set<String> { Set(store.categories.map(\.id)) }
+    private func uncategorized(_ entry: WarehouseEntry) -> Bool { entry.categoryId.map { !categoryIDs.contains($0) } ?? true }
+
+    /// Kategoria z wszystkimi podkategoriami (dowolnej głębokości).
+    private func branch(_ id: String) -> Set<String> {
+        var result: Set<String> = [id]
+        var queue = [id]
+        while let current = queue.popLast() {
+            for child in store.categories where child.parentId == current && !result.contains(child.id) {
+                result.insert(child.id)
+                queue.append(child.id)
+            }
+        }
+        return result
+    }
+
+    private func inScope(_ entry: WarehouseEntry, _ branchIDs: Set<String>?) -> Bool {
+        switch scope {
+        case "all": return true
+        case "equipment": return !entry.isKit
+        case "kits": return entry.isKit
+        case "none": return uncategorized(entry)
+        default: return entry.categoryId.map { branchIDs?.contains($0) ?? false } ?? false
+        }
+    }
+
+    private var scopedCategoryID: String? { scope.hasPrefix("cat:") ? String(scope.dropFirst(4)) : nil }
 
     private var visible: [WarehouseEntry] {
-        store.entries.filter { entry in
-            switch type {
-            case .equipment: if entry.isKit { return false }
-            case .kits: if !entry.isKit { return false }
-            case .all: break
-            }
-            return entry.matches(search)
-        }
+        let branchIDs = scopedCategoryID.map(branch)
+        return store.entries.filter { inScope($0, branchIDs) && $0.matches(search) }
     }
 
     var body: some View {
         Group {
             if let id = store.openedID {
                 EquipmentCardView(store: store, equipmentID: id).id(id)
+            } else if store.creatingEquipment {
+                EquipmentCardView(store: store, equipmentID: nil).id("new-equipment")
             } else {
                 list
             }
-        }
-        .sheet(isPresented: $adding) {
-            NewEquipmentSheet(store: store)
-                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
         .confirmationDialog("Czy na pewno chcesz usunąć?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             if let entry = removing {
@@ -79,9 +101,19 @@ struct WarehouseActions {
     }
 
     private var list: some View {
-        VStack(spacing: 0) {
-            header
-            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 240)
+                .background(Color.primary.opacity(0.03))
+            Divider()
+            VStack(spacing: 0) {
+                header
+                content.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .onAppear {
+            // Zakres z usuniętej kategorii — wracamy do całego magazynu.
+            if let id = scopedCategoryID, !store.categories.isEmpty, store.category(id) == nil { scope = "all" }
         }
         .navigationTitle("Magazyn")
         .navigationSubtitle("Wyświetlasz: \(visible.count) / \(store.entries.count)")
@@ -92,17 +124,78 @@ struct WarehouseActions {
                 Button { state.openHref("/crm/equipment/kits") } label: { Label("Zestawy", systemImage: "square.stack.3d.up") }.help("Zestawy")
                 Button { state.openCRM("/crm/equipment/locations") } label: { Label("Lokalizacje", systemImage: "mappin.and.ellipse") }.help("Lokalizacje (CRM)")
                 Button { state.openHref("/crm/equipment/cables") } label: { Label("Przewody", systemImage: "cable.connector") }.help("Przewody")
-                if store.access?.canCreate == true {
-                    Button { adding = true } label: { Label("Dodaj", systemImage: "plus") }.help("Dodaj sprzęt")
+            }
+        }
+    }
+
+    // MARK: Kategorie po lewej (jak w „Zarządzaj sprzętem”)
+
+    private struct CategoryRow: Identifiable { let category: WarehouseCategory; let count: Int; var id: String { category.id } }
+
+    /// Kategorie w kolejności drzewa z liczbą pozycji (łącznie z podkategoriami); puste kategorie pomijamy.
+    private var categoryRows: [CategoryRow] {
+        var direct: [String: Int] = [:]
+        for entry in store.entries { if let id = entry.categoryId { direct[id, default: 0] += 1 } }
+        var total: [String: Int] = [:]
+        func sum(_ id: String, _ depth: Int) -> Int {
+            if let known = total[id] { return known }
+            guard depth < 12 else { return direct[id] ?? 0 }
+            let value = (direct[id] ?? 0) + store.categories.filter { $0.parentId == id }.reduce(0) { $0 + sum($1.id, depth + 1) }
+            total[id] = value
+            return value
+        }
+        return store.categoryTree.map { CategoryRow(category: $0, count: sum($0.id, 0)) }.filter { $0.count > 0 || "cat:" + $0.category.id == scope }
+    }
+
+    private var sidebar: some View {
+        let rows = categoryRows
+        let missing = store.entries.filter(uncategorized).count
+        return List(selection: Binding<String?>(get: { scope }, set: { if let value = $0 { scope = value } })) {
+            Section {
+                Label("Wszystko", systemImage: "square.grid.2x2").badge(store.entries.count).tag("all")
+                Label("Tylko sprzęt", systemImage: "shippingbox").badge(store.entries.filter { !$0.isKit }.count).tag("equipment")
+                Label("Tylko zestawy", systemImage: "square.stack.3d.up").badge(store.entries.filter(\.isKit).count).tag("kits")
+            }
+            Section("Kategorie") {
+                ForEach(rows) { row in
+                    Label(row.category.name, systemImage: row.category.level > 1 ? "folder" : "folder.fill")
+                        .lineLimit(1)
+                        .padding(.leading, CGFloat(max(0, row.category.level - 1)) * 14)
+                        .help(store.categoryPath(row.category.id))
+                        .badge(row.count)
+                        .tag("cat:" + row.category.id)
                 }
+                if missing > 0 { Label("Bez kategorii", systemImage: "questionmark.folder").badge(missing).tag("none") }
+            }
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+    }
+
+    /// Wyraźne dodawanie zależnie od widoku: zestaw w „Tylko zestawy”, w pozostałych sprzęt (z kategorią wybraną po lewej).
+    @ViewBuilder private var addButton: some View {
+        if scope == "kits" {
+            if store.canManage {
+                WarehouseAddButton(title: "Dodaj zestaw") {
+                    store.newKitRequested = true
+                    state.openHref("/crm/equipment/kits")
+                }
+            }
+        } else if store.access?.canCreate == true {
+            WarehouseAddButton(title: "Dodaj sprzęt") {
+                store.newEquipmentCategoryID = scopedCategoryID
+                store.openedID = nil
+                store.creatingEquipment = true
             }
         }
     }
 
     private var header: some View {
         HStack(spacing: 10) {
-            Picker("Typ", selection: $type) { ForEach(WarehouseTypeFilter.allCases) { Text($0.label).tag($0) } }
-                .pickerStyle(.segmented).labelsHidden().fixedSize()
+            addButton.controlSize(.regular)
+            if let id = scopedCategoryID, store.category(id) != nil {
+                Label(store.categoryPath(id), systemImage: "folder").font(.callout).foregroundStyle(.secondary).lineLimit(1)
+            }
             Spacer(minLength: 8)
             if store.syncing { ProgressView().controlSize(.small).help("Synchronizacja magazynu") }
             Picker("Widok", selection: $mode) { ForEach(WarehouseViewMode.allCases) { Label($0.label, systemImage: $0.symbol).tag($0) } }
@@ -124,7 +217,8 @@ struct WarehouseActions {
                 ProgressView("Ładowanie...").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         } else if visible.isEmpty {
-            ContentUnavailableView("Brak sprzętu", systemImage: "shippingbox")
+            ContentUnavailableView("Brak sprzętu", systemImage: "shippingbox",
+                                   description: Text(search.isEmpty ? "W tym widoku nie ma pozycji." : "Nic nie pasuje do „\(search)”."))
         } else {
             switch mode {
             case .grid:
@@ -145,6 +239,16 @@ struct WarehouseActions {
                 WarehouseTable(entries: visible, store: store, selectedID: $selectedID, actions: actions)
             }
         }
+    }
+}
+
+/// Wyraźny przycisk dodawania na ekranach magazynu („Dodaj sprzęt”, „Dodaj zestaw”, „Dodaj wtyk”…).
+struct WarehouseAddButton: View {
+    let title: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) { Label(title, systemImage: "plus") }
+            .labelStyle(.titleAndIcon).buttonStyle(.borderedProminent).help(title)
     }
 }
 

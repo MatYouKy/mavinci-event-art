@@ -4,7 +4,8 @@ import AppKit
 // MARK: Karta zapytania — natywny odpowiednik strony `/crm/inquiries/[id]` (`InquiryWorkspaceClient`): treść (bez stopek,
 // klauzul i cytatów — z „Pokaż całą wiadomość”), ustalenia, klient, prowadzenie sprzedaży (kontakt podjęty, następne
 // działanie, etap z powodem utraty, przekazanie), oferty (nowa oferta otwiera się od razu w aplikacji, kopia, akceptacja
-// klienta), kalkulacje, notatki i historia. Serwer: `src/lib/native/inquiryWorkspace.ts` (`/bridge/native/v1/inquiries`).
+// klienta), kalkulacje (lista i edytor jak w wydarzeniu — `InquiryCalculations.swift`), notatki i historia.
+// Serwer: `src/lib/native/inquiryWorkspace.ts` (`/bridge/native/v1/inquiries`).
 // Korespondencja, e-mail do klienta, analiza AI, klient i organizacja, zadania, zespół i wydarzenie z zapytania —
 // `InquiryWorkspaceTools.swift` (serwer: `src/lib/native/inquiryWorkspaceTools.ts`).
 
@@ -104,6 +105,11 @@ struct InquiryWorkspaceData: Decodable {
         var createdAt: String?
         var accepted: Bool
         var total: Double
+        var itemsCount: Int?
+        /// Zapisany PDF (`generated_pdf_path`).
+        var pdf: Bool?
+        /// Wybrana kalkulacja zapytania (`accepted_calculation_id`).
+        var selected: Bool?
     }
     struct Activity: Decodable, Identifiable {
         var id: String
@@ -244,10 +250,14 @@ private enum InquiryAfterClient { case offer, convert }
     @State private var noteRequest = UUID().uuidString.lowercased()
     @State private var afterClient: InquiryAfterClient?
     @State private var tabRefresh = 0
+    /// Kalkulacja otwarta w edytorze (`activeCalculationId` w CRM) — edytor zastępuje kartę, kontekst zapytania po lewej.
+    @State private var openCalculation: String?
 
     var body: some View {
         VStack(spacing: 0) {
-            if let data {
+            if let data, let calculation = openCalculation {
+                calculationEditor(data, calculation)
+            } else if let data {
                 header(data)
                 Divider()
                 tabs(data)
@@ -268,7 +278,26 @@ private enum InquiryAfterClient { case offer, convert }
         }
         .background(theme.page)
         .task(id: inquiryID) { await load() }
+        .onChange(of: inquiryID) { _, _ in openCalculation = nil }
         .sheet(item: $sheet) { item in sheetView(item) }
+    }
+
+    /// Edytor kalkulacji zapytania (`CalculationEditor` z `inquiryContext`) z kontekstem zapytania po lewej.
+    private func calculationEditor(_ data: InquiryWorkspaceData, _ calculationID: String) -> some View {
+        HStack(spacing: 0) {
+            ScrollView {
+                InquiryCalculationContextPanel(data: data).padding(14)
+            }
+            .frame(width: 330)
+            Divider()
+            CalculationEditorView(backend: .inquiry(store, inquiryID, eventID: data.inquiry.eventId), calculationID: calculationID,
+                                  onBack: {
+                                      openCalculation = nil
+                                      Task { await load() }
+                                  },
+                                  readOnly: !data.permissions.canManage)
+                .id(calculationID)
+        }
     }
 
     private var backBar: some View {
@@ -650,29 +679,11 @@ private enum InquiryAfterClient { case offer, convert }
     }
 
     private func calculations(_ data: InquiryWorkspaceData) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Kalkulacje zapytania — edycja pozycji w CRM.").font(.callout).foregroundStyle(.secondary)
-                Spacer()
-                if data.permissions.canManage { Button { Task { await createCalculation() } } label: { Label("Nowa kalkulacja", systemImage: "plus") }.buttonStyle(.borderedProminent) }
-            }
-            if data.calculations.isEmpty { Text("Brak kalkulacji dla tego zapytania.").foregroundStyle(.secondary) }
-            ForEach(data.calculations) { calculation in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(calculation.name).font(.callout.weight(.medium))
-                        HStack(spacing: 8) {
-                            Text(InquiryFormat.money(calculation.total)).font(.caption)
-                            if let created = calculation.createdAt.flatMap(MeetingDates.parse) { Text(InquiryFormat.full(created)).font(.caption).foregroundStyle(.secondary) }
-                            if calculation.accepted { Label("Wybrana", systemImage: "checkmark.seal.fill").font(.caption).foregroundStyle(.green) }
-                        }
-                    }
-                    Spacer()
-                    Button("Otwórz w CRM") { state.openCRM("/crm/inquiries/\(inquiryID)?tab=calculations") }
-                }
-                .padding(12).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
-            }
-        }
+        InquiryCalculationsList(backend: .inquiry(store, inquiryID, eventID: data.inquiry.eventId), calculations: data.calculations,
+                                canManage: data.permissions.canManage,
+                                onCreate: { Task { await createCalculation() } },
+                                onOpen: { openCalculation = $0 },
+                                onChanged: { Task { await load() } })
     }
 
     // MARK: Notatki, historia
@@ -799,11 +810,11 @@ private enum InquiryAfterClient { case offer, convert }
         if let offer = reply?["offerId"]?.text.nonEmpty { state.open(.offers, id: offer) }
     }
 
+    /// Nowa kalkulacja otwiera się od razu w edytorze (jak `setActiveCalculationId` w CRM).
     private func createCalculation() async {
-        if await run("workspaceCalculation", pending: "Tworzenie kalkulacji…", success: "Kalkulacja została utworzona — pozycje uzupełnisz w CRM") != nil {
-            tab = .calculations
-            state.openCRM("/crm/inquiries/\(inquiryID)?tab=calculations")
-        }
+        guard let reply = await run("workspaceCalculation", pending: "Tworzenie kalkulacji…", success: "Kalkulacja została utworzona") else { return }
+        tab = .calculations
+        if let created = reply["calculationId"]?.text.nonEmpty { openCalculation = created }
     }
 
     /// „Przygotuj realizację” — zaakceptowana oferta, bez wydarzenia i bez wcześniejszego przekazania (jak w CRM).

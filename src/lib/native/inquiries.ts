@@ -24,12 +24,14 @@ async function loadInquiries(ctx: NativeContext): Promise<Item[]> {
     const { data, error } = await ctx.supabase
       .from('tasks')
       .select(
-        `id, title, description, created_at, updated_at,
+        `id, title, description, created_at, updated_at, due_date,
          inquiry_details, inquiry_stage, inquiry_owner_id, next_action_at, last_contact_at,
          first_contact_at, sla_first_contact_due_at,
          estimated_value, win_probability, lost_reason, lost_reason_category,
          linked_offer_id, event_id, contact_id, organization_id,
-         inquiry_owner:employees!tasks_inquiry_owner_id_fkey(id, name, surname, sales_team_id)`,
+         inquiry_owner:employees!tasks_inquiry_owner_id_fkey(id, name, surname, sales_team_id),
+         organization:organizations!tasks_organization_id_fkey(name, alias),
+         contact:contacts!tasks_contact_id_fkey(first_name, last_name, full_name)`,
       )
       .eq('is_inquiry', true)
       .is('archived_at', null)
@@ -46,6 +48,9 @@ async function loadInquiries(ctx: NativeContext): Promise<Item[]> {
   return rows.map((t) => {
     const d = (t.inquiry_details && typeof t.inquiry_details === 'object' ? t.inquiry_details : {}) as Row;
     const owner = t.inquiry_owner && typeof t.inquiry_owner === 'object' ? (t.inquiry_owner as Row) : null;
+    const organization = t.organization && typeof t.organization === 'object' ? (t.organization as Row) : null;
+    const contact = t.contact && typeof t.contact === 'object' ? (t.contact as Row) : null;
+    const contactName = text(contact?.full_name) || [contact?.first_name, contact?.last_name].filter(Boolean).join(' ');
     return {
       id: String(t.id),
       item: {
@@ -83,6 +88,11 @@ async function loadInquiries(ctx: NativeContext): Promise<Item[]> {
         sourceName: text(d.source_name),
         member: member.has(String(t.id)),
         createdAt: t.created_at,
+        // Kalendarz (jak `fetchCalendarEvents`): termin wydarzenia z zapytania albo termin zadania i klient do podpisu.
+        termin: text(d.termin) || null,
+        dueDate: t.due_date ?? null,
+        clientLabel: text(organization?.alias) || text(organization?.name) || contactName || text(d.client_text)
+          || text(d.client_phone) || text(d.client_email) || '',
       },
     };
   });

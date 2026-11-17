@@ -8,11 +8,14 @@ import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 import { buildCalculationHeadingFontCss, type PublicBrandTheme } from '@/lib/events/print/calculationHeadingFont';
 import { resolveCachedPrintLogo } from '@/lib/print/pdfRenderer.server';
 import type { PrintJob } from '@/lib/print/printJob.server';
+import { inquiryCalculationContext } from '@/lib/native/inquiryWorkspace';
 
 /**
  * PDF kalkulacji wydarzenia dla Maca — ten sam dokument co „Generuj PDF” w `CalculationEditor`: zapisane pozycje
  * (rewizja treści), firma z logo z brandbooka, kontakt, przygotowujący, moc, krój nagłówków z motywu marki.
  * Zapis jak `/bridge/events/calculations-pdf`: folder „Kalkulacje”, wpis w Plikach, `publish_calculation_pdf`.
+ * Kalkulacja zapytania bez wydarzenia — nazwa, termin i klient z zapytania (`inquiryContext` w CRM), plik
+ * w `inquiries/<id>/calculations/` (bez wpisu w Plikach wydarzenia), jak „Generuj PDF” na karcie zapytania.
  */
 
 export class CalculationPrintError extends Error {
@@ -24,12 +27,30 @@ export class CalculationPrintError extends Error {
 type Category = 'equipment' | 'staff' | 'transport' | 'other';
 type Row = Record<string, any>;
 
-export type CalculationPrint = { html: string; revision: number; fileName: string; eventName: string; calculationName: string };
+export type CalculationPrint = {
+  html: string; revision: number; fileName: string; eventName: string; calculationName: string;
+  /** Właściciel sprawdzony na serwerze — do zapisu pliku (wydarzenie zapytania z bazy, nie z żądania). */
+  target: CalculationTarget;
+};
+/** Właściciel kalkulacji: wydarzenie albo zapytanie (z wydarzeniem zapytania, gdy już powstało). */
+export type CalculationTarget = { eventId: string | null; inquiryId: string | null };
+const targetOf = (target: string | CalculationTarget): CalculationTarget => (typeof target === 'string' ? { eventId: target, inquiryId: null } : target);
 
-export async function loadCalculationPrint(ctx: NativeContext, eventId: string, calculationId: string, expectedRevision: number | null): Promise<CalculationPrint> {
+export async function loadCalculationPrint(ctx: NativeContext, owner: string | CalculationTarget, calculationId: string, expectedRevision: number | null): Promise<CalculationPrint> {
   const s = ctx.supabase;
-  const { data: calc } = await s.from('event_calculations').select('id,event_id,name,notes,created_at,content_revision').eq('id', calculationId).maybeSingle();
-  if (!calc || (calc as Row).event_id !== eventId) throw new CalculationPrintError('Brak dostępu do kalkulacji', 403);
+  const requested = targetOf(owner);
+  const inquiryId = requested.inquiryId;
+  if (!requested.eventId && !inquiryId) throw new CalculationPrintError('Brak wymaganych danych');
+  const { data: calc } = await s.from('event_calculations').select('id,event_id,inquiry_id,name,notes,created_at,content_revision').eq('id', calculationId).maybeSingle();
+  // Kalkulacja zapytania: zapytanie widoczne dla pracownika (RLS), wydarzenie — z zapytania w bazie (nie z treści żądania).
+  const inquiry = inquiryId ? await inquiryCalculationContext(ctx, inquiryId).catch(() => null) : null;
+  if (inquiryId && !inquiry) throw new CalculationPrintError('Brak dostępu do kalkulacji', 403);
+  const eventId = inquiry ? inquiry.eventId : requested.eventId;
+  if (!calc
+    || (inquiryId ? (calc as Row).inquiry_id !== inquiryId : (calc as Row).event_id !== eventId)
+    || (inquiryId && eventId && (calc as Row).event_id && (calc as Row).event_id !== eventId)) {
+    throw new CalculationPrintError('Brak dostępu do kalkulacji', 403);
+  }
   const { data: canManage, error: permissionError } = await s.rpc('sales_can_manage_calculation', { p_calculation: calculationId });
   if (permissionError || !canManage) throw new CalculationPrintError('Brak uprawnień do zmiany kalkulacji', 403);
   const revision = Number((calc as Row).content_revision ?? 0);
@@ -37,7 +58,7 @@ export async function loadCalculationPrint(ctx: NativeContext, eventId: string, 
 
   const [rowsRes, eventRes, employeeRes, themeRes] = await Promise.all([
     s.from('event_calculation_items').select('*').eq('calculation_id', calculationId).order('position').order('id'),
-    s.from('events').select('name, event_date, my_company_id, contact_person_id').eq('id', eventId).maybeSingle(),
+    eventId ? s.from('events').select('name, event_date, my_company_id, contact_person_id').eq('id', eventId).maybeSingle() : Promise.resolve({ data: null }),
     s.from('employees').select('name, surname, email, phone_number').eq('id', ctx.employee.id).maybeSingle(),
     s.rpc('get_public_brand_theme'),
   ]);
@@ -56,7 +77,10 @@ export async function loadCalculationPrint(ctx: NativeContext, eventId: string, 
     const logo = await resolveCachedPrintLogo(createSupabaseAdminClient(), (company as Row).id);
     printCompany = { ...(company as Row), logo_url: logo };
   }
-  let contactPerson: { name: string; email: string; phone: string } | null = null;
+  // Zapytanie bez wydarzenia: osoba kontaktowa z zapytania (jak `inquiryContext.contactPerson` w CRM).
+  let contactPerson: { name: string; email: string; phone: string } | null = inquiry && !event
+    ? { name: inquiry.client.name, email: inquiry.client.email, phone: inquiry.client.phone }
+    : null;
   if (event?.contact_person_id) {
     const { data: contact } = await s.from('contacts').select('first_name, last_name, full_name, email, phone').eq('id', event.contact_person_id).maybeSingle();
     if (contact) {
@@ -84,7 +108,7 @@ export async function loadCalculationPrint(ctx: NativeContext, eventId: string, 
   }
   const html = buildCalculationHtml({
     calculationNumber: getCalculationNumber(calculationId, (calc as Row).created_at),
-    name: (calc as Row).name, notes: (calc as Row).notes || '', eventName: event?.name ?? '', eventDate: event?.event_date ?? null,
+    name: (calc as Row).name, notes: (calc as Row).notes || '', eventName: event?.name ?? inquiry?.name ?? '', eventDate: event?.event_date ?? inquiry?.date ?? null,
     grouped: grouped as any, categoryTotals: totals, categoryTotalsGross: gross,
     grandTotal: round2(Object.values(totals).reduce((sum, value) => sum + value, 0)),
     grandTotalGross: round2(Object.values(gross).reduce((sum, value) => sum + value, 0)),
@@ -93,8 +117,9 @@ export async function loadCalculationPrint(ctx: NativeContext, eventId: string, 
   });
   const fontCss = buildCalculationHeadingFontCss(themeRes.data && typeof themeRes.data === 'object' ? (themeRes.data as unknown as PublicBrandTheme) : null);
   const renderHtml = html.includes('</head>') ? html.replace('</head>', `<style>${fontCss}</style></head>`) : `<style>${fontCss}</style>${html}`;
-  const slug = String((calc as Row).name || event?.name || 'kalkulacja').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/-+/g, '-').replace(/^-|-$/g, '');
-  return { html: renderHtml, revision, fileName: `kalkulacja-${slug || 'event'}.pdf`, eventName: event?.name ?? '', calculationName: (calc as Row).name ?? '' };
+  const eventName = event?.name ?? inquiry?.name ?? '';
+  const slug = String((calc as Row).name || eventName || 'kalkulacja').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/-+/g, '-').replace(/^-|-$/g, '');
+  return { html: renderHtml, revision, fileName: `kalkulacja-${slug || 'event'}.pdf`, eventName, calculationName: (calc as Row).name ?? '', target: { eventId, inquiryId } };
 }
 
 /** Jak `page.pdf` w trasie kalkulacji: A4, tła, marginesy 10/10/20/10 mm, czekanie na fonty i obrazy. */
@@ -108,9 +133,26 @@ export function calculationPrintJob(print: CalculationPrint): PrintJob {
 }
 
 /** Zapis jak w `/bridge/events/calculations-pdf`: folder „Kalkulacje”, plik, wpis w Plikach i publikacja dla rewizji. */
-export async function storeCalculationPdf(ctx: NativeContext, eventId: string, calculationId: string, revision: number, print: { eventName: string; calculationName: string }, pdf: Buffer) {
+export async function storeCalculationPdf(ctx: NativeContext, owner: string | CalculationTarget, calculationId: string, revision: number, print: { eventName: string; calculationName: string }, pdf: Buffer) {
   const admin = createSupabaseAdminClient();
   const createdBy = ctx.employee.authUserId || null;
+  const { eventId, inquiryId } = targetOf(owner);
+  if (!eventId) {
+    // Kalkulacja zapytania bez wydarzenia — plik przy zapytaniu (jak `/bridge/events/calculations-pdf`), bez Plików wydarzenia.
+    if (!inquiryId) throw new CalculationPrintError('Brak wymaganych danych');
+    const slug = (print.calculationName || print.eventName || 'kalkulacja').replace(/[^a-z0-9]/gi, '-').toLowerCase().replace(/-+/g, '-').replace(/^-|-$/g, '');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const fileName = `kalkulacja-${slug || 'event'}-${timestamp}-${randomUUID()}.pdf`;
+    const storagePath = `inquiries/${inquiryId}/calculations/${fileName}`;
+    const upload = await admin.storage.from('event-files').upload(storagePath, pdf, { contentType: 'application/pdf', upsert: false });
+    if (upload.error) throw new CalculationPrintError(upload.error.message, 500);
+    const published = await admin.rpc('publish_calculation_pdf', { p_calculation: calculationId, p_revision: revision, p_path: storagePath });
+    if (published.error) {
+      await admin.storage.from('event-files').remove([storagePath]);
+      throw new CalculationPrintError('Kalkulacja zmieniła się podczas generowania. Wygeneruj PDF ponownie.', 409);
+    }
+    return { storagePath, fileName };
+  }
   const rpc = await admin.rpc('get_or_create_documents_subfolder', {
     p_event_id: eventId, p_subfolder_name: 'Kalkulacje', p_required_permission: 'events_manage', p_created_by: createdBy,
   });

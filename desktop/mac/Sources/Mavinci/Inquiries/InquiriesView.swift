@@ -108,6 +108,20 @@ struct InquiryActions {
     }
 
     var body: some View {
+        page
+            .onAppear { takeWorkspaceRequest() }
+            .onChange(of: store.workspaceRequest) { _, _ in takeWorkspaceRequest() }
+    }
+
+    /// Karta zapytania wskazana z zewnątrz (kalendarz) — otwiera „Obsługę zapytania” jak `/crm/inquiries/<id>` w CRM.
+    private func takeWorkspaceRequest() {
+        guard let id = store.workspaceRequest else { return }
+        store.workspaceRequest = nil
+        selectedID = id
+        workspaceID = id
+    }
+
+    @ViewBuilder private var page: some View {
         if let id = workspaceID {
             InquiryWorkspaceView(store: store, inquiryID: id, close: { workspaceID = nil },
                                  editSales: { editing = InquiryEditRequest(inquiry: $0) })
@@ -411,6 +425,8 @@ struct InquiryActions {
         .background(selected ? theme.accent.opacity(0.14) : theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 10))
         .overlay(alignment: .leading) { if selected { RoundedRectangle(cornerRadius: 2).fill(theme.accent).frame(width: 3).padding(.vertical, 6) } }
         .contentShape(RoundedRectangle(cornerRadius: 10))
+        // Dwuklik — karta zapytania (jak kliknięcie tytułu w CRM), pojedyncze kliknięcie — szczegóły z boku.
+        .onTapGesture(count: 2) { actions.work(inquiry) }
         .onTapGesture { actions.open(inquiry) }
         .contextMenu { InquiryMenuItems(inquiry: inquiry, canManage: canManage, canClaim: canClaim, actions: actions) }
         .accessibilityElement(children: .contain)
@@ -504,7 +520,7 @@ struct FlowBadges: View {
                 InquiryMenuItems(inquiry: inquiry, canManage: store.canManage(inquiry), canClaim: store.canClaim(inquiry), actions: actions)
             }
         } primaryAction: { ids in
-            if let id = ids.first, let inquiry = store.inquiry(id) { actions.open(inquiry) }
+            if let id = ids.first, let inquiry = store.inquiry(id) { actions.work(inquiry) }
         }
     }
 }

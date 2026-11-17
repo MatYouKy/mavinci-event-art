@@ -76,6 +76,18 @@ import SwiftUI
                         if offer != nil || conversation != nil{sellerFocus=SellerArrangementsFocus(eventID:candidate,offerID:offer,conversationID:conversation,step:q["prepStep"])}
                     }
                 }
+                // Czas pracy: /crm/time-tracking/<pracownik>?discussion=<wpis> — rozmowa o wpisie na stronie pracownika.
+                if section=="time-tracking"{
+                    let employeeID=UUID(uuidString:next) != nil ? next:nil
+                    let entry=q["discussion"].flatMap{UUID(uuidString:$0) != nil ? $0:nil}
+                    showTimeTracking(employee:employeeID,discussion:entry)
+                    return true
+                }
+                // Kampanie e-mail: /crm/campaigns?campaign=<id> — kampania w Centrum Kampanii (bez id — lista kampanii).
+                if section=="campaigns"{
+                    showCampaign(q["campaign"].flatMap{UUID(uuidString:$0) != nil ? $0:nil})
+                    return true
+                }
                 // Spotkania: /crm/calendar/meeting/<id> i /crm/calendar?meeting=<id>.
                 if section=="calendar"{
                     let candidate=next=="meeting" && parts.count>crm+3 ? parts[crm+3]:(q["meeting"] ?? q["meetingId"] ?? "")

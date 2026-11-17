@@ -15,7 +15,8 @@ import AppKit
         let iso=ISO8601DateFormatter();iso.formatOptions=[.withInternetDateTime,.withFractionalSeconds]
         if let d=iso.date(from:raw) {return remember(d)};iso.formatOptions=[.withInternetDateTime]
         if let d=iso.date(from:raw) {return remember(d)}
-        for format in ["yyyy-MM-dd'T'HH:mm:ss","yyyy-MM-dd"] {
+        // Termin zapytania z CRM bywa zapisany bez sekund (`2027-01-08T19:00`, czas polski).
+        for format in ["yyyy-MM-dd'T'HH:mm:ss","yyyy-MM-dd'T'HH:mm","yyyy-MM-dd"] {
             let f=DateFormatter();f.locale=Locale(identifier:"en_US_POSIX");f.timeZone=calendar.timeZone;f.dateFormat=format
             if let d=f.date(from:raw) {return remember(d)}
         };return nil
@@ -116,18 +117,43 @@ struct CalendarLink:Codable {
     @State private var selectedDate=Date()
     @State private var calendarSheet=false
     @State private var meeting:Row?
+    /// „Potencjalne zapytania: widoczne / ukryte” jak filtr kalendarza w CRM.
+    @AppStorage("calendar.potentialInquiries") private var showInquiries=true
     private var c:Calendar {CalendarDates.calendar}
+    private var canSeeInquiries:Bool {workspace.employee?.canView(.inquiries) == true}
     private var rows:[Row] {
         var rows=workspace.rows(.calendar)
-        if workspace.employee?.canView(.inquiries) == true {
-            for item in workspace.rows(.inquiries) where !["won","lost","completed"].contains(item.status) {
-                let date=item["next_action_at"].isEmpty ? item["due_date"]:item["next_action_at"]
-                guard !date.isEmpty else {continue}
-                var f=item.fields;f["id"] = .string("inquiry:\(item.id)");f["source_id"] = .string(item.id);f["kind"] = .string("inquiry");f["event_date"] = .string(date);f["event_end_date"] = .null
-                rows.append(Row(f))
-            }
+        if showInquiries && canSeeInquiries {
+            rows += workspace.inquiries.inquiries.compactMap(NativeCalendarView.inquiryRow)
         }
         return rows.sorted {$0["event_date"]<$1["event_date"]}
+    }
+    /// Zapytanie jako wpis kalendarza — jak `fetchCalendarEvents` w CRM: termin z zapytania (albo termin zadania), tylko bez
+    /// wydarzenia i poza etapami wygrane / przegrane; tytuł „Potencjalne · …”, kolor bursztynowy, linia przerywana.
+    static func inquiryRow(_ item:Inquiry) -> Row? {
+        guard item.eventId == nil, item.stage != "won", item.stage != "lost" else {return nil}
+        let termin:String=item.termin ?? ""
+        let raw:String=termin.isEmpty ? (item.dueDate ?? ""):termin
+        guard !raw.isEmpty else {return nil}
+        // Godzina z terminu (`2027-01-08T19:00`, czas polski) w zapisie ISO — tak samo czytają ją kalendarz i opis wpisu.
+        var date:String=raw
+        if raw.count > 10, let parsed=CalendarDates.date(raw) {date=ISO8601DateFormatter().string(from:parsed)}
+        let subject:String=item.title.replacingOccurrences(of:#"^Zapytanie:\s*"#,with:"",options:[.regularExpression,.caseInsensitive])
+        let stage=InquiryStage(raw:item.stage)
+        let client:String=item.clientLabel ?? ""
+        var details:[String]=[client.isEmpty ? "nieznany klient":client,stage.label]
+        if item.probability > 0 {details.append("szansa \(item.probability)%")}
+        var f:[String:JSONValue]=[:]
+        f["id"] = .string("inquiry:\(item.id)")
+        f["source_id"] = .string(item.id)
+        f["kind"] = .string("inquiry")
+        f["title"] = .string("Potencjalne · \(subject.isEmpty ? "Zapytanie":subject)")
+        f["event_date"] = .string(date)
+        f["event_end_date"] = .string(date)
+        f["location"] = .string(item.locationText)
+        f["color"] = .string("#f59e0b")
+        f["inquiry_details"] = .string(details.joined(separator:" · "))
+        return Row(f)
     }
     private var days:[CalendarDay] {
         guard let first=c.date(from:c.dateComponents([.year,.month],from:month)),let range=c.range(of:.day,in:.month,for:first) else {return []}
@@ -144,6 +170,10 @@ struct CalendarLink:Codable {
                 Button {move(1)} label:{Image(systemName:"chevron.right")}.help("Następny miesiąc")
                 Text(CalendarDates.title(month,format:"LLLL yyyy").capitalized).font(.title2.bold()).padding(.leading,12)
                 Spacer()
+                if canSeeInquiries {
+                    Toggle(isOn:$showInquiries) {Label("Potencjalne zapytania",systemImage:"tray")}.toggleStyle(.button)
+                        .help(showInquiries ? "Potencjalne zapytania: widoczne (kliknij, aby ukryć)":"Potencjalne zapytania: ukryte (kliknij, aby pokazać)")
+                }
                 Button("Połącz z Kalendarzem Apple…",systemImage:"calendar.badge.clock") {calendarSheet=true}
             }.padding(16).crmBar()
             GeometryReader { available in
@@ -170,6 +200,7 @@ struct CalendarLink:Codable {
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
         }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.top).navigationTitle("Kalendarz")
         .onAppear {revealTarget()}
+        .task(id:workspace.employee?.id) {if canSeeInquiries {await workspace.inquiries.backgroundSync()}}
         .onChange(of:workspace.focusedID) {_,_ in revealTarget()}
         .sheet(isPresented:$calendarSheet) {calendarSettings}
         .sheet(item:$meeting) {row in VStack(alignment:.leading,spacing:16) {Text(row.title).font(.title2.bold());EventRecordFields(row:row);Button("Zamknij") {meeting=nil}}.padding(24).frame(width:540)}
@@ -206,6 +237,7 @@ struct CalendarLink:Codable {
                 .foregroundStyle(color).frame(maxWidth:.infinity,alignment:.leading)
             if !compact{
                 Text(Labels.date(row["event_date"])).font(.caption).foregroundStyle(.secondary)
+                if row["kind"] == "inquiry" && !row["inquiry_details"].isEmpty {Text(row["inquiry_details"]).font(.caption).foregroundStyle(.secondary).lineLimit(2)}
                 if !row["location"].isEmpty{Text(row["location"]).font(.caption).foregroundStyle(.secondary).lineLimit(2)}
             }
         }.padding(compact ? 5:10).frame(maxWidth:.infinity,alignment:.leading)
@@ -241,7 +273,7 @@ struct CalendarLink:Codable {
     private func open(_ row:Row) {
         switch row["kind"] {
         case "meeting":meeting=row
-        case "inquiry":workspace.open(.inquiries,id:row["source_id"])
+        case "inquiry":workspace.showInquiryWorkspace(row["source_id"])
         default:workspace.showEvent(row["source_id"].isEmpty ? row.id:row["source_id"])
         }
     }

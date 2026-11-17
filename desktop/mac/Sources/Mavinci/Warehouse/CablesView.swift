@@ -152,7 +152,7 @@ extension WarehouseStore {
                     Button { store.cableCategoriesShown = true } label: { Label("Kategorie", systemImage: "folder") }.help("Kategorie przewodów")
                 }
                 if store.access?.canCreate == true {
-                    Button { adding = true } label: { Label("Dodaj przewód", systemImage: "plus") }.help("Dodaj przewód")
+                    WarehouseAddButton(title: "Dodaj przewód") { adding = true }
                 }
             }
         }

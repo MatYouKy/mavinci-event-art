@@ -207,9 +207,9 @@ import AppKit
                 if let location = page.location, let name = location["name"]?.text.nonEmpty {
                     HStack(spacing: 8) {
                         Button(name) {
-                            if let id = location["id"]?.text.nonEmpty { state.openCRM("/crm/locations/\(id)") }
+                            if let id = location["id"]?.text.nonEmpty { state.showLocation(id) }
                         }
-                        .buttonStyle(.link).linkCursor().help("Otwórz lokalizację w CRM")
+                        .buttonStyle(.link).linkCursor().help("Otwórz szczegóły lokalizacji")
                         if canEdit && !event["location_id"].isEmpty && !editingRooms { editButton("Edytuj sale") { editingRooms = true } }
                     }
                     if let address = location["formatted_address"]?.text.nonEmpty { Text(address).font(.caption).foregroundStyle(.secondary) }
@@ -453,7 +453,7 @@ import AppKit
             HStack(spacing: 10) {
                 Button(saving ? "Zapisywanie…" : "Zapisz sale wydarzenia") { Task { await save(rooms) } }.buttonStyle(.borderedProminent).disabled(saving)
                 Button("Anuluj") { reset(rooms); error = nil; editing = false }.disabled(saving)
-                Button("Zarządzaj salami obiektu") { state.openCRM("/crm/locations/\(rooms.locationId)") }.buttonStyle(.link).linkCursor().font(.caption)
+                Button("Zarządzaj salami obiektu") { state.showLocation(rooms.locationId) }.buttonStyle(.link).linkCursor().font(.caption)
             }
         }
         .padding(12).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))

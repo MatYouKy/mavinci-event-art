@@ -1038,7 +1038,7 @@ export default function VehicleDetailPage() {
                       <div className="mb-3 flex items-start justify-between">
                         <div className="flex-1">
                           <div className="mb-2 flex items-center gap-3">
-                            <h3 className="font-medium uppercase text-[#e5e4e2]">{policy.type}</h3>
+                            <h3 className="font-medium uppercase text-[#e5e4e2]">{policy.type === 'oc_ac' ? 'OC + AC' : policy.type}</h3>
                             {getStatusBadge(policy.status)}
                             {isExpiringSoon && (
                               <span className="flex items-center gap-1 rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400">

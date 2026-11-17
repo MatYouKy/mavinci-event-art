@@ -39,6 +39,7 @@ import {
   sendInquiryEmail,
   setInquiryTeamMember,
 } from '@/lib/native/inquiryWorkspaceTools';
+import { inquiryCalculationAction, inquiryCalculationQuery, sendInquiryCalculationEmail } from '@/lib/native/eventCalculations';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,6 +56,8 @@ export const maxDuration = 180;
  * analysis | clientSetup | clientSearch | team | tasks | convertSetup; POST op=workspaceLinkEmail | workspaceEmailPreview |
  * workspaceEmailSend | workspaceEmailImprove | workspaceAsk | workspaceGuests | workspaceApprove | workspaceClient |
  * workspaceTeam | workspaceTask | workspaceConvert. Wysyłka e-maili i asystent AI tokenem pracownika (jak przeglądarka).
+ * Kalkulacje zapytania (`src/lib/native/eventCalculations.ts`, edytor jak w wydarzeniu): GET op=calcQuery&id&query=…;
+ * POST op=calcAction {id, action, targetId?, …} | calcEmail {id, calculationId, …}.
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -67,7 +70,7 @@ const allowed = (ctx: NativeContext) => can(ctx.employee, 'inquiries_view') || c
 const stageIds = STAGES.map((stage) => stage.id as string);
 const lostCategories = LOST_REASON_CATEGORIES.map(([value]) => value as string);
 const bearer = (request: Request) => /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';
-const workspaceRead = new Set(['workspace', 'handoffCandidates', 'correspondence', 'emailSearch', 'emailThread', 'emailSetup', 'analysis', 'clientSetup', 'clientSearch', 'team', 'tasks', 'convertSetup']);
+const workspaceRead = new Set(['workspace', 'handoffCandidates', 'correspondence', 'emailSearch', 'emailThread', 'emailSetup', 'analysis', 'clientSetup', 'clientSearch', 'team', 'tasks', 'convertSetup', 'calcQuery']);
 const isoOrNull = (value: unknown) => {
   if (value === null || value === undefined || value === '') return null;
   const date = new Date(String(value));
@@ -120,6 +123,8 @@ export async function GET(request: Request) {
         return nativeJson(await inquiryTasks(ctx, q('id')));
       case 'convertSetup':
         return nativeJson(await inquiryConvertSetup(ctx, q('id')));
+      case 'calcQuery':
+        return nativeJson(await inquiryCalculationQuery(ctx, q('id'), q('query'), url.searchParams));
       default:
         return failure('Nieznana operacja.');
     }
@@ -261,12 +266,15 @@ export async function POST(request: Request) {
       case 'workspaceTeam': return done(await setInquiryTeamMember(ctx, body));
       case 'workspaceTask': return done(await createInquiryTask(ctx, body));
       case 'workspaceConvert': return done(await convertInquiry(ctx, body));
+      // `id` to zapytanie; identyfikator kalkulacji czynności (usuń, duplikuj, wybierz) przychodzi w `targetId`.
+      case 'calcAction': return done((await inquiryCalculationAction(ctx, id, String(body.action || ''), { ...body, id: body.targetId ?? null })) as Record<string, unknown>);
+      case 'calcEmail': return nativeJson(await sendInquiryCalculationEmail(ctx, bearer(request), id, body));
       default:
         return failure('Nieznana operacja.');
     }
   } catch (error) {
     console.error('[native-inquiries]', op, error);
-    if (op.startsWith('workspace')) return failure(errorText(error, 'Serwer nie wykonał operacji.'), 400);
+    if (op.startsWith('workspace') || op.startsWith('calc')) return failure(errorText(error, 'Serwer nie wykonał operacji.'), 400);
     return failure(errorText(error, 'Serwer nie wykonał operacji.'), 500);
   }
 }

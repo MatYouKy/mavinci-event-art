@@ -21,7 +21,7 @@ import * as Yup from 'yup';
 interface InsurancePolicy {
   id: string;
   vehicle_id: string;
-  type: 'oc' | 'ac' | 'nnw' | 'assistance' | 'other';
+  type: 'oc' | 'oc_ac' | 'ac' | 'nnw' | 'assistance' | 'other';
   insurance_company: string;
   policy_number: string;
   start_date: string;
@@ -40,6 +40,7 @@ interface InsurancePoliciesPanelProps {
 
 const insuranceTypeLabels = {
   oc: 'OC',
+  oc_ac: 'OC + AC',
   ac: 'AC',
   nnw: 'NNW',
   assistance: 'Assistance',
@@ -114,9 +115,9 @@ export default function InsurancePoliciesPanel({ vehicleId }: InsurancePoliciesP
       const policyData = {
         ...values,
         vehicle_id: vehicleId,
-        is_mandatory: values.type === 'oc',
-        blocks_usage: values.type === 'oc',
-        detailed_coverage: values.type === 'ac' ? values.detailed_coverage || {} : {},
+        is_mandatory: values.type === 'oc' || values.type === 'oc_ac',
+        blocks_usage: values.type === 'oc' || values.type === 'oc_ac',
+        detailed_coverage: values.type === 'ac' || values.type === 'oc_ac' ? values.detailed_coverage || {} : {},
       };
 
       if (editingPolicy) {
@@ -267,7 +268,7 @@ export default function InsurancePoliciesPanel({ vehicleId }: InsurancePoliciesP
                   >
                     <Edit className="h-4 w-4 text-[#e5e4e2]/60" />
                   </button>
-                  {policy.type === 'ac' && (
+                  {(policy.type === 'ac' || policy.type === 'oc_ac') && (
                     <button
                       onClick={() =>
                         setExpandedPolicyId(expandedPolicyId === policy.id ? null : policy.id)
@@ -293,7 +294,7 @@ export default function InsurancePoliciesPanel({ vehicleId }: InsurancePoliciesP
               </div>
 
               {/* Expanded Coverage Details for AC */}
-              {policy.type === 'ac' &&
+              {(policy.type === 'ac' || policy.type === 'oc_ac') &&
                 expandedPolicyId === policy.id &&
                 policy.detailed_coverage && (
                   <div className="mt-4 border-t border-[#d3bb73]/10 pt-4">
@@ -438,6 +439,7 @@ export default function InsurancePoliciesPanel({ vehicleId }: InsurancePoliciesP
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                   >
                     <option value="oc">OC (Obowiązkowe)</option>
+                    <option value="oc_ac">OC + AC (jedna polisa)</option>
                     <option value="ac">AC (Autocasco)</option>
                     <option value="nnw">NNW</option>
                     <option value="assistance">Assistance</option>
@@ -522,7 +524,7 @@ export default function InsurancePoliciesPanel({ vehicleId }: InsurancePoliciesP
                 </div>
 
                 {/* AC Coverage Details */}
-                {values.type === 'ac' && (
+                {(values.type === 'ac' || values.type === 'oc_ac') && (
                   <div className="rounded-lg border border-[#d3bb73]/20 p-4">
                     <h4 className="mb-3 text-sm font-medium text-[#e5e4e2]">Zakres ochrony AC:</h4>
                     <div className="space-y-2">

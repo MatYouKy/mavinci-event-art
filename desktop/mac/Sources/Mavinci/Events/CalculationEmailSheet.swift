@@ -66,8 +66,7 @@ extension EventCardStore {
 }
 
 @MainActor struct CalculationEmailSheet: View {
-    @ObservedObject var store: EventCardStore
-    let eventID: String
+    let backend: CalculationBackend
     let calculationID: String
     let name: String
     @EnvironmentObject private var state: Workspace
@@ -166,8 +165,10 @@ extension EventCardStore {
                                      : "PDF kalkulacji nie został jeszcze wygenerowany. Najpierw kliknij „Generuj PDF”.",
                       systemImage: setup.pdfReady ? "doc.richtext" : "exclamationmark.triangle")
                     .foregroundStyle(setup.pdfReady ? Color.blue : Color.orange)
-                Toggle("Dołącz dodatkowe pliki z eventu", isOn: $includeFiles)
-                if includeFiles {
+                if backend.hasEvent {
+                    Toggle("Dołącz dodatkowe pliki z eventu", isOn: $includeFiles)
+                }
+                if includeFiles && backend.hasEvent {
                     Text("Zobaczysz tylko pliki, do których masz dostęp zgodnie z uprawnieniami. Wybierz pliki, które chcesz dołączyć do wiadomości.")
                         .font(.caption).foregroundStyle(.secondary)
                     if setup.files.isEmpty {
@@ -200,14 +201,14 @@ extension EventCardStore {
     private func load() async {
         loadError = nil
         do {
-            let next = try await store.tabQuery(eventID, "calculations", "emailSetup", ["calculationId": calculationID], as: CalculationEmailSetup.self)
+            let next = try await backend.query("emailSetup", ["calculationId": calculationID], as: CalculationEmailSetup.self)
             accountId = next.accounts.first?.id ?? ""
             to = next.to
             subject = next.subject
             text = next.text
             setup = next
         } catch {
-            loadError = store.failureText(error, "Błąd podczas ładowania kont email")
+            loadError = backend.failureText(error, "Błąd podczas ładowania kont email")
         }
     }
 
@@ -215,9 +216,9 @@ extension EventCardStore {
         previewLoading = true
         defer { previewLoading = false }
         do {
-            previewHTML = try await store.calculationEmailPreview(eventID, calculationID: calculationID, accountId: accountId, subject: subject, text: text)
+            previewHTML = try await backend.previewEmail(draft(scheduledAt: nil))
         } catch {
-            problem = store.failureText(error, "Nie udało się przygotować podglądu.")
+            problem = backend.failureText(error, "Nie udało się przygotować podglądu.")
         }
     }
 
@@ -232,13 +233,18 @@ extension EventCardStore {
         sending = true
         defer { sending = false }
         do {
-            let notice = try await store.sendCalculationEmail(eventID, calculationID: calculationID, accountId: accountId, to: to.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                              cc: cc, bcc: bcc, subject: subject.trimmingCharacters(in: .whitespacesAndNewlines), text: text,
-                                                              fileIDs: includeFiles ? Array(fileIDs) : [], scheduledAt: scheduled ? scheduledAt : nil)
+            let notice = try await backend.sendEmail(draft(scheduledAt: scheduled ? scheduledAt : nil))
             state.succeed(notice)
             dismiss()
         } catch {
-            problem = store.failureText(error, "Błąd podczas wysyłania email")
+            problem = backend.failureText(error, "Błąd podczas wysyłania email")
         }
+    }
+
+    /// Wiadomość z formularza (podgląd bierze skrzynkę, temat i treść; wysyłka — całość).
+    private func draft(scheduledAt: Date?) -> CalculationEmailDraft {
+        CalculationEmailDraft(calculationID: calculationID, accountId: accountId, to: to.trimmingCharacters(in: .whitespacesAndNewlines),
+                              cc: cc, bcc: bcc, subject: subject.trimmingCharacters(in: .whitespacesAndNewlines), text: text,
+                              fileIDs: includeFiles ? Array(fileIDs) : [], scheduledAt: scheduledAt)
     }
 }

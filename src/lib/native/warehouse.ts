@@ -354,3 +354,149 @@ async function loadRental(ctx: NativeContext): Promise<Item[]> {
     },
   }));
 }
+
+// MARK: Zapis karty sprzętu i nowy sprzęt (Mac: `EquipmentCardView` — edycja i dodawanie tym samym formularzem)
+
+const ID_PATTERN = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
+const textOrNull = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null);
+const numberOrNull = (value: unknown) => {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+const dayOrNull = (value: unknown) => (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null);
+const idOrNull = (value: unknown) => (typeof value === 'string' && ID_PATTERN.test(value) ? value : null);
+const objectOf = (value: unknown): Row => (value && typeof value === 'object' && !Array.isArray(value) ? value as Row : {});
+
+/** Specyfikacja prądowa jak `normalizePowerSpecs` (domyślnie 230 V, 1 faza). */
+function powerSpecs(value: Row) {
+  return {
+    power_watts: numberOrNull(value.power_watts), current_amps: numberOrNull(value.current_amps),
+    voltage_volts: numberOrNull(value.voltage_volts) ?? 230, power_phase: value.power_phase === 'three_phase' ? 'three_phase' : 'single_phase',
+    input_connector_type_id: idOrNull(value.input_connector_type_id), output_connector_type_id: idOrNull(value.output_connector_type_id),
+    power_notes: textOrNull(value.power_notes),
+  };
+}
+
+/** Kolumny `equipment_items` z formularza karty (`EquipmentDraft.json`) — te same co `handleSave` w `/crm/equipment/[id]`. */
+function equipmentColumns(data: Row, preCheck: boolean) {
+  const dims = objectOf(data.dimensions);
+  const cable = objectOf(data.cable);
+  const power = objectOf(data.power);
+  const length = numberOrNull(dims.length), width = numberOrNull(dims.width), height = numberOrNull(dims.height);
+  const cableLength = numberOrNull(cable.lengthMeters), connectorIn = textOrNull(cable.connectorIn), connectorOut = textOrNull(cable.connectorOut);
+  const stock = numberOrNull(data.cableStockQuantity);
+  return {
+    name: textOrNull(data.name),
+    warehouse_category_id: idOrNull(data.categoryId),
+    storage_location_id: idOrNull(data.locationId),
+    brand: textOrNull(data.brand), model: textOrNull(data.model), description: textOrNull(data.description),
+    thumbnail_url: textOrNull(data.thumbnailUrl), user_manual_url: textOrNull(data.manualUrl),
+    weight_kg: numberOrNull(data.weightKg),
+    cable_specs: cableLength != null || connectorIn || connectorOut ? { length_meters: cableLength, connector_in: connectorIn, connector_out: connectorOut } : null,
+    ...(stock != null ? { cable_stock_quantity: Math.max(0, Math.round(stock)) } : {}),
+    dimensions_cm: length != null || width != null || height != null ? { length, width, height } : null,
+    purchase_date: dayOrNull(data.purchaseDate), purchase_price: numberOrNull(data.purchasePrice),
+    current_value: numberOrNull(data.currentValue), depreciation_rate: numberOrNull(data.depreciationRate),
+    rental_price_per_day: numberOrNull(data.rentalPricePerDay), warranty_until: dayOrNull(data.warrantyUntil),
+    serial_number: textOrNull(data.serialNumber), barcode: textOrNull(data.barcode), notes: textOrNull(data.notes),
+    power_specs: powerSpecs({
+      power_watts: power.watts, current_amps: power.amps, voltage_volts: power.volts, power_phase: power.phase,
+      input_connector_type_id: power.inputConnectorId, output_connector_type_id: power.outputConnectorId, power_notes: power.notes,
+    }),
+    // Kolumny kroków realizacji — tylko gdy baza je ma (jak w CRM).
+    ...(preCheck ? { requires_pre_check: data.requiresPreCheck === true, pre_check_instructions: textOrNull(data.preCheckInstructions) } : {}),
+  };
+}
+
+/** Pola zapisywane w historii zmian jak `fieldsToLog` w CRM. */
+const HISTORY_FIELDS = [
+  'name', 'warehouse_category_id', 'brand', 'model', 'description', 'weight_kg', 'purchase_date', 'purchase_price',
+  'rental_price_per_day', 'serial_number', 'power_specs', 'requires_pre_check', 'pre_check_instructions',
+];
+function historyValue(field: string, value: unknown): string | null {
+  if (field === 'requires_pre_check') return value ? 'Tak' : 'Nie';
+  if (field === 'power_specs') {
+    const specs = powerSpecs(objectOf(value));
+    return JSON.stringify(specs, Object.keys(specs).sort());
+  }
+  if (value == null || value === '') return null;
+  return typeof value === 'object' ? JSON.stringify(value) : String(value);
+}
+
+/** Zapis karty sprzętu (Mac „Zapisz”): kolumny jak w CRM i wpisy historii zmian (`equipment_edit_history`). Zwraca opis błędu albo `null`. */
+export async function saveEquipment(ctx: NativeContext, id: string, data: Row): Promise<string | null> {
+  const s = ctx.supabase;
+  const { data: current, error: readError } = await s.from('equipment_items').select('*').eq('id', id).is('deleted_at', null).maybeSingle();
+  if (readError) return readError.message || 'Błąd podczas zapisywania';
+  if (!current) return 'Nie znaleziono sprzętu.';
+  const columns: Row = equipmentColumns(data, 'requires_pre_check' in current);
+  if (!columns.name) return 'Nazwa jest wymagana.';
+  const { data: updated, error } = await s.from('equipment_items').update(columns).eq('id', id).select('id');
+  if (error) return error.message || 'Błąd podczas zapisywania';
+  if (!updated?.length) return 'Nie masz uprawnień do edycji tego sprzętu.';
+  const history = HISTORY_FIELDS.filter((field) => field in columns).flatMap((field) => {
+    const before = historyValue(field, (current as Row)[field]);
+    const after = historyValue(field, columns[field]);
+    return before === after ? [] : [{
+      equipment_id: id, employee_id: ctx.employee.id, field_name: field, old_value: before, new_value: after, change_type: 'update',
+    }];
+  });
+  if (history.length) {
+    const { error: historyError } = await s.from('equipment_edit_history').insert(history);
+    if (historyError) console.error('[native-warehouse] history', historyError.message);
+  }
+  invalidateWarehouse();
+  return null;
+}
+
+/**
+ * Nowy sprzęt z pełnej karty (Mac — ten sam formularz co edycja): wszystkie kolumny `equipment_items`, potem stan początkowy jak
+ * `/crm/equipment/new` — jednostki z numerami (`equipment_units`), `equipment_stock` (stan i minimum) i wpis
+ * „Początkowy stan magazynowy” (`equipment_stock_history`); kategoria z ilością bez numerów — `cable_stock_quantity`.
+ * Galerię, pliki i skład aplikacja dodaje zaraz potem tymi samymi operacjami co na karcie.
+ */
+export async function createEquipment(ctx: NativeContext, data: Row): Promise<{ id?: string; error?: string; warnings: string[] }> {
+  const s = ctx.supabase;
+  const columns: Row = equipmentColumns(data, true);
+  if (!columns.name || !columns.warehouse_category_id) return { error: 'Wypełnij wymagane pola: Nazwa i Kategoria', warnings: [] };
+  const { data: category } = await s.from('warehouse_categories').select('id,parent_id,special_properties').eq('id', columns.warehouse_category_id).maybeSingle();
+  if (!category) return { error: 'Wybrana kategoria nie istnieje.', warnings: [] };
+  const { data: parent } = (category as Row).parent_id
+    ? await s.from('warehouse_categories').select('special_properties').eq('id', (category as Row).parent_id).maybeSingle()
+    : { data: null };
+  const flag = (row: Row | null, name: string) => (Array.isArray(row?.special_properties) ? row!.special_properties : [])
+    .find((p: Row) => p?.name === name && typeof p.value === 'boolean')?.value as boolean | undefined;
+  const simple = flag(category as Row, 'simple_quantity') ?? flag(parent as Row | null, 'simple_quantity') ?? false;
+  const quantity = Math.max(0, Math.min(500, Math.round(Number(data.initialQuantity) || 0)));
+  const minimum = Math.max(0, Math.min(100_000, Math.round(Number(data.minStockLevel) || 0)));
+  const { cable_stock_quantity: _ignored, ...base } = columns;
+  const { data: created, error } = await s.from('equipment_items')
+    .insert({ ...base, ...(simple ? { cable_stock_quantity: quantity } : {}), is_active: true }).select('id').single();
+  if (error || !created) return { error: error?.message || 'Błąd podczas tworzenia sprzętu', warnings: [] };
+  const id = String((created as Row).id);
+  const warnings: string[] = [];
+  if (!simple && quantity > 0) {
+    const prefix = id.slice(0, 8).toUpperCase();
+    const units = Array.from({ length: quantity }, (_, index) => ({
+      equipment_id: id, unit_serial_number: `${prefix}-${String(index + 1).padStart(3, '0')}`, status: 'available',
+      location_id: columns.storage_location_id, purchase_date: columns.purchase_date,
+    }));
+    const { error: unitsError } = await s.from('equipment_units').insert(units);
+    if (unitsError) warnings.push(`Nie udało się utworzyć jednostek: ${unitsError.message}`);
+  }
+  if (quantity > 0 || minimum > 0) {
+    const { error: stockError } = await s.from('equipment_stock')
+      .update({ total_quantity: quantity, available_quantity: quantity, min_stock_level: minimum }).eq('equipment_id', id);
+    if (stockError) warnings.push(`Nie udało się zapisać stanu magazynowego: ${stockError.message}`);
+  }
+  if (quantity > 0) {
+    const { error: historyError } = await s.from('equipment_stock_history').insert({
+      equipment_id: id, change_type: 'purchase', quantity_change: quantity, quantity_after: quantity, employee_id: ctx.employee.id,
+      notes: 'Początkowy stan magazynowy',
+    });
+    if (historyError) warnings.push(`Nie udało się zapisać historii stanu: ${historyError.message}`);
+  }
+  invalidateWarehouse();
+  return { id, warnings };
+}

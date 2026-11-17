@@ -21,6 +21,14 @@ struct KitEditorRequest: Identifiable {
     @State private var editor: KitEditorRequest?
     @State private var removing: WarehouseKit?
 
+    private func openRequestedKitEditor() {
+        guard store.newKitRequested else { return }
+        store.newKitRequested = false
+        guard store.canManage else { return }
+        store.openedKitID = nil
+        editor = KitEditorRequest(kit: nil)
+    }
+
     private var visible: [WarehouseKit] {
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
         return store.kits.filter { $0.active && (q.isEmpty || $0.name.lowercased().contains(q)) }
@@ -45,6 +53,9 @@ struct KitEditorRequest: Identifiable {
         .sheet(item: $editor) { request in
             KitEditorSheet(store: store, kit: request.kit).warehouseSheetStyle(state)
         }
+        // „Dodaj zestaw” z listy magazynu (widok „Tylko zestawy”) — od razu formularz nowego zestawu.
+        .onAppear { openRequestedKitEditor() }
+        .onChange(of: store.newKitRequested) { _, _ in openRequestedKitEditor() }
         .confirmationDialog("Usuń zestaw", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Usuń", role: .destructive) { if let kit = removing { Task { _ = await store.deleteKit(kit) } } }
             Button("Anuluj", role: .cancel) {}
@@ -80,7 +91,7 @@ struct KitEditorRequest: Identifiable {
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 if store.canManage {
-                    Button { editor = KitEditorRequest(kit: nil) } label: { Label("Dodaj zestaw", systemImage: "plus") }.help("Dodaj zestaw")
+                    WarehouseAddButton(title: "Dodaj zestaw") { editor = KitEditorRequest(kit: nil) }
                 }
             }
         }

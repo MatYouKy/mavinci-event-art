@@ -491,7 +491,8 @@ import SwiftUI
         guard let api else { throw AppError.configuration }
         var body = body
         body["op"] = .string(op)
-        body["id"] = .string(id)
+        // Wydarzenie osobno (`eventId`) — `id` w treści to identyfikator wiersza (np. `mutate` update/delete), nie wydarzenia.
+        body["eventId"] = .string(id)
         let payload = body
         let data: Data
         if let workspace {
@@ -531,7 +532,9 @@ import SwiftUI
         guard let api else { throw AppError.configuration }
         var params = query
         params["op"] = op
-        params["id"] = id
+        // Wydarzenie w `eventId`; `id` zostaje dla odczytu, który go podał (rezerwacje sprzętu, umowa podwykonawcy).
+        params["eventId"] = id
+        if params["id"] == nil { params["id"] = id }
         return try JSONDecoder().decode(T.self, from: try await api.get("/events/card", query: params))
     }
 
@@ -543,7 +546,9 @@ import SwiftUI
         guard let api else { throw AppError.configuration }
         var payload = body
         payload["op"] = .string("tabAction")
-        payload["id"] = .string(id)
+        // Wydarzenie w `eventId`: `id` w treści należy do czynności (kalkulacja, plik, koszt, prowizja, osoba…). Wcześniej
+        // nadpisywaliśmy je identyfikatorem wydarzenia — usuwanie kalkulacji kończyło się „Nie znaleziono kalkulacji.”.
+        payload["eventId"] = .string(id)
         payload["tab"] = .string(tab)
         payload["action"] = .string(action)
         let request = payload
@@ -575,7 +580,8 @@ import SwiftUI
         guard let api else { throw AppError.configuration }
         var all = params
         all["op"] = "tabQuery"
-        all["id"] = id
+        all["eventId"] = id
+        if all["id"] == nil { all["id"] = id }
         all["tab"] = tab
         all["query"] = query
         return try await api.get("/events/card", query: all)

@@ -44,7 +44,8 @@ export async function GET(request: Request) {
   if (!ctx) return nativeUnauthorized();
   if (!eventsAccess(ctx).canView) return nativeJson({ error: 'Nie masz dostępu do wydarzeń.' }, 403);
   const url = new URL(request.url);
-  const id = url.searchParams.get('id') || '';
+  // Wydarzenie w `eventId` (Mac) albo `id` — przy `tabQuery` parametr `id` może należeć do odczytu (np. rezerwacje sprzętu).
+  const id = url.searchParams.get('eventId') || url.searchParams.get('id') || '';
   if (!uuid.test(id)) return nativeJson({ error: 'Nieprawidłowe wydarzenie.' }, 400);
   try {
     if (url.searchParams.get('op') === 'stepsHelp') return nativeJson({ help: EVENT_STEPS_HELP, rules: EVENT_STEPS_RULES });
@@ -146,7 +147,9 @@ export async function POST(request: Request) {
   } catch {
     return nativeJson({ error: 'Nieprawidłowe dane.' }, 400);
   }
-  const id = String(body.id || '');
+  // Aplikacja na Maca wysyła wydarzenie w `eventId` przy `tabAction` / `mutate` — `id` w treści to wtedy identyfikator wiersza
+  // (kalkulacji, pliku, kosztu…). Starsze wersje i pozostałe operacje: wydarzenie w `id`.
+  const id = String(body.eventId || body.id || '');
   // RPC karty (kroki, magazyn, realizacja) — jak `supabase.rpc` w przeglądarce; błąd z bazy wraca z kodem i komunikatem.
   if (body.op === 'rpc') {
     const name = String(body.name || '');

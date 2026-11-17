@@ -8,6 +8,8 @@ import { guessCategory } from '@/components/crm/events/calculations/calculations
 import { composeOfferEmail, sendingAccounts } from './offerActions';
 import { emailPreviewDocument } from './messages';
 import { dispatchCrmEmail } from '@/lib/emailScheduling';
+import { fuelPriceQuote, vehicleConsumption } from './eventLogistics';
+import { inquiryCalculationContext } from './inquiryWorkspace';
 
 /**
  * Zakładka „Kalkulacje” (`EventCalculationsTab` + `CalculationEditor` + `AddCalculationItemModal`): lista z sumą netto,
@@ -15,6 +17,11 @@ import { dispatchCrmEmail } from '@/lib/emailScheduling';
  * według kategorii (magazyn ze stanem, usługi personelu, pojazdy, ręczne), kolejność, zapis wszystkich pozycji jednym żądaniem.
  * Wysyłka kalkulacji e-mailem jak `SendCalculationEmailModal`: skrzynka pracownika, adresat (osoba kontaktowa wydarzenia),
  * treść ze stopką firmy, aktualny PDF i opcjonalnie pliki wydarzenia w załącznikach, wysyłka teraz albo zaplanowana.
+ *
+ * Te same odczyty i czynności obsługują kalkulacje zapytania (`InquiryCalculationsPanel` + `CalculationEditor`
+ * z `inquiryContext`) — `inquiryCalculationQuery` / `inquiryCalculationAction` / `sendInquiryCalculationEmail` dla
+ * `/bridge/native/v1/inquiries`. Kalkulacja należy wtedy do zapytania; wydarzenie zapytania (gdy już powstało) daje miejsce,
+ * pojazdy, pliki i adresata jak w CRM.
  */
 
 type Row = Record<string, any>;
@@ -26,6 +33,10 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 function fail(message: string): never {
   throw new Error(message);
 }
+
+/** Właściciel kalkulacji: wydarzenie (`inquiryId = null`) albo zapytanie (z wydarzeniem zapytania, gdy już powstało). */
+export type CalcScope = { eventId: string | null; inquiryId: string | null };
+const eventScope = (eventId: string): CalcScope => ({ eventId, inquiryId: null });
 
 async function calculationsTab(ctx: NativeContext, eventId: string) {
   const { data, error } = await ctx.supabase.from('event_calculations').select('*, event_calculation_items(quantity, unit_price, days)')
@@ -45,16 +56,17 @@ async function calculationsTab(ctx: NativeContext, eventId: string) {
 
 registerEventTab('calculations', calculationsTab);
 
-async function ownCalculation(ctx: NativeContext, eventId: string, id: string) {
+async function ownCalculation(ctx: NativeContext, scope: CalcScope, id: string) {
   if (!UUID.test(id)) fail('Nieprawidłowa kalkulacja.');
-  const { data } = await ctx.supabase.from('event_calculations').select('*').eq('id', id).eq('event_id', eventId).maybeSingle();
+  const base = ctx.supabase.from('event_calculations').select('*').eq('id', id);
+  const { data } = await (scope.inquiryId ? base.eq('inquiry_id', scope.inquiryId) : base.eq('event_id', scope.eventId || '')).maybeSingle();
   if (!data) fail('Nie znaleziono kalkulacji.');
   return data as Row;
 }
 
 /** `load` z `CalculationEditor`: pozycje z miniaturą, stanem i wagą sprzętu oraz nazwą pojazdu. */
-async function editor(ctx: NativeContext, eventId: string, params: URLSearchParams) {
-  const calc = await ownCalculation(ctx, eventId, params.get('calculationId') || '');
+async function editor(ctx: NativeContext, scope: CalcScope, params: URLSearchParams) {
+  const calc = await ownCalculation(ctx, scope, params.get('calculationId') || '');
   const s = ctx.supabase;
   const { data: rows, error } = await s.from('event_calculation_items').select('*').eq('calculation_id', calc.id).order('category').order('position').order('id');
   if (error) throw error;
@@ -100,7 +112,7 @@ async function editor(ctx: NativeContext, eventId: string, params: URLSearchPara
 const watts = (value: unknown) => (value != null && value !== '' && Number.isFinite(Number(value)) ? Number(value) : null);
 
 /** Katalogi formularza pozycji: sprzęt (aktywny, ze stanem dostępnym), usługi personelu, pojazdy. */
-async function catalog(ctx: NativeContext, _eventId: string, params: URLSearchParams) {
+async function catalog(ctx: NativeContext, _scope: CalcScope, params: URLSearchParams) {
   const s = ctx.supabase;
   const kind = params.get('kind');
   if (kind === 'equipment') {
@@ -166,7 +178,7 @@ async function catalog(ctx: NativeContext, _eventId: string, params: URLSearchPa
 type Destination = { target: string; label: string; locationId: string | null; source: string };
 
 /** Miejsce realizacji jak `/bridge/calculations/travel-estimate`: lokalizacja wydarzenia, potem z zapytania. */
-async function suggestedDestination(ctx: NativeContext, eventId: string, calc: Row): Promise<Destination | null> {
+async function suggestedDestination(ctx: NativeContext, scope: CalcScope, calc: Row): Promise<Destination | null> {
   const s = ctx.supabase;
   const readLocation = async (id: unknown, source: string): Promise<Destination | null> => {
     if (typeof id !== 'string' || !UUID.test(id)) return null;
@@ -178,7 +190,8 @@ async function suggestedDestination(ctx: NativeContext, eventId: string, calc: R
     return target ? { target, label: [l.name, address].filter(Boolean).join(' — '), locationId: l.id, source } : null;
   };
   let destination: Destination | null = null;
-  const event = await s.from('events').select('location_id,location').eq('id', eventId).maybeSingle();
+  const eventId = scope.eventId || (typeof calc.event_id === 'string' ? calc.event_id : null);
+  const event = eventId ? await s.from('events').select('location_id,location').eq('id', eventId).maybeSingle() : { data: null, error: null };
   if (event.error) fail('Nie udało się odczytać miejsca wydarzenia. Możesz wpisać adres ręcznie.');
   if (event.data) {
     const e = event.data as Row;
@@ -204,10 +217,10 @@ const safeTravelError = (error: unknown) =>
     ? error.message : 'Nie udało się pobrać danych trasy. Spróbuj ponownie lub wpisz wartości ręcznie.';
 
 /** `CalculationVehicleTravel`: `action=destination` (podpowiedź celu) albo `action=route` (Google Maps, ręczny cel opcjonalny). */
-async function travel(ctx: NativeContext, eventId: string, params: URLSearchParams) {
-  const calc = await ownCalculation(ctx, eventId, params.get('calculationId') || '');
+async function travel(ctx: NativeContext, scope: CalcScope, params: URLSearchParams) {
+  const calc = await ownCalculation(ctx, scope, params.get('calculationId') || '');
   if (params.get('action') === 'destination') {
-    const destination = await suggestedDestination(ctx, eventId, calc);
+    const destination = await suggestedDestination(ctx, scope, calc);
     return { origin: DEFAULT_TRAVEL_ORIGIN, destination: destination ? { label: destination.label, locationId: destination.locationId, source: destination.source } : null };
   }
   const manual = params.get('destination');
@@ -217,7 +230,7 @@ async function travel(ctx: NativeContext, eventId: string, params: URLSearchPara
     if (!manual.trim()) fail('Wpisz miejsce docelowe.');
     destination = { target: manual.trim(), label: manual.trim(), locationId: null, source: 'manual' };
   } else {
-    destination = await suggestedDestination(ctx, eventId, calc);
+    destination = await suggestedDestination(ctx, scope, calc);
   }
   if (!destination) fail('Brak lokalizacji w zapytaniu lub wydarzeniu. Wpisz miejsce docelowe.');
   const origin = (params.get('origin') || '').trim();
@@ -239,12 +252,17 @@ async function travel(ctx: NativeContext, eventId: string, params: URLSearchPara
 
 const VEHICLE_ROLES: Record<string, string> = { transport_equipment: 'Transport sprzętu', transport_crew: 'Transport ekipy', support: 'Wsparcie' };
 
-/** `ImportFromOfferModal` (wydarzenie): pozycje ofert, zawartość produktów (sprzęt, zestawy, rental, ludzie) i pojazdy wydarzenia. */
-async function importSources(ctx: NativeContext, eventId: string) {
+/**
+ * `ImportFromOfferModal`: pozycje ofert, zawartość produktów (sprzęt, zestawy, rental, ludzie) i pojazdy wydarzenia.
+ * Zapytanie — oferty zapytania, pojazdy tylko z wydarzenia zapytania (gdy już powstało).
+ */
+async function importSources(ctx: NativeContext, owner: CalcScope) {
   const s = ctx.supabase;
-  const { data: vehicleRows } = await s.from('event_vehicles')
-    .select('id, role, estimated_distance_km, fuel_cost_estimate, toll_cost_estimate, vehicle:vehicles(id, brand, model, registration_number), driver:employees!event_vehicles_driver_id_fkey(id, name, surname)')
-    .eq('event_id', eventId).neq('status', 'cancelled');
+  const { data: vehicleRows } = owner.eventId
+    ? await s.from('event_vehicles')
+      .select('id, role, estimated_distance_km, fuel_cost_estimate, toll_cost_estimate, vehicle:vehicles(id, brand, model, registration_number), driver:employees!event_vehicles_driver_id_fkey(id, name, surname)')
+      .eq('event_id', owner.eventId).neq('status', 'cancelled')
+    : { data: [] as Row[] };
   const vehicles = ((vehicleRows || []) as Row[]).map((v) => ({
     ref: `veh_${v.id}`,
     vehicleName: v.vehicle ? `${v.vehicle.brand || ''} ${v.vehicle.model || ''} (${v.vehicle.registration_number || ''})`.trim() : 'Pojazd',
@@ -253,7 +271,8 @@ async function importSources(ctx: NativeContext, eventId: string) {
     estimatedDistance: v.estimated_distance_km ? Number(v.estimated_distance_km) : null,
     fuelCost: v.fuel_cost_estimate ? Number(v.fuel_cost_estimate) : null, tollCost: v.toll_cost_estimate ? Number(v.toll_cost_estimate) : null,
   }));
-  const { data: offers } = await s.from('offers').select('id, offer_number').eq('event_id', eventId);
+  const offersQuery = s.from('offers').select('id, offer_number');
+  const { data: offers } = await (owner.inquiryId ? offersQuery.eq('inquiry_id', owner.inquiryId) : offersQuery.eq('event_id', owner.eventId || ''));
   if (!offers?.length) return { products: [], equipment: [], staff: [], vehicles };
   const offerList = offers as Row[];
   const offerIds = offerList.map((o) => o.id);
@@ -338,8 +357,8 @@ async function importSources(ctx: NativeContext, eventId: string) {
 }
 
 /** Podpisany adres aktualnego PDF (gdy rewizja dokumentu zgadza się z treścią). */
-async function pdf(ctx: NativeContext, eventId: string, params: URLSearchParams) {
-  const calc = await ownCalculation(ctx, eventId, params.get('calculationId') || '');
+async function pdf(ctx: NativeContext, scope: CalcScope, params: URLSearchParams) {
+  const calc = await ownCalculation(ctx, scope, params.get('calculationId') || '');
   if (!calc.generated_pdf_path) fail('Ta kalkulacja nie ma jeszcze wygenerowanego PDF');
   if (params.get('current') === '1' && calc.generated_pdf_revision !== calc.content_revision) fail('Kalkulacja zmieniła się od wygenerowania dokumentu. Wygeneruj aktualny PDF.');
   const { data, error } = await ctx.supabase.storage.from('event-files').createSignedUrl(calc.generated_pdf_path, 300);
@@ -348,9 +367,10 @@ async function pdf(ctx: NativeContext, eventId: string, params: URLSearchParams)
 }
 
 /** Dane żądania PDF dla Maca: identyfikatory i rewizja zapisanej treści. */
-async function pdfPayload(ctx: NativeContext, eventId: string, params: URLSearchParams) {
-  const calc = await ownCalculation(ctx, eventId, params.get('calculationId') || '');
-  return { eventId, calculationId: calc.id, expectedRevision: Number(calc.content_revision ?? 0) };
+async function pdfPayload(ctx: NativeContext, scope: CalcScope, params: URLSearchParams) {
+  const calc = await ownCalculation(ctx, scope, params.get('calculationId') || '');
+  if (scope.inquiryId) return { eventId: scope.eventId, inquiryId: scope.inquiryId, calculationId: calc.id, expectedRevision: Number(calc.content_revision ?? 0) };
+  return { eventId: scope.eventId, calculationId: calc.id, expectedRevision: Number(calc.content_revision ?? 0) };
 }
 
 // MARK: Wysyłka kalkulacji e-mailem (`SendCalculationEmailModal`)
@@ -359,20 +379,29 @@ const MAX_ATTACHMENTS_BYTES = 25 * 1024 * 1024;
 const pdfCurrent = (calc: Row) => Boolean(calc.generated_pdf_path) && calc.generated_pdf_revision === calc.content_revision;
 
 /** Okno „Wyślij kalkulację przez email”: skrzynki, adresat, temat i treść, stan PDF, pliki wydarzenia do dołączenia. */
-async function emailSetup(ctx: NativeContext, eventId: string, params: URLSearchParams) {
-  const calc = await ownCalculation(ctx, eventId, params.get('calculationId') || '');
+async function emailSetup(ctx: NativeContext, scope: CalcScope, params: URLSearchParams) {
+  const calc = await ownCalculation(ctx, scope, params.get('calculationId') || '');
+  const none = { data: null as Row | Row[] | null };
   const [accounts, event, files] = await Promise.all([
     sendingAccounts(ctx),
-    ctx.supabase.from('events').select('name, contact_person_id').eq('id', eventId).maybeSingle(),
-    ctx.supabase.from('event_files').select('id, name, original_name, file_path, file_size, mime_type, created_at')
-      .eq('event_id', eventId).order('created_at', { ascending: false }),
+    scope.eventId ? ctx.supabase.from('events').select('name, contact_person_id').eq('id', scope.eventId).maybeSingle() : Promise.resolve(none),
+    scope.eventId
+      ? ctx.supabase.from('event_files').select('id, name, original_name, file_path, file_size, mime_type, created_at')
+        .eq('event_id', scope.eventId).order('created_at', { ascending: false })
+      : Promise.resolve(none),
   ]);
   const contactId = (event.data as Row | null)?.contact_person_id;
-  const contact = contactId
+  let contact = contactId
     ? ((await ctx.supabase.from('contacts').select('first_name, last_name, email').eq('id', contactId).maybeSingle()).data as Row | null)
     : null;
+  let eventName = String((event.data as Row | null)?.name || '').trim();
+  if (!scope.eventId && scope.inquiryId) {
+    // Zapytanie bez wydarzenia — adresat i nazwa z zapytania (`inquiryContext` w `CalculationEditor`).
+    const context = await inquiryCalculationContext(ctx, scope.inquiryId);
+    contact = { first_name: context.client.name, last_name: '', email: context.client.email };
+    eventName = context.name;
+  }
   const name = String(calc.name || '').trim();
-  const eventName = String((event.data as Row | null)?.name || '').trim();
   return {
     accounts: accounts.map((account) => ({
       id: account.id,
@@ -383,7 +412,7 @@ async function emailSetup(ctx: NativeContext, eventId: string, params: URLSearch
     subject: name ? `Kalkulacja: ${name}` : eventName ? `Kalkulacja - ${eventName}` : 'Kalkulacja wydarzenia',
     text: 'Dzień dobry,\n\nW załączeniu przesyłam kalkulację wydarzenia.\n\nProszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dyspozycji.',
     pdfReady: pdfCurrent(calc),
-    files: ((files.data || []) as Row[]).filter((file) => file.file_path !== calc.generated_pdf_path).map((file) => ({
+    files: (Array.isArray(files.data) ? (files.data as Row[]) : []).filter((file) => file.file_path !== calc.generated_pdf_path).map((file) => ({
       id: String(file.id),
       name: String(file.name || file.original_name || String(file.file_path).split('/').pop() || 'Plik'),
       size: file.file_size == null ? null : Number(file.file_size),
@@ -392,7 +421,11 @@ async function emailSetup(ctx: NativeContext, eventId: string, params: URLSearch
   };
 }
 
-registerEventQueries('calculations', { editor, catalog, pdf, pdfPayload, travel, importSources, emailSetup });
+type ScopedQuery = (ctx: NativeContext, scope: CalcScope, params: URLSearchParams) => Promise<unknown>;
+const SCOPED_QUERIES: Record<string, ScopedQuery> = { editor, catalog, pdf, pdfPayload, travel, importSources, emailSetup };
+registerEventQueries('calculations', Object.fromEntries(Object.entries(SCOPED_QUERIES).map(([name, query]) => [
+  name, (ctx: NativeContext, eventId: string, params: URLSearchParams) => query(ctx, eventScope(eventId), params),
+])));
 
 async function senderAccount(ctx: NativeContext, accountId: unknown) {
   const account = (await sendingAccounts(ctx)).find((item) => item.id === String(accountId || ''));
@@ -401,8 +434,8 @@ async function senderAccount(ctx: NativeContext, accountId: unknown) {
 }
 
 /** „Podgląd” wiadomości ze stopką i szablonem wybranej skrzynki. */
-async function emailPreview(ctx: NativeContext, eventId: string, body: Row) {
-  await ownCalculation(ctx, eventId, String(body.calculationId || ''));
+async function emailPreview(ctx: NativeContext, scope: CalcScope, body: Row) {
+  await ownCalculation(ctx, scope, String(body.calculationId || ''));
   const account = await senderAccount(ctx, body.accountId);
   const email = await composeOfferEmail(ctx, account.id, String(body.subject || ''), String(body.text || ''), '');
   return { html: emailPreviewDocument(email.html) };
@@ -419,7 +452,11 @@ async function download(ctx: NativeContext, path: string, message: string) {
  * wydarzenia w załącznikach, treść ze stopką firmy. Wymaga tokenu pracownika (funkcja poczty jak w przeglądarce).
  */
 export async function sendCalculationEmail(ctx: NativeContext, accessToken: string, eventId: string, body: Row) {
-  const calc = await ownCalculation(ctx, eventId, String(body.calculationId || ''));
+  return sendEmail(ctx, accessToken, eventScope(eventId), body);
+}
+
+async function sendEmail(ctx: NativeContext, accessToken: string, scope: CalcScope, body: Row) {
+  const calc = await ownCalculation(ctx, scope, String(body.calculationId || ''));
   const to = String(body.to || '').trim();
   const subject = String(body.subject || '').trim();
   const message = String(body.text || '');
@@ -443,10 +480,11 @@ export async function sendCalculationEmail(ctx: NativeContext, accessToken: stri
     contentDisposition: 'attachment',
   }];
   let total = pdf.length;
-  const ids = (Array.isArray(body.fileIds) ? body.fileIds : []).map(String).filter((id: string) => UUID.test(id)).slice(0, 20);
-  if (ids.length) {
+  // Pliki tylko z wydarzenia (także wydarzenia zapytania) — jak `SendCalculationEmailModal`.
+  const ids = scope.eventId ? (Array.isArray(body.fileIds) ? body.fileIds : []).map(String).filter((id: string) => UUID.test(id)).slice(0, 20) : [];
+  if (ids.length && scope.eventId) {
     const { data, error } = await ctx.supabase.from('event_files').select('id, name, original_name, file_path, mime_type')
-      .eq('event_id', eventId).in('id', ids);
+      .eq('event_id', scope.eventId).in('id', ids);
     if (error) fail('Nie udało się pobrać plików wydarzenia');
     for (const file of ((data || []) as Row[]).filter((row) => row.file_path !== calc.generated_pdf_path)) {
       const name = String(file.original_name || file.name || 'Plik');
@@ -461,7 +499,12 @@ export async function sendCalculationEmail(ctx: NativeContext, accessToken: stri
     accessToken,
     functionName: 'send-email',
     scheduledAt,
-    metadata: { entityType: 'calculation', entityId: calc.id, eventId, actionUrl: `/crm/events/${eventId}?tab=calculations` },
+    metadata: scope.inquiryId
+      ? {
+        entityType: 'calculation', entityId: calc.id, eventId: scope.eventId, inquiryId: scope.inquiryId,
+        actionUrl: scope.eventId ? `/crm/events/${scope.eventId}?tab=calculations` : `/crm/inquiries/${scope.inquiryId}?tab=calculations`,
+      }
+      : { entityType: 'calculation', entityId: calc.id, eventId: scope.eventId, actionUrl: `/crm/events/${scope.eventId}?tab=calculations` },
     payload: {
       salesDocument: { kind: 'calculation', id: calc.id, storagePath: calc.generated_pdf_path, revision: calc.generated_pdf_revision },
       emailAccountId: account.id,
@@ -476,28 +519,29 @@ export async function sendCalculationEmail(ctx: NativeContext, accessToken: stri
   return { scheduled: result.scheduled, scheduledAt: result.scheduledAt ?? null };
 }
 
-async function create(ctx: NativeContext, eventId: string) {
-  const { data, error } = await ctx.supabase.from('event_calculations').insert({ event_id: eventId, name: 'Nowa kalkulacja' }).select('id').single();
+async function create(ctx: NativeContext, scope: CalcScope) {
+  if (!scope.eventId || scope.inquiryId) fail('Nową kalkulację zapytania tworzy karta zapytania.');
+  const { data, error } = await ctx.supabase.from('event_calculations').insert({ event_id: scope.eventId, name: 'Nowa kalkulacja' }).select('id').single();
   if (error || !data) fail('Nie udało się utworzyć kalkulacji');
   return { ok: true, id: (data as Row).id };
 }
 
-async function remove(ctx: NativeContext, eventId: string, body: Row) {
-  const calc = await ownCalculation(ctx, eventId, String(body.id || ''));
+async function remove(ctx: NativeContext, scope: CalcScope, body: Row) {
+  const calc = await ownCalculation(ctx, scope, String(body.id || ''));
   const { error } = await ctx.supabase.from('event_calculations').delete().eq('id', calc.id);
   if (error) fail(error.message || 'Nie udało się usunąć kalkulacji');
   return { ok: true };
 }
 
-async function duplicate(ctx: NativeContext, eventId: string, body: Row) {
-  const calc = await ownCalculation(ctx, eventId, String(body.id || ''));
+async function duplicate(ctx: NativeContext, scope: CalcScope, body: Row) {
+  const calc = await ownCalculation(ctx, scope, String(body.id || ''));
   const { error } = await ctx.supabase.rpc('duplicate_sales_calculation', { p_calculation: calc.id, p_request_id: randomUUID() });
   if (error) fail(error.message || 'Nie udało się zduplikować kalkulacji');
   return { ok: true };
 }
 
-async function accept(ctx: NativeContext, eventId: string, body: Row) {
-  const calc = await ownCalculation(ctx, eventId, String(body.id || ''));
+async function accept(ctx: NativeContext, scope: CalcScope, body: Row) {
+  const calc = await ownCalculation(ctx, scope, String(body.id || ''));
   const { error } = await ctx.supabase.from('event_calculations').update({ is_accepted: body.accepted === true }).eq('id', calc.id);
   if (error) fail(error.message || 'Nie udało się zmienić statusu kalkulacji');
   return { ok: true };
@@ -524,8 +568,8 @@ function validItem(item: Row) {
 }
 
 /** Dodanie albo zmiana jednej pozycji (formularz pozycji). */
-async function saveItem(ctx: NativeContext, eventId: string, body: Row) {
-  const calc = await ownCalculation(ctx, eventId, String(body.calculationId || ''));
+async function saveItem(ctx: NativeContext, scope: CalcScope, body: Row) {
+  const calc = await ownCalculation(ctx, scope, String(body.calculationId || ''));
   const item = body.item && typeof body.item === 'object' ? body.item : {};
   validItem(item);
   const s = ctx.supabase;
@@ -544,8 +588,32 @@ async function saveItem(ctx: NativeContext, eventId: string, body: Row) {
   return { ok: true };
 }
 
-async function removeItem(ctx: NativeContext, eventId: string, body: Row) {
-  const calc = await ownCalculation(ctx, eventId, String(body.calculationId || ''));
+/**
+ * Kilka pozycji ze sprzętu naraz (Mac: „Dodaj pozycję” → „Z magazynu” — ilości przy sprzęcie jak w „Zarządzaj sprzętem”):
+ * te same pola i walidacja co `saveItem`, jedno wstawienie na końcu kalkulacji — wszystkie albo żadna.
+ */
+async function addItems(ctx: NativeContext, scope: CalcScope, body: Row) {
+  const calc = await ownCalculation(ctx, scope, String(body.calculationId || ''));
+  const items = (Array.isArray(body.items) ? body.items : []) as Row[];
+  if (!items.length) fail('Ustaw ilość przy co najmniej jednej pozycji.');
+  if (items.length > 300) fail('Za dużo pozycji naraz — dodaj je w kilku krokach.');
+  for (const item of items) {
+    if (!item || typeof item !== 'object' || item.id) fail('Nieprawidłowa pozycja.');
+    validItem(item);
+  }
+  const s = ctx.supabase;
+  const { data: last } = await s.from('event_calculation_items').select('position').eq('calculation_id', calc.id).order('position', { ascending: false }).limit(1).maybeSingle();
+  const start = last ? Number((last as Row).position) + 1 : 0;
+  const rows = items.map((item, index) => serialize(calc.id, item, start + index));
+  const { data, error } = await s.from('event_calculation_items').insert(rows).select('id');
+  if (error) fail('Błąd dodawania pozycji');
+  if ((data || []).length !== rows.length) fail('Nie udało się potwierdzić zapisu wszystkich pozycji.');
+  await s.from('event_calculations').update({ updated_at: new Date().toISOString() }).eq('id', calc.id);
+  return { ok: true, count: rows.length };
+}
+
+async function removeItem(ctx: NativeContext, scope: CalcScope, body: Row) {
+  const calc = await ownCalculation(ctx, scope, String(body.calculationId || ''));
   const { error } = await ctx.supabase.from('event_calculation_items').delete().eq('id', String(body.itemId || '')).eq('calculation_id', calc.id);
   if (error) fail('Błąd usuwania pozycji');
   await ctx.supabase.from('event_calculations').update({ updated_at: new Date().toISOString() }).eq('id', calc.id);
@@ -553,8 +621,8 @@ async function removeItem(ctx: NativeContext, eventId: string, body: Row) {
 }
 
 /** `handleSave`: nazwa, notatki i wszystkie pozycje w kolejności (jedno żądanie); zmiana kolejności unieważnia PDF. */
-async function save(ctx: NativeContext, eventId: string, body: Row) {
-  const calc = await ownCalculation(ctx, eventId, String(body.calculationId || ''));
+async function save(ctx: NativeContext, scope: CalcScope, body: Row) {
+  const calc = await ownCalculation(ctx, scope, String(body.calculationId || ''));
   const s = ctx.supabase;
   const { error: updateError } = await s.from('event_calculations').update({
     name: String(body.name || '').trim() || calc.name, notes: String(body.notes || ''), updated_at: new Date().toISOString(),
@@ -573,8 +641,8 @@ async function save(ctx: NativeContext, eventId: string, body: Row) {
 }
 
 /** `appendImportedItems`: pozycje z oferty dopisywane na końcu kalkulacji (źródło `offer`). */
-async function importItems(ctx: NativeContext, eventId: string, body: Row) {
-  const calc = await ownCalculation(ctx, eventId, String(body.calculationId || ''));
+async function importItems(ctx: NativeContext, scope: CalcScope, body: Row) {
+  const calc = await ownCalculation(ctx, scope, String(body.calculationId || ''));
   const items = (Array.isArray(body.items) ? body.items : []).slice(0, 500) as Row[];
   if (!items.length) fail('Zaznacz pozycje do importu.');
   const s = ctx.supabase;
@@ -587,4 +655,50 @@ async function importItems(ctx: NativeContext, eventId: string, body: Row) {
   return { ok: true, count: (data || []).length };
 }
 
-registerEventActions('calculations', { create, remove, duplicate, accept, saveItem, removeItem, save, importItems, emailPreview });
+/** „Wybierz kalkulację” w zapytaniu (`select_inquiry_calculation`, z kontrolą poprzedniego wyboru jak w CRM). */
+async function select(ctx: NativeContext, scope: CalcScope, body: Row) {
+  if (!scope.inquiryId) fail('Wybór kalkulacji dotyczy zapytania.');
+  const calc = await ownCalculation(ctx, scope, String(body.id || ''));
+  const expected = typeof body.expected === 'string' && UUID.test(body.expected) ? body.expected : null;
+  const { error } = await ctx.supabase.rpc('select_inquiry_calculation', { p_calculation: calc.id, p_expected_selected: expected });
+  if (error) fail(error.message || 'Nie udało się wybrać kalkulacji');
+  return { ok: true };
+}
+
+type ScopedAction = (ctx: NativeContext, scope: CalcScope, body: Row) => Promise<unknown>;
+const EVENT_ACTIONS: Record<string, ScopedAction> = { create, remove, duplicate, accept, saveItem, addItems, removeItem, save, importItems, emailPreview };
+registerEventActions('calculations', Object.fromEntries(Object.entries(EVENT_ACTIONS).map(([name, action]) => [
+  name, (ctx: NativeContext, eventId: string, body: Row) => action(ctx, eventScope(eventId), body),
+])));
+
+// MARK: Kalkulacje zapytania (`/bridge/native/v1/inquiries`: op=calcQuery / calcAction / calcEmail)
+
+/** Kalkulacje zapytania: zapytanie widoczne dla pracownika (RLS), wydarzenie zapytania — gdy już powstało. */
+async function inquiryScope(ctx: NativeContext, inquiryId: string): Promise<CalcScope> {
+  const context = await inquiryCalculationContext(ctx, inquiryId);
+  return { eventId: context.eventId, inquiryId: context.id };
+}
+
+/** Odczyty kalkulacji zapytania — te same co w wydarzeniu oraz spalanie pojazdu i cena paliwa do kalkulatora trasy. */
+const INQUIRY_QUERIES: Record<string, ScopedQuery> = {
+  ...SCOPED_QUERIES,
+  consumption: (ctx, _scope, params) => vehicleConsumption(ctx, '', params),
+  fuel: () => fuelPriceQuote(),
+};
+/** Czynności kalkulacji zapytania (nową tworzy `createInquiryCalculation`; akceptację zastępuje „Wybierz kalkulację”). */
+const INQUIRY_ACTIONS: Record<string, ScopedAction> = { remove, duplicate, select, saveItem, addItems, removeItem, save, importItems, emailPreview };
+
+export async function inquiryCalculationQuery(ctx: NativeContext, inquiryId: string, query: string, params: URLSearchParams) {
+  if (!Object.prototype.hasOwnProperty.call(INQUIRY_QUERIES, query)) fail('Niedozwolona operacja.');
+  return INQUIRY_QUERIES[query](ctx, await inquiryScope(ctx, inquiryId), params);
+}
+
+export async function inquiryCalculationAction(ctx: NativeContext, inquiryId: string, action: string, body: Row) {
+  if (!Object.prototype.hasOwnProperty.call(INQUIRY_ACTIONS, action)) fail('Niedozwolona operacja.');
+  return INQUIRY_ACTIONS[action](ctx, await inquiryScope(ctx, inquiryId), body);
+}
+
+/** Wysyłka kalkulacji zapytania e-mailem (tokenem pracownika — funkcja poczty jak w przeglądarce). */
+export async function sendInquiryCalculationEmail(ctx: NativeContext, accessToken: string, inquiryId: string, body: Row) {
+  return sendEmail(ctx, accessToken, await inquiryScope(ctx, inquiryId), body);
+}

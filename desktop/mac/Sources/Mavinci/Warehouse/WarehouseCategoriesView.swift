@@ -55,7 +55,7 @@ struct CategoryEditorRequest: Identifiable {
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 if store.canManage {
-                    Button { editor = CategoryEditorRequest(category: nil, parentId: nil) } label: { Label("Dodaj nową kategorię główną", systemImage: "plus") }
+                    WarehouseAddButton(title: "Dodaj kategorię") { editor = CategoryEditorRequest(category: nil, parentId: nil) }
                 }
             }
         }

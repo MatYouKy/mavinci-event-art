@@ -651,7 +651,7 @@ enum BrochureSaveState { case saved, pending, saving, failed }
         if let file = await store.ownPdf(id) { showPdf(file) }
     }
 
-    /// „Utwórz szkic kampanii” z aktualnej ogólnej wersji PDF; kampania otwiera się w CRM.
+    /// „Utwórz szkic kampanii” z aktualnej ogólnej wersji PDF; kampania otwiera się w Centrum Kampanii aplikacji.
     func createCampaign() async {
         guard let data, let workspace, data.canManage, data.canViewResults, busy == nil else { return }
         if recipient != nil || !recipientEmail.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -672,14 +672,14 @@ enum BrochureSaveState { case saved, pending, saving, failed }
                     _ = try await workspace.withPending("Przygotowywanie PDF kampanii…") {
                         try await store.generatePdf(body, fallback: "Nie udało się przygotować PDF kampanii.")
                     }
-                    workspace.succeed("Utworzono szkic kampanii. Otwieram kampanię w CRM.")
+                    workspace.succeed("Utworzono szkic kampanii. Otwieram kampanię.")
                 } catch {
                     workspace.error = "Szkic kampanii powstał. Przygotuj jej PDF przyciskiem w kampanii — generowanie nie zostało zakończone."
                 }
             } else {
-                workspace.succeed("Utworzono szkic kampanii. Otwieram kampanię w CRM.")
+                workspace.succeed("Utworzono szkic kampanii. Otwieram kampanię.")
             }
-            workspace.openCRM("/crm/campaigns?campaign=\(campaign.id)")
+            workspace.showCampaign(campaign.id)
         } catch {
             workspace.error = store.failureText(error, "Nie udało się przygotować kampanii")
         }

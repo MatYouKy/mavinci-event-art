@@ -131,6 +131,7 @@ export default function AddInsuranceModal({
                 required
               >
                 <option value="oc">OC</option>
+                <option value="oc_ac">OC + AC</option>
                 <option value="ac">AC</option>
                 <option value="nnw">NNW</option>
                 <option value="assistance">Assistance</option>

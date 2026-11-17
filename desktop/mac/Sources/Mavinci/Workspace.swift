@@ -59,6 +59,17 @@ import Network
     let myTasks = TasksStore(board: .mine)
     /// Sprzedawcy zewnętrzni (`/crm/salespeople`) — kokpit opiekuna, karty sprzedawców, instrukcja opiekuna.
     let sellers = SellersStore()
+    let fleet = FleetStore()
+    /// Czas pracy (`/crm/time-tracking`) — licznik, wpisy, raport zespołu, rozliczenia.
+    let timeTracking = TimeTrackingStore()
+    /// Bazy danych (`/crm/databases`) — własne arkusze i udostępnianie.
+    let databases = CustomDatabasesStore()
+    /// Lokalizacje (`/crm/locations`) — obiekty, sale i informacje techniczne.
+    let locations = LocationsStore()
+    /// Strona (`/crm/page?tab=website`) — struktura, marketing i ADS, analiza ruchu, Schema.org.
+    let website = WebsiteStore()
+    /// Kampanie e-mail (`/crm/campaigns`) — Centrum Kampanii: wersje robocze, odbiorcy, test, zatwierdzenie, kolejka wysyłki.
+    let mailCampaigns = MailCampaignsStore()
     /// Ekran natywny spoza `Module` (np. Wiadomości) wybrany z paska bocznego CRM.
     @Published var screen: CrmScreen?
     /// Motyw okna (`employees.crm_theme`); do pierwszego odczytu profilu — ostatni motyw zapisany na tym Macu.
@@ -66,6 +77,8 @@ import Network
     /// Menu jak w CRM (z serwera; ostatnie zapisane na tym Macu do pierwszego odczytu) i wybrana pozycja paska bocznego.
     @Published var navigation: [NavItem] = []
     @Published var sidebarHref: String? = "/crm"
+    /// Widoczność paska bocznego (np. arkusz bazy danych chowa go i zajmuje całe okno; po wyjściu wraca poprzedni stan).
+    @Published var sidebarVisibility: NavigationSplitViewVisibility = .all
     /// Strona CRM bez ekranu natywnego (tymczasowo otwierana w przeglądarce).
     @Published var webItem: NavItem?
     /// Dashboard jak strona `/crm` (z serwera, te same reguły widoczności); odświeżany co 5 minut i na ⌘R.
@@ -105,6 +118,12 @@ import Network
         eventCards.workspace = self
         myTasks.workspace = self
         sellers.workspace = self
+        fleet.workspace = self
+        timeTracking.workspace = self
+        databases.workspace = self
+        locations.workspace = self
+        website.workspace = self
+        mailCampaigns.workspace = self
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 self?.pathAvailable = path.status == .satisfied
@@ -345,8 +364,8 @@ import Network
         snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); screen = nil
-        navigation = []; sidebarHref = "/crm"; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
+        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); screen = nil
+        navigation = []; sidebarHref = "/crm"; sidebarVisibility = .all; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }
         cacheNamespace = nil
@@ -578,6 +597,11 @@ extension Workspace {
                 case .cables: warehouse.openedCableID = nil; warehouse.cableCategoriesShown = false
                 case .rental: warehouse.openedRentalID = nil
                 case .products: products.openedID = nil
+                case .fleet: fleet.openedID = nil; fleet.creating = false; fleet.editRequested = false
+                case .timeTracking: timeTracking.openedEmployeeID = nil
+                case .databases: databases.openedID = nil
+                case .locations: locations.openedID = nil; locations.creating = false; locations.editingID = nil
+                case .website: website.tab = .structure; website.analyticsURL = nil
                 default: break
                 }
             }

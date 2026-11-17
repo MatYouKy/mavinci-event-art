@@ -54,7 +54,7 @@ struct ConnectorEditorRequest: Identifiable {
                 Button { state.openHref("/crm/equipment") } label: { Label("Magazyn", systemImage: "chevron.left") }.help("Wróć do magazynu")
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                if store.canManage { Button { editor = ConnectorEditorRequest(connector: nil) } label: { Label("Dodaj wtyk", systemImage: "plus") } }
+                if store.canManage { WarehouseAddButton(title: "Dodaj wtyk") { editor = ConnectorEditorRequest(connector: nil) } }
             }
         }
         .sheet(item: $editor) { request in ConnectorSheet(store: store, connector: request.connector).warehouseSheetStyle(state) }

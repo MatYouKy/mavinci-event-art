@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
 import {
-  equipmentDetail, invalidateWarehouse, isWarehouseSet, saveEquipment, warehouseAccess, warehouseDictionaries, warehouseSetItems,
+  createEquipment, equipmentDetail, invalidateWarehouse, isWarehouseSet, saveEquipment, warehouseAccess, warehouseDictionaries, warehouseSetItems,
   warehouseSetKeys, warehouseSetState,
 } from '@/lib/native/warehouse';
 import {
@@ -161,25 +161,10 @@ export async function POST(request: Request) {
         return nativeJson(await warehouseSetItems(ctx, isWarehouseSet(body.set) ? body.set : 'catalog', Array.isArray(body.buckets) ? body.buckets : []));
 
       case 'create': {
-        // Nowy sprzęt: podstawowe dane (resztę uzupełnia się na karcie) i opcjonalnie pierwsze jednostki.
-        const name = optionalText(data.name);
-        if (!name) return failure('Nazwa jest wymagana.');
-        const { data: created, error } = await ctx.supabase.from('equipment_items').insert({
-          name, brand: optionalText(data.brand), model: optionalText(data.model), description: optionalText(data.description),
-          warehouse_category_id: uuid.test(String(data.categoryId || '')) ? data.categoryId : null,
-          storage_location_id: uuid.test(String(data.locationId || '')) ? data.locationId : null,
-          thumbnail_url: optionalText(data.thumbnailUrl),
-        }).select('id').single();
-        if (error) return failure(errorText(error, 'Nie udało się dodać sprzętu.'));
-        const count = Math.max(0, Math.min(200, Math.round(Number(data.units) || 0)));
-        if (count > 0) {
-          const units = Array.from({ length: count }, () => ({
-            equipment_id: created.id, status: 'available', location_id: uuid.test(String(data.locationId || '')) ? data.locationId : null,
-          }));
-          await ctx.supabase.from('equipment_units').insert(units);
-        }
-        invalidateWarehouse();
-        return nativeJson({ ok: true, id: created.id });
+        // Nowy sprzęt z pełnej karty (te same pola co edycja) i stan początkowy jak `/crm/equipment/new`.
+        const result = await createEquipment(ctx, data);
+        if (!result.id) return failure(result.error || 'Nie udało się dodać sprzętu.');
+        return nativeJson({ ok: true, id: result.id, warnings: result.warnings });
       }
 
       case 'update': {

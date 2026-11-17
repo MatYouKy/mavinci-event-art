@@ -264,7 +264,7 @@ enum LogisticsLabels {
             Divider()
         }
         if !vehicle.isExternal, let id = vehicle.vehicleId {
-            Button("Karta pojazdu (w CRM)", systemImage: "arrow.up.right.square") { state.openCRM("/crm/fleet/\(id)") }
+            Button("Karta pojazdu", systemImage: "car") { state.showVehicle(id) }
         }
         if data.canManage {
             Button("Edytuj pojazd", systemImage: "pencil") { vehicleSheet = VehicleSheetRequest(editingID: vehicle.id) }

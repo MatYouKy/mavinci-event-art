@@ -340,7 +340,7 @@ extension BrochuresStore {
             .disabled(row.demoUrl == nil)
         if let campaign = row.campaignId {
             Divider()
-            Button("Zobacz kampanię w CRM") { model.workspace?.openCRM("/crm/campaigns?campaign=\(campaign)") }
+            Button("Zobacz kampanię") { model.workspace?.showCampaign(campaign) }
         }
     }
 
@@ -520,8 +520,8 @@ extension BrochuresStore {
                         LabeledContent("Odbiorca linku") { Text(source.recipientEmail.isEmpty ? "Nie wskazano" : source.recipientEmail) }
                         if let campaign = source.campaignId {
                             LabeledContent("Kampania") {
-                                Button(source.campaignName.isEmpty ? "Otwórz kampanię w CRM" : source.campaignName) {
-                                    model.workspace?.openCRM("/crm/campaigns?campaign=\(campaign)")
+                                Button(source.campaignName.isEmpty ? "Otwórz kampanię" : source.campaignName) {
+                                    model.workspace?.showCampaign(campaign)
                                 }
                                 .buttonStyle(.link)
                             }

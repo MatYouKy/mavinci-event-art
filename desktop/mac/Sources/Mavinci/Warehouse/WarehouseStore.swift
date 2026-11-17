@@ -53,6 +53,14 @@ struct WarehouseItemsReply<Item: Decodable>: Decodable {
     /// Otwarta karta sprzętu wynajmu (`/crm/subcontractors/rental/<id>`).
     @Published var openedRentalID: String?
     @Published var detailError: String?
+    /// Karta nowego sprzętu (ta sama co edycja) zamiast listy.
+    @Published var creatingEquipment = false
+    /// Kategoria wybrana na liście magazynu — podpowiedź dla nowego sprzętu.
+    var newEquipmentCategoryID: String?
+    /// Zakładka (i tryb edycji) dla karty otwieranej zaraz po utworzeniu sprzętu.
+    @Published var cardIntent: EquipmentCardIntent?
+    /// „Dodaj zestaw” z listy magazynu — ekran Zestawy otwiera formularz nowego zestawu.
+    @Published var newKitRequested = false
 
     private var namespace: String?
     private var file: SealedFile<WarehouseIndex>?
@@ -117,6 +125,7 @@ struct WarehouseItemsReply<Item: Decodable>: Decodable {
         entries = []; details = [:]; kits = []; cables = []; rental = []; cableCategories = []; access = nil; categories = []; locations = []; connectors = []
         syncing = false; lastSync = nil; loadError = nil; openedID = nil; openedKitID = nil; detailError = nil
         openedCableID = nil; cableCategoriesShown = false; openedRentalID = nil
+        creatingEquipment = false; newEquipmentCategoryID = nil; cardIntent = nil; newKitRequested = false
     }
     /// Kolejność jak w CRM: sprzęt i zestawy od najnowszych, przewody alfabetycznie.
     private func publish() {
@@ -401,6 +410,7 @@ extension Workspace {
     func showEquipment(_ id: String) {
         if navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/equipment" }) {
             openHref("/crm/equipment")
+            warehouse.creatingEquipment = false
             warehouse.openedID = id
             if warehouse.entry(id) == nil { Task { await warehouse.sync(force: true) } }
         } else {
