@@ -119,11 +119,10 @@ function determinePaymentStatus(params: {
     return 'paid';
   }
 
-  // Check if overdue
-  if (paymentDueDate) {
-    const due = new Date(paymentDueDate);
-    const now = new Date();
-    if (due < now) return 'overdue';
+  // Po terminie dopiero od dnia po terminie płatności (data w Polsce) — w dniu terminu faktura jest jeszcze „do zapłaty”.
+  if (paymentDueDate && /^\d{4}-\d{2}-\d{2}/.test(paymentDueDate)) {
+    const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    if (paymentDueDate.slice(0, 10) < today) return 'overdue';
   }
 
   return 'unpaid';

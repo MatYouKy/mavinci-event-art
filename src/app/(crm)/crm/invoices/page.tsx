@@ -34,10 +34,12 @@ import {
   Receipt,
   WalletCards,
   Banknote,
+  Scale,
 } from 'lucide-react';
 import KsefLocalSalesSyncIssues from '@/components/crm/invoices/KsefLocalSalesSyncIssues';
 import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
 import CanonicalFinancialDashboard from '@/components/crm/CanonicalFinancialDashboard';
+import FinanceCenterPanel from '@/components/crm/invoices/tabs/FinanceCenterPanel';
 import FinancialEntriesTab from '@/components/crm/FinancialEntriesTab';
 import PermissionGuard from '@/components/crm/PermissionGuard';
 import SystemBadge from '@/components/UI/SystemBadge';
@@ -251,9 +253,10 @@ export default function InvoicesPage() {
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<string>>(new Set());
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  // Bez ?tab= startuje Centrum finansów (bez „Podglądu finansów” widok i tak przechodzi na przegląd finansowy).
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'local' | 'ksef' | 'external' | 'expenses' | 'commissions' | 'settings'
-  >('dashboard');
+    'center' | 'dashboard' | 'local' | 'ksef' | 'external' | 'expenses' | 'commissions' | 'settings'
+  >(() => (searchParams.get('tab') ? 'dashboard' : 'center'));
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
   const [showFinalInvoiceWizard, setShowFinalInvoiceWizard] = useState(false);
@@ -273,7 +276,8 @@ export default function InvoicesPage() {
   } = useCurrentEmployee();
   const { access: financeAccess, loading: financeAccessLoading, error: financeAccessError } = useInvoiceFinanceAccess();
   const isSalesView = financeAccess?.scope === 'sales';
-  const visibleTab = isSalesView && !['dashboard', 'local', 'commissions'].includes(activeTab)
+  const visibleTab = (isSalesView && !['dashboard', 'local', 'commissions'].includes(activeTab))
+    || (activeTab === 'center' && !financeAccess?.canViewCompanyFinance)
     ? 'dashboard' : activeTab;
 
   useEffect(() => {
@@ -309,6 +313,7 @@ export default function InvoicesPage() {
 
     const requestedTab = searchParams.get('tab');
     const supportedTabs = new Set([
+      'center',
       'dashboard',
       'local',
       'ksef',
@@ -318,7 +323,16 @@ export default function InvoicesPage() {
       'settings',
     ]);
 
-    if (!requestedTab || !supportedTabs.has(requestedTab)) return;
+    // Bez wskazanej zakładki: Centrum finansów dla osób z „Podglądem finansów”, pozostali — przegląd finansowy.
+    if (!requestedTab || !supportedTabs.has(requestedTab)) {
+      setActiveTab(!isSalesView && financeAccess.canViewCompanyFinance ? 'center' : 'dashboard');
+      return;
+    }
+
+    if (requestedTab === 'center' && (isSalesView || !financeAccess.canViewCompanyFinance)) {
+      setActiveTab('dashboard');
+      return;
+    }
 
     if (isSalesView && !['dashboard', 'local', 'commissions'].includes(requestedTab)) {
       setActiveTab('dashboard');
@@ -842,6 +856,7 @@ export default function InvoicesPage() {
 
           <div className="mb-6 flex snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain border-b border-[#d3bb73]/10 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {[
+              { id: 'center', label: 'Centrum finansów', icon: Scale },
               { id: 'dashboard', label: 'Przegląd finansowy', icon: DollarSign },
               { id: 'ksef', label: 'KSeF', icon: FileText },
               { id: 'local', label: isSalesView ? 'Moje faktury' : 'Lokalne faktury', icon: Building },
@@ -854,6 +869,7 @@ export default function InvoicesPage() {
             ]
               .filter((tab) => {
                 if (isSalesView) return ['dashboard', 'local', 'commissions'].includes(tab.id);
+                if (tab.id === 'center') return financeAccess.canViewCompanyFinance;
                 if (tab.id === 'ksef' || tab.id === 'external') return canAccessKSeF;
                 if (tab.id === 'expenses') return financeAccess.canViewCompanyFinance;
                 return true;
@@ -877,7 +893,11 @@ export default function InvoicesPage() {
               })}
           </div>
 
-          {visibleTab === 'dashboard' ? (
+          {visibleTab === 'center' && financeAccess.canViewCompanyFinance ? (
+            <FinanceCenterPanel
+              filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : allowedCompanyIds}
+            />
+          ) : visibleTab === 'dashboard' ? (
             <CanonicalFinancialDashboard
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
             />

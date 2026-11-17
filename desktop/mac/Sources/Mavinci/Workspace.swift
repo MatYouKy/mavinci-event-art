@@ -70,6 +70,8 @@ import Network
     let website = WebsiteStore()
     /// Kampanie e-mail (`/crm/campaigns`) — Centrum Kampanii: wersje robocze, odbiorcy, test, zatwierdzenie, kolejka wysyłki.
     let mailCampaigns = MailCampaignsStore()
+    /// Finanse (`/crm/invoices`) — Centrum finansów, terminy i monity, zamknięcia miesięcy; kopia na dysku.
+    let finance = FinanceStore()
     /// Ekran natywny spoza `Module` (np. Wiadomości) wybrany z paska bocznego CRM.
     @Published var screen: CrmScreen?
     /// Motyw okna (`employees.crm_theme`); do pierwszego odczytu profilu — ostatni motyw zapisany na tym Macu.
@@ -124,6 +126,7 @@ import Network
         locations.workspace = self
         website.workspace = self
         mailCampaigns.workspace = self
+        finance.workspace = self
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 self?.pathAvailable = path.status == .satisfied
@@ -161,6 +164,7 @@ import Network
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            finance.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             openLocalViews(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
             // Kopia z dysku od razu (bez czekania na sieć); zapis dopiero po potwierdzeniu profilu na serwerze.
@@ -200,6 +204,7 @@ import Network
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            finance.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             openLocalViews(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
             snapshot = Snapshot(employee: employee)
@@ -293,6 +298,8 @@ import Network
             if current.has("offers_view") || current.has("offers_manage") || current.isAdmin { Task { await products.backgroundSync() } }
             if current.canView(.offers) { Task { await offers.backgroundSync() } }
             if current.canView(.events) { Task { await events.backgroundSync() } }
+            // Finanse: kopia na dysku od razu, stan z serwera najwyżej co 5 minut (i po wejściu do sekcji).
+            if navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/invoices" }) { Task { await finance.backgroundSync() } }
             // Do not extend the offline permission lease on a partial/failed synchronization.
             if moduleErrors.isEmpty { snapshot?.savedAt = Date() }
             if !editing { refreshEventToken = UUID() }
@@ -364,7 +371,7 @@ import Network
         snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); screen = nil
+        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); finance.reset(); screen = nil
         navigation = []; sidebarHref = "/crm"; sidebarVisibility = .all; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }

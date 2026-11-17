@@ -364,6 +364,8 @@ struct AttentionView: View {
          Item(label: "Wydarzenia w ciągu 30 dni", value: attention.eventsNext30Days, href: "/crm/events", symbol: "calendar.badge.clock", color: CrmTheme.rgb(0xd3bb73))]
     }
     private func open(_ href: String) {
+        // Faktury po terminie → Finanse na Macu: „Terminy i monity”, lista należności.
+        if href == "/crm/invoices" { state.showFinance(.deadlines, list: .receivables); return }
         let map: [String: Module] = ["/crm/events": .events, "/crm/contacts": .contacts, "/crm/inquiries": .inquiries, "/crm/tasks": .tasks]
         if let module = map[href], state.employee?.canView(module) == true { state.switchSection(module) } else { state.openCRM(href) }
     }

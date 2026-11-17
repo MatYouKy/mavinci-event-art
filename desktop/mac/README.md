@@ -1,6 +1,6 @@
 # Mavinci na macOS
 
-Aktualna wersja: **0.19.0**. Bieżący zakres natywny i aktualna lista tego, co zostaje w CRM — sekcja „Aktualizacja 0.19 — aktualny zakres natywny” poniżej. Pozostałe sekcje „Aktualizacja …” opisują kolejne etapy jako historię zakresu (to, co w starszej sekcji było „w CRM”, mogło już przejść na Maca). Szczegóły techniczne każdej zmiany: wpisy „Mac: …” w `docs/mobile-parity.md`.
+Aktualna wersja: **0.21.0**. Bieżący zakres natywny i aktualna lista tego, co zostaje w CRM — sekcja „Aktualizacja 0.19 — aktualny zakres natywny” poniżej, uzupełniona o „Aktualizację 0.20” (Flota, Czas pracy, Bazy danych, Lokalizacje, Strona, Kampanie e-mail) i „Aktualizację 0.21” (Finanse). Pozostałe sekcje „Aktualizacja …” opisują kolejne etapy jako historię zakresu (to, co w starszej sekcji było „w CRM”, mogło już przejść na Maca). Szczegóły techniczne każdej zmiany: wpisy „Mac: …” w `docs/mobile-parity.md`.
 
 Natywna aplikacja SwiftUI, macOS 14 lub nowszy, Swift 5.9+. Katalog `desktop/mac` jest równorzędny z `mobile`. Bez osadzonego panelu WWW i zewnętrznych bibliotek Swift.
 
@@ -349,6 +349,22 @@ Serwer: `GET /bridge/native/v1/warehouse?op=state` zwraca też stany zbiorów (`
 Karta wydarzenia na razie jak dotąd (zakładki z danymi, zapis do pracy bez internetu); natywna karta 1:1 z CRM — kolejne etapy.
 
 Serwer: `GET/POST /bridge/native/v1/events` (`op=state`, `items|status|delete`; `src/lib/native/events.ts`).
+
+## Aktualizacja 0.21 — Finanse natywnie: Centrum finansów, Terminy i monity, Zamknięcie miesięcy
+
+**Finanse** (`/crm/invoices`) — pozycja menu otwiera ekran natywny zamiast przeglądarki (dla osób z „Podglądem finansów” działalności; bez niego — przycisk do Finansów w CRM). U góry wybór działalności i „Odśwież”, z lewej trzy części z „?” (co w niej jest i po co) i liczbą spraw wymagających uwagi oraz skróty do części, które zostają w CRM. Stan każdej działalności jest na dysku (zaszyfrowany, jak pozostałe dane) — ekran pokazuje się od razu, a w tle dociąga świeży stan (najwyżej co 5 minut; ⌘R i „Odśwież” — od razu). Te same funkcje bazy i uprawnienia co CRM.
+
+1. **Centrum finansów** — jak w CRM: kompletność danych (z „Pobierz UPO” — brakujące UPO z KSeF, do 10 na kliknięcie — i przejściami do sekcji), kafle (gotówka z wyciągów, należności, zobowiązania, szacunek VAT, rezerwa CIT), rachunki, zamknięcie poprzedniego miesiąca (lista kontrolna), wiekowanie należności i zobowiązań z największymi pozycjami, ZUS i podatki (najbliższe 45 dni, VAT z przeniesieniem nadwyżki, CIT ze stawką 9% / 19% do wyboru dla „Zarządzania finansami”), prognoza 13 tygodni — wykres salda, tygodnie z wpływami, wydatkami i paskami, rozwijane pozycje z przejściami, przełączniki „Licz zaległe wpływy” i „Licz ZUS i podatki bez przypisanej zapłaty”.
+2. **Terminy i monity** — kafle spraw po terminie (kliknięcie otwiera listę), ostrzeżenie o nieaktualnych wyciągach i natywne tabele z sortowaniem w nagłówkach: **ZUS i podatki** (kwota z deklaracji, zapłata, stan; „Pokaż zapłacone z ostatniego roku”; „Obowiązki działalności” — włączanie obowiązków, dzień terminu, przesunięcie), **Należności** (monity; „Wyślij przypomnienie” — e-mail jak w CRM: skrzynka, adresaci z organizacji nabywcy, podgląd ze stopką, PDF faktury w załączniku, planowanie, wpis w historii monitów), **Do zapłaty** (termin z faktury, dostawcy albo wpisany; „Ustaw termin…” z zapamiętaniem dla dostawcy; domyślne terminy dostawców; biała lista VAT — „Sprawdź na białej liście”, z menu także jedna faktura; kopiowanie rachunku), **Przelewy ponad 15 000 zł** (biała lista na dzień przelewu, przypomnienie o ZAW-NR).
+3. **Zamknięcie miesięcy** — rok, kafle miesięcy (zamknięty / przekazany i otwarty / otwarty / przyszły, przekazanie księgowej, notatka, historia ponownych otwarć), „Zamknij miesiąc” z notatką i „Otwórz ponownie” z uzasadnieniem (blokadę pilnuje baza).
+
+Powiadomienia o terminach finansowych (`/crm/invoices?tab=external&section=deadlines`) i kafel „Faktury po terminie” na pulpicie otwierają tę sekcję na Macu.
+
+**Zostaje w CRM** (skróty w lewej kolumnie): wystawianie i karta faktury (z pobraniem UPO jednej faktury), KSeF (konfiguracja, synchronizacja), wyciągi i uzgadnianie, deklaracje ZUS i podatków, przekazanie księgowej (Saldeo), koszty i wypłaty, sprzedawcy i prowizje, ustawienia faktur.
+
+Serwer: `GET /bridge/native/v1/finance?op=state|periods|reminder`, `POST op=taxRate|obligations|paymentDue|supplierTermDelete|lock|unlock|whitelist|upoMissing|reminderPreview|reminderSend` (`src/lib/native/finance.ts`) — funkcje bazy tokenem pracownika; biała lista i UPO — wspólna logika z trasami CRM (`src/lib/invoices/vatWhitelist.server.ts`, `src/app/bridge/ksef/upoRequests.ts`).
+
+**Przed użyciem** — wdrożony CRM z trasą `/bridge/native/v1/finance` i migracje finansów z 17.11 (`20261117130000_finance_deadlines.sql` … `20261117150000_vat_whitelist_and_upo.sql`). Kompilacja: `./scripts/build-app.sh` (wersja 0.21.0).
 
 ## Aktualizacja 0.20 — Flota, Czas pracy, Bazy danych, Lokalizacje, Strona i Kampanie e-mail natywnie
 

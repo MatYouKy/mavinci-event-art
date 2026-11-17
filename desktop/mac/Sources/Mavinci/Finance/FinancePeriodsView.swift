@@ -1,0 +1,179 @@
+import SwiftUI
+
+// MARK: Zamknięcie miesięcy — 1:1 z `FinancePeriodClosePanel.tsx`: rok, kafle miesięcy (zamknięty / przekazany i otwarty /
+// otwarty / przyszły), przekazanie księgowej, notatka zamknięcia, historia ponownych otwarć; „Zamknij miesiąc” z notatką
+// i „Otwórz ponownie” z uzasadnieniem (`lock_finance_period` / `unlock_finance_period` — blokadę pilnuje baza).
+
+@MainActor struct FinancePeriodsView: View {
+    @ObservedObject var store: FinanceStore
+    let data: FinState
+    @EnvironmentObject private var state: Workspace
+    @Environment(\.crmTheme) private var theme
+    @State private var locking: FinPeriod?
+    @State private var unlocking: FinPeriod?
+
+    private static let green = CrmTheme.rgb(0x4ade80)
+    private static let amber = CrmTheme.rgb(0xfbbf24)
+
+    private var canManage: Bool { store.company?.canManage ?? false }
+    private var today: String { data.center?.today ?? data.deadlines?.today ?? FinanceText.dayString(Date()) }
+    private var currentYear: Int { Int(today.prefix(4)) ?? Calendar.current.component(.year, from: Date()) }
+    private var currentMonth: Int { Int(today.dropFirst(5).prefix(2)) ?? 1 }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                FinCard("Zamknięcie miesięcy", symbol: "lock",
+                        note: "Zamyka i otwiera osoba z „Zarządzaniem finansami” działalności. Blokadę sprawdza baza — obowiązuje w CRM, na Macu i w telefonie. Miesiąc wyciągu decyduje o operacjach bankowych, data wystawienia — o fakturach.") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Po przekazaniu księgowej zamknij miesiąc — wyciągi, dopasowania i faktury z tego miesiąca nie zmienią się bez śladu.")
+                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        if let error = data.periodsError {
+                            FinBanner(text: error, tone: .bad)
+                        }
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 10, alignment: .top)], spacing: 10) {
+                            ForEach(data.periods) { period in monthCard(period) }
+                        }
+                    }
+                    .padding(14)
+                } accessory: {
+                    HStack(spacing: 8) {
+                        Picker("Rok", selection: Binding(get: { data.periodsYear }, set: { year in Task { await store.loadPeriods(year: year) } })) {
+                            ForEach([currentYear, currentYear - 1, currentYear - 2], id: \.self) { year in Text(String(year)).tag(year) }
+                        }
+                        .labelsHidden().frame(width: 90)
+                        if store.periodsLoading { ProgressView().controlSize(.small) }
+                        Button("Przekazanie księgowej (CRM)") { state.openCRM(FinLink.section("external", "accountant")) }
+                            .controlSize(.small).help("Wysyłka miesiąca do Saldeo — w CRM")
+                    }
+                }
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .sheet(item: $locking) { period in
+            FinPeriodSheet(store: store, year: data.periodsYear, period: period, unlock: false)
+        }
+        .sheet(item: $unlocking) { period in
+            FinPeriodSheet(store: store, year: data.periodsYear, period: period, unlock: true)
+        }
+    }
+
+    private func monthCard(_ period: FinPeriod) -> some View {
+        let year = data.periodsYear
+        let future = year > currentYear || (year == currentYear && period.month > currentMonth)
+        let handedOverOpen = !period.locked && period.handedOverAt != nil
+        let name = (1...12).contains(period.month) ? FinFormat.monthsTitle[period.month - 1] : "\(period.month)"
+        let border: Color = period.locked ? Self.green.opacity(0.35) : handedOverOpen ? Self.amber.opacity(0.4) : Color.primary.opacity(0.08)
+        let fill: Color = period.locked ? Self.green.opacity(0.06) : handedOverOpen ? Self.amber.opacity(0.06) : Color.primary.opacity(0.03)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(name).font(.headline)
+                Spacer()
+                if period.locked {
+                    Label("Zamknięty", systemImage: "lock.fill").font(.caption).foregroundStyle(Self.green)
+                } else if handedOverOpen {
+                    Text("Przekazany · otwarty").font(.caption).foregroundStyle(Self.amber)
+                } else {
+                    Text(future ? "Przyszły" : "Otwarty").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if let handed = period.handedOverAt {
+                Label("Przekazany księgowej \(FinFormat.dateTime(handed))", systemImage: "paperplane").font(.caption).foregroundStyle(.secondary)
+            }
+            if period.locked {
+                Label("Zamknięty \(FinFormat.dateTime(period.lockedAt))" + (period.lockedByName.map { " · \($0)" } ?? ""), systemImage: "checkmark.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let note = period.lockNote {
+                Text("„\(note)”").font(.caption).fixedSize(horizontal: false, vertical: true)
+            }
+            if !period.reopenings.isEmpty {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(period.reopenings, id: \.unlockedAt) { item in
+                            Text("\(FinFormat.dateTime(item.unlockedAt))" + (item.byName.map { " · \($0)" } ?? "") + " — \(item.reason ?? "")")
+                                .font(.caption).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                } label: {
+                    Label("Otwierany ponownie: \(period.reopenings.count)×", systemImage: "clock.arrow.circlepath").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if canManage && !future {
+                if period.locked {
+                    Button { unlocking = period } label: { Label("Otwórz ponownie", systemImage: "lock.open") }
+                        .controlSize(.small).disabled(!state.canWrite)
+                } else {
+                    Button { locking = period } label: { Label("Zamknij miesiąc", systemImage: "lock") }
+                        .controlSize(.small).disabled(!state.canWrite)
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(fill, in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(border))
+        .opacity(future ? 0.55 : 1)
+    }
+}
+
+/// Okno „Zamknięcie: <miesiąc>” (notatka opcjonalna) albo „Ponowne otwarcie: <miesiąc>” (uzasadnienie co najmniej 10 znaków).
+@MainActor struct FinPeriodSheet: View {
+    @ObservedObject var store: FinanceStore
+    let year: Int
+    let period: FinPeriod
+    let unlock: Bool
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var problem: String?
+
+    private var label: String {
+        let name = (1...12).contains(period.month) ? FinFormat.months[period.month - 1] : "\(period.month)"
+        return "\(name) \(year)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(unlock ? "Ponowne otwarcie: \(label)" : "Zamknięcie: \(label)", systemImage: unlock ? "lock.open" : "lock").font(.title3.bold())
+            if unlock {
+                Text("Uzasadnienie zostaje w historii miesiąca (kto, kiedy, dlaczego). Po zmianach przekaż miesiąc księgowej ponownie i zamknij go.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Po zamknięciu w tym miesiącu nie da się:").font(.callout)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("• wczytać ani usunąć wyciągu, wyjaśniać operacji, przypinać i odpinać dokumentów, przypisywać przelewów do ZUS i podatków,")
+                    Text("• wystawić, usunąć ani anulować faktury z datą w tym miesiącu, zmienić jej numeru, dat, kwot, nabywcy i pozycji,")
+                    Text("• usunąć ani zmienić kwot i dat dokumentów spoza KSeF.")
+                }
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text("Zapłaty faktur, wysyłka do KSeF i e-maile działają dalej. Szkice i pro formy nie są blokowane." + (period.handedOverAt == nil ? " Ten miesiąc nie był jeszcze przekazany księgowej z CRM." : ""))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Text(unlock ? "Uzasadnienie" : "Notatka (opcjonalnie)").font(.callout.weight(.medium))
+            TextEditor(text: Binding(get: { text }, set: { text = String($0.prefix(500)) }))
+                .font(.body).frame(height: unlock ? 90 : 60)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.15)))
+            HStack {
+                Spacer()
+                Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(unlock ? "Otwórz miesiąc" : "Zamknij miesiąc") { Task { await save() } }
+                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 540)
+        .alert(unlock ? "Nie otwarto miesiąca" : "Nie zamknięto miesiąca", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(problem ?? "") }
+    }
+
+    private func save() async {
+        guard let company = store.company else { return }
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if unlock && value.count < 10 { problem = "Podaj uzasadnienie ponownego otwarcia (co najmniej 10 znaków)."; return }
+        var body: [String: JSONValue] = ["companyId": .string(company.id), "year": .number(Double(year)), "month": .number(Double(period.month))]
+        body[unlock ? "reason" : "note"] = .string(value)
+        if await store.run(unlock ? "Otwieranie miesiąca…" : "Zamykanie miesiąca…", unlock ? "unlock" : "lock", body) { dismiss() }
+    }
+}

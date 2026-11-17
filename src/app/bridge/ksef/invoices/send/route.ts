@@ -28,6 +28,7 @@ import {
 } from '../../crypto';
 
 import type { KSeFFormCode } from '../../types';
+import { fetchUpoAfterSend, saveKsefUpoRecord } from '../../upo';
 
 import {
   prepareFA3Invoice,
@@ -512,6 +513,9 @@ export async function POST(request: NextRequest) {
       let ksefSendClaimed = false;
       let invoiceMayHaveReachedKsef = false;
       let persistenceClient: SupabaseClient<any> | undefined;
+      // UPO (Urzędowe Poświadczenie Odbioru): pobierane po zamknięciu sesji dla faktury przyjętej przez KSeF.
+      let acceptedKsefNumber: string | undefined;
+      let upoCompanyId: string | null = null;
 
       const emit = (data: any) => {
         try {
@@ -775,6 +779,19 @@ export async function POST(request: NextRequest) {
 
         emitProgress('encrypt', 'completed');
 
+        // Numer sesji i wysyłki — potrzebne do pobrania UPO (także później, z karty faktury). Błąd zapisu nie przerywa wysyłki.
+        upoCompanyId = invoice.my_company_id ?? null;
+        try {
+          await saveKsefUpoRecord(supabase, {
+            invoiceId,
+            companyId: upoCompanyId,
+            sessionReference: sessionId,
+            invoiceReference: sendResponse.referenceNumber || sendResponse.invoiceReferenceNumber || null,
+          });
+        } catch (upoRecordError) {
+          console.warn('Nie zapisano numeru sesji KSeF do UPO:', upoRecordError);
+        }
+
         // Poll
         currentStep = 'poll';
         const maxRetries = 15;
@@ -840,6 +857,7 @@ export async function POST(request: NextRequest) {
         emitProgress('save', 'active', { message: 'Zapisywanie wyniku wysyłki' });
 
         const finalRefNumber = ksefNumber ?? null;
+        acceptedKsefNumber = ksefNumber;
         const finalTimestamp = ksefNumber
           ? acquisitionTimestamp || sendResponse.timestamp || new Date().toISOString()
           : null;
@@ -928,6 +946,22 @@ export async function POST(request: NextRequest) {
           controller.close();
         } catch {
           // already closed
+        }
+        // Po zamknięciu strumienia (wynik wysyłki jest już u użytkownika): UPO przyjętej faktury, kilka prób.
+        if (sessionId && accessTokenForClose && acceptedKsefNumber && persistenceClient) {
+          try {
+            await fetchUpoAfterSend({
+              supabase: persistenceClient,
+              invoiceId,
+              companyId: upoCompanyId,
+              sessionReference: sessionId,
+              ksefNumber: acceptedKsefNumber,
+              accessToken: accessTokenForClose,
+              isTestEnvironment: isTestEnvForClose,
+            });
+          } catch (upoErr) {
+            console.warn('Nie pobrano UPO po wysyłce do KSeF:', upoErr);
+          }
         }
       }
     },

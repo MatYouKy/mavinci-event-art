@@ -13,6 +13,8 @@ import {
   RefreshCw,
   Save,
   Settings2,
+  ShieldAlert,
+  ShieldCheck,
   Trash2,
   X,
 } from 'lucide-react';
@@ -93,6 +95,53 @@ interface Payable {
   supplier_days: number | null;
 }
 
+type WhitelistVerdict = 'ok' | 'not_listed' | 'not_found' | 'no_account' | 'error';
+
+interface WhitelistPayable {
+  ksef_invoice_id: string;
+  nip: string | null;
+  account: string | null;
+  gross: number;
+  verdict: WhitelistVerdict | null;
+  status_vat: string | null;
+  check_date: string | null;
+  request_id: string | null;
+  fresh: boolean;
+}
+
+interface WhitelistPayment {
+  bank_transaction_id: string;
+  document_number: string | null;
+  seller_name: string | null;
+  nip: string | null;
+  account: string | null;
+  transaction_date: string;
+  amount: number;
+  document_gross: number;
+  verdict: WhitelistVerdict | null;
+  status_vat: string | null;
+  request_id: string | null;
+}
+
+interface WhitelistStatus {
+  today: string;
+  payables: WhitelistPayable[];
+  payments: WhitelistPayment[];
+}
+
+/** Ocena białej listy VAT do wyświetlenia (próg 15 000 zł — wartość transakcji). */
+function whitelistChip(row: { verdict: WhitelistVerdict | null; status_vat: string | null; nip: string | null }, fresh: boolean, big: boolean) {
+  if (!row.nip) return { text: 'bez polskiego NIP — nie dotyczy', className: 'bg-white/5 text-[#e5e4e2]/45' };
+  if (!row.verdict) return { text: big ? 'niesprawdzone — ponad 15 000 zł' : 'niesprawdzone', className: big ? 'bg-amber-500/15 text-amber-300' : 'bg-white/10 text-[#e5e4e2]/55' };
+  if (row.verdict === 'error') return { text: 'błąd sprawdzenia — powtórz', className: 'bg-white/10 text-[#e5e4e2]/55' };
+  if (row.verdict === 'not_found') return { text: 'NIP poza wykazem VAT', className: 'bg-red-500/15 text-red-300' };
+  if (row.verdict === 'not_listed') return { text: 'rachunku nie ma na białej liście', className: 'bg-red-500/15 text-red-300' };
+  if (row.verdict === 'no_account') return { text: `faktura bez rachunku · VAT: ${row.status_vat || '—'}`, className: 'bg-white/10 text-[#e5e4e2]/60' };
+  return fresh
+    ? { text: `na białej liście${row.status_vat && row.status_vat !== 'Czynny' ? ` · VAT: ${row.status_vat}` : ''}`, className: 'bg-emerald-500/15 text-emerald-300' }
+    : { text: 'na liście — sprawdź w dniu przelewu', className: 'bg-amber-500/15 text-amber-300' };
+}
+
 interface ObligationSetting {
   kind: string;
   form: string;
@@ -159,6 +208,8 @@ export default function FinanceDeadlinesPanel({ filterCompanyIds = null, onOpenD
   const [settingsDraft, setSettingsDraft] = useState<ObligationSetting[]>([]);
   const [dueEdit, setDueEdit] = useState<{ id: string; date: string; remember: boolean } | null>(null);
   const [reminder, setReminder] = useState<Receivable | null>(null);
+  const [whitelist, setWhitelist] = useState<WhitelistStatus | null>(null);
+  const [checkingWhitelist, setCheckingWhitelist] = useState<'payables' | 'payments' | null>(null);
   const [showPaidObligations, setShowPaidObligations] = useState(false);
 
   const canManage = canFinanceCompany(access, companyId, 'finance_manage');
@@ -186,11 +237,54 @@ export default function FinanceDeadlinesPanel({ filterCompanyIds = null, onOpenD
   const load = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
-    const { data: result, error } = await supabase.rpc('get_finance_deadlines', { p_company_id: companyId });
-    if (error) { showSnackbar(error.message || 'Nie udało się wczytać terminów.', 'error'); setData(null); }
-    else setData(result as Deadlines);
+    const [deadlines, whitelistResult] = await Promise.all([
+      supabase.rpc('get_finance_deadlines', { p_company_id: companyId }),
+      supabase.rpc('get_vat_whitelist_status', { p_company_id: companyId }),
+    ]);
+    if (deadlines.error) { showSnackbar(deadlines.error.message || 'Nie udało się wczytać terminów.', 'error'); setData(null); }
+    else setData(deadlines.data as Deadlines);
+    // Biała lista jest dodatkiem — jej błąd nie blokuje terminów.
+    setWhitelist(whitelistResult.error ? null : (whitelistResult.data as WhitelistStatus));
     setLoading(false);
   }, [companyId, showSnackbar]);
+
+  const whitelistByInvoice = useMemo(
+    () => new Map((whitelist?.payables || []).map((row) => [row.ksef_invoice_id, row])),
+    [whitelist],
+  );
+
+  const runWhitelistCheck = async (mode: 'payables' | 'payments') => {
+    if (!companyId || checkingWhitelist) return;
+    setCheckingWhitelist(mode);
+    try {
+      const response = await fetch('/bridge/finance/vat-whitelist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companyId, mode }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result) {
+        showSnackbar(result?.error || 'Nie udało się sprawdzić białej listy.', 'error');
+        return;
+      }
+      const summary = result.summary || {};
+      const bad = Number(summary.not_listed || 0) + Number(summary.not_found || 0);
+      if (result.checked === 0 && !result.error) {
+        showSnackbar(mode === 'payables' ? 'Wszystkie faktury do zapłaty były już dziś sprawdzone.' : 'Brak przelewów do sprawdzenia.', 'info');
+      } else {
+        showSnackbar(
+          `Sprawdzono ${result.checked}: na liście ${summary.ok || 0}${bad ? `, problem: ${bad}` : ''}${summary.no_account ? `, bez rachunku: ${summary.no_account}` : ''}.`,
+          bad ? 'warning' : 'success',
+        );
+      }
+      if (result.error) showSnackbar(result.error, 'warning');
+      await load();
+    } catch {
+      showSnackbar('Nie udało się połączyć z serwerem CRM.', 'error');
+    } finally {
+      setCheckingWhitelist(null);
+    }
+  };
 
   useEffect(() => { void load(); }, [load]);
 
@@ -452,6 +546,14 @@ export default function FinanceDeadlinesPanel({ filterCompanyIds = null, onOpenD
             <header className="flex flex-wrap items-center gap-2 border-b border-[#d3bb73]/10 px-4 py-3">
               <AlertTriangle className="h-4 w-4 text-[#d3bb73]" />
               <h3 className="mr-auto text-sm font-medium text-[#e5e4e2]">Faktury kosztowe do zapłaty — w 14 dni, po terminie i bez terminu</h3>
+              {whitelist && (
+                <button type="button" className={ghost} disabled={checkingWhitelist !== null}
+                  onClick={() => void runWhitelistCheck('payables')}
+                  title="Sprawdza NIP i rachunek z faktury w wykazie podatników VAT (API MF) na dziś — rób to w dniu zlecenia przelewu.">
+                  {checkingWhitelist === 'payables' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  Sprawdź na białej liście
+                </button>
+              )}
             </header>
             {data.payables.length === 0 ? (
               <div className="px-4 py-6 text-xs text-[#e5e4e2]/60">Brak nieopłaconych faktur kosztowych z terminem do 14 dni.</div>
@@ -461,6 +563,7 @@ export default function FinanceDeadlinesPanel({ filterCompanyIds = null, onOpenD
                   <thead><tr>
                     <th className={th}>Dostawca</th><th className={th}>Faktura</th><th className={th}>Termin</th>
                     <th className={`${th} text-right`}>Kwota</th><th className={th}>Rachunek</th>
+                    {whitelist && <th className={th}>Biała lista</th>}
                   </tr></thead>
                   <tbody className="divide-y divide-white/5">
                     {data.payables.map((p) => {
@@ -527,6 +630,22 @@ export default function FinanceDeadlinesPanel({ filterCompanyIds = null, onOpenD
                           </td>
                           <td className={`${td} text-right`}>{money(p.amount, p.currency)}</td>
                           <td className={`${td} font-mono text-[10px]`}>{p.bank_account || '—'}</td>
+                          {whitelist && (() => {
+                            const check = whitelistByInvoice.get(p.id);
+                            if (!check) return <td className={td} />;
+                            const chip = whitelistChip(check, check.fresh, Number(p.amount) > 15000);
+                            return (
+                              <td className={td}>
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] ${chip.className}`}
+                                  title={check.request_id ? `Identyfikator zapytania MF: ${check.request_id}` : undefined}>{chip.text}</span>
+                                {check.check_date && (
+                                  <div className="mt-0.5 text-[10px] text-[#e5e4e2]/40">
+                                    sprawdzono {date(check.check_date)}{check.request_id ? ` · ${check.request_id}` : ''}
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })()}
                         </tr>
                       );
                     })}
@@ -554,9 +673,70 @@ export default function FinanceDeadlinesPanel({ filterCompanyIds = null, onOpenD
             )}
             <p className="border-t border-[#d3bb73]/10 px-4 py-2 text-[10px] text-[#e5e4e2]/45">
               Termin z faktury w KSeF ma pierwszeństwo — w CRM ustawia się go tylko fakturom bez terminu. Termin dostawcy (dni od
-              wystawienia) uzupełnia jego pozostałe nieopłacone faktury i nowe, pobrane z KSeF.
+              wystawienia) uzupełnia jego pozostałe nieopłacone faktury i nowe, pobrane z KSeF. Biała lista: przy transakcji ponad
+              15 000 zł płać tylko na rachunek z wykazu, sprawdzony w dniu zlecenia przelewu (identyfikator zapytania MF to dowód).
             </p>
           </section>
+
+          {whitelist && (
+            <section className={card}>
+              <header className="flex flex-wrap items-center gap-2 border-b border-[#d3bb73]/10 px-4 py-3">
+                <ShieldAlert className="h-4 w-4 text-[#d3bb73]" />
+                <h3 className="mr-auto text-sm font-medium text-[#e5e4e2]">Przelewy ponad 15 000 zł — kontrola białej listy (90 dni)</h3>
+                {whitelist.payments.length > 0 && (
+                  <button type="button" className={ghost} disabled={checkingWhitelist !== null}
+                    onClick={() => void runWhitelistCheck('payments')}
+                    title="Sprawdza rachunek z wyciągu w wykazie podatników VAT na dzień przelewu (tylko niesprawdzone).">
+                    {checkingWhitelist === 'payments' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                    Sprawdź przelewy
+                  </button>
+                )}
+              </header>
+              {whitelist.payments.length === 0 ? (
+                <div className="px-4 py-6 text-xs text-[#e5e4e2]/60">
+                  Brak przelewów ponad 15 000 zł dopasowanych do faktur kosztowych w ostatnich 90 dniach (według wczytanych wyciągów).
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead><tr>
+                      <th className={th}>Data przelewu</th><th className={th}>Dostawca</th><th className={th}>Dokument</th>
+                      <th className={`${th} text-right`}>Przelew</th><th className={th}>Rachunek odbiorcy</th><th className={th}>Biała lista</th>
+                    </tr></thead>
+                    <tbody className="divide-y divide-white/5">
+                      {whitelist.payments.map((payment) => {
+                        const chip = whitelistChip(payment, true, true);
+                        return (
+                          <tr key={`${payment.bank_transaction_id}:${payment.document_number}`}>
+                            <td className={td}>{date(payment.transaction_date)}</td>
+                            <td className={td}>
+                              <div className="text-[#e5e4e2]">{payment.seller_name || '—'}</div>
+                              {payment.nip && <div className="text-[10px] text-[#e5e4e2]/45">NIP {payment.nip}</div>}
+                            </td>
+                            <td className={td}>
+                              <div>{payment.document_number || '—'}</div>
+                              <div className="text-[10px] text-[#e5e4e2]/45">wartość {money(payment.document_gross)}</div>
+                            </td>
+                            <td className={`${td} text-right`}>{money(payment.amount)}</td>
+                            <td className={`${td} font-mono text-[10px]`}>{payment.account || 'brak na wyciągu'}</td>
+                            <td className={td}>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] ${chip.className}`}>{chip.text}</span>
+                              {payment.request_id && <div className="mt-0.5 text-[10px] text-[#e5e4e2]/40">{payment.request_id}</div>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p className="border-t border-[#d3bb73]/10 px-4 py-2 text-[10px] text-[#e5e4e2]/45">
+                Przelew za transakcję ponad 15 000 zł na rachunek spoza wykazu: koszt nie jest kosztem podatkowym, a za VAT dostawcy
+                odpowiada się solidarnie — chyba że w 7 dni od zlecenia przelewu złożysz zawiadomienie ZAW-NR do urzędu skarbowego.
+                Skonsultuj z biurem rachunkowym.
+              </p>
+            </section>
+          )}
         </>
       ) : null}
 

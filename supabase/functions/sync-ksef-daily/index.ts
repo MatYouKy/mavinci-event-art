@@ -361,11 +361,17 @@ function parseInvoiceXml(xml: string): ParsedInvoice {
   };
 }
 
+function warsawToday() {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date());
+}
+
 function paymentStatus(invoice: ParsedInvoice) {
   if (invoice.payment_method === '1' || invoice.payment_method === '2' || invoice.payment_date) {
     return 'paid';
   }
-  if (invoice.payment_due_date && new Date(invoice.payment_due_date) < new Date()) {
+  // Po terminie dopiero od dnia po terminie płatności (data w Polsce) — w dniu terminu faktura jest jeszcze „do zapłaty”.
+  if (invoice.payment_due_date && invoice.payment_due_date < warsawToday()) {
     return 'overdue';
   }
   return 'unpaid';

@@ -240,6 +240,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   }, [invoice?.id, invoice?.signature_name, invoice?.created_by]);
   const [canonicalBankPayment, setCanonicalBankPayment] = useState<CanonicalBankPaymentDisplay | null>(null);
   const [bankPaymentReadError, setBankPaymentReadError] = useState(false);
+  const [downloadingUpo, setDownloadingUpo] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -1068,6 +1069,36 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     setShowConvertProformaModal(true);
   };
 
+  // UPO (Urzędowe Poświadczenie Odbioru) z KSeF — zapisane w CRM albo pobrane teraz (/bridge/ksef/invoices/upo).
+  const handleDownloadUpo = async () => {
+    if (!invoice || downloadingUpo) return;
+    setDownloadingUpo(true);
+    try {
+      const response = await fetch('/bridge/ksef/invoices/upo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceId: invoice.id }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.success || typeof result.xml !== 'string') {
+        showSnackbar(result?.error || 'Nie udało się pobrać UPO z KSeF.', 'error');
+        return;
+      }
+      const url = URL.createObjectURL(new Blob([result.xml], { type: 'application/xml' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = result.fileName || `UPO_${invoice.invoice_number}.xml`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      showSnackbar('Nie udało się połączyć z serwerem CRM.', 'error');
+    } finally {
+      setDownloadingUpo(false);
+    }
+  };
+
   const handleSendToKSeF = async () => {
     if (!invoice || showKSeFModal || !financeAccess?.canIssueInvoices
       || completedKsefSend?.invoiceId === invoice.id
@@ -1399,6 +1430,16 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   <span className="mt-1 block break-all select-text">{invoice.ksef_reference_number || 'Jeszcze nie nadano'}</span>
                 </div>
                 {invoice.ksef_sent_at && <div><span className="block text-[#e5e4e2]/45">Data wysyłki</span><span className="mt-1 block">{new Date(invoice.ksef_sent_at).toLocaleString('pl-PL')}</span></div>}
+                {ksefStatus === 'accepted' && invoice.ksef_reference_number && (
+                  <div>
+                    <span className="block text-[#e5e4e2]/45">UPO — urzędowe poświadczenie odbioru</span>
+                    <button type="button" disabled={downloadingUpo} onClick={() => void handleDownloadUpo()}
+                      className="mt-1 inline-flex items-center gap-1.5 text-[#d3bb73] hover:underline disabled:opacity-50">
+                      {downloadingUpo ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                      {downloadingUpo ? 'Pobieranie z KSeF…' : 'Pobierz UPO (XML)'}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             {invoice.ksef_error && <p role="alert" className="mt-3 rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{invoice.ksef_error}</p>}
