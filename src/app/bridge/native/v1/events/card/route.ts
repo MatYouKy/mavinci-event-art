@@ -27,6 +27,7 @@ import '@/lib/native/eventCalculations';
 import '@/lib/native/eventContract';
 import '@/lib/native/eventClientLocation';
 import '@/lib/native/eventCreate';
+import '@/lib/native/eventBilling';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

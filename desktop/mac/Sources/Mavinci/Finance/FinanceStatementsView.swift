@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: Wyciągi bankowe (jak „Dokumenty i rozliczenia → Wyciągi i płatności” w CRM) — rok w miesiącach: z lewej każdy
 // miesiąc z kompletem plików (rachunek bieżący i VAT, PDF i MT940), z prawej pliki wybranego miesiąca: podgląd, pobranie,
@@ -212,7 +214,9 @@ import SwiftUI
     }
 }
 
-// MARK: Import wyciągu (jak okno importu w CRM)
+// MARK: Import wyciągu (jak okno importu w CRM) — u góry okres i rachunek, poniżej strefa pliku na całą wysokość okna:
+// przeciągnij i upuść albo kliknij, sprawdzenie rozszerzenia i rozmiaru. Format (PDF / MT940) wynika z rozszerzenia pliku —
+// nie wybiera się go wcześniej.
 
 @MainActor struct BankStatementImportSheet: View {
     @ObservedObject var store: FinanceBankStore
@@ -220,10 +224,23 @@ import SwiftUI
     @State var year: Int
     @State var month: Int
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.crmTheme) private var theme
     @State private var accountType = "regular"
-    @State private var format = "PDF"
     @State private var file: URL?
+    @State private var fileSize: Int?
+    @State private var dropTargeted = false
+    @State private var dropError: String?
     @State private var question: (title: String, text: String, confirm: String)?
+
+    /// Limit pliku jak przy przesyłaniu (`importStatement`).
+    private static let limit = 10 * 1024 * 1024
+    private static let pdfTypes = ["pdf"]
+    private static let mt940Types = ["txt", "sta", "mt940"]
+    /// Rozpoznany format pliku (jak pole „Format” w CRM): PDF albo MT940.
+    private static func detectFormat(_ url: URL) -> String? {
+        let ext = url.pathExtension.lowercased()
+        return pdfTypes.contains(ext) ? "PDF" : mt940Types.contains(ext) ? "MT940" : nil
+    }
 
     init(store: FinanceBankStore, company: FinCompany, year: Int, month: Int) {
         self.store = store
@@ -232,41 +249,29 @@ import SwiftUI
         _month = State(initialValue: month)
     }
 
+    private var format: String? { file.flatMap(Self.detectFormat) }
+    private var currentYear: Int { Calendar.current.component(.year, from: Date()) }
+
     var body: some View {
         BankSheetFrame("Wgraj wyciąg", symbol: "square.and.arrow.up", subtitle: company.name) {
-            Form {
-                Picker("Miesiąc", selection: $month) {
-                    ForEach(1...12, id: \.self) { Text(FinFormat.monthsTitle[$0 - 1]).tag($0) }
-                }
-                Stepper(value: $year, in: 2000...Calendar.current.component(.year, from: Date())) { Text("Rok: \(String(year))") }
-                Picker("Rachunek, którego dotyczy wyciąg", selection: $accountType) {
-                    Text("Konto bieżące").tag("regular")
-                    Text("Konto VAT").tag("vat")
-                }
-                .pickerStyle(.segmented)
-                Picker("Format pliku", selection: $format) {
-                    Text("PDF").tag("PDF")
-                    Text("MT940 (TXT, STA)").tag("MT940")
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: format) { _, _ in file = nil }
-                LabeledContent("Plik") {
-                    Button { file = FinanceBankStore.pickFile("Wyciąg \(format)", types: format == "PDF" ? ["pdf"] : ["txt", "sta", "mt940"]) ?? file } label: {
-                        Label(file?.lastPathComponent ?? "Wybierz plik…", systemImage: "doc")
-                    }
-                }
+            VStack(alignment: .leading, spacing: 14) {
+                settings
+                dropZone.frame(maxWidth: .infinity, maxHeight: .infinity)
+                Text("PDF musi dotyczyć wybranego miesiąca (kontrola okresu i ciągłości salda). Numer rachunku z pliku jest sprawdzany z rachunkami działalności i zapisanymi wyciągami — import zatrzyma się, gdy wybrano niewłaściwe konto. Po imporcie: transfery między kontem bieżącym i VAT oraz uzgodnienie miesiąca.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            .formStyle(.grouped)
-            Text("PDF musi dotyczyć wybranego miesiąca (kontrola okresu i ciągłości salda). Numer rachunku z pliku jest sprawdzany z rachunkami działalności i zapisanymi wyciągami — import zatrzyma się, gdy wybrano niewłaściwe konto. Po imporcie: transfery między kontem bieżącym i VAT oraz uzgodnienie miesiąca.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 20).padding(.bottom, 12)
+            .padding(18)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } footer: {
+            if let file {
+                Label(file.lastPathComponent, systemImage: "doc").font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }
             Spacer()
             Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
             Button("Importuj") { Task { await run(confirmed: false) } }
                 .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(file == nil)
         }
-        .frame(minWidth: 560, idealWidth: 600, minHeight: 460, idealHeight: 520)
+        .frame(minWidth: 560, idealWidth: 620, minHeight: 520, idealHeight: 600)
         .alert(question?.title ?? "Sprawdź numer rachunku", isPresented: Binding(get: { question != nil }, set: { if !$0 { question = nil } })) {
             Button("Anuluj import", role: .cancel) { question = nil }
             Button(question?.confirm ?? "Importuj") {
@@ -276,8 +281,164 @@ import SwiftUI
         } message: { Text(question?.text ?? "") }
     }
 
+    // MARK: Okres i rachunek
+    private var settings: some View {
+        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+            GridRow {
+                Text("Okres").foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+                HStack(spacing: 8) {
+                    Picker("", selection: $month) {
+                        ForEach(1...12, id: \.self) { Text(FinFormat.monthsTitle[$0 - 1]).tag($0) }
+                    }
+                    .labelsHidden().fixedSize()
+                    Picker("", selection: $year) {
+                        ForEach(Array(max(2000, min(year, currentYear) - 5)...currentYear).reversed(), id: \.self) { Text(String($0)).tag($0) }
+                    }
+                    .labelsHidden().fixedSize()
+                }
+            }
+            GridRow {
+                Text("Rachunek").foregroundStyle(.secondary)
+                Picker("", selection: $accountType) {
+                    Text("Konto bieżące").tag("regular")
+                    Text("Konto VAT").tag("vat")
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: Strefa pliku
+    private var dropZone: some View {
+        let accent = theme.accent
+        let border: Color = dropTargeted ? accent : dropError != nil ? CrmTheme.rgb(0xf87171) : file != nil ? CrmTheme.rgb(0x4ade80).opacity(0.7) : Color.secondary.opacity(0.45)
+        return ZStack {
+            RoundedRectangle(cornerRadius: 14)
+                .fill(dropTargeted ? accent.opacity(0.10) : Color.primary.opacity(0.03))
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(border, style: StrokeStyle(lineWidth: dropTargeted ? 2.5 : 1.5, dash: file == nil || dropTargeted ? [7, 5] : []))
+            if dropTargeted {
+                VStack(spacing: 10) {
+                    Image(systemName: "arrow.down.doc.fill").font(.system(size: 44)).foregroundStyle(accent)
+                    Text("Upuść, aby dodać wyciąg").font(.title3.weight(.semibold))
+                }
+            } else if let file {
+                selectedFile(file)
+            } else {
+                emptyState
+            }
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 14))
+        .onTapGesture { if file == nil { choose() } }
+        .onDrop(of: [UTType.fileURL], isTargeted: $dropTargeted) { providers in
+            guard !providers.isEmpty else { return false }
+            if providers.count > 1 { dropError = "Upuść jeden plik — każdy wyciąg importujesz osobno." }
+            guard let provider = providers.first else { return false }
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                Task { @MainActor in
+                    if let url { accept(url, dropped: true, multiple: providers.count > 1) } else { dropError = "Nie udało się odczytać upuszczonego pliku." }
+                }
+            }
+            return true
+        }
+        .animation(.easeOut(duration: 0.12), value: dropTargeted)
+        .help(file == nil ? "Przeciągnij plik wyciągu albo kliknij, aby wybrać go z dysku" : "Przeciągnij inny plik, aby go zastąpić")
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "arrow.down.doc").font(.system(size: 42)).foregroundStyle(theme.accent.opacity(0.85))
+            VStack(spacing: 4) {
+                Text("Przeciągnij tutaj plik wyciągu").font(.title3.weight(.semibold))
+                Text("albo kliknij, aby wybrać go z dysku").foregroundStyle(.secondary)
+            }
+            Button { choose() } label: { Label("Wybierz plik…", systemImage: "folder") }
+            Text("PDF albo MT940 (.txt, .sta, .mt940) · do 10 MB — format rozpoznawany po rozszerzeniu")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            if let dropError {
+                Label(dropError, systemImage: "exclamationmark.triangle.fill").font(.callout).foregroundStyle(CrmTheme.rgb(0xfca5a5))
+                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(24)
+    }
+
+    private func selectedFile(_ file: URL) -> some View {
+        VStack(spacing: 12) {
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: file.pathExtension.lowercased() == "pdf" ? "doc.richtext.fill" : "doc.plaintext.fill")
+                    .font(.system(size: 46)).foregroundStyle(theme.accent)
+                Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(CrmTheme.rgb(0x4ade80))
+                    .background(Circle().fill(Color(nsColor: .windowBackgroundColor))).offset(x: 6, y: 4)
+            }
+            VStack(spacing: 3) {
+                Text(file.lastPathComponent).font(.headline).lineLimit(2).multilineTextAlignment(.center).truncationMode(.middle)
+                Text(fileDetails).font(.caption).foregroundStyle(.secondary)
+                Text("\(FinFormat.monthsTitle[month - 1]) \(String(year)) · \(accountType == "vat" ? "konto VAT" : "konto bieżące")")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 10) {
+                Button { choose() } label: { Label("Zmień plik…", systemImage: "arrow.triangle.2.circlepath") }
+                Button(role: .destructive) { clearFile() } label: { Label("Usuń", systemImage: "xmark") }
+            }
+            .controlSize(.small)
+            if let dropError {
+                Text(dropError).font(.caption).foregroundStyle(CrmTheme.rgb(0xfcd34d)).multilineTextAlignment(.center)
+            }
+        }
+        .padding(24)
+    }
+
+    private var fileDetails: String {
+        var parts = [format == "PDF" ? "Rozpoznano: wyciąg PDF" : "Rozpoznano: wyciąg MT940"]
+        if let fileSize { parts.append(ByteCountFormatter.string(fromByteCount: Int64(fileSize), countStyle: .file)) }
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: Wybór i kontrola pliku
+    private func choose() {
+        guard let url = FinanceBankStore.pickFile("Wyciąg bankowy (PDF albo MT940)", types: Self.pdfTypes + Self.mt940Types) else { return }
+        accept(url, dropped: false, multiple: false)
+    }
+
+    /// Plik z okna wyboru albo upuszczony: folder i nieobsługiwany typ odrzucone, format według rozszerzenia, limit rozmiaru.
+    private func accept(_ url: URL, dropped: Bool, multiple: Bool) {
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
+            dropError = "To jest folder — upuść pojedynczy plik wyciągu."
+            return
+        }
+        guard Self.detectFormat(url) != nil else {
+            dropError = "„\(url.lastPathComponent)” nie jest wyciągiem. Obsługiwane: PDF albo MT940 (.txt, .sta, .mt940)."
+            return
+        }
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+        if let size, size > Self.limit {
+            dropError = "Plik „\(url.lastPathComponent)” ma \(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)) — limit to 10 MB."
+            return
+        }
+        if size == 0 {
+            dropError = "Plik „\(url.lastPathComponent)” jest pusty."
+            return
+        }
+        file = url
+        fileSize = size
+        dropError = multiple ? "Dodano pierwszy plik — każdy wyciąg importujesz osobno." : nil
+    }
+
+    private func clearFile() {
+        file = nil
+        fileSize = nil
+        dropError = nil
+    }
+
     private func run(confirmed: Bool) async {
-        guard let file else { return }
+        guard let file, let format else { return }
         let result = await store.importStatement(company: company.id, year: year, month: month, accountType: accountType, format: format, file: file, confirmed: confirmed)
         if let ask = result.question { question = ask; return }
         if result.done { dismiss() }

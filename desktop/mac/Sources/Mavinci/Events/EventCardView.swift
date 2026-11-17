@@ -44,6 +44,8 @@ import AppKit
     @AppStorage("eventCard.overviewHidden") private var overviewHidden = false
     @State private var overviewCollapsed = false
     private var overviewShown: Bool { !overviewHidden && !overviewCollapsed }
+    /// Strona panelu bocznego: Przegląd albo Rozliczenie i prowizje (zapamiętana na tym Macu).
+    @AppStorage("eventCard.inspectorPage") private var inspectorPage = "overview"
     /// Szuflada „Wydruki” pod przyciskiem drukarki.
     @State private var printsShown = false
     /// „Edytuj event” (`EditEventModalNew`).
@@ -55,6 +57,13 @@ import AppKit
 
     private var cached: CachedEventCard? { store.card(eventID) }
     private var flags: EventCardFlags? { cached?.page.flags }
+
+    /// Panel boczny otwarty na stronie „Rozliczenie i prowizje”.
+    private func showBilling() {
+        inspectorPage = "billing"
+        overviewHidden = false
+        overviewCollapsed = false
+    }
 
     /// Zakładki w kolejności pracy sprzedawcy; pokrewne połączone w jedną z przełącznikiem (Oferta + Kalkulacje, Zespół +
     /// Podwykonawcy, Finanse + Podsumowanie). Przegląd jest panelem z boku karty, nie zakładką.
@@ -331,14 +340,14 @@ import AppKit
 
     // MARK: Pasek narzędzi (akcje nagłówka CRM: Karta imprezy, Edytuj, Duplikuj, Usuń)
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        if cached?.page.kind == "full" && flags?.tabs.contains(where: { $0.id == "overview" }) == true {
+        if let page = cached?.page, page.kind == "full", page.flags?.tabs.contains(where: { $0.id == "overview" }) == true || EventBillingText.available(page) {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     // Jawny wybór pracownika — zapamiętany na tym Macu.
                     overviewHidden = overviewShown
                     overviewCollapsed = false
                 } label: { Label("Przegląd", systemImage: "sidebar.trailing") }
-                    .help("Pokaż lub ukryj Przegląd: kroki realizacji, kontrolę przed wydarzeniem i najważniejsze informacje (⌥⌘I)")
+                    .help("Pokaż lub ukryj panel boczny: Przegląd (kroki realizacji, kontrola przed wydarzeniem, najważniejsze informacje) oraz Rozliczenie i prowizje (⌥⌘I)")
                     .keyboardShortcut("i", modifiers: [.command, .option])
             }
         }
@@ -396,6 +405,8 @@ import AppKit
         let selected: String? = groups.contains(where: { $0.contains(tab) }) ? tab : (groups.first?.members.first?.id)
         let current = groups.first { group in selected.map { group.contains($0) } ?? false }
         let hasOverview = tabs.contains { $0.id == "overview" }
+        let hasBilling = EventBillingText.available(page)
+        let hasSidebar = hasOverview || hasBilling
         return VStack(alignment: .leading, spacing: 0) {
             header(page, event)
             if event["seller_confirmation_required"] == "true" && page.flags?.canViewSellerCorrespondence == true && event.status != "cancelled" {
@@ -439,12 +450,33 @@ import AppKit
         // Karta nie wymusza minimalnej szerokości: szerokie zakładki (Agenda, Sprzęt) nie mogą chować paska bocznego aplikacji
         // przy panelu Przegląd — treść dopasowuje się do miejsca, które zostaje (MacBook Air 13" i Pro 16").
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .inspector(isPresented: Binding(get: { hasOverview && overviewShown }, set: { shown in
-            guard hasOverview else { return }
+        .inspector(isPresented: Binding(get: { hasSidebar && overviewShown }, set: { shown in
+            guard hasSidebar else { return }
             if shown { overviewHidden = false; overviewCollapsed = false } else { overviewCollapsed = true }
         })) {
-            EventOverviewTab(store: store, eventID: eventID, page: page, navigate: { tab = $0 }, sidebar: true)
+            sidebar(page, hasOverview: hasOverview, hasBilling: hasBilling)
                 .inspectorColumnWidth(min: 300, ideal: 380, max: 560)
+        }
+    }
+
+    /// Panel boczny: Przegląd i — dla osób z dostępem do rozliczenia — Rozliczenie i prowizje (przełącznik u góry panelu).
+    @ViewBuilder private func sidebar(_ page: EventCardPage, hasOverview: Bool, hasBilling: Bool) -> some View {
+        let billing = hasBilling && (inspectorPage == "billing" || !hasOverview)
+        VStack(spacing: 0) {
+            if hasOverview && hasBilling {
+                Picker("", selection: $inspectorPage) {
+                    Text("Przegląd").tag("overview")
+                    Text("Rozliczenie").tag("billing")
+                }
+                .pickerStyle(.segmented).labelsHidden()
+                .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
+                .help("Przegląd wydarzenia albo rozliczenie: kto rozlicza, numer PO, wspólne rozliczenie, sprzedawcy i prowizje")
+            }
+            if billing {
+                EventBillingPanel(store: store, eventID: eventID, page: page, navigate: { tab = $0 })
+            } else {
+                EventOverviewTab(store: store, eventID: eventID, page: page, navigate: { tab = $0 }, sidebar: true, title: !hasBilling)
+            }
         }
     }
 
@@ -529,8 +561,8 @@ import AppKit
 
     @ViewBuilder private func tabContent(_ id: String, _ page: EventCardPage, _ event: EventFields) -> some View {
         switch id {
-        case "overview": EventDetailsTab(store: store, eventID: eventID, page: page)
-        case "details": EventDetailsTab(store: store, eventID: eventID, page: page)
+        case "overview", "details":
+            EventDetailsTab(store: store, eventID: eventID, page: page, openBilling: EventBillingText.available(page) ? { showBilling() } : nil)
         case "team": EventTeamTab(store: store, eventID: eventID, page: page)
         case "phases": EventPhasesTab(store: store, eventID: eventID)
         case "equipment": EventEquipmentTab(store: store, eventID: eventID)

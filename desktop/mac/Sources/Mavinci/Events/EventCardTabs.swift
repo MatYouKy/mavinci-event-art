@@ -12,6 +12,8 @@ import AppKit
     var navigate: (String) -> Void
     /// Panel z boku karty (obok każdej zakładki): najważniejsze, kroki i kontrola jedna pod drugą.
     var sidebar = false
+    /// Nagłówek „Przegląd” w panelu (bez niego, gdy nad panelem jest przełącznik Przegląd | Rozliczenie).
+    var title = true
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
 
@@ -23,7 +25,7 @@ import AppKit
         ScrollView {
             if sidebar {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("Przegląd").font(.headline)
+                    if title { Text("Przegląd").font(.headline) }
                     EventArrangementsCard(store: store, eventID: eventID)
                     right
                     left

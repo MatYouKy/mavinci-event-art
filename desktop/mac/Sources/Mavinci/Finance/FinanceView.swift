@@ -38,7 +38,10 @@ import SwiftUI
                 HStack(spacing: 0) {
                     sidebar
                     Divider()
-                    content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    // `minHeight: 0` — część nie wymusza minimalnej wysokości okna. Przy liczeniu minimum SwiftUI podaje szerokość 0,
+                    // a tekst zawijany bez skracania (`fixedSize` w pionie: przypisy, ostrzeżenia) ma wtedy tysiące punktów wysokości;
+                    // bez tego „Terminy i monity” (treść poza przewijaniem) rozpychały całe okno i ekran wyglądał na pusty.
+                    content.frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
                 }
             }
         }

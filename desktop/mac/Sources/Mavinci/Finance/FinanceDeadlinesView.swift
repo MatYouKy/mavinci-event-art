@@ -97,7 +97,7 @@ import AppKit
                     }
                     Button("Wczytaj wyciąg") { store.open(FinLink.section("external", "statements")) }
                         .fixedSize()
-                        .help("Uzgadnianie wyciągów — w CRM")
+                        .help("Wyciągi — wgranie wyciągu za brakujący miesiąc")
                 }
             }
             listPicker(model)
@@ -149,7 +149,7 @@ import AppKit
                 Toggle("Pokaż zapłacone z ostatniego roku", isOn: $showPaidObligations).toggleStyle(.checkbox).fixedSize()
                 Spacer(minLength: 8)
                 Button("Deklaracje i kwoty") { store.open(FinLink.section("external", "declarations")) }
-                    .fixedSize().help("Kwoty z deklaracji i pliki — w CRM")
+                    .fixedSize().help("Deklaracje ZUS i podatki — kwoty z deklaracji i pliki")
                 settingsButton
             case .receivables:
                 Spacer(minLength: 8)
@@ -363,14 +363,14 @@ import AppKit
                     Button("Wyślij przypomnienie…") { reminder = item }.disabled(!state.canWrite)
                 }
                 if let invoiceID = item.invoiceId {
-                    Button("Otwórz fakturę w CRM") { state.openCRM("/crm/invoices/\(invoiceID)") }
+                    Button("Otwórz fakturę") { store.open("/crm/invoices/\(invoiceID)") }
                 } else {
-                    Button("Faktury KSeF w CRM") { state.openCRM(FinLink.section("ksef", nil)) }
+                    Button("Faktury KSeF") { store.open(FinLink.section("ksef", nil)) }
                 }
             }
         } primaryAction: { ids in
             guard let id = ids.first, let item = model.receivables.first(where: { $0.id == id }) else { return }
-            state.openCRM(item.invoiceId.map { "/crm/invoices/\($0)" } ?? FinLink.section("ksef", nil))
+            store.open(item.invoiceId.map { "/crm/invoices/\($0)" } ?? FinLink.section("ksef", nil))
         }
         .overlay {
             if rows.isEmpty { emptyState("Brak nieopłaconych faktur sprzedaży z terminem do 14 dni.", symbol: "checkmark.circle") }
@@ -452,7 +452,7 @@ import AppKit
                         NSPasteboard.general.setString(account, forType: .string)
                     }
                 }
-                Button("Faktury kosztowe KSeF w CRM") { state.openCRM(FinLink.section("ksef", nil)) }
+                Button("Faktury kosztowe KSeF") { store.open(FinLink.section("ksef", nil)) }
             }
         } primaryAction: { ids in
             guard let id = ids.first, let item = model.payables.first(where: { $0.id == id }), editable(item), state.canWrite else { return }
