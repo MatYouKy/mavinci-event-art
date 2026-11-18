@@ -18,6 +18,8 @@ struct RepresentativeOption: Identifiable, Hashable {
     let mode: ContactEditorMode
     /// Po dodaniu organizacji: zamiast karty — przekazanie nowej organizacji (np. nabywca w formularzu faktury).
     var onCreated: ((String) -> Void)? = nil
+    /// Dodawanie z wypełnionymi polami (np. nazwa z wyszukiwania w kreatorze sprzedawcy).
+    var initialValues: [String: String] = [:]
     @EnvironmentObject private var state: Workspace
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
@@ -739,7 +741,7 @@ struct RepresentativeOption: Identifiable, Hashable {
         guard !prepared else { return }
         if creating {
             prepared = true
-            values = ["business_type": "company", "country": "Polska", "status": "active"]
+            values = ["business_type": "company", "country": "Polska", "status": "active"].merging(initialValues) { _, given in given }
             return
         }
         guard let card, let org = card.organization else { return }

@@ -51,6 +51,8 @@ import Network
     let sellers = SellersStore()
     /// Komunikator (`Chat/`) — rozmowy pracowników na żywo, jak widżet czatu w CRM i w telefonie.
     let chat = ChatStore()
+    /// Kopia wydarzeń i spotkań w Kalendarzu Apple (`AppleCalendarSync.swift`) — aktualizowana po odświeżeniu, jeśli włączono.
+    let appleCalendar = AppleCalendarLink()
     let fleet = FleetStore()
     /// Czas pracy (`/crm/time-tracking`) — licznik, wpisy, raport zespołu, rozliczenia.
     let timeTracking = TimeTrackingStore()
@@ -323,6 +325,10 @@ import Network
             // Do not extend the offline permission lease on a partial/failed synchronization.
             if moduleErrors.isEmpty { snapshot?.savedAt = Date() }
             if !editing { refreshEventToken = UUID() }
+            // Kalendarz Apple: automatyczna aktualizacja kopii po pełnym odświeżeniu kalendarza (tylko gdy wpisy się zmieniły).
+            if current.canView(.calendar), moduleErrors["calendar"] == nil, snapshot?.collections["calendar"]?.lastSync != nil {
+                appleCalendar.refreshed(rows: rows(.calendar), employee: current.id, identity: connection.identity)
+            }
             if let snapshot {
                 do { try cache?.save(snapshot) }
                 catch { notice = "Nie udało się zapisać lokalnej kopii. Dane są dostępne do zamknięcia aplikacji." }
@@ -394,7 +400,7 @@ import Network
         for nav in windowNavigations where nav !== activeNavigation { nav.window?.close() }
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); chat.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); finance.reset()
+        native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); chat.reset(); appleCalendar.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); finance.reset()
         navigation = []; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }

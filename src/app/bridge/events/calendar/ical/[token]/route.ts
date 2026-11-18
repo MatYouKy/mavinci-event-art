@@ -202,11 +202,16 @@ export async function GET(_req: Request, { params }: { params: { token: string }
     if (tokenErr) throw tokenErr;
     if (!tokenRow?.employee_id) return new NextResponse('Not found', { status: 404 });
 
-    // best-effort bump
-    supabaseServer
-      .from('calendar_feed_tokens')
-      .update({ last_used_at: new Date().toISOString() })
-      .eq('token', token);
+    // Ostatnie pobranie linku (best-effort). Zapytanie Supabase wykonuje się dopiero po `await` — wcześniej data nigdy się
+    // nie zapisywała. Aplikacja na Macu pokazuje ją w „Kalendarz Apple”, ostrzegając o podwójnych wpisach (kopia + subskrypcja).
+    try {
+      await supabaseServer
+        .from('calendar_feed_tokens')
+        .update({ last_used_at: new Date().toISOString() })
+        .eq('token', token);
+    } catch {
+      // Brak zapisu daty nie blokuje kalendarza.
+    }
 
     // 2) employee + admin?
     const me = await getEmployeeOrThrow(tokenRow.employee_id);

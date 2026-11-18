@@ -165,6 +165,13 @@ export const CalendarSettings = () => {
           <p className="mt-3 text-xs text-[#e5e4e2]/60">
             iPhone odświeża subskrypcję automatycznie (czasem z opóźnieniem).
           </p>
+
+          <p className="mt-2 text-xs text-[#e5e4e2]/60">
+            Jeśli aplikacja Mavinci na Macu kopiuje wydarzenia do kalendarza iCloud (Kalendarz → „Połącz z Kalendarzem
+            Apple”), nie dodawaj tej subskrypcji na iPhonie — każde wydarzenie będzie widoczne dwa razy, także w Apple
+            Watch. Zostaw jedno źródło: subskrypcję albo kopię z Maca (w aplikacji można trzymać ją tylko na Macu lub ją
+            usunąć).
+          </p>
         </Modal>
       )}
 

@@ -9,9 +9,12 @@ import {
 } from '@/lib/seller/sellerProfileForm';
 
 /**
- * Kreator „Nowy sprzedawca” na Macu (`/bridge/native/v1/sellers`, op=newSeller | people | organizations | validate | create).
- * Osoby: z organizacji (`people&organization=…`), bez organizacji (`unaffiliated=1`), pracownicy MAVINCI (`source=employee`)
- * i jedna osoba z obecnymi organizacjami (`id=…` — „Mianuj sprzedawcą” z karty kontaktu).
+ * Kreator „Nowy sprzedawca” na Macu (`/bridge/native/v1/sellers`, op=newSeller | lookup | people | organizations | validate | create).
+ * Wyszukiwanie osoby (`lookup&q=…`): jedno pole — imię, nazwisko, e-mail, telefon, stanowisko albo nazwa organizacji; wynik to osoby
+ * (z obecnymi organizacjami) i organizacje (z liczbą osób). Osoby organizacji (`people&organization=…`), bez organizacji
+ * (`unaffiliated=1`), pracownicy MAVINCI (`source=employee`) i jedna osoba z obecnymi organizacjami (`id=…` — „Mianuj sprzedawcą”
+ * z karty kontaktu albo kontakt dodany w kreatorze). Kontakty innych opiekunów pracownik bez roli administratora widzi z powodem
+ * blokady (`blocked`) zamiast „nic nie znaleziono” — dodać może tylko swoje, jak w CRM.
  * Te same zapisy co formularz CRM (`CrmSellerProfileSettings.tsx`): profil i warunki marek tokenem pracownika (RLS jak w CRM),
  * te same warunki (`sellerProfileProblems`), zaproszenie przez `/bridge/seller/invite` (wywołane na serwerze), opiekuna
  * przypisuje administrator (`set_seller_manager`). Aplikacja zbiera dane i pokazuje braki — nie rozstrzyga o niczym sama.
@@ -74,8 +77,30 @@ export async function newSellerSetup(ctx: NativeContext) {
   };
 }
 
-type ContactRow = { id: string; full_name: string | null; email: string | null };
+type ContactRow = {
+  id: string; full_name: string | null; first_name?: string | null; last_name?: string | null; email: string | null;
+  phone?: string | null; mobile?: string | null; business_phone?: string | null; position?: string | null; owner_id?: string | null;
+  contact_type?: string | null;
+};
 type PeopleOptions = { organization?: string | null; unaffiliated?: boolean; id?: string | null };
+const CONTACT_FIELDS = 'id,full_name,first_name,last_name,email,phone,mobile,business_phone,position,owner_id,contact_type';
+type OrganizationRow = { id: string; name: string; alias: string | null; business_type: string | null; location_id: string | null; city?: string | null };
+const ORGANIZATION_FIELDS = 'id,name,alias,business_type,location_id,city';
+
+/** Nazwa osoby bez nagłówka e-maila (`"Jan Kowalski" <jan@…>` → `Jan Kowalski`), a bez pełnej nazwy — imię i nazwisko. */
+export const cleanPersonName = (row: Pick<ContactRow, 'full_name' | 'first_name' | 'last_name'>) => {
+  const cleaned = (row.full_name || '').replace(/<[^>]*>/g, ' ').replace(/["“”„]/g, ' ').replace(/\s+/g, ' ').trim();
+  return cleaned || [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || 'Kontakt';
+};
+const digitsOf = (value: string | null | undefined) => (value || '').replace(/\D/g, '');
+const phoneOf = (row: ContactRow) => (row.mobile || row.phone || row.business_phone || '').trim();
+/** Pracownik bez roli administratora mianuje tylko swoje kontakty (jak lista „Moje kontakty zewnętrzne” w CRM). */
+const blockedReason = (access: Directory, row: ContactRow) => !access.is_admin && row.owner_id !== access.employee_id
+  ? 'Kontakt innego opiekuna — sprzedawcą może go mianować administrator albo opiekun kontaktu.' : null;
+const sellerIndex = (access: Directory) => new Map(access.profiles.flatMap((profile) => [
+  ...(profile.contact_id ? [[`contact:${profile.contact_id}`, profile.id] as const] : []),
+  ...(profile.employee_id ? [[`employee:${profile.employee_id}`, profile.id] as const] : []),
+]));
 
 /** Słowa wyszukiwania — każde musi wystąpić (w dowolnej kolejności), np. „Monika Jurgin” i „Jurgin Monika”. */
 const searchWords = (query: string) => query.toLocaleLowerCase('pl').split(/\s+/).map((word) => word.trim()).filter(Boolean).slice(0, 6);
@@ -118,10 +143,7 @@ async function currentOrganizations(ctx: NativeContext, contactIds: string[], wi
  */
 export async function newSellerPeople(ctx: NativeContext, source: string, query: string, options: PeopleOptions = {}) {
   const access = await directory(ctx);
-  const sellers = new Map(access.profiles.flatMap((profile) => [
-    ...(profile.contact_id ? [[`contact:${profile.contact_id}`, profile.id] as const] : []),
-    ...(profile.employee_id ? [[`employee:${profile.employee_id}`, profile.id] as const] : []),
-  ]));
+  const sellers = sellerIndex(access);
   const words = searchWords(query);
   // Do bazy — najdłuższe słowo; pozostałe sprawdzane na wynikach.
   const longest = [...words].sort((first, second) => second.length - first.length)[0] || '';
@@ -139,15 +161,16 @@ export async function newSellerPeople(ctx: NativeContext, source: string, query:
     })) };
   }
   const person = (row: ContactRow, detail?: string, organizations?: { id: string; name: string }[]) => ({
-    id: row.id, name: row.full_name || 'Kontakt', email: row.email || null,
+    id: row.id, name: cleanPersonName(row), email: row.email || null, phone: phoneOf(row) || null, kind: row.contact_type || 'contact',
     detail: detail || row.email || 'brak adresu e-mail', sellerId: sellers.get(`contact:${row.id}`) || null,
+    blocked: blockedReason(access, row),
     ...(organizations ? { organizations } : {}),
   });
 
   // Jedna osoba — „Mianuj sprzedawcą” z karty kontaktu (uprawnienia do niej sprawdza lista braków).
   if (options.id) {
     if (!uuid.test(options.id)) fail('Nieprawidłowa osoba.');
-    const { data, error } = await ctx.supabase.from('contacts').select('id,full_name,email').eq('id', options.id).maybeSingle();
+    const { data, error } = await ctx.supabase.from('contacts').select(CONTACT_FIELDS).eq('id', options.id).maybeSingle();
     if (error) throw error;
     if (!data) return { people: [] };
     const organizations = await currentOrganizations(ctx, [options.id], true);
@@ -163,15 +186,15 @@ export async function newSellerPeople(ctx: NativeContext, source: string, query:
     const positions = new Map(((links || []) as { contact_id: string; position: string | null }[]).map((link) => [link.contact_id, (link.position || '').trim()]));
     const ids = [...positions.keys()].filter((id) => uuid.test(id));
     if (!ids.length) return { people: [] };
-    let request = ctx.supabase.from('contacts').select('id,full_name,email').in('id', ids).order('full_name').limit(200);
-    if (!access.is_admin) request = request.eq('owner_id', access.employee_id);
-    const { data, error } = await request;
+    // Wszyscy obecni pracownicy organizacji; kontakty innych opiekunów (pracownik bez roli administratora) — z powodem blokady.
+    const { data, error } = await ctx.supabase.from('contacts').select(CONTACT_FIELDS).in('id', ids).order('full_name').limit(200);
     if (error) throw error;
-    const rows = ((data || []) as ContactRow[]).filter((row) => matchesAll(`${row.full_name || ''} ${row.email || ''} ${positions.get(row.id) || ''}`, words));
-    return { people: rows.map((row) => person(row, [positions.get(row.id) || '', row.email || 'brak adresu e-mail'].filter(Boolean).join(' · '))) };
+    const rows = ((data || []) as ContactRow[]).filter((row) => matchesAll(`${cleanPersonName(row)} ${row.email || ''} ${positions.get(row.id) || ''} ${digitsOf(phoneOf(row))}`, words));
+    return { people: rows.map((row) => person(row, [positions.get(row.id) || '', row.email || 'brak adresu e-mail', phoneOf(row)].filter(Boolean).join(' · ')))
+      .sort((first, second) => Number(Boolean(first.blocked)) - Number(Boolean(second.blocked))) };
   }
 
-  let request = ctx.supabase.from('contacts').select('id,full_name,email').order('full_name').limit(longest || options.unaffiliated ? 300 : 40);
+  let request = ctx.supabase.from('contacts').select(CONTACT_FIELDS).order('full_name').limit(longest || options.unaffiliated ? 300 : 40);
   if (!access.is_admin) request = request.eq('owner_id', access.employee_id);
   if (longest) request = request.or(`full_name.ilike.${like(longest)},email.ilike.${like(longest)}`);
   const { data, error } = await request;
@@ -187,12 +210,16 @@ export async function newSellerPeople(ctx: NativeContext, source: string, query:
 
 /** Hotele i organizacje z lokalizacją i liczbą sal — „Hotel i sale”. */
 export async function newSellerOrganizations(ctx: NativeContext, query: string, id?: string) {
-  let request = ctx.supabase.from('organizations').select('id,name,alias,business_type,location_id').order('name').limit(40);
+  let request = ctx.supabase.from('organizations').select(ORGANIZATION_FIELDS).order('name').limit(40);
   if (id && uuid.test(id)) request = request.eq('id', id);
   else if (query.trim()) request = request.or(`name.ilike.${like(query)},alias.ilike.${like(query)}`);
   const { data, error } = await request;
   if (error) throw error;
-  const organizations = (data || []) as { id: string; name: string; alias: string | null; business_type: string | null; location_id: string | null }[];
+  return { organizations: await organizationSummaries(ctx, (data || []) as OrganizationRow[]) };
+}
+
+/** Organizacja do wyboru: nazwa (alias), rodzaj, lokalizacja i sale (z kartoteki lokalizacji). */
+async function organizationSummaries(ctx: NativeContext, organizations: OrganizationRow[]) {
   const locationIds = [...new Set(organizations.map((org) => org.location_id).filter((value): value is string => Boolean(value)))];
   const locations = new Map<string, { name: string; rooms: string[] }>();
   if (locationIds.length) {
@@ -202,13 +229,99 @@ export async function newSellerOrganizations(ctx: NativeContext, query: string, 
       locations.set(row.id, { name: row.name, rooms });
     }
   }
-  return { organizations: organizations.map((org) => {
+  return organizations.map((org) => {
     const location = org.location_id ? locations.get(org.location_id) : undefined;
     return {
       id: org.id, name: org.alias || org.name, fullName: org.alias ? org.name : null, businessType: org.business_type,
       isHotel: org.business_type === 'hotel', locationId: org.location_id, locationName: location?.name || null, rooms: location?.rooms || [],
+      city: org.city || null,
     };
-  }) };
+  });
+}
+
+/**
+ * Jedno pole wyszukiwania osoby w kreatorze: każde słowo (dowolna kolejność) w imieniu i nazwisku, e-mailu, telefonie, stanowisku
+ * albo nazwie obecnej organizacji — „Monika Jurgin”, „jurgin”, „aries”, „600 123”. Osoby z organizacji pasujących do frazy są
+ * w wynikach razem z organizacjami (liczba obecnych osób, lokalizacja i sale). Bez frazy — ostatnio dodane kontakty.
+ */
+export async function newSellerLookup(ctx: NativeContext, query: string) {
+  const access = await directory(ctx);
+  const sellers = sellerIndex(access);
+  const words = searchWords(query.replace(/[<>"“”„]/g, ' '));
+  const describe = (row: ContactRow, organizations: { id: string; name: string }[]) => {
+    const email = row.email || null;
+    const phone = phoneOf(row);
+    const parts = [row.position?.trim() || '', email || 'brak adresu e-mail', phone, row.contact_type === 'individual' ? 'osoba prywatna' : ''];
+    return {
+      id: row.id, name: cleanPersonName(row), email, phone: phone || null, kind: row.contact_type || 'contact', detail: parts.filter(Boolean).join(' · '),
+      sellerId: sellers.get(`contact:${row.id}`) || null, blocked: blockedReason(access, row), organizations,
+    };
+  };
+  const rank = (person: ReturnType<typeof describe>) => (person.sellerId ? 2 : 0) + (person.blocked ? 1 : 0);
+
+  if (!words.length) {
+    let request = ctx.supabase.from('contacts').select(CONTACT_FIELDS).eq('status', 'active').order('created_at', { ascending: false }).limit(12);
+    if (!access.is_admin) request = request.eq('owner_id', access.employee_id);
+    const { data, error } = await request;
+    if (error) throw error;
+    const rows = (data || []) as ContactRow[];
+    const organizations = await currentOrganizations(ctx, rows.map((row) => row.id), true);
+    return { recent: true, people: rows.map((row) => describe(row, organizations.get(row.id) || [])), organizations: [] };
+  }
+
+  const longest = [...words].sort((first, second) => second.length - first.length)[0];
+  // Numer telefonu bywa zapisany ze spacjami lub kreskami — cyfry frazy w tej kolejności, z dowolnymi znakami pomiędzy.
+  const digitsOnly = /^\+?\d{3,}$/.test(longest) ? digitsOf(longest) : '';
+  const phoneLike = digitsOnly ? `%${digitsOnly.split('').join('%')}%` : like(longest);
+  // Organizacje pasujące do któregokolwiek słowa — ich obecni pracownicy też są kandydatami („aries” → osoby z ARIES LAGO).
+  const orgWords = words.filter((word) => word.length >= 3).slice(0, 3);
+  const orgFilter = orgWords.flatMap((word) => [`name.ilike.${like(word)}`, `alias.ilike.${like(word)}`, `city.ilike.${like(word)}`]).join(',');
+  const [direct, orgs] = await Promise.all([
+    ctx.supabase.from('contacts').select(CONTACT_FIELDS).eq('status', 'active')
+      .or([
+        ...['full_name', 'first_name', 'last_name', 'email', 'position'].map((field) => `${field}.ilike.${like(longest)}`),
+        ...['phone', 'mobile', 'business_phone'].map((field) => `${field}.ilike.${phoneLike}`),
+      ].join(','))
+      .order('full_name').limit(300),
+    orgFilter
+      ? ctx.supabase.from('organizations').select(ORGANIZATION_FIELDS).or(orgFilter).order('name').limit(30)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (direct.error) throw direct.error;
+  if (orgs.error) throw orgs.error;
+  const orgRows = (orgs.data || []) as OrganizationRow[];
+  const candidates = new Map(((direct.data || []) as ContactRow[]).map((row) => [row.id, row]));
+  const people = new Map<string, number>();
+  if (orgRows.length) {
+    const { data: links, error: linkError } = await ctx.supabase.from('contact_organizations').select('contact_id,organization_id')
+      .in('organization_id', orgRows.map((org) => org.id)).eq('is_current', true).limit(1000);
+    if (linkError) throw linkError;
+    const linked = (links || []) as { contact_id: string; organization_id: string }[];
+    for (const link of linked) people.set(link.organization_id, (people.get(link.organization_id) || 0) + 1);
+    const missing = [...new Set(linked.map((link) => link.contact_id))].filter((id) => uuid.test(id) && !candidates.has(id)).slice(0, 300);
+    for (let index = 0; index < missing.length; index += 100) {
+      const { data, error } = await ctx.supabase.from('contacts').select(CONTACT_FIELDS).in('id', missing.slice(index, index + 100)).eq('status', 'active');
+      if (error) throw error;
+      for (const row of (data || []) as ContactRow[]) candidates.set(row.id, row);
+    }
+  }
+  const organizationsOf = await currentOrganizations(ctx, [...candidates.keys()], true);
+  const found = [...candidates.values()]
+    .map((row) => ({ row, organizations: organizationsOf.get(row.id) || [] }))
+    .filter(({ row, organizations }) => matchesAll([
+      cleanPersonName(row), row.email || '', row.position || '', digitsOf(row.phone), digitsOf(row.mobile), digitsOf(row.business_phone),
+      ...organizations.map((org) => org.name),
+    ].join(' '), words.map((word) => (/^[\d\s+()-]+$/.test(word) ? digitsOf(word) || word : word))))
+    .map(({ row, organizations }) => describe(row, organizations))
+    .sort((first, second) => rank(first) - rank(second) || first.name.localeCompare(second.name, 'pl'))
+    .slice(0, 40);
+  const matchingOrganizations = orgRows.filter((org) => matchesAll(`${org.name} ${org.alias || ''} ${org.city || ''}`, words)).slice(0, 10);
+  const summaries = await organizationSummaries(ctx, matchingOrganizations);
+  return {
+    recent: false,
+    people: found,
+    organizations: summaries.map((org) => ({ ...org, peopleCount: people.get(org.id) || 0 })),
+  };
 }
 
 export function normalize(raw: Record<string, unknown>): NewSellerForm {

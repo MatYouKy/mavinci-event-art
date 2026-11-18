@@ -4,10 +4,12 @@ import SwiftUI
 // Braki i wskazówki widać od pierwszego kroku; zapis jest możliwy dopiero przy komplecie. Warunki zapisu są wspólne z CRM
 // (`src/lib/seller/sellerProfileForm.ts`), zapis robi serwer CRM (`/bridge/native/v1/sellers`, `src/lib/native/sellerCreate.ts`):
 // profil i warunki marek, opiekun (administrator) i zaproszenie — jak „Zapisz ustawienia” w CRM.
-// Osoba: najpierw organizacja (wyszukiwanie), potem jej pracownicy; „Bez organizacji” — kontakty bez obecnej organizacji;
-// „Pracownicy Mavinci” — administrator. „Mianuj sprzedawcą” (karta i lista kontaktów, osoby organizacji) otwiera kreator
-// z wybraną osobą i organizacją (`NewSellerPreset`, arkusz okna — `WindowNavigation.sellerAppointment`). Zaproszenie to e-mail
-// z linkiem do hasła, adresem logowania, instrukcją, opiekunem i osobistą wiadomością (`SellerInviteView.swift`).
+// Osoba: jedno pole wyszukiwania (`op=lookup`) — imię, nazwisko, e-mail, telefon, stanowisko albo nazwa organizacji; wynik to osoby
+// z obecnymi organizacjami i organizacje (kliknięcie pokazuje ich osoby). Brakującą osobę albo organizację dodaje się w kreatorze
+// (formularze Kontaktów) i jest od razu wybierana. „Pracownik Mavinci” — administrator. „Mianuj sprzedawcą” (karta i lista
+// kontaktów, osoby organizacji) otwiera kreator z wybraną osobą i organizacją (`NewSellerPreset`, arkusz okna —
+// `WindowNavigation.sellerAppointment`). Zaproszenie to e-mail z linkiem do hasła, adresem logowania, instrukcją, opiekunem
+// i osobistą wiadomością (`SellerInviteView.swift`).
 
 /// „Mianuj sprzedawcą”: kreator z wybraną osobą (kontakt) i — gdy znana — organizacją.
 struct NewSellerPreset: Identifiable, Equatable {
@@ -50,12 +52,20 @@ struct NewSellerSetup: Decodable {
 struct NewSellerPerson: Decodable, Hashable, Identifiable {
     struct Organization: Decodable, Hashable, Identifiable { let id: String; let name: String }
     let id: String; let name: String; let email: String?; let detail: String; let sellerId: String?
-    /// Obecne organizacje osoby — przy wczytaniu jednej osoby (`people&id=…`, „Mianuj sprzedawcą”).
+    /// Obecne organizacje osoby — w wynikach wyszukiwania (`lookup`) i przy wczytaniu jednej osoby (`people&id=…`).
     let organizations: [Organization]?
+    let phone: String?
+    /// Rodzaj kontaktu (`contact` | `individual`) — formularz „Uzupełnij e-mail”.
+    let kind: String?
+    /// Powód, dla którego tej osoby nie można wybrać (np. kontakt innego opiekuna — pracownik bez roli administratora).
+    let blocked: String?
 }
 struct NewSellerOrganization: Decodable, Hashable, Identifiable {
     let id: String; let name: String; let fullName: String?; let businessType: String?; let isHotel: Bool
     let locationId: String?; let locationName: String?; let rooms: [String]
+    let city: String?
+    /// Obecne osoby organizacji (wyniki wyszukiwania).
+    let peopleCount: Int?
 }
 struct NewSellerCheck: Decodable {
     struct Problem: Decodable, Hashable { let step: String; let section: String; let text: String }
@@ -63,6 +73,13 @@ struct NewSellerCheck: Decodable {
     let problems: [Problem]
     let hints: [Hint]
     let existingSellerId: String?
+}
+/// Formularz Kontaktów otwarty z kreatora (nowa osoba, „Uzupełnij e-mail”, nowa organizacja) z wypełnionymi polami.
+struct NewSellerContactRequest: Identifiable {
+    let id = UUID()
+    let mode: ContactEditorMode
+    let organizationID: String?
+    let values: [String: String]
 }
 struct NewSellerResult: Decodable { let ok: Bool; let id: String; let contactId: String?; let invited: Bool?; let warnings: [String]?; let message: String }
 
@@ -85,42 +102,44 @@ struct NewSellerTermDraft: Identifiable, Equatable {
         var title: String { ["Osoba", "Hotel i sale", "Warunki", "Opiekun", "Zaproszenie"][rawValue] }
         var symbol: String { ["person", "building.2", "percent", "person.2", "envelope"][rawValue] }
     }
-    /// Skąd jest osoba: pracownik wybranej organizacji, kontakt bez organizacji albo pracownik MAVINCI (administrator).
+    /// Kim jest sprzedawca: kontakt z kartoteki (osoba z organizacji albo bez niej) albo pracownik MAVINCI (administrator).
     enum PersonMode: String, Identifiable {
-        case organization, unaffiliated, employee
+        case contact, employee
         var id: String { rawValue }
     }
     weak var store: SellersStore?
     @Published var setup: NewSellerSetup?
     @Published var setupError: String?
-    @Published var personMode: PersonMode = .organization {
+    @Published var personMode: PersonMode = .contact {
         didSet {
             guard oldValue != personMode else { return }
-            person = nil
+            clearPerson()
             people = []
+            browsing = nil
+            orgPeople = []
             switch personMode {
             case .employee:
                 partnerType = "internal_employee"
                 portalEnabled = false
-            case .unaffiliated:
-                partnerType = "independent_referrer"
-                personOrganization = nil
-                orgPeople = []
-                if oldValue == .employee { portalEnabled = true }
-            case .organization:
-                if let org = personOrganization { partnerType = NewSellerModel.partnerType(for: org) } else { partnerType = "hotel_employee" }
-                if oldValue == .employee { portalEnabled = true }
+            case .contact:
+                partnerType = "hotel_employee"
+                portalEnabled = true
             }
         }
     }
     /// Źródło osoby w formularzu serwera: kontakt albo pracownik.
     var personSource: String { personMode == .employee ? "employee" : "contact" }
-    /// Organizacja wybrana w kroku „Osoba” (lista jej pracowników) — od razu także organizacja ofert w kroku „Hotel i sale”.
-    @Published var personOrganization: NewSellerOrganization?
+    /// Organizacja wybranej osoby (jedyna obecna, wskazana albo wybrana z kilku) — od razu także organizacja ofert w kroku „Hotel i sale”.
+    @Published private(set) var personOrganization: NewSellerOrganization?
+    /// Wyniki wyszukiwania osoby (`lookup`): osoby i organizacje; bez frazy — ostatnio dodane kontakty (`recent`).
+    @Published private(set) var found: [NewSellerPerson] = []
+    @Published private(set) var foundOrganizations: [NewSellerOrganization] = []
+    @Published private(set) var recent = false
+    @Published private(set) var lookedUp = false
+    /// Organizacja otwarta z wyników — lista jej obecnych osób.
+    @Published private(set) var browsing: NewSellerOrganization?
     @Published private(set) var orgPeople: [NewSellerPerson] = []
     @Published private(set) var loadingOrgPeople = false
-    /// „Mianuj sprzedawcą”: osoba wybrana przed otwarciem kreatora (bez listy wyboru, z „Wybierz inną osobę”).
-    @Published var presetLocked = false
     @Published var presetError: String?
     private(set) var presetApplied = false
     @Published private(set) var presetLoading = false
@@ -164,27 +183,50 @@ struct NewSellerTermDraft: Identifiable, Equatable {
         }
     }
 
-    private func encoded(_ value: String) -> String { value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "" }
+    /// Wartość parametru adresu — także `&`, `+`, `=` i `#` zakodowane (np. „B&B Hotel”, „+48 600…”).
+    private func encoded(_ value: String) -> String {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&+=?#/")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+    }
 
-    /// Osoby bez organizacji albo pracownicy MAVINCI (wyszukiwanie po stronie serwera; kilka słów w dowolnej kolejności).
-    func searchPeople(_ query: String) async {
-        guard let api, personMode != .organization else { return }
-        let mode = personMode
+    /// Jedno pole wyszukiwania osoby: osoby (z obecnymi organizacjami) i organizacje; bez frazy — ostatnio dodane kontakty.
+    func lookup(_ query: String) async {
+        guard let api, personMode == .contact else { return }
+        searching = true
+        defer { searching = false }
+        do {
+            struct Reply: Decodable { let people: [NewSellerPerson]; let organizations: [NewSellerOrganization]; let recent: Bool? }
+            let reply = try JSONDecoder().decode(Reply.self, from: try await api.get("/sellers?op=lookup&q=\(encoded(query))"))
+            // Nowsze wyszukiwanie (dalsze pisanie) albo inny tryb — ten wynik jest nieaktualny.
+            guard !Task.isCancelled, personMode == .contact else { return }
+            found = reply.people
+            foundOrganizations = reply.organizations
+            recent = reply.recent ?? false
+            lookedUp = true
+        } catch {
+            guard !Task.isCancelled, personMode == .contact else { return }
+            found = []
+            foundOrganizations = []
+            lookedUp = true
+            checkError = text(error, "Nie udało się wyszukać osób.")
+        }
+    }
+
+    /// Pracownicy MAVINCI (administrator) — wyszukiwanie po stronie serwera; kilka słów w dowolnej kolejności.
+    func searchEmployees(_ query: String) async {
+        guard let api, personMode == .employee else { return }
         searching = true
         defer { searching = false }
         do {
             struct Reply: Decodable { let people: [NewSellerPerson] }
-            let path = mode == .employee
-                ? "/sellers?op=people&source=employee&q=\(encoded(query))"
-                : "/sellers?op=people&source=contact&unaffiliated=1&q=\(encoded(query))"
-            let list = try JSONDecoder().decode(Reply.self, from: try await api.get(path)).people
-            // Nowsze wyszukiwanie (dalsze pisanie) albo inny tryb — ten wynik jest nieaktualny.
-            guard !Task.isCancelled, mode == personMode else { return }
+            let list = try JSONDecoder().decode(Reply.self, from: try await api.get("/sellers?op=people&source=employee&q=\(encoded(query))")).people
+            guard !Task.isCancelled, personMode == .employee else { return }
             people = list
         } catch {
-            guard !Task.isCancelled, mode == personMode else { return }
+            guard !Task.isCancelled, personMode == .employee else { return }
             people = []
-            checkError = text(error, "Nie udało się wyszukać osób.")
+            checkError = text(error, "Nie udało się wyszukać pracowników.")
         }
     }
 
@@ -210,31 +252,102 @@ struct NewSellerTermDraft: Identifiable, Equatable {
         return org.businessType == "freelancer" ? "independent_referrer" : "agency_employee"
     }
 
-    /// Organizacja w kroku „Osoba”: jej pracownicy do wyboru, ta sama organizacja ofert w kroku „Hotel i sale”. `nil` — zmiana organizacji.
-    func choosePersonOrganization(_ org: NewSellerOrganization?) async {
-        personOrganization = org
-        person = nil
+    /// Organizacja z wyników: lista jej obecnych osób (`nil` — powrót do wyników wyszukiwania).
+    func browse(_ org: NewSellerOrganization?) async {
+        browsing = org
         orgPeople = []
-        guard let org else { return }
-        organization = org
-        partnerType = NewSellerModel.partnerType(for: org)
+        guard org != nil else { return }
         await loadOrganizationPeople()
     }
 
-    /// Osoby obecnie zatrudnione w wybranej organizacji (`contact_organizations.is_current`).
+    /// Organizacja dodana w kreatorze: od razu jej osoby i „Dodaj osobę do …”.
+    func openOrganization(_ id: String) async {
+        do {
+            guard let org = try await loadOrganization(id) else { return }
+            await browse(org)
+        } catch {
+            checkError = text(error, "Nie udało się wczytać organizacji.")
+        }
+    }
+
+    /// Osoby obecnie zatrudnione w otwartej organizacji (`contact_organizations.is_current`).
     func loadOrganizationPeople() async {
-        guard let api, let org = personOrganization else { return }
+        guard let api, let org = browsing else { return }
         loadingOrgPeople = true
         defer { loadingOrgPeople = false }
         do {
             struct Reply: Decodable { let people: [NewSellerPerson] }
             let list = try JSONDecoder().decode(Reply.self, from: try await api.get("/sellers?op=people&source=contact&organization=\(org.id)")).people
-            guard personOrganization?.id == org.id else { return }
+            guard browsing?.id == org.id else { return }
             orgPeople = list
         } catch {
-            guard personOrganization?.id == org.id else { return }
+            guard browsing?.id == org.id else { return }
             orgPeople = []
             checkError = text(error, "Nie udało się wczytać osób organizacji.")
+        }
+    }
+
+    /// Wybór osoby. Organizacja sprzedawcy: wskazana (osoba z listy organizacji), jedyna obecna, przy kilku — wybór na karcie osoby.
+    func choose(_ candidate: NewSellerPerson, organization preferred: NewSellerOrganization? = nil) async {
+        clearPerson()
+        person = candidate
+        if let preferred { applyOrganization(preferred); return }
+        guard let current = candidate.organizations else { return }
+        if current.count == 1, let only = current.first {
+            do {
+                if let org = try await loadOrganization(only.id), person?.id == candidate.id { applyOrganization(org) }
+            } catch {
+                checkError = text(error, "Nie udało się wczytać organizacji.")
+            }
+        } else if current.isEmpty {
+            // Bez organizacji — jak dawny tryb „Bez organizacji”: polecający niezależny.
+            partnerType = "independent_referrer"
+        }
+    }
+
+    /// Jedna z kilku obecnych organizacji wybranej osoby.
+    func choosePersonOrganization(_ id: String) async {
+        guard let current = person else { return }
+        do {
+            guard let org = try await loadOrganization(id), person?.id == current.id else { return }
+            applyOrganization(org)
+        } catch {
+            checkError = text(error, "Nie udało się wczytać organizacji.")
+        }
+    }
+
+    private func applyOrganization(_ org: NewSellerOrganization) {
+        if let previous = personOrganization, organization?.id == previous.id { organization = nil }
+        personOrganization = org
+        organization = org
+        partnerType = NewSellerModel.partnerType(for: org)
+    }
+
+    /// „Zmień osobę” — powrót do wyszukiwania; organizacja ofert przejęta od tej osoby też jest zwalniana.
+    func clearPerson() {
+        if let previous = personOrganization, organization?.id == previous.id { organization = nil }
+        person = nil
+        personOrganization = nil
+    }
+
+    /// Osoba z kartoteki po identyfikatorze — „Mianuj sprzedawcą”, kontakt dodany w kreatorze, odświeżenie po „Uzupełnij e-mail”.
+    func selectContact(_ id: String, organizationID: String? = nil) async {
+        guard let api else { return }
+        presetLoading = true
+        defer { presetLoading = false }
+        do {
+            struct Reply: Decodable { let people: [NewSellerPerson] }
+            guard let match = try JSONDecoder().decode(Reply.self, from: try await api.get("/sellers?op=people&source=contact&id=\(id)")).people.first else {
+                presetError = "Nie znaleziono tej osoby w kartotece kontaktów albo nie masz do niej dostępu. Wyszukaj ją poniżej."
+                return
+            }
+            if personMode != .contact { personMode = .contact }
+            presetError = nil
+            var preferred: NewSellerOrganization?
+            if let organizationID { preferred = try await loadOrganization(organizationID) }
+            await choose(match, organization: preferred)
+        } catch {
+            presetError = text(error, "Nie udało się wczytać osoby. Wyszukaj ją poniżej.")
         }
     }
 
@@ -255,56 +368,11 @@ struct NewSellerTermDraft: Identifiable, Equatable {
         return try JSONDecoder().decode(Reply.self, from: try await api.get("/sellers?op=organizations&id=\(id)")).organizations.first
     }
 
-    /// „Mianuj sprzedawcą”: osoba z kartoteki i jej organizacja (wskazana albo jedyna obecna; kilka — wybór w kroku „Osoba”).
+    /// „Mianuj sprzedawcą”: osoba z kartoteki i jej organizacja (wskazana albo jedyna obecna; kilka — wybór na karcie osoby).
     func applyPreset(_ preset: NewSellerPreset) async {
-        guard !presetApplied, let api else { return }
+        guard !presetApplied else { return }
         presetApplied = true
-        presetLoading = true
-        defer { presetLoading = false }
-        presetError = nil
-        do {
-            struct Reply: Decodable { let people: [NewSellerPerson] }
-            guard let found = try JSONDecoder().decode(Reply.self, from: try await api.get("/sellers?op=people&source=contact&id=\(preset.contactID)")).people.first else {
-                presetError = "Nie znaleziono tej osoby w kartotece kontaktów albo nie masz do niej dostępu. Wybierz osobę z listy."
-                return
-            }
-            let current = found.organizations ?? []
-            let organizationID = preset.organizationID ?? (current.count == 1 ? current.first?.id : nil)
-            if let organizationID, let org = try await loadOrganization(organizationID) {
-                personMode = .organization
-                personOrganization = org
-                organization = org
-                partnerType = NewSellerModel.partnerType(for: org)
-                orgPeople = [found]
-            } else if current.isEmpty {
-                personMode = .unaffiliated
-            }
-            person = found
-            presetLocked = true
-        } catch {
-            presetError = text(error, "Nie udało się wczytać osoby. Wybierz ją z listy.")
-        }
-    }
-
-    /// Jedna z kilku obecnych organizacji osoby wybranej przez „Mianuj sprzedawcą”.
-    func choosePresetOrganization(_ id: String) async {
-        guard let current = person else { return }
-        do {
-            guard let org = try await loadOrganization(id), person?.id == current.id else { return }
-            personOrganization = org
-            organization = org
-            partnerType = NewSellerModel.partnerType(for: org)
-            orgPeople = [current]
-        } catch {
-            checkError = text(error, "Nie udało się wczytać organizacji.")
-        }
-    }
-
-    /// „Wybierz inną osobę” — lista wyboru (pracownicy wybranej organizacji albo wyszukiwanie).
-    func unlockPreset() async {
-        presetLocked = false
-        person = nil
-        if personOrganization != nil { await loadOrganizationPeople() }
+        await selectContact(preset.contactID, organizationID: preset.organizationID)
     }
 
     var activeTerms: [NewSellerTermDraft] { terms.filter(\.active) }
@@ -382,9 +450,12 @@ struct NewSellerTermDraft: Identifiable, Equatable {
     @StateObject private var model = NewSellerModel()
     @State private var step: NewSellerModel.Step = .person
     @State private var personQuery = ""
-    /// Wyszukiwanie organizacji w kroku „Osoba” (krok „Hotel i sale” ma własne).
+    /// Wyszukiwanie wśród osób organizacji otwartej z wyników (krok „Hotel i sale” ma własne).
     @State private var personOrgQuery = ""
     @State private var organizationQuery = ""
+    /// Formularze Kontaktów otwarte z kreatora: nowy kontakt / „Uzupełnij e-mail” i nowa organizacja.
+    @State private var personEditor: NewSellerContactRequest?
+    @State private var organizationEditor: NewSellerContactRequest?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -537,29 +608,28 @@ struct NewSellerTermDraft: Identifiable, Equatable {
 
     private func personStep(_ setup: NewSellerSetup) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Sprzedawca to osoba z kartoteki kontaktów (np. pracownik hotelu) z adresem e-mail — na ten adres wyślemy zaproszenie do portalu. Wybierz organizację, w której pracuje, a potem osobę z jej zespołu.")
+            Text("Sprzedawca to osoba z kartoteki kontaktów (np. pracownik hotelu) z adresem e-mail — na ten adres wyślemy zaproszenie do portalu. Wpisz imię, nazwisko, e-mail, telefon albo nazwę hotelu. Jeśli osoby lub organizacji nie ma jeszcze w kartotece, dodasz je tutaj.")
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let error = model.presetError {
                 Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
+            if setup.isAdmin && model.person == nil && !model.presetLoading {
+                Picker("Kto będzie sprzedawcą", selection: $model.personMode) {
+                    Text("Kontakt z kartoteki").tag(NewSellerModel.PersonMode.contact)
+                    Text("Pracownik Mavinci").tag(NewSellerModel.PersonMode.employee)
+                }
+                .pickerStyle(.segmented).frame(maxWidth: 420)
+            }
             if model.presetLoading {
                 ProgressView("Wczytywanie osoby z kartoteki…").controlSize(.small)
-            } else if model.presetLocked, let person = model.person {
-                presetPerson(person)
+            } else if let person = model.person {
+                selectedPerson(person)
+            } else if model.personMode == .employee {
+                employeeSearch
+            } else if let org = model.browsing {
+                organizationPeople(org)
             } else {
-                Picker("Źródło osoby", selection: $model.personMode) {
-                    Text("Pracownik organizacji").tag(NewSellerModel.PersonMode.organization)
-                    Text("Bez organizacji").tag(NewSellerModel.PersonMode.unaffiliated)
-                    if setup.isAdmin { Text("Pracownicy Mavinci").tag(NewSellerModel.PersonMode.employee) }
-                }
-                .pickerStyle(.segmented).frame(maxWidth: 560)
-                switch model.personMode {
-                case .organization: organizationPeople
-                case .unaffiliated, .employee: searchedPeople(setup)
-                }
-                if let person = model.person {
-                    Label("\(person.name) · \(person.email ?? "brak e-maila")", systemImage: "person.crop.circle.badge.checkmark").foregroundStyle(theme.accent)
-                }
+                contactSearch
             }
             HStack(spacing: 16) {
                 Picker("Rodzaj współpracy", selection: $model.partnerType) {
@@ -572,36 +642,44 @@ struct NewSellerTermDraft: Identifiable, Equatable {
                 .frame(maxWidth: 240)
             }
         }
+        .sheet(item: $personEditor) { request in
+            PersonEditorSheet(store: state.contacts, mode: request.mode, initialValues: request.values, initialOrganizationID: request.organizationID) { id in
+                Task { await model.selectContact(id, organizationID: request.organizationID) }
+            }
+            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(item: $organizationEditor) { request in
+            OrganizationEditorSheet(store: state.contacts, mode: .create(.organization), onCreated: { id in
+                personQuery = ""
+                Task { await model.openOrganization(id) }
+            }, initialValues: request.values)
+            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
     }
 
-    /// Pracownik organizacji: najpierw organizacja (wyszukiwanie), potem osoby obecnie w niej zatrudnione.
-    @ViewBuilder private var organizationPeople: some View {
-        if let org = model.personOrganization {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "building.2").font(.title3).foregroundStyle(theme.accent).frame(width: 26)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(org.name).font(.headline)
-                    Text(locationText(org)).font(.caption).foregroundStyle(org.locationId == nil || org.rooms.isEmpty ? Color.orange : Color.secondary)
-                }
-                Spacer()
-                Button("Zmień organizację") { personQuery = ""; Task { await model.choosePersonOrganization(nil) } }.controlSize(.small)
+    /// Jedno pole: osoby (z obecnymi organizacjami) i organizacje; bez frazy — ostatnio dodane kontakty.
+    @ViewBuilder private var contactSearch: some View {
+        NewSellerSearchField(prompt: "Szukaj osoby lub organizacji — imię, nazwisko, e-mail, telefon, nazwa hotelu", text: $personQuery, busy: model.searching)
+            .task(id: personQuery) {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                guard !Task.isCancelled else { return }
+                await model.lookup(personQuery)
             }
-            .padding(10).background(theme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-            NewSellerSearchField(prompt: "Szukaj osoby w \(org.name) — imię, nazwisko, e-mail, stanowisko", text: $personQuery, busy: model.loadingOrgPeople)
-            peopleList(model.filteredOrgPeople(personQuery), busy: model.loadingOrgPeople,
-                       empty: model.orgPeople.isEmpty
-                        ? "W tej organizacji nie ma jeszcze osób kontaktowych. Dodaj osobę na karcie organizacji albo wybierz „Bez organizacji”."
-                        : "Brak osób pasujących do wyszukiwania.")
-        } else {
-            NewSellerSearchField(prompt: "Szukaj hotelu lub organizacji, w której pracuje sprzedawca", text: $personOrgQuery, busy: model.searching)
-                .task(id: personOrgQuery) {
-                    try? await Task.sleep(nanoseconds: 300_000_000)
-                    guard !Task.isCancelled else { return }
-                    await model.searchOrganizations(personOrgQuery)
-                }
+        if !model.found.isEmpty {
+            sectionTitle(model.recent ? "Ostatnio dodane kontakty" : "Osoby")
             VStack(spacing: 0) {
-                ForEach(model.organizations) { org in
-                    Button { personQuery = ""; Task { await model.choosePersonOrganization(org) } } label: {
+                ForEach(model.found) { person in
+                    personRow(person, organization: nil)
+                    Divider()
+                }
+            }
+            .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
+        }
+        if !model.foundOrganizations.isEmpty {
+            sectionTitle("Organizacje")
+            VStack(spacing: 0) {
+                ForEach(model.foundOrganizations) { org in
+                    Button { Task { await model.browse(org) } } label: {
                         HStack {
                             Image(systemName: "building.2").foregroundStyle(.secondary).frame(width: 22)
                             VStack(alignment: .leading, spacing: 1) {
@@ -610,89 +688,215 @@ struct NewSellerTermDraft: Identifiable, Equatable {
                             }
                             Spacer()
                             if org.isHotel { Text("hotel").font(.caption2).foregroundStyle(.secondary) }
+                            Text(Self.peopleLabel(org.peopleCount ?? 0)).font(.caption).foregroundStyle(.secondary)
                             Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                         }
                         .padding(.vertical, 6).padding(.horizontal, 8).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .help("Pokaż osoby z \(org.name)")
                     Divider()
-                }
-                if model.organizations.isEmpty && !model.searching {
-                    Text(personOrgQuery.isEmpty ? "Brak organizacji do wyboru." : "Nie znaleziono organizacji. Dodaj ją w Kontaktach albo wybierz „Bez organizacji”.")
-                        .font(.callout).foregroundStyle(.secondary).padding(8)
                 }
             }
             .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
         }
-    }
-
-    /// „Bez organizacji” i „Pracownicy Mavinci” — wyszukiwanie po stronie serwera.
-    @ViewBuilder private func searchedPeople(_ setup: NewSellerSetup) -> some View {
-        let employees = model.personMode == .employee
-        NewSellerSearchField(prompt: employees ? "Szukaj pracownika — imię, nazwisko, e-mail"
-                                : (setup.isAdmin ? "Szukaj osoby bez organizacji — imię, nazwisko, e-mail" : "Szukaj w swoich kontaktach bez organizacji"),
-                             text: $personQuery, busy: model.searching)
-            .task(id: personQuery + "|" + model.personMode.rawValue) {
-                try? await Task.sleep(nanoseconds: 300_000_000)
-                guard !Task.isCancelled else { return }
-                await model.searchPeople(personQuery)
-            }
-        if !employees {
-            Text("Kontakty bez obecnej organizacji w kartotece. Pracownika hotelu znajdziesz w „Pracownik organizacji”.")
-                .font(.caption).foregroundStyle(.secondary)
+        if model.lookedUp && !model.searching && model.found.isEmpty && model.foundOrganizations.isEmpty {
+            Text(personQuery.trimmingCharacters(in: .whitespaces).isEmpty
+                 ? "Brak kontaktów do wyboru — dodaj osobę albo organizację poniżej."
+                 : "Nie znaleziono „\(personQuery)” w kartotece — dodaj osobę albo organizację poniżej. Kreator od razu ją wybierze.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.vertical, 4)
         }
-        peopleList(model.people, busy: model.searching,
-                   empty: personQuery.isEmpty ? "Brak osób do wyboru." : "Nic nie znaleziono. Dodaj kontakt w CRM i wróć do kreatora.")
+        addButtons(organization: nil, query: personQuery)
     }
 
-    private func peopleList(_ people: [NewSellerPerson], busy: Bool, empty: String) -> some View {
+    /// Osoby organizacji otwartej z wyników — wybór osoby od razu z tą organizacją.
+    @ViewBuilder private func organizationPeople(_ org: NewSellerOrganization) -> some View {
+        Button { personOrgQuery = ""; Task { await model.browse(nil) } } label: {
+            Label("Wyniki wyszukiwania", systemImage: "chevron.left")
+        }
+        .buttonStyle(.link)
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "building.2").font(.title3).foregroundStyle(theme.accent).frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(org.name).font(.headline)
+                Text(locationText(org)).font(.caption).foregroundStyle(org.locationId == nil || org.rooms.isEmpty ? Color.orange : Color.secondary)
+            }
+            Spacer()
+        }
+        .padding(10).background(theme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+        NewSellerSearchField(prompt: "Szukaj osoby w \(org.name) — imię, nazwisko, e-mail, stanowisko", text: $personOrgQuery, busy: model.loadingOrgPeople)
+        let people = model.filteredOrgPeople(personOrgQuery)
         VStack(spacing: 0) {
             ForEach(people) { person in
-                Button { if person.sellerId == nil { model.person = person } } label: {
-                    HStack {
-                        Image(systemName: model.person?.id == person.id ? "checkmark.circle.fill" : "circle").foregroundStyle(model.person?.id == person.id ? theme.accent : Color.secondary)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(person.name)
-                            Text(person.detail).font(.caption).foregroundStyle(person.email == nil ? Color.orange : Color.secondary)
-                        }
-                        Spacer()
-                        if person.sellerId != nil { Text("już sprzedawca").font(.caption).foregroundStyle(.secondary) }
-                    }
-                    .padding(.vertical, 6).padding(.horizontal, 8).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain).disabled(person.sellerId != nil)
+                personRow(person, organization: org)
                 Divider()
             }
-            if people.isEmpty && !busy {
-                Text(empty).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(8)
+            if people.isEmpty && !model.loadingOrgPeople {
+                Text(model.orgPeople.isEmpty ? "W tej organizacji nie ma jeszcze osób kontaktowych — dodaj osobę poniżej." : "Brak osób pasujących do wyszukiwania.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(8)
+            }
+        }
+        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
+        addButtons(organization: org, query: personOrgQuery)
+    }
+
+    /// „Pracownik Mavinci” — wyszukiwanie po stronie serwera (administrator).
+    @ViewBuilder private var employeeSearch: some View {
+        NewSellerSearchField(prompt: "Szukaj pracownika — imię, nazwisko, e-mail", text: $personQuery, busy: model.searching)
+            .task(id: personQuery) {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                guard !Task.isCancelled else { return }
+                await model.searchEmployees(personQuery)
+            }
+        VStack(spacing: 0) {
+            ForEach(model.people) { person in
+                personRow(person, organization: nil)
+                Divider()
+            }
+            if model.people.isEmpty && !model.searching {
+                Text(personQuery.isEmpty ? "Brak pracowników do wyboru." : "Nic nie znaleziono.").font(.callout).foregroundStyle(.secondary).padding(8)
             }
         }
         .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    /// Osoba wybrana przez „Mianuj sprzedawcą”: dane, organizacja (przy kilku — wybór) i „Wybierz inną osobę”.
-    private func presetPerson(_ person: NewSellerPerson) -> some View {
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 2)
+    }
+
+    /// Wiersz osoby: dane, obecne organizacje, „już sprzedawca” (z kartą) albo powód blokady.
+    private func personRow(_ person: NewSellerPerson, organization org: NewSellerOrganization?) -> some View {
+        let unavailable = person.sellerId != nil || person.blocked != nil
+        return HStack(alignment: .top, spacing: 8) {
+            Button { Task { await model.choose(person, organization: org) } } label: {
+                HStack(alignment: .top) {
+                    Image(systemName: "person.crop.circle").foregroundStyle(unavailable ? Color.secondary : theme.accent).frame(width: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(person.name).foregroundStyle(unavailable ? Color.secondary : Color.primary)
+                        Text(person.detail).font(.caption).foregroundStyle(person.email == nil ? Color.orange : Color.secondary)
+                        if org == nil, let organizations = person.organizations, !organizations.isEmpty {
+                            HStack(spacing: 4) {
+                                ForEach(organizations.prefix(3)) { item in
+                                    Label(item.name, systemImage: "building.2").font(.caption2).lineLimit(1)
+                                        .padding(.horizontal, 6).padding(.vertical, 2).background(Color.primary.opacity(0.06), in: Capsule())
+                                }
+                                if organizations.count > 3 { Text("+\(organizations.count - 3)").font(.caption2).foregroundStyle(.secondary) }
+                            }
+                        }
+                        if let blocked = person.blocked {
+                            Text(blocked).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 6).padding(.leading, 8).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).disabled(unavailable)
+            if person.sellerId != nil {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("już sprzedawca").font(.caption).foregroundStyle(.secondary)
+                    if model.personMode == .contact {
+                        Button("Karta sprzedawcy") { dismiss(); state.showSeller(contactID: person.id) }.buttonStyle(.link).font(.caption)
+                    }
+                }
+                .padding(.vertical, 6).padding(.trailing, 8)
+            }
+        }
+    }
+
+    /// „Nowy kontakt” / „Dodaj osobę do …” i „Nowa organizacja” — formularze Kontaktów; nowa osoba jest od razu wybierana.
+    @ViewBuilder private func addButtons(organization org: NewSellerOrganization?, query: String) -> some View {
+        if state.employee?.canView(.contacts) == true {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 10) {
+                    Button { Task { await openPersonEditor(organization: org, query: query) } } label: {
+                        Label(org.map { "Dodaj osobę do \($0.name)" } ?? "Nowy kontakt", systemImage: "person.badge.plus")
+                    }
+                    if org == nil {
+                        Button { Task { await openOrganizationEditor(query: query) } } label: {
+                            Label("Nowa organizacja", systemImage: "building.2.crop.circle")
+                        }
+                    }
+                    Spacer()
+                }
+                Text(org == nil
+                     ? "Nie ma osoby w kartotece? Dodaj ją — kreator od razu ją wybierze. Nową organizację (np. hotel) dodasz razem z jej pracownikami."
+                     : "Nowa osoba zostanie powiązana z tą organizacją i od razu wybrana w kreatorze.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    /// Formularze Kontaktów potrzebują kopii listy kontaktów (wybór organizacji, sprawdzenie duplikatu).
+    private func prepareContacts() async {
+        if state.contacts.contacts.isEmpty { await state.contacts.backgroundSync() }
+    }
+    private func openPersonEditor(organization org: NewSellerOrganization?, query: String) async {
+        await prepareContacts()
+        personEditor = NewSellerContactRequest(mode: .create(.contact), organizationID: org?.id, values: Self.prefill(query))
+    }
+    private func openOrganizationEditor(query: String) async {
+        await prepareContacts()
+        let name = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        organizationEditor = NewSellerContactRequest(mode: .create(.organization), organizationID: nil,
+                                                     values: name.isEmpty || name.contains("@") ? [:] : ["name": name])
+    }
+
+    /// Pola nowego kontaktu z wyszukiwanej frazy: e-mail, telefon albo imię i nazwisko.
+    static func prefill(_ query: String) -> [String: String] {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return [:] }
+        if text.contains("@") { return ["email": text] }
+        let digits = text.filter(\.isNumber).count
+        let visible = text.filter({ !$0.isWhitespace }).count
+        if digits >= 6 && digits * 2 >= visible { return ["mobile": text] }
+        let words = text.split(separator: " ").map { word -> String in word.prefix(1).uppercased() + word.dropFirst() }
+        var values: [String: String] = ["first_name": words.first ?? ""]
+        if words.count > 1 { values["last_name"] = words.dropFirst().joined(separator: " ") }
+        return values
+    }
+
+    /// „1 osoba”, „3 osoby”, „5 osób”.
+    static func peopleLabel(_ count: Int) -> String {
+        if count == 0 { return "brak osób" }
+        if count == 1 { return "1 osoba" }
+        let tens = count % 100, units = count % 10
+        return "\(count) " + ((2...4).contains(units) && !(12...14).contains(tens) ? "osoby" : "osób")
+    }
+
+    /// Wybrana osoba: dane, organizacja (przy kilku — wybór), „Uzupełnij e-mail” i „Zmień osobę”.
+    private func selectedPerson(_ person: NewSellerPerson) -> some View {
         let organizations = person.organizations ?? []
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "person.crop.circle.badge.checkmark").font(.title2).foregroundStyle(theme.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(person.name).font(.headline)
-                    Text(person.email ?? "Brak adresu e-mail — uzupełnij go na karcie kontaktu, aby wysłać zaproszenie.")
-                        .font(.callout).foregroundStyle(person.email == nil ? Color.orange : Color.secondary)
+                    if let email = person.email {
+                        Text(email).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                    } else {
+                        HStack(spacing: 8) {
+                            Text("Brak adresu e-mail — bez niego nie wyślemy zaproszenia do portalu.").font(.callout).foregroundStyle(.orange)
+                            if model.personMode == .contact && state.employee?.canView(.contacts) == true {
+                                Button("Uzupełnij e-mail") { Task { await editPerson(person) } }.controlSize(.small)
+                            }
+                        }
+                    }
+                    if let phone = person.phone { Text(phone).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
                     if let org = model.personOrganization {
                         Text("Organizacja: \(org.name) · \(locationText(org))").font(.caption).foregroundStyle(.secondary)
-                    } else if organizations.isEmpty {
+                    } else if model.personMode == .contact && organizations.isEmpty {
                         Text("Bez organizacji — organizację, w imieniu której sprzedawca przygotuje oferty, wskażesz w kroku „Hotel i sale”.")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer()
-                Button("Wybierz inną osobę") { personQuery = ""; Task { await model.unlockPreset() } }.controlSize(.small)
+                Button("Zmień osobę") { model.presetError = nil; model.clearPerson() }.controlSize(.small)
             }
             if organizations.count > 1 {
                 Picker("Organizacja sprzedawcy", selection: Binding(get: { model.personOrganization?.id ?? "" }, set: { id in
-                    if !id.isEmpty { Task { await model.choosePresetOrganization(id) } }
+                    if !id.isEmpty { Task { await model.choosePersonOrganization(id) } }
                 })) {
                     Text("Wybierz organizację…").tag("")
                     ForEach(organizations) { org in Text(org.name).tag(org.id) }
@@ -702,9 +906,20 @@ struct NewSellerTermDraft: Identifiable, Equatable {
             if person.sellerId != nil {
                 Label("Ta osoba jest już sprzedawcą — otwórz jej kartę na liście sprzedawców.", systemImage: "info.circle").foregroundStyle(.orange)
             }
+            if let blocked = person.blocked {
+                Label(blocked, systemImage: "lock").foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// „Uzupełnij e-mail” — formularz kontaktu; po zapisie dane osoby wczytują się ponownie (z tą samą organizacją).
+    private func editPerson(_ person: NewSellerPerson) async {
+        await prepareContacts()
+        let kind = ContactKind(rawValue: person.kind ?? "contact") ?? .contact
+        personEditor = NewSellerContactRequest(mode: .edit(ContactRef(id: person.id, kind: kind == .organization ? .contact : kind)),
+                                               organizationID: model.personOrganization?.id, values: [:])
     }
 
     // MARK: 2. Hotel i sale

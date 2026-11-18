@@ -43,97 +43,10 @@ import AppKit
     }
 }
 struct CalendarDay:Identifiable { let id:Int;let date:Date? }
-struct CalendarLink:Codable {
-    var calendarID:String
-    var items:[String:String]=[:]
-    var lastSync:Date?
-}
-@MainActor final class AppleCalendarLink:ObservableObject {
-    @Published var calendars:[EKCalendar]=[]
-    @Published var busy=false
-    @Published var error:String?
-    @Published var summary:String?
-    @Published var selectedCalendar=""
-    private let store=EKEventStore()
-    func prepare() async {
-        busy=true;error=nil
-        defer {busy=false}
-        guard Bundle.main.object(forInfoDictionaryKey:"NSCalendarsFullAccessUsageDescription") != nil else {
-            error="Integracja z Kalendarzem wymaga uruchomienia pakietu .app. W trybie developerskim uruchom scripts/dev-app.sh.";return
-        }
-        do {
-            let granted=try await store.requestFullAccessToEvents()
-            guard granted else {error="Zezwól aplikacji na dostęp do kalendarzy w Ustawieniach systemowych → Prywatność i ochrona → Kalendarze.";return}
-            calendars=store.calendars(for:.event).filter(\.allowsContentModifications).sorted {$0.title.localizedStandardCompare($1.title) == .orderedAscending}
-        } catch {self.error="Nie udało się uzyskać dostępu do Kalendarza macOS."}
-    }
-    func createCalendar() {
-        do {
-            guard let source=store.sources.first(where:{$0.sourceType == .local}) ?? store.defaultCalendarForNewEvents?.source else {error="Dodaj najpierw kalendarz lokalny lub konto w aplikacji Kalendarz.";return}
-            let calendar=EKCalendar(for:.event,eventStore:store);calendar.title="Mavinci CRM";calendar.source=source;calendar.cgColor=NSColor.controlAccentColor.cgColor
-            try store.saveCalendar(calendar,commit:true)
-            calendars=store.calendars(for:.event).filter(\.allowsContentModifications)
-            selectedCalendar=calendar.calendarIdentifier
-        } catch {self.error="Nie udało się utworzyć kalendarza Mavinci. Możesz wybrać istniejący zapisywalny kalendarz."}
-    }
-    func synchronize(rows:[Row],namespace:String) {
-        guard !busy,EKEventStore.authorizationStatus(for:.event) == .fullAccess,
-              let calendar=store.calendar(withIdentifier:selectedCalendar),calendar.allowsContentModifications else {error="Wybierz kalendarz do zapisu.";return}
-        busy=true;error=nil;summary=nil
-        defer {busy=false}
-        let key="apple-calendar-\(namespace)"
-        do {
-            var link=CalendarLink(calendarID:calendar.calendarIdentifier)
-            if let saved=try Vault.read(key),let previous=try? JSONDecoder().decode(CalendarLink.self,from:saved) {
-                guard previous.calendarID == calendar.calendarIdentifier || previous.items.isEmpty else {error="To konto jest już powiązane z innym kalendarzem. Wybierz poprzedni kalendarz, aby uniknąć drugiej kopii.";return}
-                link=previous
-            }
-            let marker="Mavinci CRM • \(namespace)"
-            var ids=Set<String>();var count=0
-            for row in rows where !["cancelled","rejected"].contains(row["status"]) {
-                guard let start=CalendarDates.date(row["event_date"]) else {throw AppError.invalidResponse}
-                let end=CalendarDates.date(row["event_end_date"]) ?? start.addingTimeInterval(3600)
-                let sourceID=row["source_id"].isEmpty ? row.id:row["source_id"]
-                let host=row["kind"] == "meeting" ? "meeting":"event"
-                let url=URL(string:"mavinci://\(host)/\(sourceID)?account=\(namespace)")!
-                let previous=link.items[row.id].flatMap {store.calendarItem(withIdentifier:$0) as? EKEvent}
-                let event:EKEvent
-                if let previous,previous.calendar.calendarIdentifier == calendar.calendarIdentifier,previous.url == url,previous.notes?.contains(marker) == true {event=previous}
-                else {
-                    let predicate=store.predicateForEvents(withStart:start.addingTimeInterval(-86_400),end:max(end,start.addingTimeInterval(3600)).addingTimeInterval(86_400),calendars:[calendar])
-                    event=store.events(matching:predicate).first(where:{$0.url == url && $0.notes?.contains(marker) == true}) ?? EKEvent(eventStore:store)
-                }
-                event.calendar=calendar;event.title=row.title;event.startDate=start;event.endDate=max(end,start.addingTimeInterval(60));event.location=row["location"]
-                event.timeZone=CalendarDates.calendar.timeZone;event.url=url;event.notes="\(marker)\nDane pochodzą z CRM. Zmiany w tej kopii nie zmieniają wydarzenia w CRM."
-                // Meeting occurrences are already materialized by CRM. Do not add another recurrence rule.
-                event.recurrenceRules=nil
-                try store.save(event,span:.thisEvent,commit:true)
-                link.items[row.id]=event.calendarItemIdentifier;ids.insert(row.id);count+=1
-                // Checkpoint each confirmed write; the URL marker also recovers an interrupted checkpoint.
-                try Vault.write(key,JSONEncoder().encode(link))
-            }
-            for (id,itemID) in link.items where !ids.contains(id) {
-                if let event=store.calendarItem(withIdentifier:itemID) as? EKEvent,
-                   event.calendar.calendarIdentifier == calendar.calendarIdentifier,event.notes?.contains(marker) == true {
-                    try store.remove(event,span:.thisEvent,commit:true)
-                }
-                link.items.removeValue(forKey:id)
-                try Vault.write(key,JSONEncoder().encode(link))
-            }
-            link.lastSync=Date();try Vault.write(key,JSONEncoder().encode(link))
-            summary="Zaktualizowano \(count) wpisów w kalendarzu „\(calendar.title)”."
-        } catch {store.reset();self.error="Synchronizacja kalendarza nie została zakończona. Potwierdzone wpisy zachowano; możesz ponowić synchronizację bez tworzenia drugiej kopii."}
-    }
-    func restoreChoice(namespace:String) {
-        guard let data=try? Vault.read("apple-calendar-\(namespace)"),let link=try? JSONDecoder().decode(CalendarLink.self,from:data) else {return}
-        selectedCalendar=link.calendarID
-    }
-}
 @MainActor struct NativeCalendarView:View {
     @EnvironmentObject var workspace:Workspace
     /// Nawigacja okna, w którym jest widok (inne okna mają własną).
     @EnvironmentObject private var nav: WindowNavigation
-    @StateObject private var apple=AppleCalendarLink()
     @State private var month=Date()
     @State private var selectedDate=Date()
     @State private var calendarSheet=false
@@ -230,7 +143,10 @@ struct CalendarLink:Codable {
         .onAppear {revealTarget()}
         .task(id:workspace.employee?.id) {if canSeeInquiries {await workspace.inquiries.backgroundSync()}}
         .onChange(of:nav.focusedID) {_,_ in revealTarget()}
-        .sheet(isPresented:$calendarSheet) {calendarSettings}
+        .sheet(isPresented:$calendarSheet) {
+            AppleCalendarSettings(workspace:workspace,apple:workspace.appleCalendar) {calendarSheet=false}
+                .environmentObject(workspace).environment(\.crmTheme,workspace.theme).tint(workspace.theme.accent)
+        }
         .sheet(item:$meeting) {row in VStack(alignment:.leading,spacing:16) {Text(row.title).font(.title2.bold());EventRecordFields(row:row);Button("Zamknij") {meeting=nil}}.padding(24).frame(width:540)}
         .sheet(item:$creation,onDismiss:{if creation == nil {Task {await workspace.refresh()}}}) {item in creationSheet(item)}
     }
@@ -416,27 +332,6 @@ struct CalendarLink:Codable {
         }.padding(compact ? 5:10).frame(maxWidth:.infinity,alignment:.leading)
           .background(color.opacity(0.08),in:RoundedRectangle(cornerRadius:5))
           .overlay(RoundedRectangle(cornerRadius:5).strokeBorder(color.opacity(0.5),style:StrokeStyle(lineWidth:1,dash:row["kind"]=="inquiry" ? [3,2]:[])))
-    }
-    private var calendarSettings:some View {
-        VStack(alignment:.leading,spacing:18) {
-            Text("Kalendarz Apple").font(.title2.bold())
-            Text("Kopiuj nazwy, terminy i miejsca wydarzeń oraz swoich spotkań do wybranego kalendarza. Wybierając kalendarz iCloud lub innego konta, zapiszesz je również w tym koncie. Prywatne wpisy z Maca nie są przesyłane do CRM.").font(.callout)
-            if apple.calendars.isEmpty {
-                Button("Zezwól na połączenie z Kalendarzem") {Task {await apple.prepare();if let e=workspace.employee {apple.restoreChoice(namespace:digest(workspace.connection.identity+"|"+e.id))}}}.disabled(apple.busy)
-            } else {
-                Picker("Kalendarz docelowy",selection:$apple.selectedCalendar) {Text("Wybierz…").tag("");ForEach(apple.calendars,id:\.calendarIdentifier) {calendar in Text("\(calendar.title) — \(calendar.source.title)").tag(calendar.calendarIdentifier)}}
-                Button("Utwórz osobny kalendarz Mavinci CRM") {apple.createCalendar()}.disabled(apple.busy)
-                Text("Ponowna synchronizacja aktualizuje tę samą kopię. Znikające i anulowane sprawy są usuwane wyłącznie spośród wpisów utworzonych przez to powiązanie. Zmiany wykonane w Apple nie nadpisują CRM.").font(.caption).foregroundStyle(.secondary)
-                Button("Synchronizuj teraz") {
-                    guard let e=workspace.employee else {return}
-                    apple.synchronize(rows:workspace.rows(.calendar),namespace:digest(workspace.connection.identity+"|"+e.id))
-                }.disabled(apple.busy || apple.selectedCalendar.isEmpty || !workspace.canWrite || workspace.moduleErrors["calendar"] != nil || workspace.snapshot?.collections["calendar"]?.lastSync == nil)
-            }
-            if let error=apple.error {Text(error).foregroundStyle(.red).font(.callout)}
-            if let summary=apple.summary {Text(summary).foregroundStyle(.green).font(.callout)}
-            if apple.busy {ProgressView().controlSize(.small)}
-            HStack {Button("Otwórz Kalendarz Apple") {if let url=NSWorkspace.shared.urlForApplication(withBundleIdentifier:"com.apple.iCal") {NSWorkspace.shared.openApplication(at:url,configuration:NSWorkspace.OpenConfiguration())}};Spacer();Button("Gotowe") {calendarSheet=false}.keyboardShortcut(.defaultAction)}
-        }.padding(28).frame(width:620)
     }
     private func revealTarget() {
         guard let target=nav.focusedID,let row=rows.first(where:{$0.id==target}),let date=CalendarDates.date(row["event_date"]) else {return}

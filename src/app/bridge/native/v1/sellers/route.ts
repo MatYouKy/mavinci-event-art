@@ -1,7 +1,7 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
 import { sellerCard, sellersCockpit, sellersHelp } from '@/lib/native/sellers';
 import { decideSellerOfferPrice, sellerOfferReview } from '@/lib/native/sellerOffer';
-import { createSeller, newSellerOrganizations, newSellerPeople, newSellerSetup, validateNewSeller } from '@/lib/native/sellerCreate';
+import { createSeller, newSellerLookup, newSellerOrganizations, newSellerPeople, newSellerSetup, validateNewSeller } from '@/lib/native/sellerCreate';
 import {
   approveCommission, commissionAccount, commissionPayroll, deductCommission, payoutCommission, type CommissionReply,
 } from '@/lib/native/teamCommissions';
@@ -91,6 +91,8 @@ export async function GET(request: Request) {
       }
       case 'newSeller':
         return nativeJson(await newSellerSetup(ctx));
+      case 'lookup':
+        return nativeJson(await newSellerLookup(ctx, (url.searchParams.get('q') || '').slice(0, 100)));
       case 'people':
         return nativeJson(await newSellerPeople(ctx, url.searchParams.get('source') || 'contact', (url.searchParams.get('q') || '').slice(0, 100), {
           organization: url.searchParams.get('organization'),

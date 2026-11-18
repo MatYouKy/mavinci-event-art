@@ -75,6 +75,12 @@ enum ContactEditorMode: Identifiable, Equatable {
 @MainActor struct PersonEditorSheet: View {
     @ObservedObject var store: ContactsStore
     let mode: ContactEditorMode
+    /// Dodawanie z wypełnionymi polami (np. imię i nazwisko z wyszukiwania w kreatorze sprzedawcy).
+    var initialValues: [String: String] = [:]
+    /// Dodawanie od razu przy organizacji (np. „Dodaj osobę do …” w kreatorze sprzedawcy).
+    var initialOrganizationID: String? = nil
+    /// Po zapisie: identyfikator kontaktu zamiast otwierania jego karty (kreator sprzedawcy wybiera tę osobę).
+    var onSaved: ((String) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
     @State private var values: [String: String] = [:]
@@ -194,9 +200,16 @@ enum ContactEditorMode: Identifiable, Equatable {
                     if let problem { Label(problem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).textSelection(.enabled) }
                     ForEach(otherErrors, id: \.self) { Text($0).font(.caption).foregroundStyle(.red) }
                     if let duplicateID, let existing = store.entry(duplicateID) {
-                        Button("Otwórz istniejący kontakt: \(existing.name)") {
-                            store.open(existing.id, kind: existing.contactKind)
-                            dismiss()
+                        if let onSaved {
+                            Button("Użyj istniejącego kontaktu: \(existing.name)") {
+                                onSaved(existing.id)
+                                dismiss()
+                            }
+                        } else {
+                            Button("Otwórz istniejący kontakt: \(existing.name)") {
+                                store.open(existing.id, kind: existing.contactKind)
+                                dismiss()
+                            }
                         }
                     }
                 }
@@ -254,7 +267,12 @@ enum ContactEditorMode: Identifiable, Equatable {
     // MARK: Dane i zapis
     private func prepare() {
         guard !prepared else { return }
-        if creating { prepared = true; return }
+        if creating {
+            prepared = true
+            values = initialValues
+            if kind == .contact, let organization = initialOrganizationID { organizationID = organization }
+            return
+        }
         guard let person = card?.contact else { return }
         prepared = true
         let loaded: [String: String] = [
@@ -320,7 +338,9 @@ enum ContactEditorMode: Identifiable, Equatable {
                 store.workspace?.succeed(reply["message"]?.text.nonEmpty ?? "Kontakt dodany")
                 if let warning = (reply["warnings"]?.array ?? []).map(\.text).first(where: { !$0.isEmpty }) { store.workspace?.notice = warning }
                 await store.sync(force: true)
-                if !id.isEmpty { store.open(id, kind: kind) }
+                if !id.isEmpty {
+                    if let onSaved { onSaved(id) } else { store.open(id, kind: kind) }
+                }
                 dismiss()
             } else if let ref = mode.ref {
                 var data: [String: JSONValue] = [:]
@@ -332,6 +352,7 @@ enum ContactEditorMode: Identifiable, Equatable {
                 if data.isEmpty { dismiss(); return }
                 try await store.save(ref, data: data)
                 store.workspace?.succeed(kind == .individual ? "Dane osoby prywatnej zaktualizowane" : "Dane kontaktu zaktualizowane")
+                onSaved?(ref.id)
                 dismiss()
             }
         } catch let failure as NativeFailure {
