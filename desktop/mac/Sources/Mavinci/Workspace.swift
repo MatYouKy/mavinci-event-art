@@ -49,6 +49,8 @@ import Network
     let myTasks = TasksStore(board: .mine)
     /// Sprzedawcy zewnętrzni (`/crm/salespeople`) — kokpit opiekuna, karty sprzedawców, instrukcja opiekuna.
     let sellers = SellersStore()
+    /// Komunikator (`Chat/`) — rozmowy pracowników na żywo, jak widżet czatu w CRM i w telefonie.
+    let chat = ChatStore()
     let fleet = FleetStore()
     /// Czas pracy (`/crm/time-tracking`) — licznik, wpisy, raport zespołu, rozliczenia.
     let timeTracking = TimeTrackingStore()
@@ -134,6 +136,7 @@ import Network
         eventCards.workspace = self
         myTasks.workspace = self
         sellers.workspace = self
+        chat.workspace = self
         fleet.workspace = self
         timeTracking.workspace = self
         databases.workspace = self
@@ -391,7 +394,7 @@ import Network
         for nav in windowNavigations where nav !== activeNavigation { nav.window?.close() }
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); finance.reset()
+        native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); chat.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); finance.reset()
         navigation = []; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }

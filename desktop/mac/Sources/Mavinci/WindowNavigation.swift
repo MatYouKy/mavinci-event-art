@@ -34,6 +34,10 @@ import Combine
     @Published var webItem: NavItem?
     /// „Mianuj sprzedawcą” — kreator „Nowy sprzedawca” z wybraną osobą jako arkusz tego okna (`NewSellerWizard.swift`).
     @Published var sellerAppointment: NewSellerPreset?
+    /// Komunikator w tym oknie (`Chat/ChatViews.swift`): panel otwarty, zwinięty i widok (lista, rozmowa, nowa rozmowa).
+    @Published var chatOpen = false
+    @Published var chatMinimized = false
+    @Published var chatRoute: ChatRoute = .list
     /// Okno AppKit (od pojawienia się na ekranie) i okno, do którego nowe okno dołącza jako karta.
     weak var window: NSWindow?
     weak var tabHost: NSWindow?
@@ -45,6 +49,7 @@ import Combine
         selection = .day; eventRoute = nil; sellerFocus = nil; focusedID = nil; notificationsVisible = false
         nativeSet = nil; nativeFocus = nil; screen = nil; sidebarHref = "/crm"; sidebarVisibility = .all; webItem = nil
         sellerAppointment = nil
+        chatOpen = false; chatMinimized = false; chatRoute = .list
     }
 }
 

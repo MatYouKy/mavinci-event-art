@@ -28,6 +28,7 @@ import AppKit
                 Button("Oferty") {workspace.switchSection(.offers)}.keyboardShortcut("7")
                 Button("Przetargi") {workspace.switchSection(.tenders)}.keyboardShortcut("8")
                 Button("Powiadomienia") {workspace.notificationsVisible.toggle()}.keyboardShortcut("9")
+                Button("Komunikator") { workspace.toggleChat() }.keyboardShortcut("k", modifiers: [.command, .option]).disabled(workspace.employee == nil)
                 Divider()
                 Button("Wyloguj") { Task { await workspace.logout() } }.disabled(workspace.loading || workspace.acting)
             }
@@ -148,6 +149,8 @@ struct RootView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .background(state.theme.page)
+                    // Komunikator (jak widżet czatu w CRM) — przycisk i panel w prawym dolnym rogu; panel powiadomień go przykrywa.
+                    .overlay(alignment: .bottomTrailing) { ChatWidgetHost(store: state.chat) }
                     .overlay {
                         if nav.notificationsVisible {
                             GeometryReader { available in
@@ -176,6 +179,7 @@ struct RootView: View {
                     }
                     .toolbar {
                         ToolbarItemGroup(placement: .primaryAction) {
+                            if state.chat.available { ChatToolbarButton(store: state.chat, nav: nav) }
                             Button {
                                 withAnimation(.easeInOut(duration:0.18)){nav.notificationsVisible.toggle()}
                             } label: {
@@ -215,6 +219,8 @@ struct RootView: View {
             // Kilka okien — jedno odświeżenie (pomija, gdy poprzednie zaczęło się przed chwilą).
             if next == .active { Task { await state.refreshIfIdle(after: 10) } }
         }
+        // Komunikator: rozmowy, połączenie na żywo i powiadomienia po zalogowaniu (raz na pracownika, niezależnie od liczby okien).
+        .task(id: state.employee?.id) { await state.chat.start() }
         .task(id: state.employee?.id) {
             while !Task.isCancelled && state.employee != nil {
                 do { try await Task.sleep(for: .seconds(60)) } catch { return }

@@ -189,6 +189,11 @@ import AppKit
                         contactLink(m.email, symbol: "envelope", scheme: "mailto")
                         if !m.phone.isEmpty { contactLink(m.phone, symbol: "phone", scheme: "tel") }
                         if !m.region.isEmpty { Label(m.region, systemImage: "mappin").foregroundStyle(.secondary) }
+                        // Komunikator: istniejąca rozmowa 1:1 albo nowa z tą osobą (jak „Napisz” w CRM).
+                        if m.id != state.employee?.id, state.chat.available {
+                            Button { state.openChat(employeeID: m.id) } label: { Label("Czat", systemImage: "bubble.left") }
+                                .buttonStyle(.link).linkCursor().foregroundStyle(.secondary).help("Napisz w komunikatorze")
+                        }
                     }
                     .font(.callout)
                 }
