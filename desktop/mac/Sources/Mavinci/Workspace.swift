@@ -66,6 +66,8 @@ import Network
     @Published var theme = CrmTheme.saved
     /// Menu jak w CRM (z serwera; ostatnie zapisane na tym Macu do pierwszego odczytu).
     @Published var navigation: [NavItem] = []
+    /// Pozycja paska bocznego przeciągana do kart (`NavigationDrag.swift`) — okna pokazują pola „Nowa karta” / „Nowe okno”.
+    @Published var navDrag: String?
     // MARK: Okna (`WindowNavigation.swift`) — każde okno ma własną nawigację; dane, sesja i synchronizacja są wspólne
     /// Okno, w którym pracuje użytkownik (ostatnio aktywne okno obszaru roboczego) — do niego trafiają czynności nawigacji.
     /// Przed pojawieniem się pierwszego okna i po zamknięciu ostatniego — nawigacja czekająca na następne okno.

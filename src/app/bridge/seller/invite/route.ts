@@ -26,14 +26,16 @@ export async function POST(request: NextRequest) {
 
     const { data: employee } = await admin
       .from('employees')
-      .select('id,role,access_level,permissions,name,surname')
+      .select('id,role,access_level,permissions,name,surname,email,phone_number')
       .or(`id.eq.${authData.user.id},auth_user_id.eq.${authData.user.id}`)
       .eq('is_active', true)
       .maybeSingle();
     if (!hasPermission(employee)) return NextResponse.json({ error: 'Brak uprawnień do zapraszania sprzedawców' }, { status: 403 });
 
-    const { salesPartnerId, forceEmail = false } = await request.json();
+    const { salesPartnerId, forceEmail = false, message } = await request.json();
     if (!salesPartnerId) return NextResponse.json({ error: 'Nie wskazano sprzedawcy' }, { status: 400 });
+    // Osobista wiadomość zapraszającego (CRM, aplikacja na Maca) — opcjonalna, dołączana do e-maila jako tekst.
+    const personalMessage = typeof message === 'string' ? message.trim().slice(0, 2000) : '';
 
     // Respect caller RLS before using service-role access to create/link accounts.
     const user = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
     });
     const { data: profile, error: profileError } = await user
       .from('sales_partner_profiles')
-      .select('id,partner_type,status,organization_id,portal_default_company_id,portal_enabled,portal_auth_user_id,contact:contacts!contact_id(email,full_name)')
+      .select('id,partner_type,status,organization_id,portal_default_company_id,portal_enabled,portal_auth_user_id,manager_id,contact:contacts!contact_id(email,full_name)')
       .eq('id', salesPartnerId)
       .maybeSingle();
     if (profileError || !profile) {
@@ -61,7 +63,7 @@ export async function POST(request: NextRequest) {
     if ((profile.partner_type === 'hotel_employee' || organization.business_type === 'hotel') && !organization.location_id) {
       return NextResponse.json({ error: 'Powiąż hotel z lokalizacją w CRM przed wysłaniem zaproszenia.' }, { status: 400 });
     }
-    const { data: terms, error: termsError } = await admin.from('sales_partner_brand_terms').select('my_company_id,company:my_companies!my_company_id(is_active)').eq('sales_partner_id', profile.id).eq('is_active', true);
+    const { data: terms, error: termsError } = await admin.from('sales_partner_brand_terms').select('my_company_id,company:my_companies!my_company_id(is_active,name)').eq('sales_partner_id', profile.id).eq('is_active', true);
     const activeTerms = (terms || []).filter(term => {
       const company = Array.isArray(term.company) ? term.company[0] : term.company;
       return company?.is_active === true;
@@ -172,12 +174,34 @@ export async function POST(request: NextRequest) {
     if (shouldSendEmail && linkToken && linkType) {
       const accountEmail = linkedUser.email || contact.email;
       const actionUrl = passwordAccessUrl('seller', linkToken, linkType);
+      const invitedBy = [employee?.name, employee?.surname].filter(Boolean).join(' ') || null;
+      // Instrukcja „Jak zacząć”: marki z aktywnych warunków, opiekun sprzedawcy (bez opiekuna — zapraszający pracownik).
+      const brands = activeTerms.map((term) => {
+        const company = Array.isArray(term.company) ? term.company[0] : term.company;
+        return String(company?.name || '').trim();
+      }).filter(Boolean);
+      const { data: manager } = profile.manager_id
+        ? await admin.from('employees').select('name,surname,email,phone_number').eq('id', profile.manager_id).maybeSingle()
+        : { data: null };
+      const guidePerson = manager || employee;
+      const guideName = [guidePerson?.name, guidePerson?.surname].filter(Boolean).join(' ');
       await sendSellerAccessEmail({
         to: accountEmail,
         recipientName: contact.full_name,
         actionUrl,
         isNewAccount: linkType === 'invite',
-        invitedBy: [employee?.name, employee?.surname].filter(Boolean).join(' ') || null,
+        invitedBy,
+        guide: {
+          brands,
+          contact: guideName ? {
+            label: manager ? 'Twój opiekun w MAVINCI' : 'Kontakt w MAVINCI',
+            name: guideName,
+            email: guidePerson?.email || null,
+            phone: guidePerson?.phone_number || null,
+          } : null,
+          message: personalMessage || null,
+          messageFrom: invitedBy,
+        },
       });
       emailSent = true;
     }

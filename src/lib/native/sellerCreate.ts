@@ -10,6 +10,8 @@ import {
 
 /**
  * Kreator „Nowy sprzedawca” na Macu (`/bridge/native/v1/sellers`, op=newSeller | people | organizations | validate | create).
+ * Osoby: z organizacji (`people&organization=…`), bez organizacji (`unaffiliated=1`), pracownicy MAVINCI (`source=employee`)
+ * i jedna osoba z obecnymi organizacjami (`id=…` — „Mianuj sprzedawcą” z karty kontaktu).
  * Te same zapisy co formularz CRM (`CrmSellerProfileSettings.tsx`): profil i warunki marek tokenem pracownika (RLS jak w CRM),
  * te same warunki (`sellerProfileProblems`), zaproszenie przez `/bridge/seller/invite` (wywołane na serwerze), opiekuna
  * przypisuje administrator (`set_seller_manager`). Aplikacja zbiera dane i pokazuje braki — nie rozstrzyga o niczym sama.
@@ -36,6 +38,8 @@ export type NewSellerForm = {
   terms: Term[];
   managerId: string;
   backupManagerId: string;
+  /** Osobista wiadomość dołączana do e-maila z zaproszeniem (opcjonalna). */
+  inviteMessage?: string;
 };
 
 const fail = (message: string, status = 400): never => { throw Object.assign(new Error(message), { status }); };
@@ -70,34 +74,115 @@ export async function newSellerSetup(ctx: NativeContext) {
   };
 }
 
-/** Osoby do wyboru: kontakty (pracownik — tylko swoje, jak w CRM) albo pracownicy MAVINCI (administrator). */
-export async function newSellerPeople(ctx: NativeContext, source: string, query: string) {
+type ContactRow = { id: string; full_name: string | null; email: string | null };
+type PeopleOptions = { organization?: string | null; unaffiliated?: boolean; id?: string | null };
+
+/** Słowa wyszukiwania — każde musi wystąpić (w dowolnej kolejności), np. „Monika Jurgin” i „Jurgin Monika”. */
+const searchWords = (query: string) => query.toLocaleLowerCase('pl').split(/\s+/).map((word) => word.trim()).filter(Boolean).slice(0, 6);
+const matchesAll = (haystack: string, words: string[]) => {
+  const value = haystack.toLocaleLowerCase('pl');
+  return words.every((word) => value.includes(word));
+};
+
+/** Obecne organizacje osób (`contact_organizations.is_current`); `withNames` — także nazwy (alias albo nazwa organizacji). */
+async function currentOrganizations(ctx: NativeContext, contactIds: string[], withNames: boolean) {
+  const ids = [...new Set(contactIds.filter((id) => uuid.test(id)))];
+  const links: { contact_id: string; organization_id: string }[] = [];
+  for (let index = 0; index < ids.length; index += 100) {
+    const { data, error } = await ctx.supabase.from('contact_organizations').select('contact_id,organization_id')
+      .in('contact_id', ids.slice(index, index + 100)).eq('is_current', true);
+    if (error) throw error;
+    links.push(...((data || []) as { contact_id: string; organization_id: string }[]));
+  }
+  const names = new Map<string, string>();
+  if (withNames) {
+    const organizationIds = [...new Set(links.map((link) => String(link.organization_id)).filter((id) => uuid.test(id)))];
+    for (let index = 0; index < organizationIds.length; index += 100) {
+      const { data, error } = await ctx.supabase.from('organizations').select('id,name,alias').in('id', organizationIds.slice(index, index + 100));
+      if (error) throw error;
+      for (const org of (data || []) as { id: string; name: string | null; alias: string | null }[]) names.set(org.id, org.alias || org.name || 'Organizacja');
+    }
+  }
+  const result = new Map<string, { id: string; name: string }[]>();
+  for (const link of links) {
+    const list = result.get(link.contact_id) || [];
+    if (!list.some((item) => item.id === link.organization_id)) list.push({ id: link.organization_id, name: names.get(link.organization_id) || 'Organizacja' });
+    result.set(link.contact_id, list);
+  }
+  return result;
+}
+
+/**
+ * Osoby do wyboru: kontakty (pracownik — tylko swoje, jak w CRM) albo pracownicy MAVINCI (administrator). Kontakty: osoby obecnie
+ * zatrudnione w organizacji (`organization`), osoby bez organizacji (`unaffiliated`) albo jedna osoba z obecnymi organizacjami (`id`).
+ */
+export async function newSellerPeople(ctx: NativeContext, source: string, query: string, options: PeopleOptions = {}) {
   const access = await directory(ctx);
   const sellers = new Map(access.profiles.flatMap((profile) => [
     ...(profile.contact_id ? [[`contact:${profile.contact_id}`, profile.id] as const] : []),
     ...(profile.employee_id ? [[`employee:${profile.employee_id}`, profile.id] as const] : []),
   ]));
-  const term = query.trim();
+  const words = searchWords(query);
+  // Do bazy — najdłuższe słowo; pozostałe sprawdzane na wynikach.
+  const longest = [...words].sort((first, second) => second.length - first.length)[0] || '';
   if (source === 'employee') {
     if (!access.is_admin) fail('Pracowników MAVINCI jako sprzedawców dodaje administrator.', 403);
-    let request = ctx.supabase.from('employees').select('id,name,surname,email').eq('is_active', true).order('surname').limit(40);
-    if (term) request = request.or(`name.ilike.${like(term)},surname.ilike.${like(term)},email.ilike.${like(term)}`);
+    let request = ctx.supabase.from('employees').select('id,name,surname,email').eq('is_active', true).order('surname').limit(longest ? 200 : 40);
+    if (longest) request = request.or(`name.ilike.${like(longest)},surname.ilike.${like(longest)},email.ilike.${like(longest)}`);
     const { data, error } = await request;
     if (error) throw error;
-    return { people: ((data || []) as { id: string; name: string; surname: string; email: string | null }[]).map((person) => ({
+    const rows = ((data || []) as { id: string; name: string; surname: string; email: string | null }[])
+      .filter((person) => matchesAll(`${person.name || ''} ${person.surname || ''} ${person.email || ''}`, words)).slice(0, 40);
+    return { people: rows.map((person) => ({
       id: person.id, name: `${person.name || ''} ${person.surname || ''}`.trim() || 'Pracownik', email: person.email || null,
       detail: person.email || 'pracownik CRM', sellerId: sellers.get(`employee:${person.id}`) || null,
     })) };
   }
-  let request = ctx.supabase.from('contacts').select('id,full_name,email').order('full_name').limit(40);
+  const person = (row: ContactRow, detail?: string, organizations?: { id: string; name: string }[]) => ({
+    id: row.id, name: row.full_name || 'Kontakt', email: row.email || null,
+    detail: detail || row.email || 'brak adresu e-mail', sellerId: sellers.get(`contact:${row.id}`) || null,
+    ...(organizations ? { organizations } : {}),
+  });
+
+  // Jedna osoba — „Mianuj sprzedawcą” z karty kontaktu (uprawnienia do niej sprawdza lista braków).
+  if (options.id) {
+    if (!uuid.test(options.id)) fail('Nieprawidłowa osoba.');
+    const { data, error } = await ctx.supabase.from('contacts').select('id,full_name,email').eq('id', options.id).maybeSingle();
+    if (error) throw error;
+    if (!data) return { people: [] };
+    const organizations = await currentOrganizations(ctx, [options.id], true);
+    return { people: [person(data as ContactRow, undefined, organizations.get(options.id) || [])] };
+  }
+
+  // Osoby obecnie zatrudnione w wybranej organizacji (stanowisko z powiązania).
+  if (options.organization) {
+    if (!uuid.test(options.organization)) fail('Nieprawidłowa organizacja.');
+    const { data: links, error: linkError } = await ctx.supabase.from('contact_organizations').select('contact_id,position')
+      .eq('organization_id', options.organization).eq('is_current', true).limit(200);
+    if (linkError) throw linkError;
+    const positions = new Map(((links || []) as { contact_id: string; position: string | null }[]).map((link) => [link.contact_id, (link.position || '').trim()]));
+    const ids = [...positions.keys()].filter((id) => uuid.test(id));
+    if (!ids.length) return { people: [] };
+    let request = ctx.supabase.from('contacts').select('id,full_name,email').in('id', ids).order('full_name').limit(200);
+    if (!access.is_admin) request = request.eq('owner_id', access.employee_id);
+    const { data, error } = await request;
+    if (error) throw error;
+    const rows = ((data || []) as ContactRow[]).filter((row) => matchesAll(`${row.full_name || ''} ${row.email || ''} ${positions.get(row.id) || ''}`, words));
+    return { people: rows.map((row) => person(row, [positions.get(row.id) || '', row.email || 'brak adresu e-mail'].filter(Boolean).join(' · '))) };
+  }
+
+  let request = ctx.supabase.from('contacts').select('id,full_name,email').order('full_name').limit(longest || options.unaffiliated ? 300 : 40);
   if (!access.is_admin) request = request.eq('owner_id', access.employee_id);
-  if (term) request = request.or(`full_name.ilike.${like(term)},email.ilike.${like(term)}`);
+  if (longest) request = request.or(`full_name.ilike.${like(longest)},email.ilike.${like(longest)}`);
   const { data, error } = await request;
   if (error) throw error;
-  return { people: ((data || []) as { id: string; full_name: string | null; email: string | null }[]).map((person) => ({
-    id: person.id, name: person.full_name || 'Kontakt', email: person.email || null,
-    detail: person.email || 'brak adresu e-mail', sellerId: sellers.get(`contact:${person.id}`) || null,
-  })) };
+  let rows = ((data || []) as ContactRow[]).filter((row) => matchesAll(`${row.full_name || ''} ${row.email || ''}`, words));
+  // „Bez organizacji” — osoby bez obecnego powiązania z żadną organizacją.
+  if (options.unaffiliated && rows.length) {
+    const linked = await currentOrganizations(ctx, rows.map((row) => row.id), false);
+    rows = rows.filter((row) => !linked.has(row.id));
+  }
+  return { people: rows.slice(0, 40).map((row) => person(row)) };
 }
 
 /** Hotele i organizacje z lokalizacją i liczbą sal — „Hotel i sale”. */
@@ -148,6 +233,7 @@ export function normalize(raw: Record<string, unknown>): NewSellerForm {
     terms,
     managerId: uuid.test(text(raw.managerId, 40)) ? text(raw.managerId, 40) : '',
     backupManagerId: uuid.test(text(raw.backupManagerId, 40)) ? text(raw.backupManagerId, 40) : '',
+    inviteMessage: text(raw.inviteMessage, 2000),
   };
 }
 
@@ -197,14 +283,14 @@ export async function validateNewSeller(ctx: NativeContext, raw: Record<string, 
 
 /**
  * Dostęp do portalu: utworzenie lub połączenie konta i zaproszenie — ta sama trasa co `requestPortalAccess` w CRM
- * (`/bridge/seller/invite`), wywołana na serwerze z tokenem pracownika.
+ * (`/bridge/seller/invite`), wywołana na serwerze z tokenem pracownika. `message` — osobista wiadomość w e-mailu (opcjonalna).
  */
-export async function invitePortalAccess(request: Request, partnerId: string): Promise<{ ok: true; emailSent: boolean; email: string } | { ok: false; error: string }> {
+export async function invitePortalAccess(request: Request, partnerId: string, message = ''): Promise<{ ok: true; emailSent: boolean; email: string } | { ok: false; error: string }> {
   try {
     const response = await invitePortal(new NextRequest(new URL('/bridge/seller/invite', request.url), {
       method: 'POST',
       headers: { authorization: request.headers.get('authorization') || '', 'content-type': 'application/json' },
-      body: JSON.stringify({ salesPartnerId: partnerId }),
+      body: JSON.stringify({ salesPartnerId: partnerId, ...(message.trim() ? { message: message.trim() } : {}) }),
     }));
     const reply = await response.json() as { emailSent?: boolean; email?: string; error?: string };
     if (!response.ok) return { ok: false, error: String(reply.error || response.status) };
@@ -264,7 +350,7 @@ export async function createSeller(ctx: NativeContext, request: Request, raw: Re
   }
   let invited = false;
   if (form.portalEnabled) {
-    const portal = await invitePortalAccess(request, id);
+    const portal = await invitePortalAccess(request, id, form.inviteMessage || '');
     if (!portal.ok) warnings.push(`Profil i warunki zapisano, ale nie udało się przygotować dostępu do portalu: ${portal.error}. Wyślij zaproszenie z „Gotowości do pracy”.`);
     else {
       invited = true;

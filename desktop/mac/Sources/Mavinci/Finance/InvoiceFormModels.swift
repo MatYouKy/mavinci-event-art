@@ -118,10 +118,10 @@ struct InvoiceRecipientDraft: Codable, Equatable {
             return found
         }
         if !nip.isEmpty && !InvoiceMath.validNip(nip) { found.append("Sprawdź NIP odbiorcy — wymagany jest poprawny polski NIP albo puste pole.") }
-        let internal = data.internalId.trimmingCharacters(in: .whitespaces)
-        if !internal.isEmpty {
-            let prefix = String(internal.prefix(10))
-            if internal.range(of: "^\\d{10}-\\d{5}$", options: .regularExpression) == nil || !InvoiceMath.validNip(prefix) {
+        let internalID = data.internalId.trimmingCharacters(in: .whitespaces)
+        if !internalID.isEmpty {
+            let prefix = String(internalID.prefix(10))
+            if internalID.range(of: "^\\d{10}-\\d{5}$", options: .regularExpression) == nil || !InvoiceMath.validNip(prefix) {
                 found.append("Numer wewnętrzny odbiorcy musi mieć postać poprawny NIP–5 cyfr, np. 5252228219-00145.")
             } else if !nip.isEmpty && prefix != nip {
                 found.append("NIP odbiorcy musi być zgodny z NIP-em w jego numerze wewnętrznym.")

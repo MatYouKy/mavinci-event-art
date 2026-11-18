@@ -5,7 +5,50 @@ import AppKit
 // ofert / realizacji, nowe rozmowy dla marek z prawem pisania, wyszukiwanie, nieprzeczytane, 50 ostatnich wiadomości ze starszymi
 // na żądanie, wysyłka bez dublowania, odczyt po wyświetleniu, odświeżanie co 15 s) oraz „Historia zmian” (`SellerAuditHistory`).
 // Serwer: `/bridge/native/v1/sellers` (`conversations`, `messages`, `audit`, `chatOpen`, `chatSend`, `chatRead` —
-// `src/lib/native/sellerChat.ts`).
+// `src/lib/native/sellerChat.ts`). Rozmowy wskazane w kokpicie („Rozmowy czekające na odpowiedź”), powiadomieniach i odnośnikach
+// CRM (`…?tab=seller&conversation=…`, `/crm/salespeople?seller=…&conversation=…`) otwierają się tutaj, a nie w przeglądarce.
+
+/// Rozmowa ze sprzedawcą do otwarcia spoza karty sprzedawcy: profil (albo kontakt — profil ustala kokpit) i rozmowa.
+struct SellerChatRequest: Identifiable, Equatable {
+    let id = UUID()
+    var sellerID: String?
+    var contactID: String?
+    var name: String?
+    var conversationID: String?
+}
+
+extension SellerChatRequest {
+    /// Odnośnik CRM do rozmowy: `/crm/contacts/<kontakt>?tab=seller…&conversation=<id>` (albo `section=chat`) lub
+    /// `/crm/salespeople?seller=<profil>…&conversation=<id>`; inne adresy — `nil`.
+    init?(href: String) {
+        guard let url = URLComponents(string: href) else { return nil }
+        let query = Dictionary((url.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
+        let conversation = query["conversation"].flatMap { UUID(uuidString: $0) != nil ? $0 : nil }
+        let chat = conversation != nil || query["section"] == "chat"
+        let parts = url.path.split(separator: "/").map(String.init)
+        guard chat, parts.count >= 2, parts[0] == "crm" else { return nil }
+        if parts[1] == "salespeople", let seller = query["seller"], UUID(uuidString: seller) != nil {
+            self.init(sellerID: seller, contactID: nil, name: nil, conversationID: conversation)
+        } else if parts[1] == "contacts", parts.count >= 3, UUID(uuidString: parts[2]) != nil, query["tab"] == "seller" {
+            self.init(sellerID: nil, contactID: parts[2], name: nil, conversationID: conversation)
+        } else {
+            return nil
+        }
+    }
+}
+
+extension Workspace {
+    /// Rozmowa ze sprzedawcą w aplikacji: ekran Sprzedawców w bieżącym oknie i arkusz rozmów z wybraną rozmową.
+    /// Bez sekcji Sprzedawców w menu — `href` w CRM.
+    func showSellerChat(_ request: SellerChatRequest, href: String) {
+        guard navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/salespeople" }) else {
+            openCRM(href)
+            return
+        }
+        openHref("/crm/salespeople")
+        sellers.chatRequest = request
+    }
+}
 
 struct SellerChatData: Decodable {
     struct Thread: Decodable, Identifiable, Equatable {
@@ -61,7 +104,11 @@ private struct SellerUnreadBadge: View {
 
 @MainActor struct SellerChatSheet: View {
     @ObservedObject var store: SellersStore
-    let seller: SellerCockpitState.Seller
+    /// Profil sprzedawcy i nazwa w nagłówku.
+    let sellerID: String
+    let sellerName: String
+    /// Rozmowa pokazana po pierwszym wczytaniu (kokpit, powiadomienie, odnośnik) — z właściwą zakładką.
+    let initialConversation: String?
     @EnvironmentObject private var state: Workspace
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
@@ -75,6 +122,18 @@ private struct SellerUnreadBadge: View {
     @State private var offerID = ""
     @State private var query = ""
     @State private var starting = false
+    @State private var initialApplied = false
+
+    init(store: SellersStore, seller: SellerCockpitState.Seller) {
+        self.init(store: store, sellerID: seller.id, sellerName: seller.name, initialConversation: nil)
+    }
+
+    init(store: SellersStore, sellerID: String, sellerName: String, initialConversation: String? = nil) {
+        _store = ObservedObject(wrappedValue: store)
+        self.sellerID = sellerID
+        self.sellerName = sellerName
+        self.initialConversation = initialConversation
+    }
 
     private var threads: [SellerChatData.Thread] { data?.threads ?? [] }
     private var layerThreads: [SellerChatData.Thread] { threads.filter { ($0.offerId != nil) == (layer == .offer) } }
@@ -95,7 +154,7 @@ private struct SellerUnreadBadge: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Label("Rozmowy ze sprzedawcą", systemImage: "bubble.left.and.bubble.right").font(.title3.bold())
-                    Text("\(seller.name) · Oddzielamy bieżący kontakt od ustaleń do konkretnych zleceń. Każda rozmowa pozostaje w obrębie swojej marki.")
+                    Text("\(sellerName) · Oddzielamy bieżący kontakt od ustaleń do konkretnych zleceń. Każda rozmowa pozostaje w obrębie swojej marki.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
@@ -208,10 +267,21 @@ private struct SellerUnreadBadge: View {
 
     private func reload() async {
         do {
-            let next = try await SellerChatAPI.get(store, ["op": "conversations", "id": seller.id], as: SellerChatData.self)
+            let next = try await SellerChatAPI.get(store, ["op": "conversations", "id": sellerID], as: SellerChatData.self)
             data = next
             error = ""
             if companyID.isEmpty || !next.brands.contains(where: { $0.id == companyID }) { companyID = next.brands.first?.id ?? "" }
+            // Wskazana rozmowa: zakładka („Rozmowa ogólna” / „Oferty i realizacje”) i wątek — tylko po pierwszym wczytaniu.
+            if !initialApplied, let target = initialConversation {
+                initialApplied = true
+                if let thread = next.threads.first(where: { $0.id == target }) {
+                    layer = thread.offerId != nil ? .offer : .general
+                    query = ""
+                    selectedID = thread.id
+                } else {
+                    error = "Nie znaleziono wskazanej rozmowy — mogła zostać zamknięta albo nie masz już do niej dostępu."
+                }
+            }
         } catch {
             self.error = store.failureText(error, "Nie udało się wczytać rozmów sprzedawcy.")
         }
@@ -223,7 +293,7 @@ private struct SellerUnreadBadge: View {
         starting = true
         error = ""
         defer { starting = false }
-        var body: [String: JSONValue] = ["op": .string("chatOpen"), "id": .string(seller.id), "companyId": .string(companyID)]
+        var body: [String: JSONValue] = ["op": .string("chatOpen"), "id": .string(sellerID), "companyId": .string(companyID)]
         if layer == .offer { body["offerId"] = .string(offerID) }
         do {
             let reply = try await SellerChatAPI.post(store, body)

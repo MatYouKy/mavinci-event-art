@@ -27,7 +27,8 @@ import { MANAGER_HELP } from '@/lib/help/managerHelp';
  */
 
 type Tone = 'neutral' | 'warning' | 'danger' | 'success' | 'info';
-export type SellerTarget = { kind: 'offer' | 'event' | 'crm'; id?: string; tab?: string; href: string };
+/** Cel pozycji kokpitu. `chat` — rozmowa ze sprzedawcą (`id` — rozmowa, `seller` — profil sprzedawcy), otwierana w aplikacji. */
+export type SellerTarget = { kind: 'offer' | 'event' | 'crm' | 'chat'; id?: string; tab?: string; seller?: string; href: string };
 export type SellerCockpitItem = {
   id: string;
   title: string;
@@ -116,7 +117,7 @@ function todayGroups(cockpit: SellerCockpit): SellerCockpitGroup[] {
     items: today.chats_waiting.map((chat) => ({
       id: chat.conversation_id, title: chat.seller_name, meta: [chat.title], quote: chat.preview || null,
       side: `czeka ${formatWaitingHours(chat.waiting_hours)}`, sideTone: chat.waiting_hours >= 24 ? 'danger' : chat.waiting_hours >= 4 ? 'warning' : 'neutral',
-      target: { kind: 'crm', href: chatHref(chat) },
+      target: { kind: 'chat', id: chat.conversation_id, seller: chat.sales_partner_id, href: chatHref(chat) },
     })),
   });
   groups.push({

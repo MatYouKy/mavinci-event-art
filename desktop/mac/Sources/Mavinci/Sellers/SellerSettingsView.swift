@@ -5,7 +5,8 @@ import SwiftUI
 // `CommissionVisibilityToggle`) oraz profil sprzedawcy (`CrmSellerProfileSettings` w trybie edycji: organizacja i współpraca,
 // cennik i zasady prowizji, dostęp do portalu, braki przed zapisem). Serwer: `/bridge/native/v1/sellers` (`management`,
 // `settings`, `manager`, `visibility`, `settingsValidate`, `settingsSave` — `src/lib/native/sellerSettings.ts`); warunki
-// zapisu wspólne z CRM (`sellerProfileProblems`). Indywidualne ceny oraz branding i wizytówka — na razie w CRM.
+// zapisu wspólne z CRM (`sellerProfileProblems`). Indywidualne ceny — `SellerPricingView.swift`; „Branding i wizytówka — podgląd”
+// (`CrmOfferBrandingPanel`) — `OfferBrandingPanel` (`Contacts/OfferBrandingView.swift`).
 
 /// Opiekun, zastępca, marki i widoczność wynagrodzenia (`op=management`).
 struct SellerManagementData: Decodable {
@@ -329,8 +330,6 @@ struct SellerSettingsRequest: Identifiable {
     @ObservedObject var store: SellersStore
     let seller: SellerCockpitState.Seller
     let focus: String?
-    /// „Branding i wizytówka — podgląd” — na razie w CRM.
-    let brandingHref: String
     @EnvironmentObject private var state: Workspace
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
@@ -340,6 +339,9 @@ struct SellerSettingsRequest: Identifiable {
     @State private var removeManagerAsk = false
     @State private var visibility: SellerManagementData.Brand?
     @State private var scrollTarget: String?
+    @State private var pricingShown = false
+    /// „Branding i wizytówka — podgląd” — rozwinięcie wczytuje podgląd (jak `<details>` w CRM).
+    @State private var brandingOpen = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -353,7 +355,7 @@ struct SellerSettingsRequest: Identifiable {
                         if model.management != nil { visibilitySection.id("visibility") }
                         profileSections
                         problemsBox
-                        brandingRow
+                        brandingSection.id("branding")
                     }
                     .padding(20).frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -374,6 +376,8 @@ struct SellerSettingsRequest: Identifiable {
             await model.loadData()
             await management.value
             if let focus {
+                // „Ustaw wygląd” z „Gotowości do pracy” — podgląd brandingu rozwinięty, jak w CRM.
+                if focus == "branding" { brandingOpen = true }
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 scrollTarget = focus
             }
@@ -389,6 +393,10 @@ struct SellerSettingsRequest: Identifiable {
             try? await Task.sleep(nanoseconds: 9_000_000_000)
             guard !Task.isCancelled, model.banner == shown else { return }
             model.banner = nil
+        }
+        .sheet(isPresented: $pricingShown) {
+            SellerPricingSheet(store: store, partnerID: seller.id)
+                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
         .sheet(item: $visibility) { brand in
             SellerVisibilityDialog(brand: brand) { reason, notify in
@@ -723,8 +731,8 @@ struct SellerSettingsRequest: Identifiable {
 
     private func pricingSection(_ data: SellerSettingsData) -> some View {
         card("Cennik i zasady prowizji", symbol: "percent") {
-            Button { state.openCRM(data.pricingHref) } label: { Label("Indywidualne ceny produktów i rozszerzeń", systemImage: "tag") }
-                .help("Indywidualne ceny sprzedawcy — w CRM")
+            Button { pricingShown = true } label: { Label("Indywidualne ceny produktów i rozszerzeń", systemImage: "tag") }
+                .help("Ceny produktów, wariantów, konfiguracji i rozszerzeń dla tego sprzedawcy")
             Text(verbatim: "Każda marka może mieć inną stawkę i sposób rozliczenia. Prowizja to % od zysku netto wydarzenia — po kosztach i po koszcie samej prowizji (wypłata gotówką z zysku razem z podatkiem). Inną stawkę dla jednego wydarzenia ustawisz w jego podsumowaniu.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 4) {
@@ -835,17 +843,30 @@ struct SellerSettingsRequest: Identifiable {
         }
     }
 
-    private var brandingRow: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Branding i wizytówka — podgląd").font(.headline)
+    private var brandingSection: some View {
+        DisclosureGroup(isExpanded: $brandingOpen) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text("Sprzedawca zmienia logo, kolory i wygląd ofert w swoim portalu.").font(.caption).foregroundStyle(.secondary)
+                if brandingOpen {
+                    OfferBrandingPanel(partnerID: seller.id, organizationID: nil, openOrganization: { id, _ in openOrganization(id) }).id(seller.id)
+                }
             }
-            Spacer()
-            Button("Otwórz w CRM") { state.openCRM(brandingHref) }
+            .padding(.top, 8)
+        } label: {
+            Text("Branding i wizytówka — podgląd").font(.headline).foregroundStyle(theme.accent)
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         .background(theme.card, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    /// Karta organizacji z podglądu brandingu — po zamknięciu ustawień (niezapisanych zmian nie odrzucamy po cichu).
+    private func openOrganization(_ id: String) {
+        if model.dirty {
+            model.banner = SellerSettingsModel.Banner(success: false, text: "Najpierw zapisz lub odrzuć zmiany profilu sprzedawcy, a potem otwórz kartę organizacji.")
+            return
+        }
+        dismiss()
+        state.showContact(id)
     }
 
     // MARK: Pomocnicze

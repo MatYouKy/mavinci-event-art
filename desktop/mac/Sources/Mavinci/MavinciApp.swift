@@ -164,6 +164,16 @@ struct RootView: View {
                         if let text = state.pending ?? (state.acting ? "Zapisywanie…" : nil), state.showsBusy(in: nav) { PendingOverlay(text: text) }
                     }
                     .overlay { SnackbarHost() }
+                    .overlay(alignment: .top) {
+                        // Przeciąganie pozycji paska bocznego — pola „Nowa karta” / „Nowe okno” pod paskiem kart (`NavigationDrag.swift`).
+                        if state.navDrag != nil { NavDropStrip().transition(.move(edge: .top).combined(with: .opacity)) }
+                    }
+                    .animation(.easeOut(duration: 0.15), value: state.navDrag != nil)
+                    // „Mianuj sprzedawcą” (karta i lista kontaktów, osoby organizacji) — kreator w tym oknie.
+                    .sheet(item: $nav.sellerAppointment) { preset in
+                        NewSellerWizard(store: state.sellers, preset: preset) { result in state.sellerAppointed(result) }
+                            .environmentObject(state).environmentObject(nav).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+                    }
                     .toolbar {
                         ToolbarItemGroup(placement: .primaryAction) {
                             Button {

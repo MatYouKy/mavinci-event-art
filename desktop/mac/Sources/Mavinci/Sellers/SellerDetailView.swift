@@ -4,7 +4,7 @@ import SwiftUI
 // w portalu, marki, oferty na osi w 5 etapach (widok opiekuna), realizacje oraz „Prowizje i narzuty” — całe konto sprzedawcy
 // (prowizje, narzuty z ofert, wypłaty i saldo; dla osób z dostępem do finansów). Rozmowy ze sprzedawcą i historia zmian —
 // `SellerChatView.swift`; ustawienia (opiekun, widoczność wynagrodzenia, profil, warunki marek, portal) — `SellerSettingsView.swift`,
-// także z akcji „Gotowości do pracy”; indywidualne ceny oraz branding — na razie w CRM.
+// także z akcji „Gotowości do pracy”; indywidualne ceny — `SellerPricingView.swift`; podgląd brandingu — w ustawieniach.
 
 @MainActor struct SellerDetailView: View {
     @ObservedObject var store: SellersStore
@@ -20,6 +20,10 @@ import SwiftUI
     @State private var auditShown = false
     /// Ustawienia sprzedawcy — z przycisku w nagłówku albo z akcji „Gotowości do pracy” (z sekcją do pokazania).
     @State private var settings: SellerSettingsRequest?
+    /// Indywidualny cennik sprzedawcy (`SellerPricingView.swift`).
+    @State private var pricingShown = false
+    /// Ponowne wysłanie dostępu do portalu z osobistą wiadomością (`SellerInviteView.swift`).
+    @State private var inviteShown = false
     /// „Rozliczenia” — przewinięcie do konta prowizji i narzutów na tej karcie.
     @State private var scrollTarget: String?
 
@@ -63,8 +67,17 @@ import SwiftUI
         .sheet(isPresented: $auditShown) {
             SellerAuditSheet(store: store, seller: seller).environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
+        .sheet(isPresented: $pricingShown) {
+            SellerPricingSheet(store: store, partnerID: seller.id).environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(isPresented: $inviteShown) {
+            SellerInviteSheet(store: store, partnerID: seller.id, sellerName: seller.name, email: seller.email, managerName: seller.managerName) {
+                Task { await load() }
+            }
+            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
         .sheet(item: $settings) { request in
-            SellerSettingsSheet(store: store, seller: seller, focus: request.focus, brandingHref: card?.links.branding ?? seller.cardHref + "&section=branding")
+            SellerSettingsSheet(store: store, seller: seller, focus: request.focus)
                 .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
     }
@@ -95,7 +108,7 @@ import SwiftUI
                 Button { chatShown = true } label: { Label("Rozmowa", systemImage: "bubble.left.and.bubble.right") }
                 Button { auditShown = true } label: { Label("Historia zmian", systemImage: "clock.arrow.circlepath") }
                 Button { settings = SellerSettingsRequest(focus: nil) } label: { Label("Ustawienia", systemImage: "gearshape") }
-                if let card { Button("Indywidualne ceny") { state.openCRM(card.links.pricing) } }
+                if card != nil { Button { pricingShown = true } label: { Label("Indywidualne ceny", systemImage: "tag") } }
                 if seller.hasMoney, card != nil {
                     // Konto prowizji i narzutów jest na tej karcie (niżej) — przewiń; bez dostępu do konta — rozliczenia w CRM.
                     Button("Rozliczenia (\(seller.payable))") {
@@ -164,9 +177,11 @@ import SwiftUI
     private func run(_ action: SellerCardState.Action, card: SellerCardState) {
         switch action.kind {
         case "resend":
-            Task { if await store.resendInvite(card.id) { await load() } }
+            // Podgląd treści e-maila i osobista wiadomość przed wysłaniem.
+            inviteShown = true
         case "branding":
-            state.openCRM(card.links.branding)
+            // „Ustaw wygląd” — ustawienia z rozwiniętym podglądem brandingu i wizytówki.
+            settings = SellerSettingsRequest(focus: "branding")
         case "link":
             state.openCRM(action.href ?? card.links.card)
         default:

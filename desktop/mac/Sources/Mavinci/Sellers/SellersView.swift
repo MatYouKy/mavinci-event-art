@@ -2,11 +2,13 @@ import SwiftUI
 
 // MARK: Sprzedawcy (`/crm/salespeople`) — kokpit opiekuna („Dziś”, oś w 5 etapach, wydarzenia, ostrzeżenia) i lista
 // sprzedawców z kartą („Gotowość do pracy”, oferty na osi) i kreator „Nowy sprzedawca” (`NewSellerWizard.swift`). Tryb pokazowy
-// i ustawienia sprzedawcy — na razie w CRM w przeglądarce.
+// „Pokaż portal hotelowi” (`/crm/salespeople/demo`) — `SellerDemoView.swift` w miejscu kokpitu.
 
 @MainActor struct SellersView: View {
     enum Tab: String { case cockpit, sellers }
     @EnvironmentObject private var state: Workspace
+    /// Okno tego widoku — rozmowa wskazana spoza ekranu otwiera się tylko w oknie, w którym pracuje użytkownik.
+    @EnvironmentObject private var nav: WindowNavigation
     @Environment(\.crmTheme) private var theme
     @ObservedObject var store: SellersStore
     @State private var tab: Tab = .cockpit
@@ -16,32 +18,47 @@ import SwiftUI
     @State private var responding: SellerCockpitState.Inquiry?
     @State private var converting: SellerCockpitState.Inquiry?
     @State private var newSellerShown = false
+    /// Arkusz rozmów sprzedawcy otwarty z pozycji „Dziś”, powiadomienia albo karty kontaktu.
+    @State private var chat: SellerChatRequest?
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
-            if let data = store.cockpit {
-                switch tab {
-                case .cockpit: cockpit(data)
-                case .sellers: sellers(data)
-                }
-            } else if let error = store.loadError {
-                ContentUnavailableView {
-                    Label("Nie udało się wczytać sprzedawców", systemImage: "person.crop.circle.badge.exclamationmark")
-                } description: { Text(error) } actions: { Button("Spróbuj ponownie") { Task { await store.load() } } }
+            if let request = store.demo {
+                // „Zaproś hotel do portalu” z pokazu — kreator „Nowy sprzedawca” (jak `/crm/salespeople?new=1`).
+                SellerDemoView(store: store, request: request, onInvite: { store.demo = nil; newSellerShown = true }, onExit: { store.demo = nil })
             } else {
-                ProgressView("Wczytywanie kokpitu opiekuna…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                header
+                Divider()
+                if let data = store.cockpit {
+                    switch tab {
+                    case .cockpit: cockpit(data)
+                    case .sellers: sellers(data)
+                    }
+                } else if let error = store.loadError {
+                    ContentUnavailableView {
+                        Label("Nie udało się wczytać sprzedawców", systemImage: "person.crop.circle.badge.exclamationmark")
+                    } description: { Text(error) } actions: { Button("Spróbuj ponownie") { Task { await store.load() } } }
+                } else {
+                    ProgressView("Wczytywanie kokpitu opiekuna…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
         .navigationTitle("Sprzedawcy")
         .task {
             store.workspace = state
+            chatRequested()
             if store.cockpit == nil { await store.load() }
             focusRequested()
+            chatRequested()
         }
         .onChange(of: store.focusSellerContact) { _, _ in focusRequested() }
         .onChange(of: store.cockpit != nil) { _, loaded in if loaded { focusRequested() } }
+        .onChange(of: store.chatRequest) { _, _ in chatRequested() }
+        .onChange(of: store.loading) { _, loading in if !loading { chatRequested() } }
+        .sheet(item: $chat) { request in
+            SellerChatSheet(store: store, sellerID: request.sellerID ?? "", sellerName: request.name ?? "Sprzedawca", initialConversation: request.conversationID)
+                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
         .sheet(isPresented: $helpShown) { SellersHelpSheet(store: store) }
         .sheet(isPresented: $newSellerShown) {
             NewSellerWizard(store: store) { result in
@@ -101,8 +118,8 @@ import SwiftUI
                 .disabled(store.loading).help("Odśwież kokpit")
             Button { helpShown = true } label: { Label("Instrukcja opiekuna", systemImage: "questionmark.circle") }
                 .help("Instrukcja opiekuna sprzedawców — ta sama co znak „?” w CRM")
-            Button { state.openCRM("/crm/salespeople/demo") } label: { Label("Pokaż portal hotelowi", systemImage: "rectangle.on.rectangle") }
-                .help("Tryb pokazowy portalu z logo hotelu — otwiera się w przeglądarce")
+            Button { store.demo = SellerDemoRequest() } label: { Label("Pokaż portal hotelowi", systemImage: "rectangle.on.rectangle") }
+                .help("Tryb pokazowy portalu sprzedawcy w barwach hotelu — niczego nie zapisuje ani nie wysyła")
             Button { newSellerShown = true } label: { Label("Dodaj sprzedawcę", systemImage: "person.badge.plus") }
                 .help("Kreator „Nowy sprzedawca”: osoba, hotel i sale, warunki, opiekun, zaproszenie")
         }
@@ -164,7 +181,7 @@ import SwiftUI
                 }
             }
             HStack {
-                Button("Pokaż portal hotelowi") { state.openCRM("/crm/salespeople/demo") }.buttonStyle(.borderedProminent)
+                Button("Pokaż portal hotelowi") { store.demo = SellerDemoRequest() }.buttonStyle(.borderedProminent)
                 Button("Zaproś hotel do portalu") { newSellerShown = true }
             }
         }
@@ -343,11 +360,52 @@ import SwiftUI
         }
     }
 
+    /// Rozmowa wskazana spoza karty (`SellerChatRequest`): arkusz rozmów w oknie, w którym pracuje użytkownik. Profil z żądania
+    /// albo — dla odnośnika karty kontaktu — z listy kokpitu (czeka na jego wczytanie).
+    private func chatRequested() {
+        guard let request = store.chatRequest, state.activeNavigation === nav else { return }
+        let sellers = store.cockpit?.sellers ?? []
+        let ready = store.cockpit != nil || store.loadError != nil
+        if let id = request.sellerID {
+            // Nazwa do nagłówka — z żądania albo z kokpitu (po wczytaniu).
+            if request.name == nil && !ready { return }
+            store.chatRequest = nil
+            var next = request
+            next.name = request.name ?? sellers.first(where: { $0.id == id })?.name ?? "Sprzedawca"
+            chat = next
+        } else if let contactID = request.contactID {
+            guard ready else { return }
+            store.chatRequest = nil
+            if let seller = sellers.first(where: { $0.contactId == contactID }) {
+                chat = SellerChatRequest(sellerID: seller.id, contactID: contactID, name: seller.name, conversationID: request.conversationID)
+            } else {
+                let href = "/crm/contacts/\(contactID)?tab=seller&section=chat" + (request.conversationID.map { "&conversation=\($0)" } ?? "")
+                state.snack = Snack(kind: .info, text: "Tego sprzedawcy nie ma na Twojej liście w kokpicie opiekuna.",
+                                    action: Snack.Action(title: "Rozmowa w CRM") { state.openCRM(href) })
+            }
+        } else {
+            store.chatRequest = nil
+        }
+    }
+
     private func openTarget(_ target: SellerCockpitState.Target) {
         switch target.kind {
         case "offer": if let id = target.id { state.open(.offers, id: id) } else { state.openCRM(target.href) }
         case "event": if let id = target.id { state.showEvent(id, cardTab: target.tab) } else { state.openCRM(target.href) }
-        default: state.openCRM(target.href)
+        case "chat":
+            // „Rozmowy czekające na odpowiedź” — arkusz rozmów sprzedawcy z tą rozmową (nazwa z pozycji „Dziś”).
+            let name = store.cockpit?.groups.flatMap(\.items).first(where: { $0.target == target })?.title
+            if let seller = target.seller, UUID(uuidString: seller) != nil {
+                store.chatRequest = SellerChatRequest(sellerID: seller, contactID: nil, name: name, conversationID: target.id)
+            } else if var request = SellerChatRequest(href: target.href) {
+                request.name = name
+                store.chatRequest = request
+            } else {
+                state.openCRM(target.href)
+            }
+        default:
+            // Starszy serwer: rozmowa jako odnośnik CRM (`…&section=chat&conversation=…`) — także w aplikacji.
+            if let request = SellerChatRequest(href: target.href) { store.chatRequest = request } else { state.openCRM(target.href) }
         }
     }
 

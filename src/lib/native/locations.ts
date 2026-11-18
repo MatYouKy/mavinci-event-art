@@ -59,8 +59,8 @@ export async function locationsList(ctx: NativeContext) {
 
 const isCad = (path: string) => /\.(dxf|dwg)$/i.test(path);
 
-/** Podpisane linki (godzina) do rzutów i zdjęć obiektu i sal; pliki CAD do pobrania pod oryginalną nazwą. */
-async function assetUrls(ctx: NativeContext, details: Row[]) {
+/** Podpisane linki (godzina) do rzutów i zdjęć obiektu i sal; pliki CAD do pobrania pod oryginalną nazwą (też baza hotelu — `offerBranding.ts`). */
+export async function assetUrls(ctx: NativeContext, details: Row[]) {
   const assets = details.flatMap((item) => (Array.isArray(item?.assets) ? item.assets : []))
     .filter((asset: Row) => typeof asset?.path === 'string' && asset.path);
   const unique = Array.from(new Map<string, Row>(assets.map((asset: Row) => [String(asset.path), asset] as [string, Row])).values());
@@ -73,7 +73,7 @@ async function assetUrls(ctx: NativeContext, details: Row[]) {
 }
 
 /** Sala w kształcie dla aplikacji (i do porównania wersji przy zapisie). */
-const roomItem = (room: Row) => ({
+export const roomItem = (room: Row) => ({
   id: text(room.id), name: text(room.name), kind: room.kind === 'outdoor' ? 'outdoor' : 'indoor', notes: text(room.notes),
   technical: isObject(room.technical) ? room.technical : {},
 });

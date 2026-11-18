@@ -72,6 +72,25 @@ struct MessageActions {
     let trash: (MessageItem, Bool) -> Void
     let window: (MessageItem) -> Void
     let browser: (MessageItem) -> Void
+    /// „Kopiuj adres e-mail” — nadawca odebranej wiadomości, odbiorcy wysłanej i wersji roboczej.
+    let copyAddress: (MessageItem) -> Void
+}
+
+/// Adresy e-mail wiadomości do skopiowania (z „Imię <adres>”, list odbiorców i formularzy).
+enum MessageAddresses {
+    static func of(_ message: MessageItem) -> [String] { extract(message.inbound ? message.from : message.to) }
+
+    static func extract(_ text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: "[A-Z0-9._%+'-]+@[A-Z0-9-]+(?:\\.[A-Z0-9-]+)*\\.[A-Z]{2,}", options: [.caseInsensitive]) else { return [] }
+        var seen = Set<String>()
+        var result: [String] = []
+        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let range = Range(match.range, in: text) else { continue }
+            let address = String(text[range])
+            if seen.insert(address.lowercased()).inserted { result.append(address) }
+        }
+        return result
+    }
 }
 
 /// Czynności wiadomości z arkuszami i potwierdzeniem kosza — te same reguły co `MessageActionsMenu` i `MessagePreviewPane`.
@@ -124,7 +143,15 @@ struct MessageActions {
             move: { _ in state.notice = "Funkcja przenoszenia będzie wkrótce dostępna" },
             trash: { m, restore in trashTarget = (m, restore) },
             window: { m in openWindow(id: "message", value: m.key) },
-            browser: { m in store.openInBrowser(m) }
+            browser: { m in store.openInBrowser(m) },
+            copyAddress: { m in
+                let addresses = MessageAddresses.of(m)
+                guard !addresses.isEmpty else { return }
+                let text = addresses.joined(separator: ", ")
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                state.succeed(addresses.count > 1 ? "Skopiowano adresy e-mail: \(text)" : "Skopiowano adres e-mail: \(text)")
+            }
         )
     }
 }
@@ -412,8 +439,11 @@ struct UnreadRowBackground: View {
         let deleted = store.scope.folder == .trash || message.isDeleted
         let manage = store.info?.canManage == true
         let linked = message.sales?.hasInquiry == true && message.sales?.inquiries.first != nil
+        let addresses = MessageAddresses.of(message)
         if message.type == "draft" {
             Button("Otwórz w przeglądarce") { actions.browser(message) }
+            Button(addresses.count > 1 ? "Kopiuj adresy e-mail" : "Kopiuj adres e-mail", systemImage: "doc.on.doc") { actions.copyAddress(message) }
+                .disabled(addresses.isEmpty)
         } else {
             // Najczęstsze czynności na górze: przeczytana / nieprzeczytana, przypisanie i kosz.
             Group {
@@ -439,6 +469,8 @@ struct UnreadRowBackground: View {
                 if !deleted && message.type == "received" {
                     Button(message.isStarred ? "Usuń gwiazdkę" : "Oznacz gwiazdką") { actions.star(message) }
                 }
+                Button(addresses.count > 1 ? "Kopiuj adresy e-mail" : "Kopiuj adres e-mail", systemImage: "doc.on.doc") { actions.copyAddress(message) }
+                    .disabled(addresses.isEmpty)
             }
             Divider()
             Group {

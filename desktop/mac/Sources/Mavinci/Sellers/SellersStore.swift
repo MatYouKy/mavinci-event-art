@@ -12,7 +12,8 @@ struct SellerCockpitState: Decodable {
     struct Manager: Decodable, Identifiable, Hashable { let id: String; let name: String; let eligible: Bool }
     struct Tile: Decodable, Identifiable { let key: String; let label: String; let value: String; let helper: String; var id: String { key } }
     struct Badge: Decodable, Hashable { let text: String; let tone: String }
-    struct Target: Decodable, Hashable { let kind: String; let id: String?; let tab: String?; let href: String }
+    /// Cel pozycji „Dziś”: `offer`, `event`, `chat` (rozmowa `id` sprzedawcy `seller` — w aplikacji) albo `crm` (strona CRM).
+    struct Target: Decodable, Hashable { let kind: String; let id: String?; let tab: String?; let seller: String?; let href: String }
     struct Inquiry: Decodable, Hashable, Identifiable { let id: String; let status: String; let guestName: String }
     struct Item: Decodable, Identifiable {
         let id: String
@@ -181,6 +182,11 @@ enum SellerTone {
     @Published var commissionErrors: [String: String] = [:]
     /// Sprzedawca (kontakt) do pokazania po wejściu na ekran — „Sprzedaż sprzedawcy” z karty kontaktu; ekran go zaznacza i czyści.
     @Published var focusSellerContact: String?
+    /// Tryb pokazowy „Pokaż portal hotelowi” (`SellerDemoView.swift`) — ekran Sprzedawców pokazuje go zamiast kokpitu.
+    @Published var demo: SellerDemoRequest?
+    /// Rozmowa ze sprzedawcą wskazana spoza karty (pozycja „Dziś”, powiadomienie, karta kontaktu) — ekran Sprzedawców otwiera
+    /// arkusz rozmów (`SellerChatView.swift`) i czyści żądanie.
+    @Published var chatRequest: SellerChatRequest?
     /// Filtr opiekuna (tylko administrator); pusty — wszyscy.
     @Published var managerFilter: String = UserDefaults.standard.string(forKey: "sellersManagerFilter") ?? "" {
         didSet { UserDefaults.standard.set(managerFilter, forKey: "sellersManagerFilter") }
@@ -191,6 +197,8 @@ enum SellerTone {
     func reset() {
         cockpit = nil; loadError = nil; loading = false; help = nil; helpError = nil; cards = [:]; commissionAccounts = [:]; commissionErrors = [:]
         focusSellerContact = nil
+        demo = nil
+        chatRequest = nil
     }
 
     func failureText(_ error: Error, _ fallback: String) -> String {
@@ -272,8 +280,9 @@ enum SellerTone {
         }
     }
 
-    /// Ponowne zaproszenie do portalu — ta sama trasa co w CRM (`/bridge/seller/invite`, token pracownika).
-    func resendInvite(_ partnerId: String) async -> Bool {
+    /// Ponowne zaproszenie do portalu — ta sama trasa co w CRM (`/bridge/seller/invite`, token pracownika); `message` — osobista
+    /// wiadomość w e-mailu (opcjonalna).
+    func resendInvite(_ partnerId: String, message: String = "") async -> Bool {
         guard let api, let workspace, workspace.canWrite,
               let url = URL(string: api.base.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/bridge/seller/invite") else {
             workspace?.error = "Wysłanie zaproszenia wymaga połączenia z serwerem CRM."
@@ -288,7 +297,10 @@ enum SellerTone {
                 request.setValue("application/json", forHTTPHeaderField: "Accept")
                 request.setValue("mac", forHTTPHeaderField: "X-Mavinci-Client")
                 request.setValue("Bearer \(try await api.backend.token())", forHTTPHeaderField: "Authorization")
-                request.httpBody = try JSONEncoder().encode(["salesPartnerId": JSONValue.string(partnerId), "forceEmail": .bool(true)])
+                var payload: [String: JSONValue] = ["salesPartnerId": .string(partnerId), "forceEmail": .bool(true)]
+                let note = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !note.isEmpty { payload["message"] = .string(note) }
+                request.httpBody = try JSONEncoder().encode(payload)
                 let (data, response) = try await URLSession.shared.data(for: request)
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 if status == 401 { throw AppError.unauthorized }

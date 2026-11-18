@@ -11,6 +11,11 @@ import {
 import {
   assignSellerManager, saveSellerSettings, sellerManagement, sellerSettings, setSellerCommissionVisibility, validateSellerSettings,
 } from '@/lib/native/sellerSettings';
+import {
+  saveSellerComponentPrices, saveSellerPriceList, sellerComponentPrices, sellerPriceList, sellerPricing,
+} from '@/lib/native/sellerPricing';
+import { hotelVenue, offerBranding } from '@/lib/native/offerBranding';
+import { sellerDemo } from '@/lib/native/sellerDemo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,8 +29,10 @@ export const maxDuration = 60;
  * Ocena oferty z portalu (`src/lib/native/sellerOffer.ts`): GET op=offer&id=… (stan jak w CRM, zgoda na cenę, oś, warunki decyzji);
  * POST op=priceDecide {id, decision approved|changes_requested, note, expectedKey}. Decyzję oceny, PDF i analizę sprzętu
  * aplikacja wysyła na `/bridge/seller/offers/[id]` — tę samą trasę co CRM.
- * Kreator „Nowy sprzedawca” (`src/lib/native/sellerCreate.ts`): GET op=newSeller | people&source=contact|employee&q=… |
- * organizations&q=…; POST op=validate {form} (braki i wskazówki) | create {form} (profil, warunki marek, opiekun, zaproszenie).
+ * Kreator „Nowy sprzedawca” (`src/lib/native/sellerCreate.ts`): GET op=newSeller | people&source=contact|employee&q=…
+ * (&organization=… — osoby organizacji, &unaffiliated=1 — bez organizacji, &id=… — jedna osoba z organizacjami) |
+ * organizations&q=…&id=…; POST op=validate {form} (braki i wskazówki) | create {form} (profil, warunki marek, opiekun,
+ * zaproszenie z osobistą wiadomością `form.inviteMessage`).
  * Ponowne zaproszenie do portalu: `/bridge/seller/invite` (token pracownika, jak w CRM). Dostęp rozstrzyga baza.
  * Konto prowizji i narzutów sprzedawcy (`src/lib/native/teamCommissions.ts`, konto `partner`): GET op=commissions&id=…;
  * POST op=commissionApprove | commissionPayout | commissionDeduct | commissionPayroll {id: sprzedawca, …} — jak na karcie pracownika.
@@ -35,6 +42,13 @@ export const maxDuration = 60;
  * Ustawienia sprzedawcy (`src/lib/native/sellerSettings.ts`): GET op=management&id=… (opiekun, zastępca, marki i widoczność
  * wynagrodzenia) | settings&id=… (profil do edycji); POST op=manager {id, managerId, backupId, reason} | visibility {id, companyId,
  * visible, reason, notify} | settingsValidate {id, form} (braki) | settingsSave {id, form} (profil, warunki marek, zaproszenie).
+ * Indywidualny cennik (`src/lib/native/sellerPricing.ts`): GET op=pricing&id=… (sprzedawca i marki) | priceList&id=…&brand=…
+ * (pozycje marki) | componentPrices&id=…&brand=…&product=… (stawki konfiguracji i rozszerzeń); POST op=priceSave {id, brand,
+ * items} | componentSave {id, brand, product, revision, rates}.
+ * Branding ofert i baza hotelu (`src/lib/native/offerBranding.ts`, podgląd jak `CrmOfferBrandingPanel` — także z karty
+ * organizacji): GET op=branding&id=…(sprzedawca, opcjonalnie)&organization=… | hotelVenue&organization=….
+ * Tryb pokazowy „Pokaż portal hotelowi” (`src/lib/native/sellerDemo.ts`): GET op=demo&organization=…&contact=…&hotel=… —
+ * prowadzący, marki, katalog usług i nazwa hotelu; bez zapisów.
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -78,9 +92,13 @@ export async function GET(request: Request) {
       case 'newSeller':
         return nativeJson(await newSellerSetup(ctx));
       case 'people':
-        return nativeJson(await newSellerPeople(ctx, url.searchParams.get('source') || 'contact', (url.searchParams.get('q') || '').slice(0, 100)));
+        return nativeJson(await newSellerPeople(ctx, url.searchParams.get('source') || 'contact', (url.searchParams.get('q') || '').slice(0, 100), {
+          organization: url.searchParams.get('organization'),
+          unaffiliated: url.searchParams.get('unaffiliated') === '1',
+          id: url.searchParams.get('id'),
+        }));
       case 'organizations':
-        return nativeJson(await newSellerOrganizations(ctx, (url.searchParams.get('q') || '').slice(0, 100)));
+        return nativeJson(await newSellerOrganizations(ctx, (url.searchParams.get('q') || '').slice(0, 100), url.searchParams.get('id') || undefined));
       case 'conversations':
         return nativeJson(await sellerConversations(ctx, url.searchParams.get('id')));
       case 'messages':
@@ -91,6 +109,18 @@ export async function GET(request: Request) {
         return nativeJson(await sellerManagement(ctx, url.searchParams.get('id')));
       case 'settings':
         return nativeJson(await sellerSettings(ctx, url.searchParams.get('id')));
+      case 'pricing':
+        return nativeJson(await sellerPricing(ctx, url.searchParams.get('id')));
+      case 'priceList':
+        return nativeJson(await sellerPriceList(ctx, url.searchParams.get('id'), url.searchParams.get('brand')));
+      case 'componentPrices':
+        return nativeJson(await sellerComponentPrices(request, url.searchParams));
+      case 'branding':
+        return nativeJson(await offerBranding(ctx, url.searchParams.get('id'), url.searchParams.get('organization')));
+      case 'hotelVenue':
+        return nativeJson(await hotelVenue(ctx, url.searchParams.get('organization')));
+      case 'demo':
+        return nativeJson(await sellerDemo(ctx, request, url.searchParams));
       default:
         return failure('Nieznana operacja.');
     }
@@ -105,7 +135,8 @@ export async function POST(request: Request) {
   if (!ctx) return nativeUnauthorized();
   let body: Record<string, unknown>;
   try {
-    body = await readJson(request, 64_000);
+    // Cały cennik marki (`priceSave`) bywa większy niż pozostałe zapisy — limit jak dla dużych formularzy.
+    body = await readJson(request, 2_000_000);
   } catch {
     return failure('Nieprawidłowe dane.');
   }
@@ -155,6 +186,10 @@ export async function POST(request: Request) {
         return nativeJson(await validateSellerSettings(ctx, body));
       case 'settingsSave':
         return nativeJson(await saveSellerSettings(ctx, request, body));
+      case 'priceSave':
+        return nativeJson(await saveSellerPriceList(ctx, body));
+      case 'componentSave':
+        return nativeJson(await saveSellerComponentPrices(request, body));
       case 'inquiryConvert': {
         const { data, error } = await ctx.supabase.rpc('convert_seller_inquiry', { p_inquiry: id });
         if (error) throw error;

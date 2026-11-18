@@ -17,6 +17,13 @@ struct ContactActions {
     let email: (ContactEntry) -> Void
     let meeting: (ContactEntry) -> Void
     let browser: (ContactEntry) -> Void
+    /// Kopia do schowka z potwierdzeniem: wartość i jej opis („adres e-mail”).
+    let copy: (String, String) -> Void
+    /// „Mianuj sprzedawcą” — kreator z tą osobą; tylko z uprawnieniem (`canAppoint`: zarządzanie kontaktami albo finansami).
+    let canAppoint: Bool
+    let appoint: (ContactEntry) -> Void
+    /// Karta sprzedawcy tej osoby (ekran Sprzedawców).
+    let sellerCard: (ContactEntry) -> Void
 }
 
 @MainActor struct ContactsView: View {
@@ -203,8 +210,24 @@ struct ContactActions {
             call: { entry in openURL("tel", entry.callPhone) },
             email: { entry in compose(entry) },
             meeting: { entry in meeting = meetingRequest(entry) },
-            browser: { state.openCRM("/crm/contacts/\($0.id)") }
+            browser: { state.openCRM("/crm/contacts/\($0.id)") },
+            copy: { value, label in
+                let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+                state.succeed("Skopiowano \(label): \(text)")
+            },
+            canAppoint: canAppointSellers,
+            appoint: { entry in state.appointSeller(contactID: entry.id) },
+            sellerCard: { entry in state.showSeller(contactID: entry.id) }
         )
+    }
+
+    /// „Mianuj sprzedawcą” — jak `can_manage` kartoteki sprzedawców: administrator, zarządzanie kontaktami albo finansami.
+    private var canAppointSellers: Bool {
+        guard let employee = state.employee else { return false }
+        return employee.has("contacts_manage") || employee.has("finances_manage")
     }
 
     /// Powiązany kontakt lub organizacja: zaznacz na liście (mimo filtrów), a spoza listy — karta w CRM.
@@ -380,9 +403,21 @@ struct ContactStars: View {
         Button("Pokaż szczegóły", systemImage: "info.circle") { actions.open(entry) }
         Button("Pełna karta w CRM", systemImage: "safari") { actions.browser(entry) }
         Divider()
-        Button("Zadzwoń", systemImage: "phone") { actions.call(entry) }.disabled(entry.callPhone.isEmpty)
-        Button("Napisz e-mail", systemImage: "envelope") { actions.email(entry) }.disabled(entry.email.isEmpty)
-        Button("Nowe spotkanie", systemImage: "calendar.badge.plus") { actions.meeting(entry) }
+        Group {
+            Button("Zadzwoń", systemImage: "phone") { actions.call(entry) }.disabled(entry.callPhone.isEmpty)
+            Button("Napisz e-mail", systemImage: "envelope") { actions.email(entry) }.disabled(entry.email.isEmpty)
+            Button("Nowe spotkanie", systemImage: "calendar.badge.plus") { actions.meeting(entry) }
+            Button("Kopiuj adres e-mail", systemImage: "doc.on.doc") { actions.copy(entry.email, "adres e-mail") }.disabled(entry.email.isEmpty)
+            Button("Kopiuj numer telefonu", systemImage: "phone.arrow.up.right") { actions.copy(entry.callPhone, "numer telefonu") }.disabled(entry.callPhone.isEmpty)
+        }
+        // Osoba: karta istniejącego sprzedawcy albo „Mianuj sprzedawcą”.
+        if !entry.isOrganization {
+            if entry.seller {
+                Button("Karta sprzedawcy", systemImage: "person.crop.rectangle") { actions.sellerCard(entry) }
+            } else if actions.canAppoint {
+                Button("Mianuj sprzedawcą…", systemImage: "person.badge.plus") { actions.appoint(entry) }
+            }
+        }
         Divider()
         // Edycja jak „Edytuj” w CRM — dla każdego z dostępem do kontaktów (zapis rozstrzyga baza); usuwanie — zarządzający kontaktami.
         Button("Edytuj…", systemImage: "pencil") { actions.edit(entry) }

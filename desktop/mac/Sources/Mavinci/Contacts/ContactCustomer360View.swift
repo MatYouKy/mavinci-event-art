@@ -373,13 +373,13 @@ struct Customer360BadgeView: View {
                             Button(person.name) { store.open(person.contactId, kind: .contact) }.buttonStyle(.link)
                             if !person.position.isEmpty { Text(person.position).font(.caption).foregroundStyle(.secondary) }
                             Spacer()
-                            Button { state.openCRM("/crm/salespeople?new=1&contactId=\(person.contactId)") } label: { Label("Mianuj sprzedawcą", systemImage: "person.badge.plus") }
+                            Button { state.appointSeller(contactID: person.contactId, organizationID: ref.id) } label: { Label("Mianuj sprzedawcą", systemImage: "person.badge.plus") }
                                 .controlSize(.small)
                         }
                     }
                     if others.count > 8 { Text("…oraz \(others.count - 8) innych osób w zakładce Osoby kontaktowe.").font(.caption).foregroundStyle(.secondary) }
                 }
-                Button { state.openCRM("/crm/salespeople/demo?organization=\(ref.id)&hotel=\(organizationName.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "")") } label: {
+                Button { state.showSellerDemo(organization: ref.id, hotel: organizationName) } label: {
                     Label("Pokaż portal hotelowi", systemImage: "rectangle.on.rectangle")
                 }
                 .buttonStyle(.link)

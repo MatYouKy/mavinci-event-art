@@ -7,16 +7,19 @@ import AppKit
 // segmentacja i komunikacja, domeny organizacji, duplikaty i scalanie, zapytania, broszury). Edycja i dodawanie — arkusze
 // `OrganizationEditorSheet` / `PersonEditorSheet`; zapisy przez `/bridge/native/v1/contacts` (RLS i wyzwalacze jak w CRM).
 // „Klient 360°”, „Zapytania”, „Oferty”, „Sprzedaż sprzedawcy” — `ContactCustomer360View.swift`; „Usługi” podwykonawcy —
-// `SubcontractorServicesPanel`; „Dodaj zapytanie” — `NewInquirySheet` z danymi klienta.
+// `SubcontractorServicesPanel`; „Dodaj zapytanie” — `NewInquirySheet` z danymi klienta. „Branding ofert” (`CrmOfferBrandingPanel`)
+// — `OfferBrandingPanel`; „Sale i przestrzenie” hotelu (`OrganizationHotelSpaces`) — lokalizacja i `LocationSpacesPanel`.
 
 enum ContactCardTab: String, Identifiable {
-    case customer360, inquiries, offers, details, persons, organizations, notes, invoices, events, services, seller, relation
+    case customer360, inquiries, offers, venue, details, persons, organizations, notes, invoices, events, branding, services, seller, relation
     var id: String { rawValue }
     var symbol: String {
         switch self {
         case .customer360: return "clock.arrow.circlepath"
         case .inquiries: return "tray"
         case .offers: return "doc.richtext"
+        case .venue: return "square.split.2x2"
+        case .branding: return "paintpalette"
         case .services: return "wrench.and.screwdriver"
         case .seller: return "percent"
         case .details: return "doc.text"
@@ -185,9 +188,29 @@ enum ContactCardConfirm: Identifiable {
             Button { Task { await store.loadCard(ref) } } label: { Label("Odśwież kartę", systemImage: "arrow.clockwise") }
                 .disabled(loading)
             Menu {
-                Button(isOrganization ? "Karta w CRM (branding ofert, sale i przestrzenie hotelu)" : "Karta w CRM", systemImage: "safari") {
+                Button("Karta w CRM", systemImage: "safari") {
                     state.openCRM("/crm/contacts/\(ref.id)")
                 }
+                // „Pokaż portal hotelowi” jak w menu karty CRM: organizacja-klient albo osoba kontaktowa (nie osoba prywatna).
+                if canShowDemo {
+                    Button("Pokaż portal hotelowi", systemImage: "rectangle.on.rectangle") {
+                        if isOrganization { state.showSellerDemo(organization: ref.id, hotel: title) } else { state.showSellerDemo(contact: ref.id) }
+                    }
+                }
+                // Osoba: „Mianuj sprzedawcą” (kreator z tą osobą) albo karta i rozmowa istniejącego sprzedawcy.
+                if !isOrganization && canManageSalespeople {
+                    if entry?.seller == true {
+                        Button("Karta sprzedawcy", systemImage: "person.crop.rectangle") { state.showSeller(contactID: ref.id) }
+                        Button("Rozmowa ze sprzedawcą", systemImage: "bubble.left.and.bubble.right") { openSellerChat() }
+                    } else {
+                        Button("Mianuj sprzedawcą…", systemImage: "person.badge.plus") { state.appointSeller(contactID: ref.id) }
+                    }
+                }
+                Divider()
+                Button("Kopiuj adres e-mail", systemImage: "doc.on.doc") { copy(entry?.email ?? "", "adres e-mail") }
+                    .disabled(entry?.email.isEmpty ?? true)
+                Button("Kopiuj numer telefonu", systemImage: "phone.arrow.up.right") { copy(entry?.callPhone ?? "", "numer telefonu") }
+                    .disabled(entry?.callPhone.isEmpty ?? true)
                 if card?.access.canManage == true, let entry {
                     Divider()
                     Button("Usuń…", systemImage: "trash", role: .destructive) { actions.remove(entry) }
@@ -254,9 +277,34 @@ enum ContactCardConfirm: Identifiable {
                     Button { Task { await startInquiry() } } label: { Label("Dodaj zapytanie", systemImage: "plus") }
                         .help("Utwórz zapytanie w lejku sprzedażowym z danymi klienta.").disabled(preparingInquiry)
                 }
+                // Osoba (kontakt lub osoba prywatna): mianowanie sprzedawcą albo karta istniejącego sprzedawcy.
+                if !isOrganization && canManageSalespeople {
+                    if entry?.seller == true {
+                        Button { state.showSeller(contactID: ref.id) } label: { Label("Karta sprzedawcy", systemImage: "person.crop.rectangle") }
+                            .help("Gotowość do pracy, oferty, rozmowy i rozliczenia sprzedawcy.")
+                    } else {
+                        Button { state.appointSeller(contactID: ref.id) } label: { Label("Mianuj sprzedawcą", systemImage: "person.badge.plus") }
+                            .help("Kreator „Nowy sprzedawca” z tą osobą: organizacja, warunki marek, opiekun i e-mail z dostępem do portalu (link do hasła, logowanie, instrukcja).")
+                    }
+                }
             }
             .controlSize(.small)
         }
+    }
+
+    /// Kopia do schowka z potwierdzeniem.
+    private func copy(_ value: String, _ label: String) {
+        let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        state.succeed("Skopiowano \(label): \(text)")
+    }
+
+    /// Rozmowy ze sprzedawcą (ten kontakt) — arkusz rozmów na ekranie Sprzedawców.
+    private func openSellerChat() {
+        state.showSellerChat(SellerChatRequest(sellerID: nil, contactID: ref.id, name: title, conversationID: nil),
+                             href: "/crm/contacts/\(ref.id)?tab=seller&section=chat")
     }
 
     /// Jak `canCreateInquiry` w `ContactQuickActions`.
@@ -294,11 +342,15 @@ enum ContactCardConfirm: Identifiable {
         }
         var list: [ContactCardTab] = []
         if card.tabs.contains("customer360") { list += [.customer360, .inquiries, .offers] }
+        // „Sale i przestrzenie” — hotel, przy dostępie do szczegółów organizacji (jak w CRM).
+        if card.tabs.contains("details"), card.organization?.businessType == "hotel" { list.append(.venue) }
         if card.tabs.contains("details") { list.append(.details) }
         if card.tabs.contains("contacts") { list.append(.persons) }
         if card.tabs.contains("notes") { list.append(.notes) }
         if card.tabs.contains("invoices") { list.append(.invoices) }
         if card.tabs.contains("events") { list.append(.events) }
+        // „Branding ofert” — jak w CRM: administrator, zarządzanie kontaktami albo finansami.
+        if canManageSalespeople { list.append(.branding) }
         // „Usługi” — organizacja-podwykonawca z kartą podwykonawcy (jak w CRM).
         if card.tabs.contains("services"), let organization = card.organization, organization.organizationType == "subcontractor",
            !organization.subcontractorId.isEmpty { list.append(.services) }
@@ -311,6 +363,8 @@ enum ContactCardConfirm: Identifiable {
         case .customer360: return "Klient 360°"
         case .inquiries: return "Zapytania"
         case .offers: return "Oferty"
+        case .venue: return "Sale i przestrzenie"
+        case .branding: return "Branding ofert"
         case .services: return "Usługi"
         case .seller: return "Sprzedaż sprzedawcy"
         case .details: return isOrganization ? "Szczegóły" : "Dane kontaktowe"
@@ -365,6 +419,9 @@ enum ContactCardConfirm: Identifiable {
                     .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
             }
         case .seller: sellerTab
+        case .venue:
+            if let organization = card.organization { hotelSpacesTab(card, organization) }
+        case .branding: brandingTab(card)
         case .details:
             if let organization = card.organization { organizationDetails(card, organization) }
             else if let person = card.contact { personDetails(person) }
@@ -775,6 +832,7 @@ enum ContactCardConfirm: Identifiable {
             HStack(spacing: 10) {
                 Button { state.showSeller(contactID: ref.id) } label: { Label("Otwórz kartę sprzedawcy", systemImage: "person.crop.rectangle") }
                     .buttonStyle(.borderedProminent)
+                Button { openSellerChat() } label: { Label("Rozmowa", systemImage: "bubble.left.and.bubble.right") }
                 if canViewFinances {
                     Button("Rozliczenia prowizji — w CRM") { state.openCRM("/crm/contacts/\(ref.id)?tab=seller&section=settlements") }
                 }
@@ -793,12 +851,6 @@ enum ContactCardConfirm: Identifiable {
             panel("Broszury") {
                 ContactBrochureActions(context: BrochureRecipientContext(type: isOrganization ? "organization" : "contact", id: ref.id, name: title)).id(ref.id)
             }
-        }
-        if isOrganization {
-            Button("Branding ofert oraz sale i przestrzenie hotelu — karta w CRM", systemImage: "safari") {
-                state.openCRM("/crm/contacts/\(ref.id)?tab=branding")
-            }
-            .buttonStyle(.link).linkCursor()
         }
     }
 
@@ -985,6 +1037,64 @@ enum ContactCardConfirm: Identifiable {
             Task { await store.run("Usuwanie…", "decisionMaker", ["action": .string("remove"), "id": .string(maker.id)], reload: ref) }
         case .removeNote(let note):
             Task { await store.run("Usuwanie notatki…", "note", ["action": .string("delete"), "id": .string(note.id)], reload: ref) }
+        }
+    }
+
+    // MARK: Branding ofert (`CrmOfferBrandingPanel`) i sale hotelu (`OrganizationHotelSpaces`)
+
+    /// Hotel — zamiast bazy hotelu odnośnik do „Sale i przestrzenie”; odnośniki podglądu prowadzą do zakładek tej karty.
+    private func brandingTab(_ card: ContactCard) -> some View {
+        let openVenue: (() -> Void)? = card.organization?.businessType == "hotel" ? { tab = .venue } : nil
+        return OfferBrandingPanel(partnerID: nil, organizationID: ref.id, onOpenVenue: openVenue,
+                                  openOrganization: { _, target in tab = target == .contacts ? .persons : .details })
+            .id(ref.id)
+    }
+
+    /// „Pokaż portal hotelowi” w menu: organizacja-klient albo osoba kontaktowa (jak w CRM).
+    private var canShowDemo: Bool {
+        if isOrganization { return card?.organization?.organizationType == "client" }
+        return card?.contact.map { !$0.isIndividual } ?? false
+    }
+
+    /// Jak `canManageSalespeople` na karcie organizacji w CRM.
+    private var canManageSalespeople: Bool {
+        guard let employee = state.employee else { return false }
+        return employee.has("contacts_manage") || employee.has("finances_manage")
+    }
+
+    @ViewBuilder private func hotelSpacesTab(_ card: ContactCard, _ org: ContactCardOrganization) -> some View {
+        let canEditLocation = state.employee?.has("locations_manage") == true
+        let canChangeLink = state.employee?.has("contacts_manage") == true
+        panel("Sale i przestrzenie hotelu") {
+            Text("Jedna wspólna baza: sale, wymiary, zasilanie, rzuty i zdjęcia zapisujemy w lokalizacji. Edycja tutaj zmienia te same dane co karta lokalizacji. Sprzedawcy korzystają z podglądu i wybierają przestrzeń do oferty. Zapisane wcześniej ustalenia ofert zachowują swoją wersję danych.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let location = card.location {
+                HStack(alignment: .top) {
+                    Image(systemName: "mappin.and.ellipse").foregroundStyle(theme.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(location.name).fontWeight(.medium).textSelection(.enabled)
+                        if !location.address.isEmpty { Text(location.address).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+                    }
+                    Spacer()
+                    Button("Otwórz lokalizację") { state.showLocation(location.id) }.controlSize(.small)
+                }
+            } else if org.locationId.isEmpty {
+                Label("Ten hotel wymaga powiązania z lokalizacją. Wybierz istniejący obiekt albo utwórz nowy — nie dodajemy drugiej listy sal w organizacji.", systemImage: "exclamationmark.triangle")
+                    .font(.callout).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            } else if card.locationMissing == true {
+                Label("Powiązana lokalizacja jest niedostępna. Sprawdź uprawnienia do lokalizacji.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+            }
+            if canChangeLink {
+                // Jak w CRM: powiązanie zmienia się w edycji organizacji (pole „Lokalizacja”).
+                Button(org.locationId.isEmpty ? "Powiąż lokalizację hotelu" : "Zmień powiązaną lokalizację") { tab = .details; sheet = .edit }
+                    .controlSize(.small)
+            }
+        }
+        if !org.locationId.isEmpty {
+            if !canEditLocation {
+                Text("Podgląd danych. Do edycji sal i materiałów wymagane są uprawnienia do zarządzania lokalizacjami.").font(.callout).foregroundStyle(.secondary)
+            }
+            LocationSpacesPanel(store: state.locations, locationID: org.locationId, readOnly: !canEditLocation).id(org.locationId)
         }
     }
 

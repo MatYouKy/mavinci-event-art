@@ -5,6 +5,22 @@ import { join } from 'node:path';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import { PASSWORD_ACCESS_ORIGIN } from '@/lib/passwordAccess';
 
+/**
+ * Instrukcja w zaproszeniu do portalu sprzedawcy wysłanym z CRM lub aplikacji na Maca (`/bridge/seller/invite`): adres
+ * logowania i instrukcji, marki, opiekun (albo zapraszający pracownik) i osobista wiadomość. Bez instrukcji (np. reset hasła
+ * zamówiony przez sprzedawcę) wiadomość wygląda jak dotąd.
+ */
+export type SellerAccessGuide = {
+  brands: string[];
+  contact: { label: string; name: string; email: string | null; phone: string | null } | null;
+  message: string | null;
+  messageFrom: string | null;
+};
+
+/** Logowanie do CRM i portalu sprzedawcy (wspólna strona) i instrukcja portalu — zawsze produkcja, jak linki do hasła. */
+export const SELLER_LOGIN_URL = new URL('/login', PASSWORD_ACCESS_ORIGIN).toString();
+export const SELLER_HELP_URL = new URL('/seller/help', PASSWORD_ACCESS_ORIGIN).toString();
+
 type SellerAccessEmailInput = {
   to: string;
   recipientName?: string | null;
@@ -12,6 +28,8 @@ type SellerAccessEmailInput = {
   isNewAccount: boolean;
   /** Name of the MAVINCI employee who sent the invitation (optional). */
   invitedBy?: string | null;
+  /** Jak zacząć: logowanie, instrukcja, marki, opiekun i wiadomość (tylko portal sprzedawcy). */
+  guide?: SellerAccessGuide | null;
 };
 
 type PasswordAccessEmailInput = SellerAccessEmailInput & {
@@ -40,6 +58,7 @@ const buildEmailHtml = ({
   isNewAccount,
   portal,
   invitedBy,
+  guide,
 }: PasswordAccessEmailInput) => {
   const trimmedName = recipientName?.trim();
   const greeting = trimmedName ? `Witaj, ${escapeHtml(trimmedName)}` : 'Dzień dobry';
@@ -67,6 +86,63 @@ const buildEmailHtml = ({
                     <td valign="top" width="34" style="padding:0 0 14px;width:34px;"><div class="email-accent" style="width:26px;height:26px;line-height:26px;border-radius:13px;background-color:#f3ead2;color:#806522;font-size:13px;font-weight:700;text-align:center;">${index + 1}</div></td>
                     <td valign="top" style="padding:2px 0 14px;"><p class="email-strong" style="margin:0;color:#312b31;font-size:15px;line-height:22px;font-weight:700;">${title}</p><p class="email-copy" style="margin:2px 0 0;color:#49404a;font-size:14px;line-height:21px;">${text}</p></td>
                   </tr>`).join('')}
+                </table>
+              </td>
+            </tr>` : '';
+  const sellerGuide = portal === 'seller' && guide ? guide : null;
+  const linkStyle = 'color:#785c16;text-decoration:underline;';
+  const message = sellerGuide?.message?.trim() || '';
+  const messageFrom = sellerGuide?.messageFrom?.trim() || '';
+  const personalMessage = message ? `
+            <tr>
+              <td class="email-content" bgcolor="#ffffff" style="padding:0 42px 26px;background-color:#ffffff;">
+                <table class="email-panel" role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#f7f5f2" style="width:100%;border-collapse:separate;background-color:#f7f5f2;border-radius:12px;">
+                  <tr>
+                    <td style="padding:16px 20px;border-left:3px solid #d3bb73;border-radius:12px;">
+                      <p class="email-accent" style="margin:0 0 6px;color:#806522;font-size:11px;line-height:16px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;">${messageFrom ? `Wiadomość od: ${escapeHtml(messageFrom)}` : 'Wiadomość od zespołu MAVINCI'}</p>
+                      <p class="email-copy" style="margin:0;color:#49404a;font-size:15px;line-height:23px;">${escapeHtml(message).replace(/\r?\n/g, '<br>')}</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>` : '';
+  const brands = (sellerGuide?.brands || []).map((name) => name.trim()).filter(Boolean).map(escapeHtml).join(', ');
+  const guideSteps: [string, string][] = sellerGuide ? [
+    [isNewAccount ? 'Utwórz hasło' : 'Ustaw hasło',
+      'Kliknij przycisk powyżej. Link jest jednorazowy i ważny przez ograniczony czas — gdy wygaśnie, poproś opiekuna o nowy.'],
+    ['Zaloguj się do portalu',
+      `Adres logowania: <a class="email-link" href="${escapeHtml(SELLER_LOGIN_URL)}" style="${linkStyle}">${escapeHtml(SELLER_LOGIN_URL.replace(/^https:\/\//, ''))}</a> · login: <strong class="email-strong" style="color:#312b31;">${safeEmail}</strong>. Zapisz ten adres w zakładkach przeglądarki.`],
+    ['Poznaj portal',
+      `Po pierwszym logowaniu przewodnik „Witaj w portalu MAVINCI” pokaże najważniejsze miejsca. Instrukcja jest zawsze pod adresem <a class="email-link" href="${escapeHtml(SELLER_HELP_URL)}" style="${linkStyle}">${escapeHtml(SELLER_HELP_URL.replace(/^https:\/\//, ''))}</a>.`],
+    ...(brands ? [['Przygotuj pierwszą ofertę', `W portalu przygotujesz oferty marek: ${brands}. Ceny, PDF dla klienta i jego akceptacja są w jednym miejscu.`] as [string, string]] : []),
+  ] : [];
+  const guideHtml = guideSteps.length ? `
+            <tr>
+              <td class="email-content" bgcolor="#ffffff" style="padding:0 42px 18px;background-color:#ffffff;">
+                <p class="email-accent" style="margin:0 0 14px;color:#806522;font-size:12px;line-height:18px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;">Jak zacząć</p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;">
+                  ${guideSteps.map(([title, text], index) => `<tr>
+                    <td valign="top" width="34" style="padding:0 0 14px;width:34px;"><div class="email-accent" style="width:26px;height:26px;line-height:26px;border-radius:13px;background-color:#f3ead2;color:#806522;font-size:13px;font-weight:700;text-align:center;">${index + 1}</div></td>
+                    <td valign="top" style="padding:2px 0 14px;"><p class="email-strong" style="margin:0;color:#312b31;font-size:15px;line-height:22px;font-weight:700;">${title}</p><p class="email-copy" style="margin:2px 0 0;color:#49404a;font-size:14px;line-height:21px;">${text}</p></td>
+                  </tr>`).join('')}
+                </table>
+              </td>
+            </tr>` : '';
+  const person = sellerGuide?.contact || null;
+  const phone = person?.phone?.trim() || '';
+  const contactHtml = person ? `
+            <tr>
+              <td class="email-content" bgcolor="#ffffff" style="padding:0 42px 30px;background-color:#ffffff;">
+                <table class="email-panel" role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#f7f5f2" style="width:100%;border-collapse:separate;background-color:#f7f5f2;border-radius:12px;">
+                  <tr>
+                    <td style="padding:16px 20px;">
+                      <p class="email-accent" style="margin:0 0 6px;color:#806522;font-size:11px;line-height:16px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;">${escapeHtml(person.label)}</p>
+                      <p class="email-strong" style="margin:0;color:#312b31;font-size:15px;line-height:22px;font-weight:700;">${escapeHtml(person.name)}</p>
+                      ${person.email ? `<p class="email-copy" style="margin:2px 0 0;color:#49404a;font-size:14px;line-height:21px;"><a class="email-link" href="mailto:${escapeHtml(person.email)}" style="${linkStyle}">${escapeHtml(person.email)}</a></p>` : ''}
+                      ${phone ? `<p class="email-copy" style="margin:2px 0 0;color:#49404a;font-size:14px;line-height:21px;"><a class="email-link" href="tel:${escapeHtml(phone.replace(/[^\d+]/g, ''))}" style="${linkStyle}">${escapeHtml(phone)}</a></p>` : ''}
+                      <p class="email-muted" style="margin:8px 0 0;color:#665b65;font-size:12px;line-height:19px;">W portalu napiszesz też do opiekuna w zakładce „Wiadomości”.</p>
+                    </td>
+                  </tr>
                 </table>
               </td>
             </tr>` : '';
@@ -131,7 +207,7 @@ const buildEmailHtml = ({
                 <p class="email-copy" style="margin:0 0 18px;color:#49404a;font-size:16px;line-height:25px;">${introduction}</p>
                 <p class="email-muted" style="margin:0;color:#665b65;font-size:14px;line-height:22px;">Konto: <strong class="email-strong" style="color:#312b31;">${safeEmail}</strong></p>
               </td>
-            </tr>${benefits}
+            </tr>${personalMessage}${benefits}
             <tr>
               <td class="email-content" align="center" bgcolor="#ffffff" style="padding:8px 42px 34px;background-color:#ffffff;">
                 <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:separate;">
@@ -143,6 +219,7 @@ const buildEmailHtml = ({
                 </table>
               </td>
             </tr>
+            ${guideHtml}${contactHtml}
             <tr>
               <td class="email-content" bgcolor="#ffffff" style="padding:0 42px 38px;background-color:#ffffff;">
                 <table class="email-panel" role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#f7f5f2" style="width:100%;border-collapse:separate;background-color:#f7f5f2;border-radius:12px;">

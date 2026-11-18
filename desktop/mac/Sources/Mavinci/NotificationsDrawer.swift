@@ -61,6 +61,18 @@ import SwiftUI
             selection = .events
             return true
         }
+        // Rozmowa ze sprzedawcą (`send_seller_message`: metadata `workflow: seller_chat`, `sales_partner_id`, `conversation_id`;
+        // adres karty kontaktu lub sprzedawcy z `conversation`) — arkusz rozmów na ekranie Sprzedawców, nie strona CRM.
+        let chatLink=SellerChatRequest(href:raw)
+        if metadata["workflow"]?.text == "seller_chat" || chatLink != nil {
+            var request=chatLink ?? SellerChatRequest(sellerID:nil,contactID:nil,name:nil,conversationID:nil)
+            if let seller=metadata["sales_partner_id"]?.text,UUID(uuidString:seller) != nil{request.sellerID=seller}
+            if let conversation=metadata["conversation_id"]?.text,UUID(uuidString:conversation) != nil{request.conversationID=conversation}
+            if request.sellerID != nil || request.contactID != nil {
+                showSellerChat(request,href:raw.isEmpty ? "/crm/salespeople" : raw)
+                return true
+            }
+        }
         if let url=URLComponents(string:raw),!raw.isEmpty {
             let parts=url.path.split(separator:"/").map(String.init)
             let q=Dictionary((url.queryItems ?? []).map{($0.name,$0.value ?? "")},uniquingKeysWith:{first,_ in first})
