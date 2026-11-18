@@ -23,8 +23,8 @@ private struct UncertainBanner: View {
 
 // MARK: Zapis wykonanej wypłaty
 
-@MainActor struct CommissionPayoutSheet: View {
-    @ObservedObject var store: TeamStore
+@MainActor struct CommissionPayoutSheet<Store: CommissionAccountHost>: View {
+    @ObservedObject var store: Store
     let employeeID: String
     let row: EmployeeCommission
     @EnvironmentObject private var state: Workspace
@@ -140,8 +140,8 @@ private struct UncertainBanner: View {
 
 // MARK: Potrącenie nadpłaty z innej prowizji
 
-@MainActor struct CommissionDeductionSheet: View {
-    @ObservedObject var store: TeamStore
+@MainActor struct CommissionDeductionSheet<Store: CommissionAccountHost>: View {
+    @ObservedObject var store: Store
     let employeeID: String
     let deduction: EmployeeCommission
     let targets: [EmployeeCommission]
@@ -247,8 +247,8 @@ private struct UncertainBanner: View {
 
 // MARK: Rozliczenie przy wypłacie wynagrodzenia
 
-@MainActor struct CommissionPayrollSheet: View {
-    @ObservedObject var store: TeamStore
+@MainActor struct CommissionPayrollSheet<Store: CommissionAccountHost>: View {
+    @ObservedObject var store: Store
     let employeeID: String
     let employeeName: String
     let account: EmployeeCommissionAccount
@@ -312,16 +312,27 @@ private struct UncertainBanner: View {
         .background(theme.page)
         .interactiveDismissDisabled(busy || uncertain)
         .onAppear(perform: prepare)
-        .onChange(of: method) { _, _ in if reply == nil && pending == nil { selected = Set(shown.map(\.id)) } }
+        .onChange(of: method) { _, value in
+            guard reply == nil && pending == nil else { return }
+            selected = Set(shown.map(\.id))
+            // Domyślny opis zmienia się ze sposobem wypłaty, dopóki użytkownik nie wpisał własnego.
+            if reference == defaultReference("payroll") || reference == defaultReference("all") { reference = defaultReference(value) }
+        }
     }
 
     private func prepare() {
         guard !prepared else { return }
         prepared = true
         let payroll = candidates.filter { $0.paymentMethod == "payroll" }
-        method = payroll.isEmpty ? "all" : "payroll"
+        let initial = payroll.isEmpty ? "all" : "payroll"
+        method = initial
         selected = Set((payroll.isEmpty ? candidates : payroll).map(\.id))
-        reference = "Lista płac " + MeetingDates.format(Date(), "MM/yyyy")
+        reference = defaultReference(initial)
+    }
+
+    /// „Lista płac 11/2026” przy wynagrodzeniu pracowniczym, inaczej „Wypłata prowizji 11/2026”.
+    private func defaultReference(_ value: String) -> String {
+        (value == "payroll" ? "Lista płac " : "Wypłata prowizji ") + MeetingDates.format(Date(), "MM/yyyy")
     }
 
     private var form: some View {
@@ -560,8 +571,8 @@ private struct UncertainBanner: View {
 
 // MARK: Warunki „Prowizja od sprzedaży” (administrator, `set_employee_sales_commission_terms`)
 
-@MainActor struct CommissionTermsSheet: View {
-    @ObservedObject var store: TeamStore
+@MainActor struct CommissionTermsSheet<Store: CommissionAccountHost>: View {
+    @ObservedObject var store: Store
     let employeeID: String
     let employeeName: String
     let terms: EmployeeCommissionTerms

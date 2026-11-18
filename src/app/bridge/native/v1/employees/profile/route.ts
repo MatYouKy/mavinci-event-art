@@ -47,7 +47,7 @@ export async function GET(request: Request) {
       const data = await employeePermissions(ctx, id);
       return data ? nativeJson(data) : failure('Nie znaleziono pracownika.', 404);
     }
-    if (op === 'commissions') return reply(await commissionAccount(ctx, id));
+    if (op === 'commissions') return reply(await commissionAccount(ctx, 'employee', id));
     return failure('Nieznana operacja.');
   } catch (error) {
     console.error('[native-employee-profile]', op, error);
@@ -185,7 +185,7 @@ export async function POST(request: Request) {
       case 'commissionDeduct':
         return reply(await deductCommission(ctx, body));
       case 'commissionPayroll':
-        return reply(await commissionPayroll(ctx, employeeId, body));
+        return reply(await commissionPayroll(ctx, 'employee', employeeId, body));
       case 'commissionTerms':
         if (!access.isAdmin) return failure('Prowizję pracownika ustawia administrator.', 403);
         return reply(await saveCommissionTerms(ctx, employeeId, data));

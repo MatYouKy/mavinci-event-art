@@ -676,6 +676,9 @@ struct EventCommissionDraft {
     let eventID: String
     let editing: EventBillingData.Commission?
     let acceptedOfferNet: Double
+    /// Pozycja „Prowizja / narzut sprzedawcy” z podsumowania: kwota dla wskazanej osoby (wpis ręczny w rejestrze prowizji,
+    /// na koncie tej osoby, z rejestrem wypłat) zamiast pozycji kosztu bez osoby.
+    var sellerCost = false
     @EnvironmentObject private var state: Workspace
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
@@ -686,6 +689,9 @@ struct EventCommissionDraft {
     @State private var saving = false
     @State private var error: String?
     @State private var prepared = false
+    /// Druga należność tej samej osoby w wydarzeniu — świadome potwierdzenie (inaczej serwer odrzuci wpis).
+    @State private var allowSecond = false
+    @State private var askSecond = false
 
     private var automatic: Bool { editing?.automatic == true }
     private var showDetails: Bool { editing != nil || customize || form.source != "partner" }
@@ -694,14 +700,18 @@ struct EventCommissionDraft {
         EventBillingText.amounts(calculationType: form.calculationType, base: form.baseAmount, rate: form.rate, fixed: form.fixedAmount,
                                  payment: form.paymentMethod, tax: form.dividendTaxRate)
     }
+    private var title: String {
+        if editing != nil { return "Edytuj warunki dla tego wydarzenia" }
+        return sellerCost ? "Prowizja / narzut sprzedawcy — przypisz osobę" : "Wybierz osobę — warunki uzupełnią się automatycznie"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(editing != nil ? "Edytuj warunki dla tego wydarzenia" : "Wybierz osobę — warunki uzupełnią się automatycznie").font(.title3.weight(.light))
+            Text(title).font(.title3.weight(.light))
             if automatic {
                 automaticForm
             } else if let options {
-                ScrollView { formBody(options).padding(.trailing, 8) }.frame(minHeight: 200, maxHeight: 600)
+                ScrollView { formBody(options).padding(.trailing, 8) }.frame(minHeight: 200, maxHeight: 640)
             } else if let loadError {
                 HStack(spacing: 6) {
                     Text(loadError).font(.callout).foregroundStyle(EventBillingText.warning)
@@ -718,7 +728,7 @@ struct EventCommissionDraft {
                     .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(saving || (!automatic && options == nil))
             }
         }
-        .padding(20).frame(width: 640)
+        .padding(20).frame(width: 680)
         .task { await prepare() }
     }
 
@@ -746,14 +756,21 @@ struct EventCommissionDraft {
 
     private func formBody(_ options: EventBillingQuery.CommissionOptions) -> some View {
         VStack(alignment: .leading, spacing: 14) {
+            if sellerCost && editing == nil {
+                Text("Kwota trafi na konto prowizji wskazanej osoby (z rejestrem wypłat) i jako koszt do podsumowania wydarzenia — dzięki temu ta sama należność nie zostanie zapłacona dwa razy. Narzut z oferty z narzutem jest już w podsumowaniu i na koncie sprzedawcy — nie dopisuj go tutaj.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(theme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+            }
             if showDetails { personKind(options) }
             person(options)
             if !showDetails, let partner = selectedPartner { termsSummary(partner, options) }
+            if showDetails, form.source != "manual", !form.beneficiaryId.isEmpty { personCheck(options) }
             if !showDetails {
                 Button("Inna osoba lub własne warunki") { customize = true }.buttonStyle(.link).linkCursor().font(.callout)
             }
             if showDetails {
-                terms
+                terms(options)
                 previewTiles
             }
         }
@@ -772,6 +789,7 @@ struct EventCommissionDraft {
                     Picker("", selection: Binding(get: { form.source }, set: { value in
                         form.source = value
                         form.beneficiaryId = ""
+                        allowSecond = false; askSecond = false
                     })) {
                         ForEach(EventBillingText.sources, id: \.0) { Text($0.1).tag($0.0) }
                     }
@@ -785,23 +803,42 @@ struct EventCommissionDraft {
                         selection: form.organizationId,
                         placeholder: "Wyszukaj hotel lub firmę...", prompt: "Wyszukaj hotel lub firmę...", empty: "Brak pasującej organizacji",
                         clearLabel: "Bez powiązanej organizacji", disabled: saving
-                    ) { form.organizationId = $0 }
+                    ) { organizationChanged($0, options) }
                 }
                 .gridCellColumns(2)
             }
         }
     }
 
+    /// Osoba z organizacji: bieżące powiązanie kontaktu albo organizacja profilu sprzedawcy.
+    private func belongs(_ ids: [String]?, _ primary: String?, to organization: String) -> Bool {
+        (ids ?? []).contains(organization) || primary == organization
+    }
+
+    /// Wybrany hotel / firma zawęża listę osób; osoba spoza tej organizacji zostaje odznaczona.
+    private func organizationChanged(_ id: String, _ options: EventBillingQuery.CommissionOptions) {
+        form.organizationId = id
+        guard !id.isEmpty, !form.beneficiaryId.isEmpty, form.source == "contact" || form.source == "partner" else { return }
+        if !beneficiaryOptions(options).contains(where: { $0.id == form.beneficiaryId }) {
+            form.beneficiaryId = ""
+            allowSecond = false; askSecond = false
+        }
+    }
+
     private func beneficiaryOptions(_ options: EventBillingQuery.CommissionOptions) -> [EventBillingOption] {
+        let organization = showDetails ? form.organizationId : ""
         switch form.source {
         case "partner":
             return options.partners
                 .filter { ($0.status == "active" && $0.term != nil) || (editing != nil && $0.id == form.beneficiaryId) }
+                .filter { organization.isEmpty || belongs($0.organizationIds, $0.organizationId, to: organization) || $0.id == form.beneficiaryId }
                 .map { EventBillingOption(id: $0.id, label: $0.label, detail: $0.detail) }
         case "employee":
             return options.employees.map { EventBillingOption(id: $0.id, label: $0.label, detail: $0.detail) }
         default:
-            return options.contacts.map { EventBillingOption(id: $0.id, label: $0.label, detail: $0.detail) }
+            return options.contacts
+                .filter { organization.isEmpty || belongs($0.organizationIds, $0.organizationId, to: organization) || $0.id == form.beneficiaryId }
+                .map { EventBillingOption(id: $0.id, label: $0.label, detail: $0.detail) }
         }
     }
 
@@ -811,17 +848,134 @@ struct EventCommissionDraft {
                 TextField("", text: $form.manualName, prompt: Text("np. Katarzyna Kowalska")).textFieldStyle(.roundedBorder)
             }
         } else {
+            let list = beneficiaryOptions(options)
             EventBillingField(label: form.source == "partner" ? "Wyszukaj sprzedawcę" : "Wyszukaj i wybierz osobę") {
-                EventBillingSearchPicker(
-                    options: beneficiaryOptions(options), selection: form.beneficiaryId,
-                    fallback: editing.flatMap { saved in form.beneficiaryId == EventCommissionDraft(saved).beneficiaryId ? saved.name : nil },
-                    placeholder: "Wpisz imię, nazwisko lub e-mail...", prompt: "Wpisz imię, nazwisko lub e-mail...", empty: "Brak pasującej osoby",
-                    clearLabel: "Wyczyść wybór", disabled: saving
-                ) { id in
-                    if id.isEmpty { form.beneficiaryId = "" } else { select(id, options) }
+                VStack(alignment: .leading, spacing: 4) {
+                    EventBillingSearchPicker(
+                        options: list, selection: form.beneficiaryId,
+                        fallback: editing.flatMap { saved in form.beneficiaryId == EventCommissionDraft(saved).beneficiaryId ? saved.name : nil },
+                        placeholder: "Wpisz imię, nazwisko lub e-mail...", prompt: "Wpisz imię, nazwisko lub e-mail...", empty: "Brak pasującej osoby",
+                        clearLabel: "Wyczyść wybór", disabled: saving
+                    ) { id in
+                        if id.isEmpty { form.beneficiaryId = ""; allowSecond = false; askSecond = false } else { select(id, options) }
+                    }
+                    if showDetails, form.source != "employee", let organization = options.organizations.first(where: { $0.id == form.organizationId }) {
+                        let count = list.filter { $0.id != form.beneficiaryId || form.beneficiaryId.isEmpty }.count
+                        Text(verbatim: count == 0
+                             ? "\(organization.label) nie ma przypisanych osób\(form.source == "partner" ? " w kartotece sprzedawców" : " kontaktowych"). Dodaj osobę w karcie organizacji albo wyczyść „Powiązany hotel / firma”."
+                             : "Pokazuję osoby z: \(organization.label) (\(count)). Wyczyść „Powiązany hotel / firma”, aby zobaczyć wszystkich.")
+                            .font(.caption).foregroundStyle(count == 0 ? EventBillingText.warning : Color.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }
+    }
+
+    // MARK: Sprawdzenie osoby w rozliczeniu (kartoteka, stawka, podsumowanie, narzut, wcześniejsze wpisy)
+
+    private struct PersonFacts {
+        var partner: EventBillingQuery.Partner?
+        var partnerId: String?
+        var contactId: String?
+        var employeeId: String?
+        var external: EventBillingQuery.SettlementPreview.External?
+        var markup: EventBillingQuery.SettlementPreview.Markup?
+        var manual: [EventBillingQuery.Existing] = []
+        var automatic: [EventBillingQuery.Existing] = []
+    }
+
+    private func facts(_ options: EventBillingQuery.CommissionOptions) -> PersonFacts {
+        var facts = PersonFacts()
+        let id = form.beneficiaryId
+        switch form.source {
+        case "partner":
+            facts.partner = options.partners.first { $0.id == id }
+            facts.partnerId = id; facts.contactId = facts.partner?.contactId; facts.employeeId = facts.partner?.employeeId
+        case "contact":
+            facts.contactId = id; facts.partner = options.partners.first { $0.contactId == id }; facts.partnerId = facts.partner?.id
+        case "employee":
+            facts.employeeId = id; facts.partner = options.partners.first { $0.employeeId == id }; facts.partnerId = facts.partner?.id
+        default:
+            return facts
+        }
+        let same: (String?, String?, String?) -> Bool = { partner, contact, employee in
+            (facts.partnerId != nil && partner == facts.partnerId) || (facts.contactId != nil && contact == facts.contactId)
+                || (facts.employeeId != nil && employee == facts.employeeId)
+        }
+        let rows = (options.existing ?? []).filter { $0.id != editing?.id && same($0.partnerId, $0.contactId, $0.employeeId) }
+        facts.manual = rows.filter { !$0.automatic }
+        facts.automatic = rows.filter(\.automatic)
+        facts.external = options.settlement?.external.first { same($0.partnerId, $0.contactId, nil) }
+        if let partnerId = facts.partnerId { facts.markup = options.settlement?.markups.first { $0.partnerId == partnerId } }
+        return facts
+    }
+
+    /// Stawka „% od naszego zysku”: ustalona dla wydarzenia, z oferty prowizyjnej tej osoby albo z kartoteki (marka wydarzenia).
+    private func effectiveRate(_ partner: EventBillingQuery.Partner, _ options: EventBillingQuery.CommissionOptions) -> (rate: Double, source: String)? {
+        if let override = partner.override { return (override.rate, "stawka ustalona dla tego wydarzenia" + (override.reason.isEmpty ? "" : ": \(override.reason)")) }
+        if let offer = options.offerCommission, offer.partnerId == partner.id { return (offer.rate, "stawka z oferty prowizyjnej sprzedawcy") }
+        if let term = partner.term { return (term.rate, "kartoteka sprzedawców — marka wydarzenia") }
+        return nil
+    }
+
+    /// Szacunek jak w podsumowaniu: podstawa = zysk przed prowizjami sprzedawców ÷ (1 + Σ stawka × narzut podatkowy),
+    /// kwota = podstawa × stawka (prowizja jest kosztem, więc liczy się od zysku po swoim koszcie).
+    private func estimate(rate: Double, method: String, tax: Double, partnerId: String?, _ settlement: EventBillingQuery.SettlementPreview) -> (base: Double, amount: Double) {
+        let factor: (String, Double) -> Double = { payment, dividend in payment == "cash_dividend" ? 1 / (1 - min(99.99, max(0, dividend)) / 100) : 1 }
+        guard settlement.profitBeforeExternal > 0, rate > 0 else { return (max(0, settlement.profitBeforeExternal), 0) }
+        let others = settlement.external.filter { $0.eligible && ($0.partnerId == nil || $0.partnerId != partnerId) }
+            .reduce(0.0) { $0 + $1.rate / 100 * factor($1.paymentMethod, $1.dividendTaxRate) }
+        let base = ((settlement.profitBeforeExternal / (1 + others + rate / 100 * factor(method, tax))) * 100).rounded() / 100
+        return (base, ((base * rate / 100) * 100).rounded() / 100)
+    }
+
+    private func statusLabel(_ status: String) -> String { EventBillingText.statuses.first { $0.0 == status }?.1 ?? status }
+
+    private func factLine(_ symbol: String, _ text: String, _ color: Color = .secondary) -> some View {
+        Label { Text(verbatim: text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: symbol) }
+            .font(.caption).foregroundStyle(color)
+    }
+
+    @ViewBuilder private func personCheck(_ options: EventBillingQuery.CommissionOptions) -> some View {
+        let f = facts(options)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Sprawdzenie w rozliczeniu wydarzenia").font(.callout.weight(.medium))
+            if let markup = f.markup {
+                factLine("exclamationmark.octagon", "Narzut z oferty tego sprzedawcy: \(EventBillingText.money(markup.net)) — \(markup.included ? "w naszej fakturze; jest kosztem w podsumowaniu i należnością na jego koncie do wypłaty" : "poza naszą fakturą (rozlicza go hotel / agencja)"). Nie dopisuj narzutu drugi raz.", CrmTheme.rgb(0xfca5a5))
+            }
+            if let partner = f.partner {
+                if let rate = effectiveRate(partner, options) {
+                    factLine("percent", "\(EventBillingText.number(rate.rate))% od naszego zysku — \(rate.source)" + (partner.term.map { " · \(EventBillingText.payment($0.paymentMethod))" } ?? ""))
+                } else {
+                    factLine("exclamationmark.triangle", "Jest w kartotece sprzedawców, ale bez aktywnej prowizji dla marki wydarzenia — % od zysku nie jest ustalony. Ustal warunki w kartotece (wtedy kwotę policzy podsumowanie) albo wpisz je poniżej.", EventBillingText.warning)
+                }
+            } else if form.source != "employee" {
+                factLine("questionmark.circle", "Brak w kartotece sprzedawców — % od naszego zysku nie jest ustalony. Wpisz go poniżej albo dodaj osobę do kartoteki sprzedawców: wtedy kwotę policzy podsumowanie wydarzenia.", EventBillingText.warning)
+            }
+            if let external = f.external {
+                factLine(external.eligible ? "checkmark.seal" : "info.circle", external.eligible
+                         ? "Podsumowanie liczy już tej osobie \(EventBillingText.money(external.amount)) (\(EventBillingText.number(external.rate))% od zysku po kosztach i koszcie prowizji)."
+                         : "W podsumowaniu bez kwoty: \(external.skipReason ?? "brak warunków").")
+            } else if let settlement = options.settlement, let partner = f.partner, let rate = effectiveRate(partner, options) {
+                let method = partner.term?.paymentMethod ?? form.paymentMethod
+                let value = estimate(rate: rate.rate, method: method, tax: partner.term?.dividendTaxRate ?? form.dividendTaxRate, partnerId: partner.id, settlement)
+                factLine("function", "Przy obecnym rozliczeniu: zysk przed prowizjami sprzedawców \(EventBillingText.money(settlement.profitBeforeExternal)) → podstawa \(EventBillingText.money(value.base)) → \(EventBillingText.money(value.amount)).")
+            } else if let settlement = options.settlement {
+                factLine("function", "Zysk przed prowizjami sprzedawców w rozliczeniu: \(EventBillingText.money(settlement.profitBeforeExternal)) (zysk netto \(EventBillingText.money(settlement.profitNet))).")
+            }
+            ForEach(f.automatic, id: \.id) { row in
+                factLine("arrow.triangle.2.circlepath", "Ma prowizję z podsumowania: " + EventBillingText.money(row.amount) + " (" + statusLabel(row.status) + "). Wpis ręczny zastąpi ją dopiero po zatwierdzeniu przez finanse (albo gdy dodaje go administrator) — nie zapłacisz dwa razy.")
+            }
+            ForEach(f.manual, id: \.id) { row in
+                factLine("exclamationmark.triangle", "Ma już ręczną prowizję w tym wydarzeniu: " + row.name + " — " + EventBillingText.money(row.amount) + " (" + statusLabel(row.status) + "). Edytuj tamten wpis zamiast dodawać drugi.", EventBillingText.warning)
+            }
+            if editing == nil && (!f.manual.isEmpty || askSecond) && f.markup == nil {
+                Toggle(isOn: $allowSecond) { Text("To inna należność niż istniejący wpis — dodaj drugi").font(.caption) }.toggleStyle(.checkbox)
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func termsSummary(_ partner: EventBillingQuery.Partner, _ options: EventBillingQuery.CommissionOptions) -> some View {
@@ -831,20 +985,21 @@ struct EventCommissionDraft {
                 Spacer()
                 Button("Edytuj", systemImage: "pencil") { customize = true }.buttonStyle(.link).linkCursor().font(.callout)
             }
-            Text(verbatim: "\(EventBillingText.number(form.rate))% · \(EventBillingText.payment(form.paymentMethod))").font(.callout.weight(.medium))
+            Text(verbatim: "\(EventBillingText.number(form.rate))% od naszego zysku · \(EventBillingText.payment(form.paymentMethod))").font(.callout.weight(.medium))
+            if let rate = effectiveRate(partner, options) {
+                Text(verbatim: "Źródło stawki: \(rate.source).").font(.caption).foregroundStyle(.secondary)
+            }
             Text(verbatim: "Kwotę policzy podsumowanie wydarzenia: % od zysku netto (po kosztach i koszcie samej prowizji).").font(.caption).foregroundStyle(.secondary)
             if let organization = options.organizations.first(where: { $0.id == form.organizationId }) {
                 Text(organization.description ?? organization.label).font(.caption)
             }
-            if options.offerCommission?.partnerId == partner.id {
-                Text("Procent zgodny z zaakceptowaną ofertą sprzedawcy.").font(.caption).foregroundStyle(.tertiary)
-            }
+            personCheck(options)
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    private var terms: some View {
+    private func terms(_ options: EventBillingQuery.CommissionOptions) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             if form.source != "employee" {
                 Text("Ręczny wpis dla sprzedawcy zewnętrznego zastępuje wyliczenie z podsumowania dopiero, gdy jest zatwierdzony przez finanse (albo dodał go administrator). Do tego czasu czeka i nie pomniejsza zysku. Po wysłaniu podsumowania wpisy ręczne zmienia tylko finanse lub administrator.")
@@ -873,14 +1028,19 @@ struct EventCommissionDraft {
                         EventBillingField(label: "Podstawa netto") {
                             TextField("", value: $form.baseAmount, format: .number.precision(.fractionLength(0...2))).textFieldStyle(.roundedBorder)
                         }
-                        EventBillingField(label: "Prowizja (%)") {
+                        EventBillingField(label: "Prowizja (% od podstawy)") {
                             TextField("", value: $form.rate, format: .number.precision(.fractionLength(0...2))).textFieldStyle(.roundedBorder)
                         }
                     } else {
-                        EventBillingField(label: "Kwota należna osobie") {
+                        EventBillingField(label: sellerCost ? "Kwota prowizji / narzutu netto dla osoby" : "Kwota należna osobie") {
                             TextField("", value: $form.fixedAmount, format: .number.precision(.fractionLength(0...2))).textFieldStyle(.roundedBorder)
                         }
                         .gridCellColumns(2)
+                    }
+                }
+                if form.calculationType == "percent" {
+                    GridRow {
+                        basePresets(options).gridCellColumns(2)
                     }
                 }
                 GridRow {
@@ -899,6 +1059,25 @@ struct EventCommissionDraft {
                 }
             }
             notesField
+        }
+    }
+
+    /// Podstawa jednym kliknięciem: zysk z rozliczenia wydarzenia („% od naszego zysku”) albo wartość netto zaakceptowanej oferty.
+    @ViewBuilder private func basePresets(_ options: EventBillingQuery.CommissionOptions) -> some View {
+        HStack(spacing: 14) {
+            Text("Podstawa:").font(.caption).foregroundStyle(.secondary)
+            if let settlement = options.settlement {
+                Button("Zysk z rozliczenia: \(EventBillingText.money(settlement.profitBeforeExternal))") {
+                    form.baseAmount = max(0, settlement.profitBeforeExternal)
+                    form.baseDescription = EventBillingText.profitBaseDescription
+                }
+                .buttonStyle(.link).linkCursor().font(.caption)
+            }
+            Button("Wartość oferty netto: \(EventBillingText.money(options.acceptedOfferNet))") {
+                form.baseAmount = options.acceptedOfferNet
+                form.baseDescription = EventBillingText.defaultBaseDescription
+            }
+            .buttonStyle(.link).linkCursor().font(.caption)
         }
     }
 
@@ -924,10 +1103,13 @@ struct EventCommissionDraft {
 
     // MARK: Wybór osoby (`selectBeneficiary`)
 
-    /// Sprzedawca z kartoteki (także wskazany jako kontakt lub pracownik) przenosi warunki marki: stawka (z oferty prowizyjnej,
-    /// gdy dotyczy tej osoby), sposób wypłaty, podatek; podstawą jest wartość netto zaakceptowanej oferty.
+    /// Sprzedawca z kartoteki (także wskazany jako kontakt lub pracownik) przenosi warunki marki: stawka (ustalona dla wydarzenia,
+    /// z oferty prowizyjnej albo z kartoteki), sposób wypłaty, podatek — kwotę liczy podsumowanie. Osoba bez warunków w kartotece:
+    /// wpis ręczny, podstawa domyślnie zysk z rozliczenia wydarzenia („% od naszego zysku”). Przy kwocie dla sprzedawcy
+    /// (`sellerCost`) zawsze wpis ręczny — sprzedawca z kartoteki zapisuje się na swój kontakt.
     private func select(_ id: String, _ options: EventBillingQuery.CommissionOptions) {
         error = nil
+        allowSecond = false; askSecond = false
         let partner = options.partners.first { candidate in
             switch form.source {
             case "partner": return candidate.id == id
@@ -936,27 +1118,47 @@ struct EventCommissionDraft {
             default: return false
             }
         }
-        if let partner {
-            guard let term = partner.term, partner.status == "active" else {
-                error = "Uzupełnij warunki sprzedawcy dla marki wydarzenia w kartotece sprzedawców."
-                return
+        if sellerCost {
+            if form.source == "partner", let partner {
+                if let contact = partner.contactId?.nonEmpty { form.source = "contact"; form.beneficiaryId = contact }
+                else if let employee = partner.employeeId?.nonEmpty { form.source = "employee"; form.beneficiaryId = employee }
+                else { error = "Ten sprzedawca nie ma kontaktu ani pracownika — wybierz osobę jako kontakt CRM."; return }
+            } else {
+                form.beneficiaryId = id
             }
+            if form.organizationId.isEmpty, let organization = partner?.organizationId?.nonEmpty
+                ?? options.contacts.first(where: { $0.id == form.beneficiaryId })?.organizationId?.nonEmpty {
+                form.organizationId = organization
+            }
+            return
+        }
+        if let partner, let term = partner.term, partner.status == "active" {
             customize = false
             form.source = "partner"
             form.calculationType = "percent"
             form.baseAmount = options.acceptedOfferNet
             form.baseDescription = EventBillingText.defaultBaseDescription
             form.beneficiaryId = partner.id
-            form.organizationId = partner.organizationId ?? ""
+            form.organizationId = partner.organizationId ?? form.organizationId
             form.beneficiaryType = partner.partnerType == "internal_employee" ? "employee" : "salesperson"
-            if let offer = options.offerCommission, offer.partnerId == partner.id { form.rate = offer.rate } else { form.rate = term.rate }
+            form.rate = effectiveRate(partner, options)?.rate ?? term.rate
             if !term.paymentMethod.isEmpty { form.paymentMethod = term.paymentMethod }
             form.dividendTaxRate = term.dividendTaxRate
             return
         }
+        if form.source == "partner" {
+            error = "Uzupełnij warunki sprzedawcy dla marki wydarzenia w kartotece sprzedawców albo wybierz tę osobę jako kontakt CRM i wpisz warunki ręcznie."
+            return
+        }
         form.beneficiaryId = id
-        if form.source == "contact", let organization = options.contacts.first(where: { $0.id == id })?.organizationId?.nonEmpty {
+        if form.source == "contact", form.organizationId.isEmpty, let organization = options.contacts.first(where: { $0.id == id })?.organizationId?.nonEmpty {
             form.organizationId = organization
+        }
+        // „% od naszego zysku”: podstawą jest zysk z rozliczenia wydarzenia (przed prowizjami sprzedawców), nie wartość oferty.
+        if editing == nil, form.source != "employee", form.calculationType == "percent", let settlement = options.settlement,
+           form.baseDescription == EventBillingText.defaultBaseDescription {
+            form.baseAmount = max(0, settlement.profitBeforeExternal)
+            form.baseDescription = EventBillingText.profitBaseDescription
         }
     }
 
@@ -970,6 +1172,14 @@ struct EventCommissionDraft {
             customize = true
         } else {
             form = EventCommissionDraft(baseAmount: acceptedOfferNet)
+            if sellerCost {
+                customize = true
+                form.source = "contact"
+                form.calculationType = "fixed"
+                form.beneficiaryType = "salesperson"
+                form.paymentMethod = "invoice"
+                form.baseDescription = "Prowizja / narzut sprzedawcy (z podsumowania wydarzenia)"
+            }
         }
         if !automatic { await loadOptions() }
     }
@@ -993,6 +1203,10 @@ struct EventCommissionDraft {
         }
         if !showDetails && form.source == "partner" {
             guard !form.beneficiaryId.isEmpty else { error = "Wybierz sprzedawcę z kartoteki"; return }
+            if let options, facts(options).markup != nil {
+                error = "Ten sprzedawca ma w wydarzeniu ofertę z narzutem — narzut jest już w podsumowaniu i na jego koncie. Nie dodawaj mu prowizji drugi raz."
+                return
+            }
             saving = true
             defer { saving = false }
             do {
@@ -1012,16 +1226,27 @@ struct EventCommissionDraft {
         }
         let missingPerson = form.source == "manual" ? form.manualName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : form.beneficiaryId.isEmpty
         if missingPerson {
-            error = "Wybierz osobę albo wpisz nazwę beneficjenta"
+            error = sellerCost ? "Wskaż osobę, której należy się ta kwota — bez osoby nie trafi na jej konto i rejestr wypłat." : "Wybierz osobę albo wpisz nazwę beneficjenta"
             return
         }
         guard preview.nominal > 0 else { error = "Kwota prowizji musi być większa od zera"; return }
+        if editing == nil, let options {
+            let f = facts(options)
+            if f.markup != nil {
+                error = "Ten sprzedawca ma w wydarzeniu ofertę z narzutem — narzut jest już w podsumowaniu i na jego koncie do wypłaty. Nie dopisuj go drugi raz."
+                return
+            }
+            if !f.manual.isEmpty && !allowSecond {
+                error = "Ta osoba ma już ręczną prowizję w tym wydarzeniu. Edytuj tamten wpis albo zaznacz, że to inna należność."
+                return
+            }
+        }
         var payload: [String: JSONValue] = [
             "beneficiarySource": .string(form.source), "beneficiaryId": .string(form.beneficiaryId), "beneficiaryType": .string(form.beneficiaryType),
             "manualName": .string(form.manualName), "organizationId": .string(form.organizationId), "calculationType": .string(form.calculationType),
             "baseAmount": .number(form.baseAmount), "baseDescription": .string(form.baseDescription), "rate": .number(form.rate),
             "fixedAmount": .number(form.fixedAmount), "paymentMethod": .string(form.paymentMethod), "dividendTaxRate": .number(form.dividendTaxRate),
-            "dueDate": .string(form.dueDate), "notes": .string(form.notes),
+            "dueDate": .string(form.dueDate), "notes": .string(form.notes), "allowSecond": .bool(allowSecond),
         ]
         if let editing { payload["id"] = .string(editing.id) }
         await submit("commissionSave", payload, fallback: editing != nil ? "Prowizja została zaktualizowana" : "Prowizja została naliczona",
@@ -1036,7 +1261,10 @@ struct EventCommissionDraft {
             state.succeed(EventBillingText.reply(data)?.message?.nonEmpty ?? fallback)
             dismiss()
         } catch {
-            self.error = store.failureText(error, failure)
+            let text = store.failureText(error, failure)
+            self.error = text
+            // Serwer wykrył drugą należność tej samej osoby — pokaż potwierdzenie „inna należność”.
+            if text.contains("potwierdź to w formularzu") { askSecond = true }
         }
     }
 }

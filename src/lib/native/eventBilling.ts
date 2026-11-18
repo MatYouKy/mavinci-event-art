@@ -368,10 +368,48 @@ async function settlementEventsQuery(ctx: NativeContext) {
 }
 
 /** Okno „Dodaj osobę” / edycja prowizji: sprzedawcy z warunkami dla marki, pracownicy, kontakty, organizacje, oferta. */
+/**
+ * Rozliczenie wydarzenia do sprawdzenia warunków nowej osoby (`get_event_settlement`): zysk przed prowizjami sprzedawców
+ * zewnętrznych, osoby liczone już przez podsumowanie (stawka, czy liczona, kwota) i narzuty sprzedawców z ofert z narzutem.
+ * Bez dostępu do kwot wydarzenia — `null` (formularz działa bez podglądu).
+ */
+async function settlementPreview(ctx: NativeContext, eventId: string) {
+  const { data, error } = await ctx.supabase.rpc('get_event_settlement', { p_event_id: eventId });
+  if (error || !data || typeof data !== 'object') return null;
+  const s = data as Row;
+  const totals = (s.totals || {}) as Row;
+  const lines = (Array.isArray(s.lines) ? s.lines : []) as Row[];
+  const markupLines = lines.filter((line) => line.source_type === 'markup' && UUID.test(str(line.source_id)));
+  const offers = markupLines.length
+    ? await ctx.supabase.from('offers').select('id,sales_partner_id,offer_number').in('id', markupLines.map((line) => str(line.source_id)))
+    : { data: [], error: null };
+  const offerRows = (offers.error ? [] : offers.data || []) as Row[];
+  return {
+    status: str(s.status) || 'draft',
+    profitBeforeExternal: num(totals.profit_before_external),
+    profitNet: num(totals.profit_net),
+    revenueNet: num(totals.revenue_net),
+    costsNet: num(totals.costs_net),
+    external: ((Array.isArray(s.external) ? s.external : []) as Row[]).map((row) => ({
+      partnerId: str(row.partner_id) || null, contactId: str(row.contact_id) || null, name: str(row.name),
+      rate: num(row.rate), eligible: row.eligible === true, amount: num(row.amount), companyCost: num(row.company_cost),
+      paymentMethod: str(row.payment_method) || 'cash_dividend', dividendTaxRate: row.dividend_tax_rate == null ? DEFAULT_DIVIDEND_TAX_RATE : num(row.dividend_tax_rate),
+      skipReason: str(row.skip_reason) || null, source: str(row.source),
+    })),
+    markups: markupLines.map((line) => {
+      const offer = offerRows.find((row) => str(row.id) === str(line.source_id));
+      return {
+        offerId: str(line.source_id), partnerId: str(offer?.sales_partner_id) || null, net: num(line.net_amount), included: line.included === true,
+        detail: str(line.detail) || null,
+      };
+    }),
+  };
+}
+
 async function commissionOptionsQuery(ctx: NativeContext, eventId: string) {
   requireManage(ctx);
   const s = ctx.supabase;
-  const [eventRes, offer, employeesRes, contactsRes, organizations, relationsRes, partnersRes, termsRes] = await Promise.all([
+  const [eventRes, offer, employeesRes, contactsRes, organizations, relationsRes, partnersRes, termsRes, existingRes, overridesRes, settlement] = await Promise.all([
     s.from('events').select('my_company_id').eq('id', eventId).maybeSingle(),
     acceptedOffer(ctx, eventId),
     s.from('employees').select('id,name,surname,email').eq('is_active', true).order('surname').limit(500),
@@ -381,6 +419,12 @@ async function commissionOptionsQuery(ctx: NativeContext, eventId: string) {
     s.from('sales_partner_profiles').select('id,employee_id,contact_id,organization_id,partner_type,status'),
     s.from('sales_partner_brand_terms')
       .select('sales_partner_id,my_company_id,commission_enabled,default_commission_rate,default_payment_method,dividend_tax_rate,is_active').eq('is_active', true),
+    // Wpisy tego wydarzenia (bez anulowanych) — żeby nie dodać drugi raz prowizji tej samej osobie.
+    s.from('event_commissions').select('id,sales_partner_id,contact_id,employee_id,beneficiary_name,amount,status,automatic_source,entry_kind')
+      .eq('event_id', eventId).neq('status', 'cancelled').eq('entry_kind', 'accrual'),
+    // Stawka ustalona dla tego wydarzenia ma pierwszeństwo przed kartą sprzedawcy (jak w podsumowaniu).
+    s.from('event_external_seller_rates').select('sales_partner_id,rate,reason').eq('event_id', eventId),
+    settlementPreview(ctx, eventId).catch(() => null),
   ]);
   const failed = [eventRes, employeesRes, contactsRes, organizations, relationsRes, partnersRes, termsRes].find((result) => result.error);
   if (failed?.error) throw failed.error;
@@ -390,9 +434,23 @@ async function commissionOptionsQuery(ctx: NativeContext, eventId: string) {
   const orgs = (organizations.data || []) as Row[];
   const relations = (relationsRes.data || []) as Row[];
   const terms = (termsRes.data || []) as Row[];
+  // Wszystkie bieżące organizacje osoby — filtr osób po wybranym hotelu / firmie.
+  const contactOrgs = new Map<string, string[]>();
+  for (const relation of relations) {
+    const list = contactOrgs.get(str(relation.contact_id)) || [];
+    if (relation.organization_id && !list.includes(str(relation.organization_id))) list.push(str(relation.organization_id));
+    contactOrgs.set(str(relation.contact_id), list);
+  }
+  const overrides = (overridesRes.error ? [] : overridesRes.data || []) as Row[];
   return {
     acceptedOfferNet: offer.net,
     offerCommission: offer.commission,
+    settlement,
+    existing: ((existingRes.error ? [] : existingRes.data || []) as Row[]).map((row) => ({
+      id: str(row.id), partnerId: str(row.sales_partner_id) || null, contactId: str(row.contact_id) || null, employeeId: str(row.employee_id) || null,
+      name: str(row.beneficiary_name), amount: num(row.amount), status: str(row.status), automatic: isAutomaticCommission(row),
+      source: str(row.automatic_source) || null,
+    })),
     partners: ((partnersRes.data || []) as Row[]).map((partner) => {
       const employee = employees.find((item) => item.id === partner.employee_id);
       const contact = contacts.find((item) => item.id === partner.contact_id);
@@ -404,6 +462,11 @@ async function commissionOptionsQuery(ctx: NativeContext, eventId: string) {
         detail: orgLabel(organization) || (partner.partner_type === 'internal_employee' ? 'Mavinci' : 'bez organizacji'),
         organizationId: partner.organization_id ?? null, partnerType: str(partner.partner_type), status: str(partner.status),
         employeeId: partner.employee_id ?? null, contactId: partner.contact_id ?? null,
+        organizationIds: [...new Set([str(partner.organization_id), ...(contactOrgs.get(str(partner.contact_id)) || [])].filter(Boolean))],
+        override: (() => {
+          const row = overrides.find((item) => str(item.sales_partner_id) === str(partner.id));
+          return row ? { rate: num(row.rate), reason: str(row.reason) } : null;
+        })(),
         term: term ? {
           rate: num(term.default_commission_rate), paymentMethod: str(term.default_payment_method) || 'invoice',
           dividendTaxRate: term.dividend_tax_rate == null ? DEFAULT_DIVIDEND_TAX_RATE : num(term.dividend_tax_rate),
@@ -413,7 +476,10 @@ async function commissionOptionsQuery(ctx: NativeContext, eventId: string) {
     employees: employees.map((employee) => ({ id: str(employee.id), label: `${str(employee.name)} ${str(employee.surname)}`.trim(), detail: str(employee.email) || 'pracownik CRM' })),
     contacts: contacts.map((contact) => {
       const relation = relations.find((item) => item.contact_id === contact.id && item.is_primary) || relations.find((item) => item.contact_id === contact.id);
-      return { id: str(contact.id), label: contactName(contact), detail: str(contact.email) || 'kontakt CRM', organizationId: relation?.organization_id ?? null };
+      return {
+        id: str(contact.id), label: contactName(contact), detail: str(contact.email) || 'kontakt CRM', organizationId: relation?.organization_id ?? null,
+        organizationIds: contactOrgs.get(str(contact.id)) || [],
+      };
     }),
     organizations: orgs.map((row) => ({ id: str(row.id), label: orgLabel(row) || 'Organizacja bez nazwy', description: str(row.alias).trim() ? str(row.name) : null })),
   };
@@ -528,6 +594,39 @@ async function commissionPartner(ctx: NativeContext, eventId: string, body: Row)
   };
 }
 
+/**
+ * Nowy wpis ręczny: ta sama osoba nie może dostać w wydarzeniu drugiej ręcznej prowizji ani ręcznego wpisu obok narzutu ze swojej
+ * oferty z narzutem (narzut jest już kosztem w podsumowaniu i należnością na jej koncie). Druga ręczna prowizja — tylko gdy
+ * użytkownik potwierdzi, że to inna należność (`allowSecond`); obok narzutu — nigdy. Prowizja z podsumowania tej osoby nie
+ * blokuje: zatwierdzony wpis ręczny ją zastępuje (podsumowanie liczy wtedy wpis ręczny).
+ */
+async function guardDuplicate(ctx: NativeContext, eventId: string, partnerId: string | null, contactId: string | null, employeeId: string | null, allowSecond: boolean) {
+  const s = ctx.supabase;
+  const [commissions, offers] = await Promise.all([
+    s.from('event_commissions').select('id,sales_partner_id,contact_id,employee_id,beneficiary_name,amount,status,automatic_source')
+      .eq('event_id', eventId).neq('status', 'cancelled').eq('entry_kind', 'accrual'),
+    s.from('offers').select('id,sales_partner_id,commercial_model,status').eq('event_id', eventId).eq('status', 'accepted').eq('commercial_model', 'markup'),
+  ]);
+  if (commissions.error) throw commissions.error;
+  const same = (row: Row) => (partnerId && str(row.sales_partner_id) === partnerId) || (contactId && str(row.contact_id) === contactId)
+    || (employeeId && str(row.employee_id) === employeeId);
+  const manual = ((commissions.data || []) as Row[]).find((row) => !isAutomaticCommission(row) && same(row));
+  if (manual && !allowSecond) {
+    fail(`Ta osoba ma już ręczną prowizję w tym wydarzeniu: ${str(manual.beneficiary_name)} — ${num(manual.amount).toFixed(2).replace('.', ',')} zł (${commissionStatusLabels[str(manual.status) as CommissionStatus] || str(manual.status)}). Edytuj ten wpis zamiast dodawać drugi — inaczej zapłacisz dwa razy. Jeśli to inna należność, potwierdź to w formularzu.`);
+  }
+  const markupPartners = ((offers.error ? [] : offers.data || []) as Row[]).map((row) => str(row.sales_partner_id)).filter(Boolean);
+  if (markupPartners.length) {
+    let ownsMarkup = Boolean(partnerId && markupPartners.includes(partnerId));
+    if (!ownsMarkup && (contactId || employeeId)) {
+      const { data } = await s.from('sales_partner_profiles').select('id,contact_id,employee_id').in('id', markupPartners);
+      ownsMarkup = ((data || []) as Row[]).some((row) => (contactId && str(row.contact_id) === contactId) || (employeeId && str(row.employee_id) === employeeId));
+    }
+    if (ownsMarkup) {
+      fail('Ten sprzedawca ma w wydarzeniu ofertę z narzutem — narzut jest już kosztem w podsumowaniu i należnością na jego koncie prowizji. Nie dopisuj go drugi raz; jeśli należy mu się więcej, zmień narzut w ofercie.');
+    }
+  }
+}
+
 /** Wpis ręczny albo własne warunki (nowy lub edycja) — jak `handleSave` w `EventCommissionsPanel`. */
 async function commissionSave(ctx: NativeContext, eventId: string, body: Row) {
   requireManage(ctx);
@@ -578,6 +677,7 @@ async function commissionSave(ctx: NativeContext, eventId: string, body: Row) {
   }
   const employeeId = source === 'partner' ? str(partner?.employee_id) || null : source === 'employee' ? beneficiaryId : null;
   const contactId = source === 'partner' ? str(partner?.contact_id) || null : source === 'contact' ? beneficiaryId : null;
+  if (!editingId) await guardDuplicate(ctx, eventId, source === 'partner' ? beneficiaryId : null, contactId, employeeId, body.allowSecond === true);
   const payload: Row = {
     event_id: eventId,
     sales_partner_id: source === 'partner' ? beneficiaryId : null,

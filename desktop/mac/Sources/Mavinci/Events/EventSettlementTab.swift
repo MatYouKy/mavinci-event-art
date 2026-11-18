@@ -99,6 +99,7 @@ enum SettlementText {
     static let commissionSources = [
         "sales_share": "Sprzedawca wydarzenia", "seller_portal": "Oferta z portalu sprzedawcy", "event_referral": "Polecenie",
         "billing_contact": "Kontakt rozliczeniowy (hotel / agencja)", "partner_arrangement": "Pośrednik (Ustalenia ze sprzedawcą)", "manual_partner": "Wskazany w podsumowaniu",
+        "seller_markup": "Narzut sprzedawcy (oferta z narzutem)",
     ]
     static let shareSources = [
         "offer_author": "Autor zaakceptowanej oferty", "seller_portal_owner": "Opiekun sprzedawcy z portalu", "inquiry_owner": "Prowadzący zapytanie",
@@ -202,6 +203,8 @@ struct SettlementConfirm: Identifiable {
     @State private var addingSeller = false
     @State private var rateFor: Settlement.External?
     @State private var manualEditor: String?
+    /// „Prowizja / narzut sprzedawcy”: kwota dla wskazanej osoby — wpis w rejestrze prowizji (`EventCommissionEditSheet`).
+    @State private var sellerCost = false
     @State private var refreshing = false
     @State private var showAllHistory = false
 
@@ -248,6 +251,10 @@ struct SettlementConfirm: Identifiable {
         }
         .sheet(item: $rateFor) { seller in
             SettlementRateSheet(seller: seller, mutate: mutate).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(isPresented: $sellerCost) {
+            EventCommissionEditSheet(store: store, eventID: eventID, editing: nil, acceptedOfferNet: 0, sellerCost: true)
+                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
     }
 
@@ -489,7 +496,7 @@ struct SettlementConfirm: Identifiable {
                 }
             }
             if s.can_edit && manualEditor == "new" {
-                SettlementManualForm(line: nil, busy: busy, save: saveManual) { manualEditor = nil }
+                SettlementManualForm(line: nil, busy: busy, save: saveManual, linkSeller: { manualEditor = nil; sellerCost = true }) { manualEditor = nil }
             }
             ForEach(SettlementText.sections.filter { only?.contains($0.0) ?? true }, id: \.0) { section in
                 let items = s.lines.filter { section.0 == "revenue" ? $0.kind == "revenue" : ($0.kind == "cost" && $0.category == section.0) }
@@ -505,7 +512,7 @@ struct SettlementConfirm: Identifiable {
                     }
                     ForEach(items) { line in
                         if s.can_edit && manualEditor == line.key {
-                            SettlementManualForm(line: line, busy: busy, save: saveManual) { manualEditor = nil }
+                            SettlementManualForm(line: line, busy: busy, save: saveManual, linkSeller: { manualEditor = nil; sellerCost = true }) { manualEditor = nil }
                         } else {
                             SettlementLineView(line: line, canEdit: s.can_edit, busy: busy, mutate: mutate, ask: { confirm = $0 }, editManual: { manualEditor = line.key })
                         }
@@ -948,6 +955,8 @@ struct SettlementConfirm: Identifiable {
     let line: Settlement.Line?
     let busy: String?
     let save: ([String: JSONValue], Bool) async -> Bool
+    /// Prowizja / narzut sprzedawcy: zamiast pozycji bez osoby — wpis prowizji wskazanej osoby (konto, rejestr wypłat).
+    let linkSeller: () -> Void
     let close: () -> Void
     @Environment(\.crmTheme) private var theme
     @State private var kind = "cost"
@@ -975,14 +984,31 @@ struct SettlementConfirm: Identifiable {
                 .frame(width: 360)
                 Text(SettlementText.hints[category] ?? "").font(.caption).foregroundStyle(.secondary)
             }
-            TextField(kind == "revenue" ? "Np. dopłata klienta gotówką" : "Np. wynajem namiotu", text: $name).textFieldStyle(.roundedBorder)
-            TextField("Kwota netto (zł), np. 0,00", text: $net).textFieldStyle(.roundedBorder).frame(width: 220)
-            TextField("Notatka (opcjonalnie)", text: $note, axis: .vertical).lineLimit(2...4).textFieldStyle(.roundedBorder)
-            if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) }
-            HStack {
-                Spacer()
-                Button("Anuluj") { close() }.disabled(busy == "manual")
-                Button(line == nil ? "Dodaj pozycję" : "Zapisz pozycję") { Task { await submit() } }.buttonStyle(.borderedProminent).disabled(busy != nil)
+            if kind == "cost" && category == "external_commission" && line == nil {
+                // Prowizja lub narzut zawsze dla wskazanej osoby: trafia na jej konto prowizji z rejestrem wypłat i jako koszt do
+                // podsumowania (pozycja „Prowizja: …”). Pozycja bez osoby nie ma właściciela ani wypłat — łatwo ją zapłacić dwa razy.
+                Text("Prowizję lub narzut dodaj osobie: kwota trafi na konto prowizji sprzedawcy (z rejestrem wypłat) i jako koszt do podsumowania. Narzut z oferty z narzutem jest już w podsumowaniu — nie dodawaj go drugi raz.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Spacer()
+                    Button("Anuluj") { close() }
+                    Button { linkSeller() } label: { Label("Wybierz osobę i kwotę…", systemImage: "person.crop.circle.badge.plus") }
+                        .buttonStyle(.borderedProminent).disabled(busy != nil)
+                }
+            } else {
+                if line?.category == "external_commission" {
+                    Text("Ta pozycja nie ma osoby — nie trafia na konto prowizji ani do rejestru wypłat. Lepiej usuń ją i dodaj prowizję wskazanej osobie (Prowizja / narzut sprzedawcy → Wybierz osobę i kwotę…).")
+                        .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                }
+                TextField(kind == "revenue" ? "Np. dopłata klienta gotówką" : "Np. wynajem namiotu", text: $name).textFieldStyle(.roundedBorder)
+                TextField("Kwota netto (zł), np. 0,00", text: $net).textFieldStyle(.roundedBorder).frame(width: 220)
+                TextField("Notatka (opcjonalnie)", text: $note, axis: .vertical).lineLimit(2...4).textFieldStyle(.roundedBorder)
+                if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) }
+                HStack {
+                    Spacer()
+                    Button("Anuluj") { close() }.disabled(busy == "manual")
+                    Button(line == nil ? "Dodaj pozycję" : "Zapisz pozycję") { Task { await submit() } }.buttonStyle(.borderedProminent).disabled(busy != nil)
+                }
             }
         }
         .padding(12).background(theme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))

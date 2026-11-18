@@ -96,11 +96,36 @@ enum EventBillingQuery {
     struct Partner: Decodable, Hashable, Identifiable {
         var id: String; var label: String; var detail: String; var organizationId: String?; var partnerType: String; var status: String
         var employeeId: String?; var contactId: String?; var term: Term?
+        /// Organizacja profilu i bieżące organizacje kontaktu (filtr po hotelu / firmie).
+        var organizationIds: [String]?
+        /// Stawka ustalona dla tego wydarzenia (ma pierwszeństwo przed kartą sprzedawcy, jak w podsumowaniu).
+        var override: RateOverride?
     }
-    struct Person: Decodable, Hashable, Identifiable { var id: String; var label: String; var detail: String; var organizationId: String? }
+    struct RateOverride: Decodable, Hashable { var rate: Double; var reason: String }
+    struct Person: Decodable, Hashable, Identifiable {
+        var id: String; var label: String; var detail: String; var organizationId: String?
+        var organizationIds: [String]?
+    }
     struct OfferCommission: Decodable, Hashable { var partnerId: String; var rate: Double }
+    /// Rozliczenie wydarzenia do sprawdzenia warunków (`get_event_settlement`): zysk, osoby liczone przez podsumowanie, narzuty.
+    struct SettlementPreview: Decodable, Hashable {
+        struct External: Decodable, Hashable {
+            var partnerId: String?; var contactId: String?; var name: String; var rate: Double; var eligible: Bool; var amount: Double
+            var companyCost: Double; var paymentMethod: String; var dividendTaxRate: Double; var skipReason: String?; var source: String
+        }
+        struct Markup: Decodable, Hashable { var offerId: String; var partnerId: String?; var net: Double; var included: Bool; var detail: String? }
+        var status: String; var profitBeforeExternal: Double; var profitNet: Double; var revenueNet: Double; var costsNet: Double
+        var external: [External]; var markups: [Markup]
+    }
+    /// Wpis prowizji tego wydarzenia (bez anulowanych) — ochrona przed drugą prowizją tej samej osoby.
+    struct Existing: Decodable, Hashable {
+        var id: String; var partnerId: String?; var contactId: String?; var employeeId: String?; var name: String; var amount: Double
+        var status: String; var automatic: Bool; var source: String?
+    }
     struct CommissionOptions: Decodable {
         var acceptedOfferNet: Double; var offerCommission: OfferCommission?; var partners: [Partner]; var employees: [Person]; var contacts: [Person]; var organizations: [Option]
+        var settlement: SettlementPreview?
+        var existing: [Existing]?
     }
     struct Reply: Decodable { var ok: Bool?; var message: String?; var commissionId: String?; var created: Bool?; var tone: String? }
 }
@@ -130,6 +155,8 @@ enum EventBillingText {
             && event["billing_arrangement"] != nil && event["billing_organization_id"] != nil
     }
     static let defaultBaseDescription = "Wartość netto zaakceptowanej oferty"
+    /// Podstawa „% od naszego zysku” z rozliczenia wydarzenia (zysk przed prowizjami sprzedawców zewnętrznych).
+    static let profitBaseDescription = "Zysk netto z rozliczenia wydarzenia (przed prowizjami sprzedawców)"
 
     static func payment(_ method: String) -> String { paymentMethods.first { $0.0 == method }?.1 ?? method }
 

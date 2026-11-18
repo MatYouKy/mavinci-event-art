@@ -39,10 +39,12 @@ private struct CommissionHistoryEntry: Identifiable {
     var id: String { row.id + ":" + payment.id }
 }
 
-@MainActor struct EmployeeCommissionsView: View {
-    @ObservedObject var store: TeamStore
+@MainActor struct EmployeeCommissionsView<Store: CommissionAccountHost>: View {
+    @ObservedObject var store: Store
     let employeeID: String
     let employeeName: String
+    /// Pracownik albo sprzedawca z kartoteki (`SellerDetailView`) — inne opisy, bez warunków pracownika.
+    var kind: CommissionAccountKind = .employee
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @AppStorage("employee.commissions.mode") private var modeRaw = CommissionListMode.open.rawValue
@@ -56,7 +58,7 @@ private struct CommissionHistoryEntry: Identifiable {
     @State private var editingTerms = false
     @State private var reloading = false
 
-    private var account: EmployeeCommissionAccount? { store.commissionAccounts[employeeID] }
+    private var account: EmployeeCommissionAccount? { store.commissionAccount(employeeID) }
     private var mode: CommissionListMode { CommissionListMode(rawValue: modeRaw) ?? .open }
     private let green = CrmTheme.rgb(0x6ee7b7)
     private let red = CrmTheme.rgb(0xfda4af)
@@ -67,12 +69,12 @@ private struct CommissionHistoryEntry: Identifiable {
             if let account {
                 if account.hidden {
                     TeamCard(title: "Prowizje", symbol: "percent") {
-                        Text(account.message ?? "Nie masz dostępu do rozliczeń prowizji tego pracownika.").foregroundStyle(.secondary)
+                        Text(account.message ?? "Nie masz dostępu do rozliczeń prowizji tej osoby.").foregroundStyle(.secondary)
                     }
                 } else {
                     content(account)
                 }
-            } else if let error = store.commissionErrors[employeeID] {
+            } else if let error = store.commissionError(employeeID) {
                 TeamCard(title: "Prowizje", symbol: "percent") {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(error).foregroundStyle(.secondary)
@@ -146,16 +148,23 @@ private struct CommissionHistoryEntry: Identifiable {
         let stats = brand.isEmpty ? account.stats?.all : account.stats?.companies.first(where: { $0.id == brand })?.stats
         return VStack(alignment: .leading, spacing: 16) {
             summaryCard(account, rows: rows, stats: stats)
-            HStack(alignment: .top, spacing: 16) {
+            if kind == .employee {
+                HStack(alignment: .top, spacing: 16) {
+                    chartCard(stats)
+                    termsCard(account).frame(width: 340)
+                }
+            } else {
                 chartCard(stats)
-                termsCard(account).frame(width: 340)
             }
             listCard(rows)
         }
     }
 
     private func intro(_ account: EmployeeCommissionAccount) -> String {
-        account.own
+        if kind == .partner {
+            return "Wszystkie prowizje i narzuty sprzedawcy ze wszystkich wydarzeń: prowizje liczone przez podsumowanie (polecenie, kontakt rozliczeniowy, oferty z portalu, wskazanie w podsumowaniu), narzuty z ofert z narzutem w naszej fakturze i wpisy ręczne — także zapisane na jego kontakt. Planowana kwota to prognoza — do wypłaty staje się po zatwierdzeniu podsumowania wydarzenia. Każda wypłata trafia do rejestru, więc tej samej należności nie zapłacisz dwa razy."
+        }
+        return account.own
             ? "Twoje prowizje ze wszystkich wydarzeń: udział w sprzedaży (z podsumowania wydarzenia) i wpisy ręczne. Planowana prowizja to prognoza — do wypłaty staje się po zatwierdzeniu podsumowania wydarzenia, a wypłatę zapisuje osoba rozliczająca."
             : "Wszystkie prowizje pracownika ze wszystkich wydarzeń: udział w sprzedaży (z podsumowania wydarzenia), wpisy ręczne i prowizje z jego profilu sprzedawcy. Planowana prowizja to prognoza — do wypłaty staje się po zatwierdzeniu podsumowania wydarzenia. Kwoty dla osoby, bez kosztów spółki."
     }
@@ -165,7 +174,7 @@ private struct CommissionHistoryEntry: Identifiable {
         let payableCents = payable.reduce(0) { $0 + $1.remainingCents }
         let payrollCents = payable.filter { $0.paymentMethod == "payroll" }.reduce(0) { $0 + $1.remainingCents }
         let companies = account.stats?.companies ?? []
-        return TeamCard(title: account.own ? "Moje prowizje" : "Prowizje", symbol: "percent") {
+        return TeamCard(title: kind == .partner ? "Prowizje i narzuty" : account.own ? "Moje prowizje" : "Prowizje", symbol: "percent") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
                     Text(intro(account)).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -191,11 +200,11 @@ private struct CommissionHistoryEntry: Identifiable {
                             Text(verbatim: "Do wypłaty teraz: \(CommissionText.money(cents: payableCents))").fontWeight(.medium)
                             Text(verbatim: payrollCents > 0
                                  ? "W tym z wynagrodzeniem (lista płac): \(CommissionText.money(cents: payrollCents)). Rozlicz razem z wypłatą — potrącenia nadpłat odejmą się automatycznie."
-                                 : "Zatwierdzone prowizje z kwotą do wypłaty: \(payable.count).")
+                                 : "Zatwierdzone należności z kwotą do wypłaty: \(payable.count). Rozlicz je jednym zapisem — potrącenia nadpłat odejmą się automatycznie.")
                                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 8)
-                        Button { payroll = true } label: { Label("Rozlicz przy wypłacie…", systemImage: "checkmark.circle") }
+                        Button { payroll = true } label: { Label(kind == .partner ? "Rozlicz wypłatę…" : "Rozlicz przy wypłacie…", systemImage: "checkmark.circle") }
                             .buttonStyle(.borderedProminent)
                     }
                     .padding(12)

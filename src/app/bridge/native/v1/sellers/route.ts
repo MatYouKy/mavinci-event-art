@@ -2,6 +2,9 @@ import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/n
 import { sellerCard, sellersCockpit, sellersHelp } from '@/lib/native/sellers';
 import { decideSellerOfferPrice, sellerOfferReview } from '@/lib/native/sellerOffer';
 import { createSeller, newSellerOrganizations, newSellerPeople, newSellerSetup, validateNewSeller } from '@/lib/native/sellerCreate';
+import {
+  approveCommission, commissionAccount, commissionPayroll, deductCommission, payoutCommission, type CommissionReply,
+} from '@/lib/native/teamCommissions';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,11 +21,14 @@ export const maxDuration = 60;
  * Kreator „Nowy sprzedawca” (`src/lib/native/sellerCreate.ts`): GET op=newSeller | people&source=contact|employee&q=… |
  * organizations&q=…; POST op=validate {form} (braki i wskazówki) | create {form} (profil, warunki marek, opiekun, zaproszenie).
  * Ponowne zaproszenie do portalu: `/bridge/seller/invite` (token pracownika, jak w CRM). Dostęp rozstrzyga baza.
+ * Konto prowizji i narzutów sprzedawcy (`src/lib/native/teamCommissions.ts`, konto `partner`): GET op=commissions&id=…;
+ * POST op=commissionApprove | commissionPayout | commissionDeduct | commissionPayroll {id: sprzedawca, …} — jak na karcie pracownika.
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
 const errorText = (error: unknown, fallback: string) => (error as { message?: string })?.message || fallback;
+const reply = (result: CommissionReply<unknown>) => (result.ok ? nativeJson(result.data) : failure(result.error, result.status));
 const statusOf = (error: unknown) => {
   const value = error as { status?: number; code?: string } | null;
   if (value?.status) return value.status;
@@ -47,6 +53,11 @@ export async function GET(request: Request) {
       }
       case 'help':
         return nativeJson(sellersHelp());
+      case 'commissions': {
+        const id = url.searchParams.get('id') || '';
+        if (!uuid.test(id)) return failure('Nieprawidłowy sprzedawca.');
+        return reply(await commissionAccount(ctx, 'partner', id));
+      }
       case 'offer': {
         const id = url.searchParams.get('id') || '';
         if (!uuid.test(id)) return failure('Nieprawidłowa oferta.');
@@ -72,7 +83,7 @@ export async function POST(request: Request) {
   if (!ctx) return nativeUnauthorized();
   let body: Record<string, unknown>;
   try {
-    body = await readJson(request, 32_000);
+    body = await readJson(request, 64_000);
   } catch {
     return failure('Nieprawidłowe dane.');
   }
@@ -99,6 +110,15 @@ export async function POST(request: Request) {
         const expected = typeof body.expectedKey === 'string' && body.expectedKey ? body.expectedKey : null;
         return nativeJson(await decideSellerOfferPrice(ctx, id, String(body.decision || ''), typeof body.note === 'string' ? body.note : '', expected));
       }
+      // Konto prowizji sprzedawcy (`id` — profil sprzedawcy); uprawnienia sprawdza baza.
+      case 'commissionApprove':
+        return reply(await approveCommission(ctx, body));
+      case 'commissionPayout':
+        return reply(await payoutCommission(ctx, body));
+      case 'commissionDeduct':
+        return reply(await deductCommission(ctx, body));
+      case 'commissionPayroll':
+        return reply(await commissionPayroll(ctx, 'partner', id, body));
       case 'inquiryConvert': {
         const { data, error } = await ctx.supabase.rpc('convert_seller_inquiry', { p_inquiry: id });
         if (error) throw error;

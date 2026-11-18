@@ -176,6 +176,9 @@ enum SellerTone {
     @Published var helpError: String?
     /// Karty sprzedawców pobrane w tej sesji (odświeżane przy każdym otwarciu).
     @Published private(set) var cards: [String: SellerCardState] = [:]
+    /// Konto prowizji i narzutów sprzedawcy (sekcja „Prowizje i narzuty” karty, `EmployeeCommissionsView`) i błąd wczytania.
+    @Published var commissionAccounts: [String: EmployeeCommissionAccount] = [:]
+    @Published var commissionErrors: [String: String] = [:]
     /// Filtr opiekuna (tylko administrator); pusty — wszyscy.
     @Published var managerFilter: String = UserDefaults.standard.string(forKey: "sellersManagerFilter") ?? "" {
         didSet { UserDefaults.standard.set(managerFilter, forKey: "sellersManagerFilter") }
@@ -184,7 +187,7 @@ enum SellerTone {
     var api: NativeAPI? { workspace?.nativeAPI() }
 
     func reset() {
-        cockpit = nil; loadError = nil; loading = false; help = nil; helpError = nil; cards = [:]
+        cockpit = nil; loadError = nil; loading = false; help = nil; helpError = nil; cards = [:]; commissionAccounts = [:]; commissionErrors = [:]
     }
 
     func failureText(_ error: Error, _ fallback: String) -> String {

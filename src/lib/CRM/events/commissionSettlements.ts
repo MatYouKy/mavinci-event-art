@@ -66,6 +66,8 @@ export const AUTOMATIC_COMMISSION_SOURCES: readonly string[] = [
   'partner_arrangement',
   'seller_portal',
   'manual_partner',
+  // Narzut sprzedawcy z oferty z narzutem (migracja 20261117170000) — należność do wypłaty, kosztem jest pozycja narzutu.
+  'seller_markup',
 ];
 
 /** Wpis z podsumowania (także dopłata i potrącenie): nie zatwierdza się go ręcznie, kwotę ustala podsumowanie. */

@@ -1,8 +1,21 @@
 import SwiftUI
 
-// MARK: Prowizje pracownika — dane zakładki „Prowizje” na karcie pracownika
-// (`GET /bridge/native/v1/employees/profile?op=commissions`, `src/lib/native/teamCommissions.ts`): całe konto prowizji z bazy
-// (`get_commission_settlements`), sumy jak `buildCommissionSettlementStats` w CRM i warunki „Prowizja od sprzedaży”.
+// MARK: Konto prowizji — zakładka „Prowizje” karty pracownika (`/bridge/native/v1/employees/profile?op=commissions`) i sekcja
+// „Prowizje i narzuty” karty sprzedawcy (`/bridge/native/v1/sellers?op=commissions`), `src/lib/native/teamCommissions.ts`:
+// całe konto z bazy (`get_commission_settlements`), sumy jak `buildCommissionSettlementStats` w CRM, warunki pracownika.
+
+/// Czyje konto: pracownik (udział w sprzedaży, warunki „Prowizja od sprzedaży”, wypłata z wynagrodzeniem) albo sprzedawca
+/// z kartoteki (prowizje z podsumowania, narzuty z ofert, wpisy ręczne).
+enum CommissionAccountKind { case employee, partner }
+
+/// Magazyn z kontem prowizji (zespół — pracownik, sprzedawcy — sprzedawca): odczyt, zapis czynności i komunikat błędu.
+@MainActor protocol CommissionAccountHost: ObservableObject {
+    func commissionAccount(_ id: String) -> EmployeeCommissionAccount?
+    func commissionError(_ id: String) -> String?
+    func loadCommissions(_ id: String) async
+    func commissionPost<T: Decodable>(_ op: String, _ id: String, _ body: [String: JSONValue], as type: T.Type) async throws -> T
+    func failureText(_ error: Error, _ fallback: String) -> String
+}
 
 struct EmployeeCommissionAccount: Decodable {
     var hidden: Bool
@@ -160,7 +173,7 @@ struct CommissionPayrollReply: Decodable {
 // MARK: Etykiety (jak `commissionStatusLabels`, `commissionPaymentLabels`, `COMMISSION_SOURCE_LABELS` w CRM)
 
 enum CommissionText {
-    static let automaticSources: Set<String> = ["sales_share", "billing_contact", "event_referral", "partner_arrangement", "seller_portal", "manual_partner"]
+    static let automaticSources: Set<String> = ["sales_share", "billing_contact", "event_referral", "partner_arrangement", "seller_portal", "manual_partner", "seller_markup"]
     static let automaticHint = "Do wypłaty po zatwierdzeniu podsumowania wydarzenia"
     static let methods: [InquiryOption] = [
         .init(value: "payroll", label: "Wynagrodzenie pracownicze"), .init(value: "cash_dividend", label: "Gotówka z zysku spółki"),
@@ -184,6 +197,7 @@ enum CommissionText {
         case "billing_contact": return "Kontakt rozliczeniowy (hotel / agencja)"
         case "partner_arrangement": return "Pośrednik (Ustalenia ze sprzedawcą)"
         case "manual_partner": return "Wskazany w podsumowaniu"
+        case "seller_markup": return "Narzut sprzedawcy (oferta z narzutem)"
         default: return nil
         }
     }
@@ -308,7 +322,9 @@ enum CommissionPayrollPlan {
 
 // MARK: Wywołania API
 
-extension TeamStore {
+extension TeamStore: CommissionAccountHost {
+    func commissionAccount(_ id: String) -> EmployeeCommissionAccount? { commissionAccounts[id] }
+    func commissionError(_ id: String) -> String? { commissionErrors[id] }
     func loadCommissions(_ id: String) async {
         do {
             let account = try await profile("commissions", id, as: EmployeeCommissionAccount.self)
@@ -335,6 +351,28 @@ extension TeamStore {
             }
         }
         return true
+    }
+}
+
+/// Konto prowizji i narzutów sprzedawcy z kartoteki (`/bridge/native/v1/sellers`, konto `partner`).
+extension SellersStore: CommissionAccountHost {
+    func commissionAccount(_ id: String) -> EmployeeCommissionAccount? { commissionAccounts[id] }
+    func commissionError(_ id: String) -> String? { commissionErrors[id] }
+    func loadCommissions(_ id: String) async {
+        guard let api else { commissionErrors[id] = "Brak połączenia z serwerem CRM."; return }
+        do {
+            let data = try await api.get("/sellers?op=commissions&id=\(id)")
+            commissionAccounts[id] = try JSONDecoder().decode(EmployeeCommissionAccount.self, from: data)
+            commissionErrors[id] = nil
+        } catch {
+            if commissionAccounts[id] == nil { commissionErrors[id] = failureText(error, "Nie udało się wczytać prowizji sprzedawcy.") }
+        }
+    }
+    func commissionPost<T: Decodable>(_ op: String, _ id: String, _ body: [String: JSONValue], as type: T.Type) async throws -> T {
+        guard let api else { throw AppError.configuration }
+        var payload = body
+        payload["op"] = .string(op); payload["id"] = .string(id)
+        return try JSONDecoder().decode(T.self, from: try await api.post("/sellers", payload))
     }
 }
 

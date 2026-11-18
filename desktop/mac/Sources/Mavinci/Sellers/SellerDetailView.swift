@@ -1,8 +1,8 @@
 import SwiftUI
 
 // MARK: Karta sprzedawcy na Macu — „Gotowość do pracy” (te same kroki co CRM, `src/lib/seller/readiness.ts`), opiekun i konto
-// w portalu, marki, oferty na osi w 5 etapach (widok opiekuna) i realizacje. Ustawienia sprzedawcy, rozmowa i rozliczenia —
-// w CRM (przyciski otwierają właściwą sekcję karty w przeglądarce).
+// w portalu, marki, oferty na osi w 5 etapach (widok opiekuna), realizacje oraz „Prowizje i narzuty” — całe konto sprzedawcy
+// (prowizje, narzuty z ofert, wypłaty i saldo; dla osób z dostępem do finansów). Ustawienia sprzedawcy i rozmowa — w CRM.
 
 @MainActor struct SellerDetailView: View {
     @ObservedObject var store: SellersStore
@@ -24,6 +24,10 @@ import SwiftUI
                     people(card)
                     offers(card)
                     events(card)
+                    // Konto prowizji i narzutów — widoczne, gdy baza udostępni je użytkownikowi (dostęp do finansów).
+                    if store.commissionAccount(seller.id)?.hidden != true {
+                        EmployeeCommissionsView(store: store, employeeID: seller.id, employeeName: seller.name, kind: .partner)
+                    }
                 } else if let error {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(error).foregroundStyle(.red)

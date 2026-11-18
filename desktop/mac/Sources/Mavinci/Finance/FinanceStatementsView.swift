@@ -337,9 +337,11 @@ import UniformTypeIdentifiers
             guard !providers.isEmpty else { return false }
             if providers.count > 1 { dropError = "Upuść jeden plik — każdy wyciąg importujesz osobno." }
             guard let provider = providers.first else { return false }
+            // Liczba plików przed wczytaniem — zamknięcie nie przechwytuje tablicy dostawców (nie jest Sendable).
+            let multiple = providers.count > 1
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 Task { @MainActor in
-                    if let url { accept(url, dropped: true, multiple: providers.count > 1) } else { dropError = "Nie udało się odczytać upuszczonego pliku." }
+                    if let url { accept(url, dropped: true, multiple: multiple) } else { dropError = "Nie udało się odczytać upuszczonego pliku." }
                 }
             }
             return true

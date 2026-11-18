@@ -5,7 +5,8 @@ import type { CommissionSettlement } from '@/lib/CRM/events/commissionSettlement
 import { buildCommissionSettlementStats } from '@/lib/CRM/events/commissionSettlementStats';
 
 /*
- * Zakładka „Prowizje” na karcie pracownika w aplikacji na Maca: całe konto prowizji pracownika z bazy
+ * Konto prowizji w aplikacji na Maca — zakładka „Prowizje” karty pracownika (konto `employee`) i sekcja „Prowizje i narzuty”
+ * karty sprzedawcy (konto `partner`, `/bridge/native/v1/sellers`). Pracownik: całe konto prowizji pracownika z bazy
  * (`get_commission_settlements`, konto „employee” — udział w sprzedaży wydarzeń, wpisy ręczne dla pracownika i profil sprzedawcy
  * powiązany z pracownikiem), sumy jak `buildCommissionSettlementStats` (cała historia i każda marka), warunki „Prowizja od sprzedaży”
  * i zapisy jak w CRM: zatwierdzenie wpisu ręcznego i wypłata (`record_commission_settlement`), potrącenie nadpłaty
@@ -69,9 +70,11 @@ function dbFailure(error: DbError, fallback: string): { ok: false; error: string
 
 // MARK: Konto prowizji pracownika
 
-async function accountRows(ctx: NativeContext, employeeId: string): Promise<{ rows: CommissionSettlement[]; canManage: boolean } | { error: DbError }> {
+export type CommissionAccountType = 'employee' | 'partner';
+
+async function accountRows(ctx: NativeContext, accountType: CommissionAccountType, accountId: string): Promise<{ rows: CommissionSettlement[]; canManage: boolean } | { error: DbError }> {
   const { data, error } = await ctx.supabase.rpc('get_commission_settlements', {
-    p_mode: 'crm', p_account_type: 'employee', p_account_id: employeeId,
+    p_mode: 'crm', p_account_type: accountType, p_account_id: accountId,
   });
   if (error) return { error };
   const result = (data || {}) as Row;
@@ -188,20 +191,21 @@ async function loadTerms(ctx: NativeContext, employeeId: string, own: boolean) {
 
 const statsOf = (rows: CommissionSettlement[]) => buildCommissionSettlementStats(rows);
 
-export async function commissionAccount(ctx: NativeContext, employeeId: string) {
-  const own = ctx.employee.id === employeeId;
-  const account = await accountRows(ctx, employeeId);
+export async function commissionAccount(ctx: NativeContext, accountType: CommissionAccountType, accountId: string) {
+  const own = accountType === 'employee' && ctx.employee.id === accountId;
+  const account = await accountRows(ctx, accountType, accountId);
   if ('error' in account) {
     // Brak dostępu do finansów (i to nie własne konto) — zakładka się nie pokazuje, jak karta w CRM.
     if (account.error.code === '42501') {
       return { ok: true as const, data: {
-        hidden: true, message: account.error.message || 'Nie masz dostępu do rozliczeń prowizji tego pracownika.',
+        hidden: true, message: account.error.message || 'Nie masz dostępu do rozliczeń prowizji tej osoby.',
         own, canManage: false, terms: null, commissions: [], stats: null, today: warsawToday(),
       } };
     }
-    return dbFailure(account.error, 'Nie udało się wczytać prowizji pracownika.');
+    return dbFailure(account.error, 'Nie udało się wczytać prowizji.');
   }
-  const terms = await loadTerms(ctx, employeeId, own);
+  // Warunki „Prowizja od sprzedaży” dotyczą pracownika; warunki sprzedawcy są w jego karcie (marki).
+  const terms = accountType === 'employee' ? await loadTerms(ctx, accountId, own) : null;
   const persons = account.canManage ? await commissionPersons(ctx, account.rows.map((row) => row.id)) : new Map<string, CommissionPerson>();
   const companies = new Map<string, { name: string; rows: CommissionSettlement[] }>();
   for (const row of account.rows) {
@@ -334,7 +338,7 @@ export function planOffsets(rows: readonly PlanRow[], selectedIds: readonly stri
 
 type PayrollLine = { commissionId: string; eventName: string; kind: 'offset' | 'paid' | 'skipped' | 'error'; amount: number; message: string };
 
-export async function commissionPayroll(ctx: NativeContext, employeeId: string, body: Row): Promise<CommissionReply<Row>> {
+export async function commissionPayroll(ctx: NativeContext, accountType: CommissionAccountType, accountId: string, body: Row): Promise<CommissionReply<Row>> {
   const batchKey = str(body.batchKey);
   if (!UUID.test(batchKey)) return fail('Brak identyfikatora rozliczenia. Otwórz okno ponownie.');
   const ids = Array.isArray(body.commissionIds) ? [...new Set((body.commissionIds as unknown[]).map(str))] : [];
@@ -346,11 +350,11 @@ export async function commissionPayroll(ctx: NativeContext, employeeId: string, 
   if (reference.length > 200 || note.length > 2000) return fail('Numer lub opis jest zbyt długi (maksymalnie 200 / 2000 znaków).');
   const applyDeductions = body.applyDeductions !== false;
 
-  let account = await accountRows(ctx, employeeId);
-  if ('error' in account) return dbFailure(account.error, 'Nie udało się wczytać prowizji pracownika.');
+  let account = await accountRows(ctx, accountType, accountId);
+  if ('error' in account) return dbFailure(account.error, 'Nie udało się wczytać prowizji.');
   if (!account.canManage) return fail('Rozliczanie prowizji wymaga uprawnienia „Zarządzanie finansami”.', 403);
   const known = new Set(account.rows.map((row) => row.id));
-  if (ids.some((id) => !known.has(id))) return fail('Część zaznaczonych prowizji nie należy już do konta tego pracownika. Odśwież prowizje.', 409);
+  if (ids.some((id) => !known.has(id))) return fail('Część zaznaczonych prowizji nie należy już do tego konta. Odśwież prowizje.', 409);
 
   const lines: PayrollLine[] = [];
   const names = new Map(account.rows.map((row) => [row.id, str(row.event_name) || 'Wydarzenie']));
@@ -381,7 +385,7 @@ export async function commissionPayroll(ctx: NativeContext, employeeId: string, 
         message: (data as Row | null)?.duplicate === true ? 'Potrącenie było już zapisane' : 'Potrącono nadpłatę (bez przelewu)' });
     }
     if (steps.length) {
-      account = await accountRows(ctx, employeeId);
+      account = await accountRows(ctx, accountType, accountId);
       if ('error' in account) {
         const failure = dbFailure(account.error, 'Nie udało się odświeżyć prowizji po potrąceniach.');
         return { ok: true, data: {

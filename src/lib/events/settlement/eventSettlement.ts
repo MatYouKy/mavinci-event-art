@@ -557,6 +557,7 @@ export const COMMISSION_SOURCE_LABELS: Record<string, string> = {
   billing_contact: 'Kontakt rozliczeniowy (hotel / agencja)',
   partner_arrangement: 'Pośrednik (Ustalenia ze sprzedawcą)',
   manual_partner: 'Wskazany w podsumowaniu',
+  seller_markup: 'Narzut sprzedawcy (oferta z narzutem)',
 };
 
 export const SALES_SHARE_SOURCE_LABELS: Record<string, string> = {
