@@ -3,6 +3,7 @@ import Charts
 
 // MARK: Dashboard 1:1 ze stroną `/crm` (`CRMDashboard.tsx`): „Mój plan”, trend sprzedażowy, lejek, przepływy, „Wymaga działania”,
 // ostatnia aktywność, szybkie akcje i „Pozostałe wskaźniki”. Dane i reguły widoczności liczy serwer (`/bridge/native/v1/dashboard`).
+// Dashboard magazynu, „Moja sprzedaż” sprzedawcy i „Dostosuj dashboard” — `DashboardExtras.swift`.
 
 struct DashboardMonth: Decodable, Identifiable {
     let key: String; let label: String; let inquiries: Double; let offers: Double; let events: Double; let revenue: Double; let costs: Double; let margin: Double
@@ -53,6 +54,10 @@ struct DashboardData: Decodable {
     let quickActions: [DashboardLink]?
     let summary: [DashboardSummary]?
     let noPermissions: Bool?
+    /// Dashboard magazynu i logistyki (`variant == "warehouse"`).
+    let warehouse: WarehouseDashboardData?
+    /// „Moja sprzedaż” sprzedawcy za bieżący rok (`scope == "sales"`); kolejne lata — `op=sales`.
+    let sellerReport: SellerSalesReport?
     func enabled(_ widget: String) -> Bool { widgets?[widget] != false }
 }
 
@@ -100,6 +105,8 @@ struct DashboardView: View {
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var showIndicators = false
+    /// „Dostosuj dashboard” (zakładka „Dashboard” w Ustawieniach CRM).
+    @State private var customizing = false
 
     var body: some View {
         ScrollView {
@@ -118,14 +125,15 @@ struct DashboardView: View {
         }
         .navigationTitle("Dashboard")
         .task { await state.loadDashboard() }
+        .sheet(isPresented: $customizing) {
+            DashboardPreferencesSheet().environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
     }
 
     @ViewBuilder private func content(_ data: DashboardData) -> some View {
         if let error = state.dashboardError { Text(error).font(.caption).foregroundStyle(.orange) }
         if data.variant == "warehouse" {
-            MyDayTimelineView()
-            Text("Dashboard magazynu jest na razie w CRM w przeglądarce.").foregroundStyle(.secondary)
-            Button("Otwórz w przeglądarce") { state.openCRM("/crm") }
+            WarehouseDashboardView(data: data.warehouse)
         } else if data.scope == "sales" {
             // Sprzedawca zaczyna dzień od listy działań; wyniki finansowe są poniżej.
             MyDayTimelineView()
@@ -135,8 +143,8 @@ struct DashboardView: View {
                 if let id = state.employee?.id {
                     Button("Moje prowizje", systemImage: "percent") { state.showEmployee(id, tab: .commissions) }.buttonStyle(.link).linkCursor()
                 }
-                Button("Wyniki sprzedaży — otwórz w CRM") { state.openCRM("/crm") }.buttonStyle(.link).linkCursor()
             }
+            SellerSalesView(initial: data.sellerReport)
         } else if data.noPermissions == true {
             ContentUnavailableView("Brak uprawnień", systemImage: "lock", description: Text("Nie masz przypisanych żadnych uprawnień do systemu CRM. Skontaktuj się z administratorem w celu nadania dostępu."))
         } else {
@@ -155,7 +163,7 @@ struct DashboardView: View {
                 Text(data.subtitle ?? "").font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
-            Button { state.openCRM("/crm/settings?tab=dashboard") } label: { Label("Dostosuj dashboard", systemImage: "slider.horizontal.3") }
+            Button { customizing = true } label: { Label("Dostosuj dashboard", systemImage: "slider.horizontal.3") }
             if data.showCalendar == true { Button("Otwórz kalendarz") { state.switchSection(.calendar) }.buttonStyle(.borderedProminent) }
         }
     }
@@ -208,7 +216,7 @@ struct DashboardView: View {
                             let actions = data.quickActions ?? []
                             if actions.isEmpty { Text("Brak dostępnych akcji").font(.callout).foregroundStyle(.secondary) }
                             ForEach(actions) { action in
-                                Button { state.openCRM(action.href) } label: { Text(action.label).frame(maxWidth: .infinity, alignment: .leading).padding(10).background(theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8)) }.buttonStyle(.plain)
+                                Button { openHref(action.href) } label: { Text(action.label).frame(maxWidth: .infinity, alignment: .leading).padding(10).background(theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8)) }.buttonStyle(.plain)
                             }
                             if let summary = data.summary, !summary.isEmpty {
                                 Divider()

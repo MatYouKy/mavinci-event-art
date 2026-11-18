@@ -415,6 +415,8 @@ import Network
         // Wejście do Ofert z paska bocznego pokazuje listę (strona oferty otwiera się przez `showOffer`); oferta otwarta w innym
         // oknie zostaje (stan sekcji jest wspólny dla okien).
         if module == .offers && !shownElsewhere(module: .offers) { offers.openedID = nil }
+        // Wejście do Kontaktów pokazuje listę (karta otwiera się przez `showContact` albo z listy).
+        if module == .contacts && !shownElsewhere(module: .contacts) { contacts.opened = nil }
         sidebarHref = navigation.flatMap(\.flattened).first { $0.module == module }?.href ?? sidebarHref
     }
     func eventAPI() -> HTTPBackend? { backend }

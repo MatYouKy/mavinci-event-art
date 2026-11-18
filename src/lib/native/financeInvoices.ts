@@ -1,6 +1,8 @@
 import 'server-only';
 import type { NativeContext } from './auth';
 import { canFinanceCompany, loadInvoiceFinanceAccess, type InvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
+import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
+import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
 
 /*
  * Faktury (rejestr sprzedaży) dla Maca — jak zakładka CRM „Lokalne faktury” (`/crm/invoices`) i karta faktury
@@ -8,8 +10,9 @@ import { canFinanceCompany, loadInvoiceFinanceAccess, type InvoiceFinanceAccess 
  * zapłata z wyciągu przez dokument KSeF (jak `loadCanonicalBankPaymentDisplay`), karta z pozycjami i powiązanymi
  * dokumentami oraz czynności z karty: „Oznacz jako wysłaną”, „Oznacz jako opłaconą” (data pełnej zapłaty, kwota po
  * zaliczkach dla faktury końcowej, zapis tylko gdy faktura się nie zmieniła), anulowanie (`cancel_local_invoice`) i
- * usunięcie szkicu / pro formy (`delete_local_invoice_and_repair_numbering`). Wystawianie, edycja, korekta i wysyłka
- * do KSeF — w CRM. Marki bez NIP są pominięte jak w pozostałych częściach Finansów.
+ * usunięcie szkicu / pro formy (`delete_local_invoice_and_repair_numbering`). Wystawianie i korekta —
+ * `financeInvoiceForm.ts`; PDF, e-mail i UPO — `finance.ts`; wysyłka do KSeF — trasa CRM `/bridge/ksef/invoices/send`
+ * (token aplikacji). Marki bez NIP są pominięte jak w pozostałych częściach Finansów.
  */
 
 type Row = Record<string, any>;
@@ -124,7 +127,16 @@ function actionsOf(access: InvoiceFinanceAccess, invoice: Row, payment: BankPaym
   const paidAmount = num(invoice.paid_amount);
   const ksefStatus = str(invoice.ksef_status).trim().toLowerCase();
   const deletable = invoice.status === 'draft' || invoice.status === 'proforma' || proforma;
+  // „Wyślij do KSeF” jak na karcie CRM: wystawianie faktur, nie pro forma, nie anulowana, nie osoba prywatna, bez wysyłki
+  // w toku ani numeru KSeF (odrzuconą można wysłać ponownie).
+  const ksefInProgressOrDone = ['pending', 'sent', 'accepted'].includes(ksefStatus) || Boolean(invoice.ksef_reference_number);
   return {
+    canEdit: invoice.status !== 'cancelled',
+    canEmail: invoice.status !== 'cancelled',
+    canSendKsef: canChange && !proforma && invoice.status !== 'cancelled' && invoice.buyer_is_private_person !== true && !ksefInProgressOrDone,
+    ksefResend: ksefStatus === 'rejected',
+    canUpo: ksefStatus === 'accepted' && Boolean(invoice.ksef_reference_number),
+    canConvertProforma: invoice.is_proforma === true && invoice.status !== 'cancelled' && !invoice.proforma_converted_to_invoice_id,
     paymentStatus,
     paymentBase: Number.isFinite(paymentBase) ? paymentBase : 0,
     canMarkPaid: canChange && invoice.correction_kind !== 'party_data'
@@ -176,6 +188,7 @@ function invoiceOf(invoice: Row, payment: BankPayment | undefined) {
     ksefStatus: strOrNull(invoice.ksef_status),
     ksefReference: strOrNull(invoice.ksef_reference_number),
     hasPdf: Boolean(invoice.pdf_url),
+    pdfGeneratedAt: strOrNull(invoice.pdf_generated_at),
     createdAt: strOrNull(invoice.created_at),
     bankPayment: payment ?? null,
   };
@@ -258,8 +271,18 @@ export async function invoiceDetail(ctx: NativeContext, idParam: unknown) {
     try { payment = (await bankPayments(ctx, [invoice as Row]))[id]; } catch { payment = undefined; }
   }
   const row = invoice as Row;
+  // Odbiorca KSeF i dane sprzed korekty zapisane na fakturze — błąd jak na karcie CRM (blokuje też „Generuj PDF”).
+  let recipientError: string | null = null;
+  try {
+    getInvoiceKsefRecipient(row);
+    getInvoicePartyDataCorrection(row);
+  } catch (recipientProblem) {
+    recipientError = recipientProblem instanceof Error ? recipientProblem.message : 'Nie można odczytać danych odbiorcy zapisanych na fakturze.';
+  }
   return {
     invoice: invoiceOf(row, payment),
+    recipientError,
+    proformaConvertedTo: strOrNull(row.proforma_converted_to_invoice_id),
     actions: actionsOf(access, row, payment),
     seller: {
       name: strOrNull(row.seller_name), nip: strOrNull(row.seller_nip),

@@ -372,7 +372,7 @@ struct CalendarLink:Codable {
         }
         Button("Nowe spotkanie…",systemImage:"calendar.badge.plus") {selectedDate=date;start(.meeting,on:date)}
         if canSeeInquiries {
-            Button("Nowe zapytanie (w CRM)…",systemImage:"phone.arrow.down.left") {selectedDate=date;start(.inquiry,on:date)}
+            Button("Nowe zapytanie…",systemImage:"phone.arrow.down.left") {selectedDate=date;start(.inquiry,on:date)}
         }
     }
     @ViewBuilder private func creationSheet(_ item:CalendarCreation) -> some View {
@@ -384,10 +384,13 @@ struct CalendarLink:Codable {
             EventCreateSheet(store:workspace.events,initialDate:date,initialClientType:clientType).warehouseSheetStyle(workspace)
         case .meeting(let request):
             MeetingEditorSheet(store:workspace.meetings,request:request).warehouseSheetStyle(workspace)
+        case .inquiry(let date):
+            // Jak w kalendarzu CRM: zapytanie z terminem tego dnia; po zapisie lejek (i kalendarz) pobiera zmiany.
+            NewInquirySheet(initialDate:date) {_ in Task {await workspace.inquiries.sync(force:true)}}.warehouseSheetStyle(workspace)
         }
     }
     /// Wybrany rodzaj na dzień z kalendarza: wydarzenie (kreator z terminem tego dnia), spotkanie (9:00–10:00 jak w CRM)
-    /// albo zapytanie — formularz „Dodaj zapytanie” w CRM z terminem tego dnia.
+    /// albo zapytanie — formularz „Nowe zapytanie” z terminem tego dnia.
     private func start(_ kind:CalendarCreateKind,on date:Date) {
         let day=c.startOfDay(for:date)
         switch kind {
@@ -397,8 +400,7 @@ struct CalendarLink:Codable {
             let begin=c.date(bySettingHour:9,minute:0,second:0,of:day) ?? day
             creation = .meeting(MeetingEditorRequest(start:begin,end:begin.addingTimeInterval(3600)))
         case .inquiry:
-            creation=nil
-            workspace.openCRM("/crm/inquiries?new=1&termin=\(EventFormDates.day(day))")
+            creation = .inquiry(day)
         }
     }
     private func calendarEntry(_ row:Row,compact:Bool) -> some View {

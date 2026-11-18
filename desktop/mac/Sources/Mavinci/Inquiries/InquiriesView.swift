@@ -3,6 +3,7 @@ import AppKit
 
 // MARK: Lejek zapytań — 1:1 ze stroną `/crm/inquiries`: zwarty nagłówek (zakres, widok, status, ważona wartość, sprawy wymagające
 // uwagi), kolumny etapów z kartami (przeciąganie zmienia etap), lista, szczegóły w panelu bocznym i obsługa zapytania.
+// „Dodaj zapytanie” (`NewInquirySheet`) i „SLA” (`InquirySlaSettingsSheet`, administrator) — natywnie.
 
 enum InquiryViewMode: String, CaseIterable, Identifiable {
     case pipeline, list
@@ -58,6 +59,8 @@ struct InquiryActions {
     @State private var targeted: InquiryStage?
     /// Otwarta karta zapytania — zastępuje lejek do powrotu („Lejek zapytań”).
     @State private var workspaceID: String?
+    @State private var addingInquiry = false
+    @State private var slaSettings = false
 
     private var me: String? { store.access?.employeeId ?? state.employee?.id }
     private var scopes: [InquiryScope] {
@@ -149,12 +152,12 @@ struct InquiryActions {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if store.access?.canCreate == true {
-                    Button { state.openCRM("/crm/inquiries?new=1") } label: { Label("Dodaj zapytanie", systemImage: "plus") }
-                        .help("Dodaj zapytanie (formularz CRM w przeglądarce)")
+                    Button { addingInquiry = true } label: { Label("Dodaj zapytanie", systemImage: "plus") }
+                        .help("Nowe zapytanie trafia do wspólnej kolejki")
                 }
                 if store.access?.isAdmin == true {
-                    Button { state.openCRM("/crm/inquiries?sla=1") } label: { Label("SLA", systemImage: "gearshape") }
-                        .help("Ustawienia SLA (CRM w przeglądarce)")
+                    Button { slaSettings = true } label: { Label("SLA", systemImage: "gearshape") }
+                        .help("Ustawienia SLA")
                 }
                 Button { inspectorShown.toggle() } label: { Label("Szczegóły", systemImage: "sidebar.trailing") }
                     .help("Pokaż lub ukryj szczegóły zapytania")
@@ -167,6 +170,21 @@ struct InquiryActions {
         }
         .sheet(item: $editing) { request in
             InquiryEditorSheet(store: store, inquiry: request.inquiry, initialStage: request.stage)
+                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(isPresented: $addingInquiry) {
+            // Jak w CRM po zapisie: otwarte zapytania, wspólna kolejka, bez filtra „wymaga uwagi”, świeży lejek.
+            NewInquirySheet { _ in
+                status = .open
+                attention = nil
+                scope = .pool
+                Task { await store.sync(force: true) }
+                state.succeed("Zapytanie zostało dodane do wspólnej kolejki")
+            }
+            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(isPresented: $slaSettings) {
+            InquirySlaSettingsSheet()
                 .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
         .sheet(item: $contactTarget) { inquiry in

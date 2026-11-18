@@ -3,9 +3,13 @@ import SwiftUI
 // MARK: Faktury — rejestr sprzedaży (jak zakładka CRM „Lokalne faktury” i karta faktury): faktury, pro formy i szkice
 // wybranych działalności z filtrami, sortowaniem i sumami; z prawej karta wybranej faktury (strony, daty, kwoty, zapłata,
 // KSeF, pozycje, powiązane dokumenty) z czynnościami: podgląd PDF, „Oznacz jako wysłaną”, „Oznacz jako opłaconą” (data
-// pełnej zapłaty), anulowanie i usunięcie szkicu / pro formy. Wystawianie, edycja, korekta, wysyłka e-mailem i do KSeF —
-// w CRM (menu „W CRM”). Serwer: `/bridge/native/v1/finance` (`invoices`, `invoice`, `invoiceStatus`, `invoiceCancel`,
-// `invoiceDelete`).
+// pełnej zapłaty), anulowanie i usunięcie szkicu / pro formy, „Generuj / Regeneruj PDF” (zapis w plikach), pobranie
+// zapisanego PDF, „Wyślij email” (`FinanceReminderSheet` w trybie faktury), „Wyślij do KSeF” (postęp wysyłki,
+// `InvoiceKsefSendSheet`) i UPO, „Faktura z pro formy” (`ProformaConvertSheet`), „Edytuj…” (`InvoiceEditSheet`). Wystawianie faktury VAT, pro formy, zaliczkowej, kolejnej zaliczki i korekty — natywnie
+// (`InvoiceFormSheet`, jak `/crm/invoices/new`); faktura końcowa — `FinalInvoiceSheet` (jak `FinalInvoiceWizardModal`:
+// z nagłówka listy bez kontekstu, z karty zaliczki dla jej zamówienia). Serwer: `/bridge/native/v1/finance` (`invoices`,
+// `invoice`, `invoiceStatus`, `invoiceCancel`, `invoiceDelete`, `invoicePdf`, `invoicePdfFile`, `invoiceUpo`, `invoiceForm`…,
+// `invoiceCreate`, `final…`) i trasa CRM `/bridge/ksef/invoices/send`.
 
 struct FinInvoiceActions: Decodable {
     var paymentStatus: String
@@ -16,6 +20,13 @@ struct FinInvoiceActions: Decodable {
     var needsNotDelivered: Bool
     var canDelete: Bool
     var deletable: Bool
+    // Karta faktury (opcjonalne — starszy serwer CRM ich nie wysyła).
+    var canEdit: Bool?
+    var canEmail: Bool?
+    var canSendKsef: Bool?
+    var ksefResend: Bool?
+    var canUpo: Bool?
+    var canConvertProforma: Bool?
 }
 
 struct FinInvoice: Decodable, Identifiable {
@@ -47,6 +58,7 @@ struct FinInvoice: Decodable, Identifiable {
     var ksefStatus: String?
     var ksefReference: String?
     var hasPdf: Bool
+    var pdfGeneratedAt: String?
     var createdAt: String?
     var bankPayment: BankPayment?
     var actions: FinInvoiceActions?
@@ -90,6 +102,9 @@ struct FinInvoiceDetail: Decodable {
     }
     var invoice: FinInvoice
     var actions: FinInvoiceActions
+    /// Odbiorca KSeF / dane sprzed korekty zapisane na fakturze są nieczytelne (blokuje „Generuj PDF”, jak w CRM).
+    var recipientError: String?
+    var proformaConvertedTo: String?
     var seller: Party
     var buyer: Party
     var paymentMethod: String?
@@ -171,6 +186,8 @@ enum FinInvoiceText {
     @State private var type = "all"
     @State private var status = "all"
     @State private var sortOrder = [KeyPathComparator(\FinInvoice.sortIssue, order: .reverse)]
+    @State private var invoiceForm: InvoiceFormRequest?
+    @State private var finalInvoice: FinalInvoiceRequest?
 
     private var scopeIDs: Set<String> { Set(finance.scopeCompanies.map(\.id)) }
 
@@ -222,6 +239,18 @@ enum FinInvoiceText {
             }
         }
         .task { await store.loadInvoices() }
+        .sheet(item: $invoiceForm) { request in
+            InvoiceFormSheet(request: request)
+                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(item: $finalInvoice) { request in
+            // „Faktura końcowa” (jak `FinalInvoiceWizardModal`): po wystawieniu — karta nowej faktury.
+            FinalInvoiceSheet(advanceID: request.advanceID, eventID: request.eventID, organizationID: request.organizationID) { newID in
+                store.selectedInvoice = newID
+                Task { await store.loadInvoices(force: true) }
+            }
+            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
     }
 
     private var canIssue: Bool { store.invoices?.companies.contains { $0.canIssue && scopeIDs.contains($0.id) } ?? false }
@@ -246,11 +275,15 @@ enum FinInvoiceText {
             .disabled(store.invoicesLoading).fixedSize()
             if canIssue {
                 Menu {
-                    Button("Wystaw fakturę") { state.openCRM("/crm/invoices/new") }
-                    Button("Faktura końcowa (kreator)") { state.openCRM("/crm/invoices?tab=local") }
+                    Button("Faktura VAT") { invoiceForm = .new(type: "vat", eventID: nil) }
+                    Button("Proforma") { invoiceForm = .new(type: "proforma", eventID: nil) }
+                    Button("Faktura zaliczkowa") { invoiceForm = .new(type: "advance", eventID: nil) }
+                    Button("Faktura korygująca") { invoiceForm = .new(type: "corrective", eventID: nil) }
+                    Divider()
+                    Button("Faktura końcowa…") { finalInvoice = FinalInvoiceRequest() }
                 } label: { Label("Wystaw fakturę", systemImage: "plus") }
                 .fixedSize()
-                .help("Formularz wystawiania faktury otwiera się w CRM")
+                .help("Wystaw fakturę VAT, proformę, zaliczkową, korektę albo fakturę końcową")
             }
         }
         .controlSize(.small)
@@ -328,6 +361,13 @@ enum FinInvoiceText {
     @State private var markingPaid = false
     @State private var cancelling = false
     @State private var confirmDelete = false
+    @State private var invoiceForm: InvoiceFormRequest?
+    @State private var emailing = false
+    @State private var confirmKsef = false
+    @State private var sendingKsef = false
+    @State private var convertingProforma = false
+    @State private var editing = false
+    @State private var finalInvoice: FinalInvoiceRequest?
 
     var body: some View {
         Group {
@@ -345,6 +385,73 @@ enum FinInvoiceText {
         .sheet(item: $preview) { item in BankPreviewSheet(item: item, store: store) }
         .sheet(isPresented: $markingPaid) { if let detail { InvoicePaidSheet(store: store, detail: detail) { Task { await load() } } } }
         .sheet(isPresented: $cancelling) { if let detail { InvoiceCancelSheet(store: store, detail: detail) { Task { await load() } } } }
+        .sheet(item: $invoiceForm) { request in
+            InvoiceFormSheet(request: request)
+                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(isPresented: $emailing) {
+            if let detail {
+                // „Wyślij email” z karty (jak `SendInvoiceEmailModal` w trybie faktury).
+                FinanceReminderSheet(store: state.finance, invoiceID: detail.invoice.id, buyerName: detail.invoice.buyerName, mode: .invoice) {
+                    store.invoiceEmailsSent[detail.invoice.id, default: 0] += 1
+                    Task { await load() }
+                }
+                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+            }
+        }
+        .sheet(isPresented: $sendingKsef) {
+            if let detail {
+                InvoiceKsefSendSheet(invoiceID: detail.invoice.id, invoiceNumber: detail.invoice.number) { _ in
+                    // Jak w CRM: świeża karta, potem PDF z numerem i kodem KSeF.
+                    Task {
+                        await load()
+                        await store.loadInvoices(force: true)
+                        await store.generateInvoicePdf(detail.invoice.id, regenerate: detail.invoice.hasPdf)
+                        await load()
+                    }
+                }
+                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+            }
+        }
+        .sheet(isPresented: $convertingProforma) {
+            if let detail {
+                // „Faktura z pro formy” (jak `ConvertProformaModal`): po wystawieniu — karta nowej faktury.
+                ProformaConvertSheet(proformaID: detail.invoice.id, proformaNumber: detail.invoice.number) { newID in
+                    store.selectedInvoice = newID
+                    Task { await store.loadInvoices(force: true) }
+                }
+                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+            }
+        }
+        .sheet(item: $finalInvoice) { request in
+            // „Faktura końcowa” z karty zaliczki (jak `FinalInvoiceWizardModal` z `initialAdvanceInvoiceId`): po wystawieniu —
+            // karta nowej faktury.
+            FinalInvoiceSheet(advanceID: request.advanceID) { newID in
+                store.selectedInvoice = newID
+                Task { await store.loadInvoices(force: true) }
+            }
+            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(isPresented: $editing) {
+            // „Edytuj” (jak `/crm/invoices/[id]/edit`): szkic i pro forma; wystawiony dokument — przejście do korekty.
+            InvoiceEditSheet(invoiceID: invoiceID) {
+                Task {
+                    await load()
+                    await store.loadInvoices(force: true)
+                }
+            } onCorrect: {
+                Task {
+                    // Następne okno dopiero po zamknięciu edytora.
+                    try? await Task.sleep(for: .milliseconds(400))
+                    invoiceForm = .corrective(relatedID: invoiceID)
+                }
+            }
+            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .alert("Czy na pewno chcesz wysłać tę fakturę do KSeF?", isPresented: $confirmKsef) {
+            Button("Anuluj", role: .cancel) {}
+            Button("Wyślij do KSeF") { sendingKsef = true }
+        } message: { Text("Tej operacji nie można cofnąć.") }
         .confirmationDialog("Usunąć fakturę \(detail?.invoice.number ?? "")?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Usuń", role: .destructive) {
                 Task {
@@ -384,6 +491,10 @@ enum FinInvoiceText {
                     party("Nabywca", d.buyer)
                 }
                 facts(d)
+                if let converted = d.proformaConvertedTo {
+                    Button { store.selectedInvoice = converted } label: { Label("Zobacz wystawioną fakturę", systemImage: "arrow.right.circle") }
+                        .buttonStyle(.link)
+                }
                 if !d.items.isEmpty { items(d) }
                 if !d.related.isEmpty { related(d) }
             }
@@ -393,26 +504,85 @@ enum FinInvoiceText {
     }
 
     private func actions(_ d: FinInvoiceDetail) -> some View {
-        HStack(spacing: 8) {
-            Button { Task { preview = await store.preview(source: "invoice", id: d.invoice.id) } } label: { Label("Podgląd PDF", systemImage: "doc.richtext") }
-            if d.actions.canMarkSent {
-                Button { Task { if await store.invoiceAction("Zmiana statusu…", "invoiceStatus", ["id": .string(d.invoice.id), "status": .string("sent")]) { await load() } } } label: {
-                    Label("Oznacz jako wysłaną", systemImage: "paperplane")
+        let invoice = d.invoice
+        let emailsSent = store.invoiceEmailsSent[invoice.id] ?? 0
+        return VStack(alignment: .leading, spacing: 8) {
+            // Dokument PDF i e-mail (jak przyciski karty faktury w CRM).
+            HStack(spacing: 8) {
+                Button {
+                    Task {
+                        // Zapisany PDF — ten sam plik co w dokumentach; bez zapisu — wydruk z bieżących danych faktury.
+                        if invoice.hasPdf {
+                            if let file = await store.storedInvoicePdf(invoice.id) { preview = .file(file) }
+                        } else {
+                            preview = await store.preview(source: "invoice", id: invoice.id)
+                        }
+                    }
+                } label: { Label("Podgląd PDF", systemImage: "doc.richtext") }
+                .help(invoice.hasPdf ? "Zapisany PDF faktury — podgląd, druk i zapis" : "Wydruk z bieżących danych faktury (PDF nie jest jeszcze zapisany)")
+                Button {
+                    Task { if await store.generateInvoicePdf(invoice.id, regenerate: invoice.hasPdf) { await load() } }
+                } label: {
+                    Label(invoice.hasPdf ? "Regeneruj PDF" : "Generuj PDF", systemImage: invoice.hasPdf ? "arrow.clockwise" : "arrow.down.doc")
+                }
+                .help("Wydruk z aktualnych danych faktury zapisany w plikach (faktura wydarzenia — w folderze „Faktury” wydarzenia)")
+                if d.actions.canEmail ?? (invoice.rawStatus != "cancelled") {
+                    Button { emailing = true } label: {
+                        Label(emailsSent > 0 ? "Wyślij email ponownie" : "Wyślij email", systemImage: "envelope")
+                    }
                 }
             }
-            if d.actions.canMarkPaid {
-                Button { markingPaid = true } label: { Label("Oznacz jako opłaconą…", systemImage: "checkmark.circle") }
+            HStack(spacing: 8) {
+                if d.actions.canSendKsef == true {
+                    Button { confirmKsef = true } label: {
+                        Label(d.actions.ksefResend == true ? "Wyślij ponownie do KSeF" : "Wyślij do KSeF", systemImage: "paperplane.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                if d.actions.canMarkSent {
+                    Button { Task { if await store.invoiceAction("Zmiana statusu…", "invoiceStatus", ["id": .string(invoice.id), "status": .string("sent")]) { await load() } } } label: {
+                        Label("Oznacz jako wysłaną", systemImage: "paperplane")
+                    }
+                }
+                if d.actions.canMarkPaid {
+                    Button { markingPaid = true } label: { Label("Oznacz jako opłaconą…", systemImage: "checkmark.circle") }
+                }
+                Menu {
+                    if d.actions.canEdit ?? (invoice.rawStatus != "cancelled") {
+                        Button("Edytuj…") { editing = true }
+                            .help("Edycja szkicu i pro formy; wystawiony dokument zmienia się korektą.")
+                    }
+                    if invoice.hasPdf {
+                        Button("Pobierz PDF") { Task { if let file = await store.storedInvoicePdf(invoice.id) { store.save(file) } } }
+                    }
+                    if d.actions.canUpo == true {
+                        Button("Pobierz UPO (XML)") { Task { await store.downloadInvoiceUpo(invoice.id) } }
+                            .help("UPO — urzędowe poświadczenie odbioru z KSeF")
+                    }
+                    Divider()
+                    // Dokumenty powiązane jak na karcie faktury w CRM: tylko do wystawionego dokumentu (nie pro formy).
+                    let canCreateRelated = !invoice.proforma && ["issued", "sent", "paid", "overdue"].contains(invoice.rawStatus)
+                    if canCreateRelated && invoice.type == "advance" {
+                        Button("Kolejna faktura zaliczkowa") { invoiceForm = .nextAdvance(sourceID: invoice.id) }
+                            .help("Nowa zaliczka dla tego samego zamówienia, z osobną kwotą i wpłatą.")
+                        Button("Faktura końcowa…") { finalInvoice = FinalInvoiceRequest(advanceID: invoice.id) }
+                            .help("Faktura na całe zamówienie, rozliczająca nierozliczone zaliczki.")
+                    }
+                    if canCreateRelated && ["vat", "advance", "final"].contains(invoice.type) {
+                        Button("Faktura korygująca") { invoiceForm = .corrective(relatedID: invoice.id) }
+                            .help("Utwórz osobny dokument korygujący tę fakturę.")
+                    }
+                    if d.actions.canConvertProforma == true {
+                        Button("Faktura z pro formy…") { convertingProforma = true }
+                            .help("Utwórz fakturę VAT lub zaliczkową na podstawie tej pro formy.")
+                    }
+                    Button("Otwórz kartę faktury w CRM") { state.openCRM("/crm/invoices/\(invoice.id)") }
+                    if d.actions.canCancel || d.actions.canDelete { Divider() }
+                    if d.actions.canCancel { Button("Anuluj fakturę…") { cancelling = true } }
+                    if d.actions.canDelete { Button("Usuń szkic / pro formę…", role: .destructive) { confirmDelete = true } }
+                } label: { Label("Więcej", systemImage: "ellipsis.circle") }
+                .fixedSize()
             }
-            Menu {
-                Button("Otwórz kartę faktury") { state.openCRM("/crm/invoices/\(d.invoice.id)") }
-                Button("Wyślij e-mailem") { state.openCRM("/crm/invoices/\(d.invoice.id)") }
-                if d.invoice.type != "corrective" && !d.invoice.proforma { Button("Wystaw korektę") { state.openCRM("/crm/invoices/new?type=corrective&related=\(d.invoice.id)") } }
-                if !d.invoice.proforma && d.invoice.ksefReference == nil && d.invoice.rawStatus != "cancelled" { Button("Wyślij do KSeF") { state.openCRM("/crm/invoices/\(d.invoice.id)") } }
-                if d.actions.canCancel || d.actions.canDelete { Divider() }
-                if d.actions.canCancel { Button("Anuluj fakturę…") { cancelling = true } }
-                if d.actions.canDelete { Button("Usuń szkic / pro formę…", role: .destructive) { confirmDelete = true } }
-            } label: { Label("Więcej", systemImage: "ellipsis.circle") }
-            .fixedSize()
         }
         .controlSize(.small)
     }
@@ -446,7 +616,12 @@ enum FinInvoiceText {
         if let ksef = FinInvoiceText.ksef(invoice.ksefStatus) {
             rows.append(("KSeF", ksef + (invoice.ksefReference.map { " · \($0)" } ?? "") + (d.ksefSentAt.map { " · wysłano \(FinFormat.dateTime($0))" } ?? "")))
         }
+        if invoice.proforma { rows.append(("KSeF", "Pro forma nie jest wysyłana do KSeF.")) }
         if let error = d.ksefError { rows.append(("Błąd KSeF", error)) }
+        if let error = d.recipientError { rows.append(("Odbiorca KSeF", error)) }
+        rows.append(("PDF", invoice.hasPdf ? "zapisany w plikach" + (invoice.pdfGeneratedAt.map { " · \(FinFormat.dateTime($0))" } ?? "") : "nie wygenerowano"))
+        let emailsSent = store.invoiceEmailsSent[invoice.id] ?? 0
+        if emailsSent > 0 { rows.append(("E-mail", "Wysłano e-mail: \(emailsSent)×")) }
         if let reason = d.correctionReason { rows.append(("Powód korekty", reason + (d.correctedNumber.map { " (do \($0))" } ?? ""))) }
         if let reason = d.cancellationReason { rows.append(("Powód anulowania", reason)) }
         if let notes = d.notes { rows.append(("Uwagi", notes)) }

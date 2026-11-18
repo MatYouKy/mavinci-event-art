@@ -1,160 +1,226 @@
 import SwiftUI
 
-/// Edycja kontaktu lub organizacji — pola jak na karcie w CRM (`/crm/contacts/[id]`, zakładka „Dane kontaktowe” / „Szczegóły”).
-/// Organizację serwer sprawdza tą samą walidacją co formularz w przeglądarce (`validateOrganizationForm`).
-@MainActor struct ContactEditorSheet: View {
+// MARK: Formularze kontaktu i osoby prywatnej — dodawanie jak `/crm/contacts/new` (walidacja `personContactSchema`, sprawdzenie
+// duplikatu po e-mailu, telefonie i NIP-ie) i edycja jak zakładka „Dane kontaktowe” karty (także PESEL i numer dowodu osoby
+// prywatnej). Organizacja — `OrganizationEditorSheet`.
+
+/// Dodawanie albo edycja rekordu kontaktów.
+enum ContactEditorMode: Identifiable, Equatable {
+    case create(ContactKind)
+    case edit(ContactRef)
+    var id: String {
+        switch self {
+        case .create(let kind): return "create-\(kind.rawValue)"
+        case .edit(let ref): return "edit-\(ref.id)"
+        }
+    }
+    var kind: ContactKind {
+        switch self {
+        case .create(let kind): return kind
+        case .edit(let ref): return ref.kind
+        }
+    }
+    var ref: ContactRef? {
+        if case .edit(let ref) = self { return ref }
+        return nil
+    }
+}
+
+/// Formularz właściwy dla rodzaju rekordu.
+@MainActor struct ContactEditorHost: View {
     @ObservedObject var store: ContactsStore
-    let entry: ContactEntry
+    let mode: ContactEditorMode
+    var body: some View {
+        if mode.kind == .organization {
+            OrganizationEditorSheet(store: store, mode: mode)
+        } else {
+            PersonEditorSheet(store: store, mode: mode)
+        }
+    }
+}
+
+/// Wyszukiwarka rekordu z kopii listy (osoby albo organizacje): po wpisaniu frazy — do 8 wyników.
+@MainActor struct ContactSearchPicker: View {
+    let prompt: String
+    let candidates: [ContactEntry]
+    let pick: (ContactEntry) -> Void
+    @State private var query = ""
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField(prompt, text: $query).textFieldStyle(.roundedBorder)
+            let terms = query.trimmingCharacters(in: .whitespaces).lowercased()
+            if !terms.isEmpty {
+                let found = Array(candidates.filter { $0.name.lowercased().contains(terms) || $0.legalName.lowercased().contains(terms) || $0.email.lowercased().contains(terms) }.prefix(8))
+                if found.isEmpty { Text("Brak wyników").font(.caption).foregroundStyle(.secondary) }
+                ForEach(found) { entry in
+                    Button { pick(entry); query = "" } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: entry.contactKind.symbol).foregroundStyle(.secondary)
+                            Text(entry.name).lineLimit(1)
+                            if !entry.email.isEmpty { Text(entry.email).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                            Spacer()
+                        }
+                        .padding(.vertical, 3).padding(.horizontal, 6)
+                        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+/// Kontakt (osoba powiązana z organizacją) albo osoba prywatna — dodawanie i edycja.
+@MainActor struct PersonEditorSheet: View {
+    @ObservedObject var store: ContactsStore
+    let mode: ContactEditorMode
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
     @State private var values: [String: String] = [:]
-    @State private var rating = 0
+    @State private var original: [String: String] = [:]
     @State private var errors: [String: String] = [:]
     @State private var problem: String?
+    @State private var duplicateID: String?
     @State private var saving = false
     @State private var prepared = false
+    @State private var organizationID = ""
     @FocusState private var focused: String?
 
-    private var kind: ContactKind { entry.contactKind }
-    /// Pola widoczne w formularzu (błędy pozostałych pól pokazujemy zbiorczo pod formularzem).
-    private var shownKeys: [String] {
-        switch kind {
-        case .organization:
-            return ["name", "alias", "business_type", "legal_form", "nip", "krs", "regon", "email", "phone", "website", "address", "postal_code", "city", "country", "status", "rating"]
-        case .contact:
-            return ["first_name", "last_name", "email", "mobile", "phone", "business_phone", "position", "nip", "address", "postal_code", "city", "notes"]
-        case .individual:
-            return ["first_name", "last_name", "email", "phone", "mobile", "alternative_contact_name", "address", "postal_code", "city", "event_type", "event_details", "notes"]
+    private var kind: ContactKind { mode.kind }
+    private var creating: Bool { mode.ref == nil }
+    private var card: ContactCard? { mode.ref.flatMap { store.card($0.id) } }
+    /// Pola formularza (kolejność jak na stronie — błędy pozostałych pól zbiorczo pod formularzem).
+    private var keys: [String] {
+        if kind == .individual {
+            return ["first_name", "last_name", "pesel", "id_number", "email", "phone", "mobile", "alternative_contact_name", "address", "postal_code",
+                    "city", "event_type", "event_details", "notes"]
         }
+        return ["first_name", "last_name", "position", "nip", "email", "mobile", "phone", "business_phone", "address", "postal_code", "city", "notes"]
     }
-    private var original: [String: String] {
-        switch kind {
-        case .organization:
-            return ["name": entry.legalName, "alias": entry.alias, "business_type": entry.businessType, "legal_form": entry.legalForm, "nip": entry.nip,
-                    "krs": entry.krs, "regon": entry.regon, "email": entry.email, "phone": entry.phone, "website": entry.website,
-                    "address": entry.address, "postal_code": entry.postalCode, "city": entry.city, "country": entry.country, "status": entry.status]
-        case .contact, .individual:
-            return ["first_name": entry.firstName, "last_name": entry.lastName, "email": entry.email, "phone": entry.phone, "mobile": entry.mobile,
-                    "business_phone": entry.businessPhone, "position": entry.position, "nip": entry.nip,
-                    "alternative_contact_name": entry.alternativeContact, "address": entry.address, "postal_code": entry.postalCode,
-                    "city": entry.city, "event_type": entry.eventType, "event_details": entry.eventDetails, "notes": entry.notes]
+    private var otherErrors: [String] { errors.filter { !keys.contains($0.key) }.sorted { $0.key < $1.key }.map(\.value) }
+    private var heading: String {
+        switch (creating, kind) {
+        case (true, .individual): return "Nowa osoba prywatna"
+        case (true, _): return "Nowy kontakt"
+        case (false, .individual): return "Edytuj osobę prywatną"
+        default: return "Edytuj kontakt"
         }
-    }
-    private var otherErrors: [String] {
-        errors.filter { !shownKeys.contains($0.key) }.sorted { $0.key < $1.key }.map(\.value)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(kind == .organization ? "Edytuj organizację" : "Edytuj kontakt").font(.title2.bold())
-                    Text(entry.name).foregroundStyle(.secondary)
+                    Text(heading).font(.title2.bold())
+                    Text(creating ? (kind == .individual ? "Klient indywidualny" : "Osoba powiązana z organizacją") : (card?.contact?.name ?? store.entry(mode.ref?.id)?.name ?? ""))
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
-            }.padding([.horizontal, .top], 20).padding(.bottom, 6)
-
-            Form {
-                switch kind {
-                case .organization: organizationFields
-                case .contact, .individual: personFields
-                }
-                if problem != nil || !otherErrors.isEmpty {
-                    Section {
-                        if let problem { Label(problem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).textSelection(.enabled) }
-                        ForEach(otherErrors, id: \.self) { Text($0).font(.caption).foregroundStyle(.red) }
-                        if !otherErrors.isEmpty {
-                            Text("Tych pól nie ma w aplikacji — popraw je na karcie w CRM.").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
             }
-            .formStyle(.grouped)
-            .disabled(saving)
+            .padding([.horizontal, .top], 20).padding(.bottom, 6)
+
+            if !creating && card?.contact == nil {
+                if let ref = mode.ref, let error = store.cardErrors[ref.id] {
+                    ContentUnavailableView("Nie można wczytać danych", systemImage: "exclamationmark.triangle", description: Text(error))
+                } else {
+                    ProgressView("Wczytywanie danych…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else {
+                form
+            }
 
             HStack {
                 Spacer()
                 Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
-                Button("Zapisz") { Task { await save() } }
-                    .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(saving || !store.canManage)
-            }.padding(16)
+                Button(creating ? "Dodaj" : "Zapisz") { Task { await save() } }
+                    .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                    .disabled(saving || (!creating && card?.contact == nil))
+            }
+            .padding(16)
         }
-        .frame(minWidth: 560, idealWidth: 620, minHeight: 600, idealHeight: 740)
+        .frame(minWidth: 580, idealWidth: 640, minHeight: 620, idealHeight: 760)
         .background(theme.page)
-        .overlay { if saving { PendingOverlay(text: "Zapisywanie…") } }
+        .overlay { if saving { PendingOverlay(text: creating ? "Dodawanie…" : "Zapisywanie…") } }
         .interactiveDismissDisabled(saving)
-        .onAppear {
-            guard !prepared else { return }
-            prepared = true
-            values = original
-            rating = entry.rating ?? 0
+        .task {
+            if let ref = mode.ref, store.card(ref.id) == nil { await store.loadCard(ref) }
+            prepare()
         }
     }
 
-    // MARK: Organizacja
-    @ViewBuilder private var organizationFields: some View {
-        Section("Dane firmy") {
-            text("name", "Pełna nazwa")
-            text("alias", "Nazwa skrócona (alias)", prompt: "Wyświetlana na liście zamiast pełnej nazwy")
-            choice("business_type", "Profil działalności", ContactDictionaries.businessTypes, empty: nil)
-            choice("legal_form", "Forma prawna", ContactDictionaries.legalForms, empty: "Wybierz")
-            text("nip", "NIP")
-            text("krs", "KRS")
-            text("regon", "REGON")
-        }
-        Section("Kontakt") {
-            text("email", "E-mail")
-            text("phone", "Telefon")
-            text("website", "Strona WWW", prompt: "https://")
-        }
-        Section("Adres") {
-            text("address", "Adres")
-            text("postal_code", "Kod pocztowy")
-            text("city", "Miasto")
-            text("country", "Kraj", prompt: "Polska")
-        }
-        Section("Ocena i status") {
-            Picker("Ocena", selection: $rating) {
-                Text("Brak oceny").tag(0)
-                ForEach(1...5, id: \.self) { Text(String(repeating: "★", count: $0)).tag($0) }
+    private var form: some View {
+        Form {
+            Section("Osoba") {
+                text("first_name", "Imię", required: true)
+                text("last_name", "Nazwisko", required: true)
+                if kind == .contact {
+                    text("position", "Stanowisko", prompt: "np. Kierownik sprzedaży")
+                    text("nip", "NIP", prompt: "0000000000")
+                } else {
+                    text("pesel", "PESEL", prompt: "00000000000")
+                    text("id_number", "Numer dowodu", prompt: "ABC123456")
+                }
             }
-            choice("status", "Status", ContactDictionaries.organizationStatuses, empty: nil)
-        }
-    }
-
-    // MARK: Kontakt i osoba prywatna
-    @ViewBuilder private var personFields: some View {
-        Section("Osoba") {
-            text("first_name", "Imię")
-            text("last_name", "Nazwisko")
-            if kind == .contact { text("position", "Stanowisko") }
-        }
-        Section("Kontakt") {
-            text("email", "E-mail")
+            Section("Kontakt") {
+                text("email", "E-mail")
+                if kind == .individual {
+                    text("phone", "Telefon główny", prompt: "600 123 456")
+                    text("mobile", "Numer alternatywny", prompt: "600 123 456")
+                    text("alternative_contact_name", "Osoba alternatywna", prompt: "np. Anna Kowalska — mama")
+                } else {
+                    text("mobile", "Telefon komórkowy", prompt: "600 123 456")
+                    text("phone", "Telefon prywatny", prompt: "600 123 456")
+                    text("business_phone", "Telefon firmowy", prompt: "22 123 4567")
+                }
+            }
+            Section("Adres") {
+                text("address", "Adres", prompt: "np. Kwiatowa 12/3")
+                text("postal_code", "Kod pocztowy", prompt: "00-000")
+                text("city", "Miasto")
+            }
             if kind == .individual {
-                text("phone", "Telefon główny")
-                text("mobile", "Numer alternatywny")
-                text("alternative_contact_name", "Osoba alternatywna", prompt: "np. Anna Kowalska — mama")
-            } else {
-                text("mobile", "Telefon komórkowy")
-                text("phone", "Telefon prywatny")
-                text("business_phone", "Telefon firmowy")
-                text("nip", "NIP")
+                Section("Uroczystość") {
+                    choice("event_type", "Rodzaj uroczystości", ContactDictionaries.eventTypes)
+                    text("event_details", "Szczegóły uroczystości", prompt: "Dodatkowe informacje o uroczystości…", vertical: true)
+                }
+            }
+            if creating && kind == .contact { organizationSection }
+            Section("Notatki") {
+                text("notes", "Notatki", prompt: "Dodatkowe informacje…", vertical: true)
+            }
+            if problem != nil || !otherErrors.isEmpty {
+                Section {
+                    if let problem { Label(problem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).textSelection(.enabled) }
+                    ForEach(otherErrors, id: \.self) { Text($0).font(.caption).foregroundStyle(.red) }
+                    if let duplicateID, let existing = store.entry(duplicateID) {
+                        Button("Otwórz istniejący kontakt: \(existing.name)") {
+                            store.open(existing.id, kind: existing.contactKind)
+                            dismiss()
+                        }
+                    }
+                }
             }
         }
-        Section("Adres") {
-            text("address", "Adres")
-            text("postal_code", "Kod pocztowy")
-            text("city", "Miasto")
-        }
-        if kind == .individual {
-            Section("Uroczystość") {
-                choice("event_type", "Rodzaj uroczystości", ContactDictionaries.eventTypes, empty: "Wybierz")
-                text("event_details", "Szczegóły uroczystości", vertical: true)
+        .formStyle(.grouped)
+        .disabled(saving)
+    }
+
+    /// Kontakt od razu przy organizacji (opcjonalnie) — stanowisko z pola „Stanowisko”.
+    private var organizationSection: some View {
+        Section {
+            if let organization = store.entry(organizationID) {
+                HStack {
+                    Label(organization.name, systemImage: "building.2")
+                    Spacer()
+                    Button("Usuń wybór") { organizationID = "" }.controlSize(.small)
+                }
             }
-        }
-        Section("Notatki") {
-            text("notes", "Notatki", vertical: true)
+            ContactSearchPicker(prompt: "Wyszukaj organizację…", candidates: store.contacts.filter(\.isOrganization)) { organizationID = $0.id }
+        } header: {
+            Text("Organizacja (opcjonalnie)")
+        } footer: {
+            Text("Powiązanie możesz też dodać później w karcie kontaktu albo organizacji.").font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -162,22 +228,22 @@ import SwiftUI
     private func binding(_ key: String) -> Binding<String> {
         Binding(get: { values[key] ?? "" }, set: { values[key] = $0; errors.removeValue(forKey: key) })
     }
-    @ViewBuilder private func text(_ key: String, _ label: String, prompt: String? = nil, vertical: Bool = false) -> some View {
+    @ViewBuilder private func text(_ key: String, _ label: String, prompt: String? = nil, vertical: Bool = false, required: Bool = false) -> some View {
+        let title = required && creating ? "\(label) *" : label
         VStack(alignment: .leading, spacing: 3) {
             if vertical {
-                TextField(label, text: binding(key), prompt: prompt.map { Text($0) }, axis: .vertical).lineLimit(3...8).focused($focused, equals: key)
+                TextField(title, text: binding(key), prompt: prompt.map { Text($0) }, axis: .vertical).lineLimit(3...8).focused($focused, equals: key)
             } else {
-                TextField(label, text: binding(key), prompt: prompt.map { Text($0) }).focused($focused, equals: key)
+                TextField(title, text: binding(key), prompt: prompt.map { Text($0) }).focused($focused, equals: key)
             }
             if let issue = errors[key] { Text(issue).font(.caption).foregroundStyle(.red) }
         }
     }
-    @ViewBuilder private func choice(_ key: String, _ label: String, _ options: [InquiryOption], empty: String?) -> some View {
+    @ViewBuilder private func choice(_ key: String, _ label: String, _ options: [InquiryOption]) -> some View {
         let current = values[key] ?? ""
         VStack(alignment: .leading, spacing: 3) {
             Picker(label, selection: binding(key)) {
-                if let empty { Text(empty).tag("") }
-                else if current.isEmpty { Text("—").tag("") }
+                Text("Wybierz").tag("")
                 ForEach(options) { Text($0.label).tag($0.value) }
                 if !current.isEmpty && !options.contains(where: { $0.value == current }) { Text(current).tag(current) }
             }
@@ -185,74 +251,94 @@ import SwiftUI
         }
     }
 
-    // MARK: Zapis
+    // MARK: Dane i zapis
+    private func prepare() {
+        guard !prepared else { return }
+        if creating { prepared = true; return }
+        guard let person = card?.contact else { return }
+        prepared = true
+        let loaded: [String: String] = [
+            "first_name": person.firstName, "last_name": person.lastName, "email": person.email, "phone": person.phone, "mobile": person.mobile,
+            "business_phone": person.businessPhone, "position": person.position, "nip": person.nip, "pesel": person.pesel, "id_number": person.idNumber,
+            "alternative_contact_name": person.alternativeContact, "address": person.address, "postal_code": person.postalCode, "city": person.city,
+            "event_type": person.eventType, "event_details": person.eventDetails, "notes": person.notes,
+        ]
+        values = loaded
+        original = loaded
+    }
+
     private func trimmed(_ key: String) -> String { (values[key] ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private func validate() -> [String: String] {
         var found: [String: String] = [:]
         let email = trimmed("email")
         if !email.isEmpty && email.range(of: "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$", options: .regularExpression) == nil {
-            found["email"] = "Wpisz poprawny adres e-mail."
+            found["email"] = "Nieprawidłowy adres e-mail"
         }
-        if kind == .organization {
-            if trimmed("name").isEmpty { found["name"] = "Nazwa jest wymagana" }
+        if creating {
+            if trimmed("first_name").isEmpty { found["first_name"] = "Imię jest wymagane" }
+            if trimmed("last_name").isEmpty { found["last_name"] = "Nazwisko jest wymagane" }
+            let postal = trimmed("postal_code")
+            if !postal.isEmpty && postal.range(of: "^\\d{2}-\\d{3}$", options: .regularExpression) == nil {
+                found["postal_code"] = "Kod pocztowy musi mieć format 00-000"
+            }
         } else if trimmed("first_name").isEmpty && trimmed("last_name").isEmpty {
             found["first_name"] = "Wpisz imię lub nazwisko."
         }
         return found
     }
 
+    /// Istniejący kontakt z tym samym e-mailem, telefonem lub NIP-em (po odpowiedzi serwera o duplikacie).
+    private func localDuplicate() -> String? {
+        let email = trimmed("email").lowercased()
+        let phones = Set(["phone", "mobile", "business_phone"].map { ContactCardText.phoneKey(trimmed($0)) }.filter { !$0.isEmpty })
+        let nip = trimmed("nip").filter(\.isNumber)
+        return store.contacts.first { candidate in
+            guard !candidate.isOrganization else { return false }
+            if !email.isEmpty && candidate.email.lowercased() == email { return true }
+            let candidatePhones = Set([candidate.phone, candidate.mobile, candidate.businessPhone].map(ContactCardText.phoneKey).filter { !$0.isEmpty })
+            if !phones.isDisjoint(with: candidatePhones) { return true }
+            return !nip.isEmpty && candidate.nip.filter(\.isNumber) == nip
+        }?.id
+    }
+
     private func save() async {
-        problem = nil
+        problem = nil; duplicateID = nil
         errors = validate()
-        if let first = shownKeys.first(where: { errors[$0] != nil }) { focused = first; return }
-        let before = original
-        var data: [String: JSONValue] = [:]
-        for key in shownKeys where key != "rating" {
-            let value = trimmed(key)
-            guard value != (before[key] ?? "").trimmingCharacters(in: .whitespacesAndNewlines) else { continue }
-            data[key] = value.isEmpty ? .null : .string(value)
-        }
-        if kind == .organization && rating != (entry.rating ?? 0) { data["rating"] = rating == 0 ? .null : .number(Double(rating)) }
-        if data.isEmpty { dismiss(); return }
-        let edited = values.mapValues { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        let stars = rating
-        let organization = kind == .organization
-        let individual = kind == .individual
+        if let first = keys.first(where: { errors[$0] != nil }) { focused = first; return }
+        guard store.workspace?.canWrite == true else { problem = "Zapis wymaga połączenia z serwerem CRM."; return }
         saving = true
         defer { saving = false }
         do {
-            try await store.update(entry, data: data) { e in
-                if organization {
-                    e.legalName = edited["name"] ?? e.legalName; e.alias = edited["alias"] ?? ""
-                    e.name = e.alias.isEmpty ? e.legalName : e.alias
-                    e.businessType = edited["business_type"] ?? ""; e.legalForm = edited["legal_form"] ?? ""
-                    e.nip = edited["nip"] ?? ""; e.krs = edited["krs"] ?? ""; e.regon = edited["regon"] ?? ""
-                    e.email = edited["email"] ?? ""; e.phone = edited["phone"] ?? ""; e.website = edited["website"] ?? ""
-                    e.address = edited["address"] ?? ""; e.postalCode = edited["postal_code"] ?? ""; e.city = edited["city"] ?? ""
-                    e.country = edited["country"] ?? ""; e.status = edited["status"] ?? e.status; e.rating = stars == 0 ? nil : stars
-                } else {
-                    e.firstName = edited["first_name"] ?? ""; e.lastName = edited["last_name"] ?? ""
-                    let full = "\(e.firstName) \(e.lastName)".trimmingCharacters(in: .whitespaces)
-                    e.name = full.isEmpty ? "—" : full
-                    e.email = edited["email"] ?? ""; e.phone = edited["phone"] ?? ""; e.mobile = edited["mobile"] ?? ""
-                    e.address = edited["address"] ?? ""; e.postalCode = edited["postal_code"] ?? ""; e.city = edited["city"] ?? ""
-                    e.notes = edited["notes"] ?? ""
-                    if individual {
-                        e.nip = ""; e.position = ""; e.businessPhone = ""
-                        e.alternativeContact = edited["alternative_contact_name"] ?? ""
-                        e.eventType = edited["event_type"] ?? ""; e.eventDetails = edited["event_details"] ?? ""
-                    } else {
-                        e.position = edited["position"] ?? ""; e.businessPhone = edited["business_phone"] ?? ""; e.nip = edited["nip"] ?? ""
-                    }
+            if creating {
+                var data: [String: JSONValue] = [:]
+                for key in keys { data[key] = .string(trimmed(key)) }
+                var body: [String: JSONValue] = ["kind": .string(kind.rawValue), "data": .object(data)]
+                if !organizationID.isEmpty { body["organizationId"] = .string(organizationID) }
+                let reply = try await store.post("create", body)
+                let id = reply["id"]?.text ?? ""
+                store.workspace?.succeed(reply["message"]?.text.nonEmpty ?? "Kontakt dodany")
+                if let warning = (reply["warnings"]?.array ?? []).map(\.text).first(where: { !$0.isEmpty }) { store.workspace?.notice = warning }
+                await store.sync(force: true)
+                if !id.isEmpty { store.open(id, kind: kind) }
+                dismiss()
+            } else if let ref = mode.ref {
+                var data: [String: JSONValue] = [:]
+                for key in keys {
+                    let value = trimmed(key)
+                    guard value != (original[key] ?? "").trimmingCharacters(in: .whitespacesAndNewlines) else { continue }
+                    data[key] = value.isEmpty ? .null : .string(value)
                 }
+                if data.isEmpty { dismiss(); return }
+                try await store.save(ref, data: data)
+                store.workspace?.succeed(kind == .individual ? "Dane osoby prywatnej zaktualizowane" : "Dane kontaktu zaktualizowane")
+                dismiss()
             }
-            store.workspace?.succeed(organization ? "Dane organizacji zaktualizowane" : "Dane kontaktu zaktualizowane")
-            dismiss()
         } catch let failure as NativeFailure {
             errors = failure.fieldErrors
             problem = failure.message
-            if let first = shownKeys.first(where: { errors[$0] != nil }) { focused = first }
+            if failure.status == 409 { duplicateID = localDuplicate() }
+            if let first = keys.first(where: { errors[$0] != nil }) { focused = first }
         } catch {
             problem = store.failureText(error, "Błąd podczas zapisywania")
         }

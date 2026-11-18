@@ -243,7 +243,7 @@ enum SubcontractorLabels {
         Button(sendTitle, systemImage: "paperplane") { Task { await send(task) } }.disabled(sending == task.id)
         if let id = task.subcontractorId {
             Divider()
-            Button("Karta podwykonawcy w CRM", systemImage: "arrow.up.right.square") { state.openCRM("/crm/subcontractors/\(id)") }
+            Button("Karta podwykonawcy", systemImage: "arrow.up.right.square") { state.showSubcontractor(id) }
         }
         if let email = task.contactEmail?.nonEmpty ?? task.subcontractor?.email?.nonEmpty, let url = URL(string: "mailto:" + email) {
             Button("Napisz e-mail", systemImage: "envelope") { NSWorkspace.shared.open(url) }
@@ -290,10 +290,10 @@ enum SubcontractorLabels {
         if let person = task.subcontractor {
             HStack(spacing: 14) {
                 if let id = task.subcontractorId {
-                    Button { state.openCRM("/crm/subcontractors/\(id)") } label: {
+                    Button { state.showSubcontractor(id) } label: {
                         Label(person.name, systemImage: "arrow.up.right.square").labelStyle(TrailingIconLabel())
                     }
-                    .buttonStyle(.plain).help("Otwórz kartę podwykonawcy w CRM")
+                    .buttonStyle(.plain).help("Otwórz kartę podwykonawcy")
                 } else {
                     Text(person.name)
                 }
@@ -348,7 +348,7 @@ enum SubcontractorLabels {
     @ViewBuilder private func contractMenu(_ contract: SubcontractorsTabData.Contract) -> some View {
         Button("Podgląd umowy", systemImage: "doc.text.magnifyingglass") { Task { await openContract(contract) } }.disabled(!contract.hasFile)
         if let id = contract.subcontractorId {
-            Button("Karta podwykonawcy w CRM", systemImage: "arrow.up.right.square") { state.openCRM("/crm/subcontractors/\(id)") }
+            Button("Karta podwykonawcy", systemImage: "arrow.up.right.square") { state.showSubcontractor(id) }
         }
     }
 

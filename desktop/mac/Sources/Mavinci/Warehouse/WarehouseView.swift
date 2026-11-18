@@ -24,6 +24,8 @@ struct WarehouseActions {
     @State private var selectedID: String?
     @State private var removing: WarehouseEntry?
     @State private var duplicating: WarehouseEntry?
+    /// „Lokalizacje” — lokalizacje magazynowe (`/crm/equipment/locations`).
+    @State private var locationsShown = false
 
     private var categoryIDs: Set<String> { Set(store.categories.map(\.id)) }
     private func uncategorized(_ entry: WarehouseEntry) -> Bool { entry.categoryId.map { !categoryIDs.contains($0) } ?? true }
@@ -115,6 +117,9 @@ struct WarehouseActions {
             // Zakres z usuniętej kategorii — wracamy do całego magazynu.
             if let id = scopedCategoryID, !store.categories.isEmpty, store.category(id) == nil { scope = "all" }
         }
+        .sheet(isPresented: $locationsShown) {
+            StorageLocationsSheet { Task { await store.sync(force: true) } }.warehouseSheetStyle(state)
+        }
         .navigationTitle("Magazyn")
         .navigationSubtitle("Wyświetlasz: \(visible.count) / \(store.entries.count)")
         .searchable(text: $search, placement: .toolbar, prompt: "Szukaj...")
@@ -122,7 +127,7 @@ struct WarehouseActions {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button { state.openHref("/crm/equipment/categories") } label: { Label("Kategorie", systemImage: "folder") }.help("Kategorie")
                 Button { state.openHref("/crm/equipment/kits") } label: { Label("Zestawy", systemImage: "square.stack.3d.up") }.help("Zestawy")
-                Button { state.openCRM("/crm/equipment/locations") } label: { Label("Lokalizacje", systemImage: "mappin.and.ellipse") }.help("Lokalizacje (CRM)")
+                Button { locationsShown = true } label: { Label("Lokalizacje", systemImage: "mappin.and.ellipse") }.help("Lokalizacje magazynowe")
                 Button { state.openHref("/crm/equipment/cables") } label: { Label("Przewody", systemImage: "cable.connector") }.help("Przewody")
             }
         }

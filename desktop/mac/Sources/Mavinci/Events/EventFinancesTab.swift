@@ -2,7 +2,8 @@ import SwiftUI
 
 // MARK: Finanse wydarzenia (1:1 z `EventFinancesTab` i `EventFinancialControls`): sposób rozliczenia i terminy płatności,
 // zamknięcie wydarzenia, klient, podsumowanie, rentowność (plan / wykonanie, jakość danych), prowizje i polecenia, faktury,
-// koszty i budżet gotówkowy. Wartości liczy serwer tak samo jak CRM. Wystawianie faktur — moduł Faktury (CRM).
+// koszty i budżet gotówkowy. Wartości liczy serwer tak samo jak CRM. Wystawianie faktury dla wydarzenia (`InvoiceFormSheet`)
+// i faktury końcowej rozliczającej jego zaliczki (`FinalInvoiceSheet`) — natywnie.
 
 struct FinancesTabData: Decodable {
     struct Access: Decodable { var canViewCosts: Bool; var canManageCosts: Bool; var canApproveCosts: Bool; var canPlanCommissions: Bool; var canApproveCommissions: Bool; var isAdmin: Bool }
@@ -106,6 +107,8 @@ enum FinanceText {
     @State private var deletingCost: FinancesTabData.Cost?
     @State private var cancelling: FinancesTabData.Commission?
     @State private var cancelReason = ""
+    @State private var invoiceForm: InvoiceFormRequest?
+    @State private var finalInvoice: FinalInvoiceRequest?
 
     private var data: FinancesTabData? { store.tab(eventID, "finances", as: FinancesTabData.self) }
 
@@ -130,6 +133,23 @@ enum FinanceText {
         }
         .task(id: eventID) { await store.loadTab(eventID, "finances") }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in Task { await store.loadTab(eventID, "finances") } }
+        .sheet(item: $invoiceForm) { request in
+            // Faktura dla wydarzenia (jak `/crm/invoices/new?event=`): po wystawieniu — świeże finanse wydarzenia i karta faktury.
+            InvoiceFormSheet(request: request) { id in
+                Task { await store.loadTab(eventID, "finances") }
+                state.showInvoice(id)
+            }
+            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(item: $finalInvoice) { request in
+            // „Wystaw fakturę końcową” (jak `FinalInvoiceWizardModal` z `initialEventId`): po wystawieniu — świeże finanse
+            // wydarzenia i karta nowej faktury.
+            FinalInvoiceSheet(eventID: request.eventID) { id in
+                Task { await store.loadTab(eventID, "finances") }
+                state.showInvoice(id)
+            }
+            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
         .confirmationDialog("Czy na pewno chcesz usunąć ten koszt?", isPresented: Binding(get: { deletingCost != nil }, set: { if !$0 { deletingCost = nil } }), titleVisibility: .visible) {
             if let cost = deletingCost {
                 Button("Usuń", role: .destructive) { Task { await act("deleteCost", ["id": .string(cost.id)], "Koszt został usunięty", "Błąd podczas usuwania kosztu") } }
@@ -471,10 +491,10 @@ enum FinanceText {
                 Label("Faktury (\(d.invoices.count))", systemImage: "doc.text").font(.headline)
                 Spacer()
                 if d.invoices.contains(where: { $0.type == "advance" }) {
-                    Button { state.openCRM("/crm/events/\(eventID)?tab=finances") } label: { Label("Wystaw fakturę końcową", systemImage: "doc.text") }
-                        .help("Kreator faktury końcowej otworzy się w CRM.")
+                    Button { finalInvoice = FinalInvoiceRequest(eventID: eventID) } label: { Label("Wystaw fakturę końcową", systemImage: "doc.text") }
+                        .help("Faktura na całe zamówienie wydarzenia, rozliczająca jego zaliczki.")
                 }
-                Button { state.openCRM("/crm/invoices/new?event=\(eventID)") } label: { Label("Wystaw fakturę", systemImage: "plus") }.buttonStyle(.borderedProminent)
+                Button { invoiceForm = .new(type: "vat", eventID: eventID) } label: { Label("Wystaw fakturę", systemImage: "plus") }.buttonStyle(.borderedProminent)
             }
             if d.invoices.isEmpty {
                 Text("Brak faktur dla tego eventu").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(20)
@@ -521,10 +541,8 @@ enum FinanceText {
         .contextMenu { Button("Otwórz fakturę", systemImage: "doc.text.magnifyingglass") { openInvoice(invoice.id) } }
     }
 
-    private func openInvoice(_ id: String) {
-        if state.native.meta("invoices") != nil || state.native.records["invoices"] != nil { state.showNative("invoices", focus: id) }
-        else { state.openCRM("/crm/invoices/\(id)") }
-    }
+    /// Karta faktury w Finansach (rejestr sprzedaży); bez dostępu do Finansów — karta w CRM.
+    private func openInvoice(_ id: String) { state.showInvoice(id) }
 
     // MARK: Koszty
 
@@ -941,7 +959,7 @@ enum FinanceText {
             }
             Text(line).font(.caption).foregroundStyle(.secondary)
             if let invoiceID = item.invoiceId {
-                Button((data.invoices.first { $0.id == invoiceID }?.number ?? "Otwórz fakturę") + " · płatność aktualizowana z finansów") { state.openCRM("/crm/invoices/\(invoiceID)") }
+                Button((data.invoices.first { $0.id == invoiceID }?.number ?? "Otwórz fakturę") + " · płatność aktualizowana z finansów") { state.showInvoice(invoiceID) }
                     .buttonStyle(.link).linkCursor().font(.caption)
             }
             if canManage {

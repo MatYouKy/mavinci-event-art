@@ -5,6 +5,9 @@ import {
   fetchMissingUpo,
   financePeriods,
   financeState,
+  invoicePdfFile,
+  invoicePdfGenerate,
+  invoiceUpo,
   lockPeriod,
   reminderPreview,
   reminderSetup,
@@ -16,6 +19,21 @@ import {
 } from '@/lib/native/finance';
 import { deleteFinanceEntry, financeEntries, saveFinanceEntry } from '@/lib/native/financeEntries';
 import { invoiceCancel, invoiceDelete, invoiceDetail, invoicesList, invoiceStatus } from '@/lib/native/financeInvoices';
+import {
+  invoiceBuyerLink,
+  invoiceCreate,
+  invoiceEvent,
+  invoiceFormSetup,
+  invoiceNumberCheck,
+  invoiceNumberPeek,
+  invoiceOrganizationEvents,
+  invoiceOriginal,
+  recipientOrganization,
+  recipientOrganizations,
+} from '@/lib/native/financeInvoiceForm';
+import { proformaConvert, proformaNumber, proformaSetup } from '@/lib/native/financeProforma';
+import { invoiceEditEvents, invoiceEditSave, invoiceEditSetup } from '@/lib/native/financeInvoiceEdit';
+import { finalCandidates, finalCreate, finalItems, finalNumber, finalSearch, finalSetup } from '@/lib/native/financeFinalInvoice';
 import {
   ksefAddPayment,
   ksefCompanies,
@@ -35,14 +53,29 @@ export const maxDuration = 120;
 /*
  * Finanse dla aplikacji na Maca (`src/lib/native/finance.ts`) — token pracownika, uprawnienia jak w CRM (funkcje bazy).
  * GET op=state&company=…&year=… (działalności z „Podglądem finansów”, Centrum finansów, terminy i monity, biała lista,
- * zamknięcia miesięcy) | periods&company=…&year=… | reminder&invoice=… (okno przypomnienia o płatności).
+ * zamknięcia miesięcy) | periods&company=…&year=… | reminder&invoice=…&mode=reminder|invoice (okno przypomnienia
+ * o płatności albo „Wyślij email” z karty faktury).
  * POST op=taxRate {companyId, rate} | obligations {companyId, settings} | paymentDue {invoiceId, date, remember} |
  * supplierTermDelete {companyId, nip} | lock {companyId, year, month, note} | unlock {companyId, year, month, reason} |
  * whitelist {companyId, mode, ids?, force?} | upoMissing {companyId} | reminderPreview {invoiceId, accountId, subject,
- * text, recipientName} | reminderSend {invoiceId, accountId, to, cc, bcc, subject, text, recipientName, scheduledAt?}.
+ * text, recipientName, mode?} | reminderSend {invoiceId, accountId, to, cc, bcc, subject, text, recipientName, scheduledAt?,
+ * mode?} (mode=invoice — faktura e-mailem z karty, bez historii monitów).
  * Koszty i wypłaty (`src/lib/native/financeEntries.ts`): GET op=entries | POST op=entrySave {…} | entryDelete {id}.
  * Faktury (`src/lib/native/financeInvoices.ts`): GET op=invoices | invoice&id=… | POST op=invoiceStatus {id, status, paidDate?} |
- * invoiceCancel {id, reason, notDelivered} | invoiceDelete {id}.
+ * invoiceCancel {id, reason, notDelivered} | invoiceDelete {id}. Karta faktury (`finance.ts`): GET op=invoicePdfFile&id=… (zapisany
+ * PDF) | POST op=invoicePdf {id} („Generuj / Regeneruj PDF”) | invoiceUpo {id} (UPO z KSeF). Wysyłka do KSeF — trasa CRM
+ * `/bridge/ksef/invoices/send` (strumień postępu, token aplikacji).
+ * Wystawianie (`src/lib/native/financeInvoiceForm.ts`, jak `/crm/invoices/new`): GET op=invoiceForm&type=…&advanceFrom=… |
+ * invoiceEvent&id=…&mode=new|keep | invoiceOrgEvents&org=…&keep=… | invoiceBuyerLink&org=… | invoiceRecipientOrgs |
+ * invoiceRecipientOrg&id=… | invoiceOriginal&id=… | invoiceNumber&type=…&company=… | invoiceNumberCheck&company=…&number=… |
+ * POST op=invoiceCreate {form}. Faktura z pro formy (`src/lib/native/financeProforma.ts`, jak `ConvertProformaModal`): GET
+ * op=proformaSetup&id=… | proformaNumber&id=…&type=vat|advance | POST op=proformaConvert {id, form, recipientUnreadable?}.
+ * Edycja szkicu / pro formy (`src/lib/native/financeInvoiceEdit.ts`, jak `/crm/invoices/[id]/edit`): GET op=invoiceEdit&id=… |
+ * invoiceEditEvents&org=…&keep=… | POST op=invoiceEdit {id, form}.
+ * Faktura końcowa (`src/lib/native/financeFinalInvoice.ts`, jak `FinalInvoiceWizardModal`): GET op=finalSetup |
+ * finalSearch&kind=event|organization&q=… | finalCandidates&advance=…&mode=…&event=…&org=… |
+ * finalItems&advance=…&snapshot=…&event=… | finalNumber&company=… | POST op=finalCreate {advance, mode, event, org, selected,
+ * companyId, items, recipient, useCustomNumber, customNumber, issueDate, saleDate, paymentTermDays}.
  * KSeF (`src/lib/native/financeKsef.ts`): GET op=ksef | ksefInvoices&company=… | POST op=ksefPaid {id} | ksefUnpaid {id} |
  * ksefPaymentAdd {id, amount, date, notes} | ksefPaymentRemove {paymentId} | ksefPaymentSave {id, dueDate, paymentDate} |
  * ksefReviewResolve {id} | ksefDelete {id}. Synchronizacja — trasy `/bridge/ksef/auth/token` i `/bridge/ksef/invoices/*`.
@@ -68,13 +101,51 @@ export async function GET(request: Request) {
       case 'periods':
         return nativeJson(await financePeriods(ctx, url.searchParams.get('company') || '', url.searchParams.get('year')));
       case 'reminder':
-        return nativeJson(await reminderSetup(ctx, url.searchParams.get('invoice') || ''));
+        return nativeJson(await reminderSetup(ctx, url.searchParams.get('invoice') || '', url.searchParams.get('mode')));
+      case 'invoicePdfFile':
+        return nativeJson(await invoicePdfFile(ctx, url.searchParams.get('id')));
       case 'entries':
         return nativeJson(await financeEntries(ctx));
       case 'invoices':
         return nativeJson(await invoicesList(ctx));
       case 'invoice':
         return nativeJson(await invoiceDetail(ctx, url.searchParams.get('id')));
+      case 'invoiceForm':
+        return nativeJson(await invoiceFormSetup(ctx, url.searchParams));
+      case 'invoiceEvent':
+        return nativeJson(await invoiceEvent(ctx, url.searchParams.get('id'), url.searchParams.get('mode')));
+      case 'invoiceOrgEvents':
+        return nativeJson(await invoiceOrganizationEvents(ctx, url.searchParams.get('org'), url.searchParams.get('keep')));
+      case 'invoiceBuyerLink':
+        return nativeJson(await invoiceBuyerLink(ctx, url.searchParams.get('org')));
+      case 'invoiceRecipientOrgs':
+        return nativeJson(await recipientOrganizations(ctx));
+      case 'invoiceRecipientOrg':
+        return nativeJson(await recipientOrganization(ctx, url.searchParams.get('id')));
+      case 'invoiceOriginal':
+        return nativeJson(await invoiceOriginal(ctx, url.searchParams.get('id')));
+      case 'invoiceNumber':
+        return nativeJson(await invoiceNumberPeek(ctx, url.searchParams.get('type'), url.searchParams.get('company')));
+      case 'invoiceNumberCheck':
+        return nativeJson(await invoiceNumberCheck(ctx, url.searchParams.get('company'), url.searchParams.get('number')));
+      case 'invoiceEdit':
+        return nativeJson(await invoiceEditSetup(ctx, url.searchParams.get('id')));
+      case 'invoiceEditEvents':
+        return nativeJson(await invoiceEditEvents(ctx, url.searchParams.get('org'), url.searchParams.get('keep')));
+      case 'proformaSetup':
+        return nativeJson(await proformaSetup(ctx, url.searchParams.get('id')));
+      case 'finalSetup':
+        return nativeJson(await finalSetup(ctx));
+      case 'finalSearch':
+        return nativeJson(await finalSearch(ctx, url.searchParams.get('kind'), url.searchParams.get('q')));
+      case 'finalCandidates':
+        return nativeJson(await finalCandidates(ctx, url.searchParams));
+      case 'finalItems':
+        return nativeJson(await finalItems(ctx, url.searchParams));
+      case 'finalNumber':
+        return nativeJson(await finalNumber(ctx, url.searchParams.get('company')));
+      case 'proformaNumber':
+        return nativeJson(await proformaNumber(ctx, url.searchParams.get('id'), url.searchParams.get('type')));
       case 'ksef':
         return nativeJson(await ksefCompanies(ctx));
       case 'ksefInvoices':
@@ -93,7 +164,7 @@ export async function POST(request: Request) {
   if (!ctx) return nativeUnauthorized();
   let body: Record<string, unknown>;
   try {
-    body = await readJson(request, 64_000);
+    body = await readJson(request, 512_000);
   } catch {
     return failure('Nieprawidłowe dane.');
   }
@@ -128,6 +199,18 @@ export async function POST(request: Request) {
         return nativeJson(await invoiceCancel(ctx, body));
       case 'invoiceDelete':
         return nativeJson(await invoiceDelete(ctx, body));
+      case 'invoiceCreate':
+        return nativeJson(await invoiceCreate(ctx, body));
+      case 'invoicePdf':
+        return nativeJson(await invoicePdfGenerate(ctx, body));
+      case 'invoiceEdit':
+        return nativeJson(await invoiceEditSave(ctx, body));
+      case 'proformaConvert':
+        return nativeJson(await proformaConvert(ctx, body));
+      case 'finalCreate':
+        return nativeJson(await finalCreate(ctx, body));
+      case 'invoiceUpo':
+        return nativeJson(await invoiceUpo(ctx, body));
       case 'ksefPaid':
         return nativeJson(await ksefMarkPaid(ctx, body));
       case 'ksefUnpaid':

@@ -445,28 +445,30 @@ enum FinDeadlinesList: String, CaseIterable, Identifiable {
         }
     }
 
-    // MARK: Przypomnienie o płatności
-    func reminderSetup(_ invoiceID: String) async throws -> FinReminderSetup {
+    // MARK: Przypomnienie o płatności / faktura e-mailem
+    func reminderSetup(_ invoiceID: String, mode: FinEmailMode = .reminder) async throws -> FinReminderSetup {
         guard let api else { throw AppError.configuration }
-        return try JSONDecoder().decode(FinReminderSetup.self, from: try await api.get("/finance", query: ["op": "reminder", "invoice": invoiceID]))
+        return try JSONDecoder().decode(FinReminderSetup.self, from: try await api.get("/finance", query: ["op": "reminder", "invoice": invoiceID, "mode": mode.rawValue]))
     }
 
-    func reminderPreview(_ invoiceID: String, accountId: String, subject: String, text: String, recipientName: String) async throws -> String {
+    func reminderPreview(_ invoiceID: String, accountId: String, subject: String, text: String, recipientName: String,
+                         mode: FinEmailMode = .reminder) async throws -> String {
         struct Reply: Decodable { var html: String }
         guard let api else { throw AppError.configuration }
         let body: [String: JSONValue] = [
             "op": .string("reminderPreview"), "invoiceId": .string(invoiceID), "accountId": .string(accountId),
-            "subject": .string(subject), "text": .string(text), "recipientName": .string(recipientName),
+            "subject": .string(subject), "text": .string(text), "recipientName": .string(recipientName), "mode": .string(mode.rawValue),
         ]
         return try JSONDecoder().decode(Reply.self, from: try await api.post("/finance", body)).html
     }
 
     func reminderSend(_ invoiceID: String, accountId: String, to: String, cc: String, bcc: String, subject: String, text: String,
-                      recipientName: String, scheduledAt: Date?) async throws -> FinReminderResult {
+                      recipientName: String, scheduledAt: Date?, mode: FinEmailMode = .reminder) async throws -> FinReminderResult {
         guard let api else { throw AppError.configuration }
         var body: [String: JSONValue] = [
             "op": .string("reminderSend"), "invoiceId": .string(invoiceID), "accountId": .string(accountId), "to": .string(to),
             "cc": .string(cc), "bcc": .string(bcc), "subject": .string(subject), "text": .string(text), "recipientName": .string(recipientName),
+            "mode": .string(mode.rawValue),
         ]
         if let scheduledAt { body["scheduledAt"] = .string(MeetingDates.iso(scheduledAt)) }
         return try JSONDecoder().decode(FinReminderResult.self, from: try await api.post("/finance", body, timeout: 180))

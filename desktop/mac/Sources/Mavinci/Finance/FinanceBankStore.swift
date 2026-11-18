@@ -596,6 +596,60 @@ enum BankPreviewItem: Identifiable {
         }
     }
 
+    // MARK: Karta faktury — PDF, UPO, e-mail (`/bridge/native/v1/finance`, op=invoicePdf | invoicePdfFile | invoiceUpo)
+
+    /// E-maile z fakturą wysłane z karty w tej sesji (jak „Wysłano e-mail: N×” na karcie faktury w CRM).
+    @Published var invoiceEmailsSent: [String: Int] = [:]
+
+    /// „Generuj PDF” / „Regeneruj PDF”: wydruk z danych faktury zapisany w plikach (wydarzenie — folder „Faktury”).
+    @discardableResult func generateInvoicePdf(_ id: String, regenerate: Bool) async -> Bool {
+        guard let workspace, let api else { return false }
+        guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return false }
+        do {
+            let data = try await workspace.withPending(regenerate ? "Regenerowanie dokumentu PDF…" : "Generowanie dokumentu PDF…") {
+                try await api.post("/finance", ["op": .string("invoicePdf"), "id": .string(id)], timeout: 180)
+            }
+            let reply = (try? JSONDecoder().decode([String: JSONValue].self, from: data)) ?? [:]
+            workspace.succeed(reply["message"]?.text.nonEmpty ?? "PDF wygenerowany i zapisany")
+            await loadInvoices(force: true)
+            return true
+        } catch {
+            workspace.error = failureText(error, "Błąd generowania PDF")
+            return false
+        }
+    }
+
+    /// Zapisany PDF faktury (podgląd, pobranie, druk).
+    func storedInvoicePdf(_ id: String) async -> BankFile? {
+        guard let workspace, let api else { return nil }
+        do {
+            let data = try await workspace.withPending("Pobieranie PDF…") { try await api.get("/finance", query: ["op": "invoicePdfFile", "id": id]) }
+            guard let file = decodeFile(try JSONDecoder().decode(BankFilePayload.self, from: data)) else {
+                workspace.error = "Nie można pobrać pliku. Wygeneruj PDF ponownie."
+                return nil
+            }
+            return file
+        } catch {
+            workspace.error = failureText(error, "Błąd pobierania PDF")
+            return nil
+        }
+    }
+
+    /// „Pobierz UPO (XML)” — zapisane UPO albo pobrane teraz z KSeF; plik trafia do Pobranych.
+    func downloadInvoiceUpo(_ id: String) async {
+        struct Reply: Decodable { var name: String; var xml: String }
+        guard let workspace, let api else { return }
+        do {
+            let data = try await workspace.withPending("Pobieranie z KSeF…") {
+                try await api.post("/finance", ["op": .string("invoiceUpo"), "id": .string(id)], timeout: 180)
+            }
+            let reply = try JSONDecoder().decode(Reply.self, from: data)
+            save(BankFile(name: reply.name, mime: "application/xml", data: Data(reply.xml.utf8)))
+        } catch {
+            workspace.error = failureText(error, "Nie udało się pobrać UPO z KSeF.")
+        }
+    }
+
     // MARK: KSeF (`/bridge/native/v1/finance`, op=ksef | ksefInvoices | ksefPaid | ksefUnpaid | ksefPayment… | ksefReviewResolve |
     // ksefDelete; synchronizacja — trasy CRM `/bridge/ksef/auth/token` i `/bridge/ksef/invoices/issued|received`)
     func loadKsefCompanies(force: Bool = false) async {

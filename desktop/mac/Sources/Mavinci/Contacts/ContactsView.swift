@@ -2,11 +2,15 @@ import SwiftUI
 import AppKit
 
 // MARK: Kontakty — 1:1 ze stroną `/crm/contacts`: typy (organizacje, kontakty, osoby prywatne), „Tylko sprzedawcy”, wyszukiwanie,
-// kafelki i lista, szczegóły w panelu bocznym (dane, powiązania, zapytania, broszury klienta), edycja, usuwanie, e-mail i spotkanie z karty.
+// kafelki i lista, szczegóły w panelu bocznym (dane, powiązania, zapytania, broszury klienta), e-mail i spotkanie z karty.
+// Karta rekordu jak `/crm/contacts/[id]` (`ContactCardView`), dodawanie jak `/crm/contacts/new` i edycja (`ContactEditorHost`).
+// Podwykonawcy — lista, karta i formularz (`SubcontractorsView.swift`) w tej samej sekcji.
 
-/// Czynności karty, listy i szczegółów.
+/// Czynności kafelka, listy, szczegółów i karty.
 struct ContactActions {
     let open: (ContactEntry) -> Void
+    /// Karta rekordu (szczegóły, osoby, reprezentacja, notatki, faktury, relacja) zamiast listy.
+    let card: (ContactEntry) -> Void
     let edit: (ContactEntry) -> Void
     let remove: (ContactEntry) -> Void
     let call: (ContactEntry) -> Void
@@ -25,10 +29,11 @@ struct ContactActions {
     @State private var search = ""
     @State private var selectedID: String?
     @State private var inspectorShown = false
-    @State private var editing: ContactEntry?
+    @State private var editor: ContactEditorMode?
     @State private var deleting: ContactEntry?
     @State private var composing: ComposeDraft?
     @State private var meeting: MeetingEditorRequest?
+    @State private var creatingSubcontractor = false
 
     private var visible: [ContactEntry] {
         store.contacts.filter { entry in
@@ -41,36 +46,23 @@ struct ContactActions {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            content.frame(maxWidth: .infinity, maxHeight: .infinity)
-            if !visible.isEmpty {
-                Text("Wyświetlono \(ContactFormat.count(visible.count))").font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity).padding(.vertical, 6)
+        Group {
+            if let route = store.openedSubcontractor {
+                SubcontractorCardView(store: store, route: route).id(route.id)
+            } else if store.subcontractorsShown {
+                SubcontractorsListView(store: store)
+            } else if let ref = store.opened {
+                ContactCardView(store: store, ref: ref, actions: actions).id(ref.id)
+            } else {
+                list
             }
         }
-        .navigationTitle("Kontakty")
-        .navigationSubtitle("Wszystkie kontakty")
-        .searchable(text: $search, placement: .toolbar, prompt: "Szukaj po nazwie, e-mailu lub telefonie")
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                if store.access?.canCreate == true {
-                    Button { state.openCRM("/crm/contacts/new") } label: { Label("Nowy kontakt", systemImage: "plus") }
-                        .help("Nowy kontakt (formularz CRM w przeglądarce — wyszukiwanie w GUS i CEIDG)")
-                }
-                Button { openSubcontractors() } label: { Label("Podwykonawcy", systemImage: "wrench.and.screwdriver") }
-                    .help("Podwykonawcy")
-                Button { inspectorShown.toggle() } label: { Label("Szczegóły", systemImage: "sidebar.trailing") }
-                    .help("Pokaż lub ukryj szczegóły kontaktu")
-            }
+        .sheet(isPresented: $creatingSubcontractor) {
+            SubcontractorProfileSheet(initial: nil) { saved in store.showCreatedSubcontractor(saved, workspace: state) }
+                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
-        .inspector(isPresented: $inspectorShown) {
-            ContactInspector(entry: store.entry(selectedID), store: store, inquiries: state.inquiries, actions: actions, select: select)
-                .inspectorColumnWidth(min: 300, ideal: 360, max: 500)
-                .background(theme.page)
-        }
-        .sheet(item: $editing) { entry in
-            ContactEditorSheet(store: store, entry: entry)
+        .sheet(item: $editor) { mode in
+            ContactEditorHost(store: store, mode: mode)
                 .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
         .sheet(item: $composing) { draft in
@@ -103,6 +95,44 @@ struct ContactActions {
         .onAppear { reveal() }
         .onChange(of: store.focusID) { _, _ in reveal() }
         .onChange(of: store.lastSync) { _, _ in reveal() }
+    }
+
+    /// Lista (kafelki albo tabela) z filtrami, wyszukiwaniem i szczegółami w panelu bocznym.
+    private var list: some View {
+        VStack(spacing: 0) {
+            header
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+            if !visible.isEmpty {
+                Text("Wyświetlono \(ContactFormat.count(visible.count))").font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity).padding(.vertical, 6)
+            }
+        }
+        .navigationTitle("Kontakty")
+        .navigationSubtitle("Wszystkie kontakty")
+        .searchable(text: $search, placement: .toolbar, prompt: "Szukaj po nazwie, e-mailu lub telefonie")
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                if store.access?.canCreate == true {
+                    Menu {
+                        Button("Organizacja", systemImage: ContactKind.organization.symbol) { editor = .create(.organization) }
+                        Button("Kontakt", systemImage: ContactKind.contact.symbol) { editor = .create(.contact) }
+                        Button("Osoba prywatna", systemImage: ContactKind.individual.symbol) { editor = .create(.individual) }
+                        Divider()
+                        Button("Podwykonawca", systemImage: "wrench.and.screwdriver") { creatingSubcontractor = true }
+                    } label: { Label("Nowy kontakt", systemImage: "plus") }
+                        .help("Nowa organizacja (z danymi z GUS, KRS i CEIDG), kontakt, osoba prywatna albo podwykonawca")
+                }
+                Button { openSubcontractors() } label: { Label("Podwykonawcy", systemImage: "wrench.and.screwdriver") }
+                    .help("Podwykonawcy")
+                Button { inspectorShown.toggle() } label: { Label("Szczegóły", systemImage: "sidebar.trailing") }
+                    .help("Pokaż lub ukryj szczegóły kontaktu")
+            }
+        }
+        .inspector(isPresented: $inspectorShown) {
+            ContactInspector(entry: store.entry(selectedID), store: store, inquiries: state.inquiries, actions: actions, select: select)
+                .inspectorColumnWidth(min: 300, ideal: 360, max: 500)
+                .background(theme.page)
+        }
         .onChange(of: selectedID) { _, id in if id != nil { inspectorShown = true } }
     }
 
@@ -153,7 +183,7 @@ struct ContactActions {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 340), spacing: 12)], spacing: 12) {
                     ForEach(visible) { entry in
-                        ContactCardView(entry: entry, selected: selectedID == entry.id, canManage: store.canManage, actions: actions).id(entry.id)
+                        ContactTileView(entry: entry, selected: selectedID == entry.id, canManage: store.canManage, actions: actions).id(entry.id)
                     }
                 }
                 .padding(.horizontal, 14).padding(.vertical, 6)
@@ -167,7 +197,8 @@ struct ContactActions {
     private var actions: ContactActions {
         ContactActions(
             open: { selectedID = $0.id; inspectorShown = true },
-            edit: { editing = $0 },
+            card: { entry in store.open(entry.id, kind: entry.contactKind) },
+            edit: { entry in editor = .edit(ContactRef(id: entry.id, kind: entry.contactKind)) },
             remove: { deleting = $0 },
             call: { entry in openURL("tel", entry.callPhone) },
             email: { entry in compose(entry) },
@@ -191,9 +222,10 @@ struct ContactActions {
         inspectorShown = true
     }
 
+    /// Lista podwykonawców (jak `/crm/subcontractors`) w tej sekcji.
     private func openSubcontractors() {
-        if state.navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/subcontractors" }) { state.openHref("/crm/subcontractors") }
-        else { state.openCRM("/crm/subcontractors") }
+        store.openedSubcontractor = nil
+        store.subcontractorsShown = true
     }
 
     /// „Napisz e-mail” jak na karcie kontaktu w CRM: skrzynka firmowa, temat i powitanie; bez skrzynki — program pocztowy.
@@ -226,9 +258,9 @@ struct ContactActions {
     }
 }
 
-// MARK: Karta (kafelek)
+// MARK: Kafelek
 
-@MainActor struct ContactCardView: View {
+@MainActor struct ContactTileView: View {
     let entry: ContactEntry
     let selected: Bool
     let canManage: Bool
@@ -269,6 +301,7 @@ struct ContactActions {
         .background(selected ? theme.accent.opacity(0.14) : theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 10))
         .overlay(alignment: .leading) { if selected { RoundedRectangle(cornerRadius: 2).fill(theme.accent).frame(width: 3).padding(.vertical, 8) } }
         .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture(count: 2) { actions.card(entry) }
         .onTapGesture { actions.open(entry) }
         .contextMenu { ContactMenuItems(entry: entry, canManage: canManage, actions: actions) }
         .accessibilityElement(children: .contain)
@@ -343,15 +376,17 @@ struct ContactStars: View {
     let canManage: Bool
     let actions: ContactActions
     var body: some View {
+        Button("Otwórz kartę", systemImage: "person.text.rectangle") { actions.card(entry) }
         Button("Pokaż szczegóły", systemImage: "info.circle") { actions.open(entry) }
         Button("Pełna karta w CRM", systemImage: "safari") { actions.browser(entry) }
         Divider()
         Button("Zadzwoń", systemImage: "phone") { actions.call(entry) }.disabled(entry.callPhone.isEmpty)
         Button("Napisz e-mail", systemImage: "envelope") { actions.email(entry) }.disabled(entry.email.isEmpty)
         Button("Nowe spotkanie", systemImage: "calendar.badge.plus") { actions.meeting(entry) }
+        Divider()
+        // Edycja jak „Edytuj” w CRM — dla każdego z dostępem do kontaktów (zapis rozstrzyga baza); usuwanie — zarządzający kontaktami.
+        Button("Edytuj…", systemImage: "pencil") { actions.edit(entry) }
         if canManage {
-            Divider()
-            Button("Edytuj…", systemImage: "pencil") { actions.edit(entry) }
             Button("Usuń…", systemImage: "trash", role: .destructive) { actions.remove(entry) }
         }
     }
@@ -394,7 +429,7 @@ struct ContactStars: View {
         .contextMenu(forSelectionType: String.self) { ids in
             if let id = ids.first, let entry = store.entry(id) { ContactMenuItems(entry: entry, canManage: store.canManage, actions: actions) }
         } primaryAction: { ids in
-            if let id = ids.first, let entry = store.entry(id) { actions.open(entry) }
+            if let id = ids.first, let entry = store.entry(id) { actions.card(entry) }
         }
     }
 }
@@ -421,6 +456,11 @@ struct ContactStars: View {
     private func details(_ entry: ContactEntry) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             heading(entry)
+            Button { actions.card(entry) } label: {
+                Label("Otwórz kartę", systemImage: "person.text.rectangle").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .help("Karta z edycją, osobami kontaktowymi, reprezentacją, notatkami, fakturami i relacją (dwuklik na kafelku lub wierszu)")
             quickActions(entry)
             contactData(entry)
             kindData(entry)
@@ -569,13 +609,13 @@ struct ContactStars: View {
     @ViewBuilder private func footer(_ entry: ContactEntry) -> some View {
         Button("Pełna karta w CRM (Klient 360°, oferty, faktury, historia)", systemImage: "safari") { actions.browser(entry) }
             .buttonStyle(.link).linkCursor()
-        if store.canManage {
-            HStack {
+        HStack {
+            if store.canManage {
                 Button(role: .destructive) { actions.remove(entry) } label: { Label("Usuń…", systemImage: "trash") }
-                Spacer()
-                Button { actions.edit(entry) } label: { Label("Edytuj", systemImage: "pencil") }
-                    .buttonStyle(.borderedProminent).keyboardShortcut("e")
             }
+            Spacer()
+            Button { actions.edit(entry) } label: { Label("Edytuj", systemImage: "pencil") }
+                .buttonStyle(.borderedProminent).keyboardShortcut("e")
         }
     }
 

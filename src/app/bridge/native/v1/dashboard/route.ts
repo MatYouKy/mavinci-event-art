@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { nativeContext, nativeJson, nativeUnauthorized } from '@/lib/native/auth';
+import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
+import { dashboardPreferences, mySalesReport, saveDashboardPreferences, warehouseDashboard } from '@/lib/native/dashboardExtras';
 import { usesOperationalStages } from '@/lib/CRM/events/operationalStages';
 import { createDashboardReadFetch } from '@/lib/CRM/dashboard/dashboardReadFetch.server';
 import { DEFAULT_DASHBOARD_RANGE, isDashboardWidgetEnabled, type DashboardWidgetId } from '@/lib/CRM/dashboard/dashboardConfig';
@@ -19,10 +20,26 @@ export const dynamic = 'force-dynamic';
  * Dashboard CRM dla aplikacji na Maca — te same dane i te same reguły widoczności co strona `/crm` (`CRMDashboard.tsx`):
  * kafelki wskaźników, szybkie akcje, podsumowanie i ostatnia aktywność filtrowane tu, na serwerze, funkcjami `canView` / `canCreate`.
  * Liczone tokenem pracownika (RLS), bez klucza serwisowego.
+ * Dodatkowo (`src/lib/native/dashboardExtras.ts`): GET op=sales&year=… („Moja sprzedaż” za rok), op=preferences („Dostosuj
+ * dashboard”), POST op=preferences {range, widgets}; dashboard magazynu zwraca dane sekcji (`warehouse`).
  */
+const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
+const errorText = (error: unknown, fallback: string) => (error as { message?: string })?.message || fallback;
+const statusOf = (error: unknown) => (error as { status?: number })?.status || 500;
+
 export async function GET(request: Request) {
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
+  const url = new URL(request.url);
+  const op = url.searchParams.get('op');
+  if (op === 'sales' || op === 'preferences') {
+    try {
+      return nativeJson(op === 'sales' ? await mySalesReport(ctx, url.searchParams.get('year')) : await dashboardPreferences(ctx));
+    } catch (error) {
+      if (statusOf(error) >= 500) console.error('[native-dashboard]', op, error);
+      return failure(errorText(error, 'Nie udało się pobrać danych dashboardu.'), statusOf(error));
+    }
+  }
   const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
   const client = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     global: { headers: { Authorization: `Bearer ${token}` }, fetch: createDashboardReadFetch() },
@@ -31,7 +48,7 @@ export async function GET(request: Request) {
   const { data: employee } = await client.from('employees').select('id,permissions,role,access_level,is_active').eq('id', ctx.employee.id).maybeSingle();
   if (!employee?.is_active) return nativeUnauthorized();
   if (Array.isArray(employee.permissions) && employee.permissions.includes('equipment_manage') && usesOperationalStages(employee)) {
-    return nativeJson({ variant: 'warehouse' });
+    return nativeJson({ variant: 'warehouse', warehouse: await warehouseDashboard(ctx) });
   }
   const [stats, recentActivity, analytics, preferences] = await withNativeDashboardClient(client, () =>
     Promise.all([fetchStatsServer(), fetchRecentActivityServer(), fetchDashboardAnalyticsServer(), fetchDashboardPreferencesServer()]),
@@ -91,4 +108,22 @@ export async function GET(request: Request) {
     summary,
     noPermissions: cards.length === 0 && quickActions.length === 0,
   });
+}
+
+export async function POST(request: Request) {
+  const ctx = await nativeContext(request);
+  if (!ctx) return nativeUnauthorized();
+  let body: Record<string, unknown>;
+  try {
+    body = await readJson(request, 16_000);
+  } catch {
+    return failure('Nieprawidłowe dane.');
+  }
+  if (body.op !== 'preferences') return failure('Nieznana operacja.');
+  try {
+    return nativeJson(await saveDashboardPreferences(ctx, body));
+  } catch (error) {
+    if (statusOf(error) >= 500) console.error('[native-dashboard] preferences', error);
+    return failure(errorText(error, 'Błąd podczas zapisywania ustawień'), statusOf(error));
+  }
 }

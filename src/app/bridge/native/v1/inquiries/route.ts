@@ -40,6 +40,8 @@ import {
   setInquiryTeamMember,
 } from '@/lib/native/inquiryWorkspaceTools';
 import { inquiryCalculationAction, inquiryCalculationQuery, sendInquiryCalculationEmail } from '@/lib/native/eventCalculations';
+import { createInquiry, inquirySlaSettings, newInquirySetup, saveInquirySlaSettings } from '@/lib/native/inquiryCreate';
+import { specialDays } from '@/lib/native/eventCreate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,6 +60,9 @@ export const maxDuration = 180;
  * workspaceTeam | workspaceTask | workspaceConvert. Wysyłka e-maili i asystent AI tokenem pracownika (jak przeglądarka).
  * Kalkulacje zapytania (`src/lib/native/eventCalculations.ts`, edytor jak w wydarzeniu): GET op=calcQuery&id&query=…;
  * POST op=calcAction {id, action, targetId?, …} | calcEmail {id, calculationId, …}.
+ * Nowe zapytanie i SLA (`src/lib/native/inquiryCreate.ts`, jak `NewInquiryModal` i `InquirySlaSettingsModal`): GET
+ * op=newSetup | specialDays&from=… (nietypowe dni terminu) | slaSettings; POST op=create {id, form} | slaSave {settings}.
+ * Nowe zapytanie — jak w CRM (także z kalendarza) dla każdego pracownika, zapis rozstrzyga RLS; SLA — administrator.
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -80,9 +85,21 @@ const isoOrNull = (value: unknown) => {
 export async function GET(request: Request) {
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
-  if (!allowed(ctx)) return failure('Nie masz dostępu do zapytań.', 403);
   const url = new URL(request.url);
   const q = (key: string) => url.searchParams.get(key) || '';
+  // Formularz nowego zapytania otwiera się także z kalendarza (w CRM bez osobnego uprawnienia — zapis sprawdza RLS).
+  if (q('op') === 'newSetup' || q('op') === 'specialDays' || q('op') === 'slaSettings') {
+    try {
+      if (q('op') === 'newSetup') return nativeJson(await newInquirySetup(ctx));
+      if (q('op') === 'specialDays') return nativeJson(await specialDays(ctx, q('from'), q('to')));
+      return nativeJson(await inquirySlaSettings(ctx));
+    } catch (error) {
+      const status = (error as { status?: number })?.status;
+      if (!status) console.error('[native-inquiries]', q('op'), error);
+      return failure(errorText(error, 'Nie udało się pobrać danych.'), status || 500);
+    }
+  }
+  if (!allowed(ctx)) return failure('Nie masz dostępu do zapytań.', 403);
   try {
     switch (q('op')) {
       case 'state': {
@@ -137,7 +154,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
-  if (!allowed(ctx)) return failure('Nie masz dostępu do zapytań.', 403);
   let body: Record<string, any>;
   try {
     // Wiadomość do klienta może mieć załączniki (do 25 MB, base64) — jak wysyłka w module Wiadomości.
@@ -146,6 +162,22 @@ export async function POST(request: Request) {
     return failure('Nieprawidłowe dane.');
   }
   const op = String(body.op || '');
+  // Nowe zapytanie (także z kalendarza) i ustawienia SLA — uprawnienia jak w CRM (zob. `inquiryCreate.ts`).
+  if (op === 'create' || op === 'slaSave') {
+    try {
+      if (op === 'create') {
+        const result = await createInquiry(ctx, body);
+        invalidateInquiries();
+        return nativeJson({ ok: true, ...result });
+      }
+      return nativeJson(await saveInquirySlaSettings(ctx, body));
+    } catch (error) {
+      const status = (error as { status?: number })?.status;
+      if (!status) console.error('[native-inquiries]', op, error);
+      return failure(errorText(error, 'Serwer nie wykonał operacji.'), status || 500);
+    }
+  }
+  if (!allowed(ctx)) return failure('Nie masz dostępu do zapytań.', 403);
   const id = String(body.id || '');
   if (op !== 'items' && !uuid.test(id)) return failure('Nieprawidłowe zapytanie.');
   const done = (payload: Record<string, unknown> = {}) => { invalidateInquiries(); return nativeJson({ ok: true, ...payload }); };

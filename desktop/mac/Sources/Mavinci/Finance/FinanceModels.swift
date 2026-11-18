@@ -319,6 +319,11 @@ struct FinReminderSetup: Decodable {
     var pdfStored: Bool
 }
 
+/// Okno wysyłki faktury e-mailem: przypomnienie o płatności (monit) albo „Wyślij email” z karty faktury.
+enum FinEmailMode: String {
+    case reminder, invoice
+}
+
 struct FinReminderResult: Decodable {
     var scheduled: Bool
     var scheduledAt: String?

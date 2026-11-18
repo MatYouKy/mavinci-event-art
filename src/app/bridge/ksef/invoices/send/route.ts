@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
-import { cookies } from 'next/headers';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { requestSupabaseClient } from '@/lib/supabase/requestClient.server';
 import { loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 import { getInvoiceKsefRecipient, readInvoiceKsefRecipientSnapshot } from '@/lib/invoices/ksefRecipient';
 import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
@@ -453,8 +452,9 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const userClient = createSupabaseServerClient(cookies());
-  const { data: authData } = await userClient.auth.getUser();
+  // Sesja przeglądarki albo token aplikacji na Maca (Bearer) — te same uprawnienia konta i ta sama wysyłka.
+  const { client: userClient, user: authUser } = await requestSupabaseClient(request);
+  const authData = { user: authUser };
   if (!authData.user) {
     return new Response(JSON.stringify({ error: 'Wymagane logowanie.' }), {
       status: 401,

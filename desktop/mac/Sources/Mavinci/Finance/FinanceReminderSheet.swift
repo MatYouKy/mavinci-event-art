@@ -1,13 +1,17 @@
 import SwiftUI
 
-// MARK: Przypomnienie o płatności — 1:1 z `SendInvoiceEmailModal` w trybie „reminder”: skrzynka pracownika, adresaci
-// z organizacji nabywcy (płatnik wydarzenia oznaczony „opiekun”), temat i treść z terminem i kwotą do zapłaty, PDF faktury
-// w załączniku, podgląd ze stopką i szablonem firmy, wysyłka teraz albo zaplanowana; wpis w historii monitów.
-// Serwer: `/bridge/native/v1/finance` (`reminder`, `reminderPreview`, `reminderSend`).
+// MARK: Przypomnienie o płatności i „Wyślij email” z karty faktury — 1:1 z `SendInvoiceEmailModal` (tryby „reminder”
+// i „invoice”): skrzynka pracownika, adresaci z organizacji nabywcy (płatnik wydarzenia oznaczony „opiekun”), temat i treść
+// (monit — z terminem i kwotą do zapłaty), PDF faktury w załączniku (bez zapisanego PDF — wygenerowany i zapisany), podgląd
+// ze stopką i szablonem firmy, wysyłka teraz albo zaplanowana; monit — wpis w historii monitów.
+// Serwer: `/bridge/native/v1/finance` (`reminder`, `reminderPreview`, `reminderSend`, parametr `mode`).
 
 @MainActor struct FinanceReminderSheet: View {
     @ObservedObject var store: FinanceStore
-    let receivable: FinDeadlines.Receivable
+    let invoiceID: String
+    let buyerName: String
+    let mode: FinEmailMode
+    let onSent: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
     @State private var setup: FinReminderSetup?
@@ -26,10 +30,26 @@ import SwiftUI
     @State private var sending = false
     @State private var problem: String?
 
+    /// Monit z listy „Należności” (Terminy i monity).
+    init(store: FinanceStore, receivable: FinDeadlines.Receivable) {
+        self.init(store: store, invoiceID: receivable.invoiceId ?? receivable.id, buyerName: receivable.buyerName ?? "")
+    }
+
+    init(store: FinanceStore, invoiceID: String, buyerName: String, mode: FinEmailMode = .reminder, onSent: (() -> Void)? = nil) {
+        _store = ObservedObject(wrappedValue: store)
+        self.invoiceID = invoiceID
+        self.buyerName = buyerName
+        self.mode = mode
+        self.onSent = onSent
+    }
+
+    private var isReminder: Bool { mode == .reminder }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Label("Przypomnienie o płatności", systemImage: "envelope.badge").font(.title2.bold())
+                Label(isReminder ? "Przypomnienie o płatności" : "Wyślij fakturę przez email", systemImage: isReminder ? "envelope.badge" : "envelope")
+                    .font(.title2.bold())
                 Spacer()
             }
             .padding([.horizontal, .top], 20).padding(.bottom, 8)
@@ -54,7 +74,8 @@ import SwiftUI
                 Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).disabled(sending)
                 Button { Task { await send() } } label: {
                     if sending { Text(scheduled ? "Planowanie..." : "Wysyłanie...") }
-                    else { Label(scheduled ? "Zaplanuj przypomnienie" : "Wyślij przypomnienie", systemImage: "paperplane") }
+                    else if isReminder { Label(scheduled ? "Zaplanuj przypomnienie" : "Wyślij przypomnienie", systemImage: "paperplane") }
+                    else { Label(scheduled ? "Zaplanuj fakturę" : "Wyślij fakturę", systemImage: "paperplane") }
                 }
                 .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                 .disabled(sending || setup == nil)
@@ -70,23 +91,25 @@ import SwiftUI
             }
             .frame(width: 760, height: 720)
         }
-        .alert("Nie wysłano przypomnienia", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
+        .alert(isReminder ? "Nie wysłano przypomnienia" : "Nie wysłano faktury", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(problem ?? "") }
         .interactiveDismissDisabled(sending)
         .overlay {
-            if sending { PendingOverlay(text: scheduled ? "Planowanie wysyłki…" : "Wysyłanie przypomnienia z fakturą…") }
+            if sending { PendingOverlay(text: scheduled ? "Planowanie wysyłki…" : isReminder ? "Wysyłanie przypomnienia z fakturą…" : "Wysyłanie faktury z załącznikiem PDF…") }
             else if previewLoading { PendingOverlay(text: "Przygotowywanie podglądu ze stopką…") }
         }
     }
 
     private func form(_ setup: FinReminderSetup) -> some View {
         Form {
-            Section {
-                Label {
-                    Text("Faktura \(setup.number): termin płatności \(FinFormat.day(setup.dueDate)), do zapłaty \(FinFormat.money(setup.outstanding, setup.currency)). Zapłatę CRM widzi po wczytaniu wyciągu — jeśli klient mógł zapłacić po ostatnim wyciągu, sprawdź konto przed wysłaniem.")
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(CrmTheme.rgb(0xfbbf24)) }
+            if isReminder {
+                Section {
+                    Label {
+                        Text("Faktura \(setup.number): termin płatności \(FinFormat.day(setup.dueDate)), do zapłaty \(FinFormat.money(setup.outstanding, setup.currency)). Zapłatę CRM widzi po wczytaniu wyciągu — jeśli klient mógł zapłacić po ostatnim wyciągu, sprawdź konto przed wysłaniem.")
+                            .fixedSize(horizontal: false, vertical: true)
+                    } icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(CrmTheme.rgb(0xfbbf24)) }
+                }
             }
             Section {
                 if setup.accounts.isEmpty {
@@ -161,7 +184,7 @@ import SwiftUI
     private func load() async {
         loadError = nil
         do {
-            let next = try await store.reminderSetup(receivable.invoiceId ?? receivable.id)
+            let next = try await store.reminderSetup(invoiceID, mode: mode)
             accountId = next.accounts.first?.id ?? ""
             to = next.to
             recipientName = next.recipientName
@@ -174,7 +197,7 @@ import SwiftUI
     }
 
     private var effectiveRecipientName: String {
-        recipientName.isEmpty ? (receivable.buyerName ?? "") : recipientName
+        recipientName.isEmpty ? buyerName : recipientName
     }
 
     private func showPreview() async {
@@ -182,7 +205,7 @@ import SwiftUI
         previewLoading = true
         defer { previewLoading = false }
         do {
-            previewHTML = try await store.reminderPreview(setup.invoiceId, accountId: accountId, subject: subject, text: text, recipientName: effectiveRecipientName)
+            previewHTML = try await store.reminderPreview(setup.invoiceId, accountId: accountId, subject: subject, text: text, recipientName: effectiveRecipientName, mode: mode)
         } catch {
             problem = store.failureText(error, "Nie udało się przygotować podglądu.")
         }
@@ -200,15 +223,17 @@ import SwiftUI
         defer { sending = false }
         do {
             let result = try await store.reminderSend(setup.invoiceId, accountId: accountId, to: to, cc: cc, bcc: bcc, subject: subject, text: text,
-                                                      recipientName: effectiveRecipientName, scheduledAt: scheduled ? scheduledAt : nil)
+                                                      recipientName: effectiveRecipientName, scheduledAt: scheduled ? scheduledAt : nil, mode: mode)
             if result.scheduled, let at = result.scheduledAt, let date = MeetingDates.parse(at) {
-                store.workspace?.succeed("Przypomnienie zostanie wysłane \(MeetingDates.format(date, "dd.MM.yyyy, HH:mm"))")
+                let when = MeetingDates.format(date, "dd.MM.yyyy, HH:mm")
+                store.workspace?.succeed(isReminder ? "Przypomnienie zostanie wysłane \(when)" : "Faktura zostanie wysłana \(when)")
             } else {
                 store.workspace?.succeed(result.message)
             }
             if !result.warnings.isEmpty { store.workspace?.notice = result.warnings.joined(separator: " ") }
             dismiss()
-            await store.sync(force: true)
+            onSent?()
+            if isReminder { await store.sync(force: true) }
         } catch {
             problem = store.failureText(error, "Błąd podczas wysyłania email")
         }

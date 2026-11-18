@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: Dodawanie z kalendarza — „Co chcesz dodać?” jak `EventTypeSelector` w CRM (kliknięcie dnia albo „Dodaj”):
 // wydarzenie biznesowe / indywidualne (kreator wydarzenia z terminem tego dnia), spotkanie (formularz spotkania 9:00–10:00)
-// i zapytanie (formularz „Dodaj zapytanie” w CRM z terminem tego dnia — nowe zapytanie powstaje w CRM).
+// i zapytanie (formularz „Nowe zapytanie” z terminem tego dnia — `NewInquirySheet`).
 
 enum CalendarCreateKind: String, CaseIterable, Identifiable {
     case business, individual, meeting, inquiry
@@ -20,7 +20,7 @@ enum CalendarCreateKind: String, CaseIterable, Identifiable {
         case .business: return "Pełne wydarzenie z organizacją/firmą"
         case .individual: return "Pełne wydarzenie z osobą prywatną"
         case .meeting: return "Szybkie spotkanie lub przypomnienie"
-        case .inquiry: return "Szybka notatka z rozmowy z klientem (formularz w CRM)"
+        case .inquiry: return "Szybka notatka z rozmowy z klientem"
         }
     }
     var symbol: String {
@@ -39,11 +39,13 @@ enum CalendarCreation: Identifiable {
     case chooser(Date)
     case event(Date, String)
     case meeting(MeetingEditorRequest)
+    case inquiry(Date)
     var id: String {
         switch self {
         case .chooser(let date): return "chooser-\(date.timeIntervalSince1970)"
         case .event(let date, let clientType): return "event-\(clientType)-\(date.timeIntervalSince1970)"
         case .meeting(let request): return "meeting-\(request.id.uuidString)"
+        case .inquiry(let date): return "inquiry-\(date.timeIntervalSince1970)"
         }
     }
 }

@@ -5,7 +5,9 @@ import { sendingAccounts } from './offerActions';
 import { emailPreviewDocument, plainTextToEmailHtml } from './messages';
 import { canFinanceCompany, loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 import { parseVatWhitelistRequest, runVatWhitelistCheck } from '@/lib/invoices/vatWhitelist.server';
-import { buildInvoicePrintDocument, INVOICE_PRINT_SELECT, renderInvoicePdf } from '@/lib/invoices/print/renderInvoicePdf.server';
+import { generateStoredInvoicePdf } from '@/lib/invoices/print/storeInvoicePdf.server';
+import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
+import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
 import { buildCompanyEmailBody, buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
 import { dispatchCrmEmail } from '@/lib/emailScheduling';
 import { handleKsefUpoRequest } from '@/app/bridge/ksef/upoRequests';
@@ -19,7 +21,10 @@ import { handleKsefUpoRequest } from '@/app/bridge/ksef/upoRequests';
  * z trasami CRM (`src/lib/invoices/vatWhitelist.server.ts`, `src/app/bridge/ksef/upoRequests.ts`). Przypomnienie
  * o płatności (monit) — jak `SendInvoiceEmailModal` w trybie „reminder”: skrzynki pracownika, adresaci z organizacji
  * nabywcy, szablon i stopka firmy faktury (cel „invoice”), PDF faktury w załączniku, `send-invoice-email` (przy
- * planowaniu — kolejka) i wpis w historii monitów (record_invoice_payment_reminder).
+ * planowaniu — kolejka) i wpis w historii monitów (record_invoice_payment_reminder). Ten sam formularz w trybie „invoice”
+ * („Wyślij email” z karty faktury): temat „Faktura …”, treść jak w CRM, bez wpisu w historii monitów. Karta faktury:
+ * „Generuj / Regeneruj PDF” (`src/lib/invoices/print/storeInvoicePdf.server.ts`, wspólne z trasą CRM
+ * `/bridge/invoices/invoice-pdf`), pobranie zapisanego PDF i UPO jednej faktury (`handleKsefUpoRequest`).
  * Odpowiedź ma stały kształt (camelCase, liczby i null), żeby aplikacja nie zależała od szczegółów zapisu w bazie.
  */
 
@@ -514,25 +519,41 @@ function reminderText(invoice: Row) {
     + 'W razie pytań proszę o kontakt.';
 }
 
-/** Faktura, do której pracownik może wysłać monit: widoczna (RLS), wystawiona, z terminem, „Wystawianie faktur” działalności. */
-async function remindableInvoice(ctx: NativeContext, invoiceId: unknown) {
+/** Treść „Wyślij email” z karty faktury (`defaultEmailText(invoiceNumber)` w CRM). */
+const invoiceEmailText = (invoice: Row) =>
+  `Dzień dobry,\n\nW załączeniu przesyłam fakturę ${str(invoice.invoice_number)}.\n\nW razie pytań proszę o kontakt.`;
+
+type EmailMode = 'reminder' | 'invoice';
+const emailMode = (value: unknown): EmailMode => (str(value) === 'invoice' ? 'invoice' : 'reminder');
+
+/**
+ * Faktura do wysyłki e-mailem. Monit: widoczna (RLS), wystawiona, z terminem, „Wystawianie faktur” działalności.
+ * „Wyślij email” z karty: widoczna i nieanulowana (jak przycisk w CRM) — uprawnienia skrzynki i faktury sprawdza funkcja poczty.
+ */
+async function remindableInvoice(ctx: NativeContext, invoiceId: unknown, mode: EmailMode = 'reminder') {
   const id = uuid(invoiceId, 'Nieprawidłowa faktura.');
   const { data, error } = await ctx.supabase.from('invoices')
     .select('id, invoice_number, my_company_id, event_id, organization_id, buyer_contact_id, buyer_email, buyer_name, issue_date, payment_due_date, total_gross, paid_amount, invoice_type, settlement_summary, currency_code, pdf_url, status, is_proforma')
     .eq('id', id).maybeSingle();
   if (error || !data) fail('Nie znaleziono faktury.', 404);
   const invoice = data as Row;
-  if (invoice.is_proforma === true || invoice.invoice_type === 'proforma' || !['issued', 'sent', 'overdue'].includes(str(invoice.status))) {
-    fail('Przypomnienie wysyła się tylko do wystawionej faktury.');
+  if (mode === 'invoice') {
+    if (invoice.status === 'cancelled') fail('Anulowanej faktury nie wysyła się do nabywcy.');
+  } else {
+    if (invoice.is_proforma === true || invoice.invoice_type === 'proforma' || !['issued', 'sent', 'overdue'].includes(str(invoice.status))) {
+      fail('Przypomnienie wysyła się tylko do wystawionej faktury.');
+    }
+    if (!invoice.payment_due_date) fail('Faktura nie ma terminu płatności.');
   }
-  if (!invoice.payment_due_date) fail('Faktura nie ma terminu płatności.');
   let companyId = strOrNull(invoice.my_company_id);
   if (!companyId && invoice.event_id) {
     const { data: event } = await ctx.supabase.from('events').select('my_company_id').eq('id', invoice.event_id).maybeSingle();
     companyId = strOrNull((event as Row | null)?.my_company_id);
   }
-  const access = await loadInvoiceFinanceAccess(ctx.supabase);
-  if (!canFinanceCompany(access, companyId, 'invoices_issue')) fail('Brak uprawnień do monitów tej działalności.', 403);
+  if (mode === 'reminder') {
+    const access = await loadInvoiceFinanceAccess(ctx.supabase);
+    if (!canFinanceCompany(access, companyId, 'invoices_issue')) fail('Brak uprawnień do monitów tej działalności.', 403);
+  }
   return { invoice, companyId };
 }
 
@@ -600,9 +621,10 @@ async function reminderRecipients(ctx: NativeContext, invoice: Row) {
   };
 }
 
-/** Okno „Wyślij przypomnienie”: skrzynki, adresaci, temat i treść jak w CRM, stan PDF. */
-export async function reminderSetup(ctx: NativeContext, invoiceId: string) {
-  const { invoice } = await remindableInvoice(ctx, invoiceId);
+/** Okno „Wyślij przypomnienie” / „Wyślij email”: skrzynki, adresaci, temat i treść jak w CRM, stan PDF. */
+export async function reminderSetup(ctx: NativeContext, invoiceId: string, modeParam?: unknown) {
+  const mode = emailMode(modeParam);
+  const { invoice } = await remindableInvoice(ctx, invoiceId, mode);
   const [accounts, recipients] = await Promise.all([sendingAccounts(ctx), reminderRecipients(ctx, invoice)]);
   const number = str(invoice.invoice_number);
   const suggested = recipients.options[0] ?? null;
@@ -617,8 +639,9 @@ export async function reminderSetup(ctx: NativeContext, invoiceId: string) {
     organizationName: recipients.organizationName,
     to: suggested?.email || str(invoice.buyer_email),
     recipientName: suggested?.name || str(invoice.buyer_name),
-    subject: `Przypomnienie o płatności — faktura ${number}`,
-    text: reminderText(invoice),
+    subject: mode === 'invoice' ? `Faktura ${number}` : `Przypomnienie o płatności — faktura ${number}`,
+    text: mode === 'invoice' ? invoiceEmailText(invoice) : reminderText(invoice),
+    mode,
     dueDate: day(invoice.payment_due_date),
     outstanding: outstandingOf(invoice),
     currency: str(invoice.currency_code) || 'PLN',
@@ -652,13 +675,16 @@ async function composeReminder(ctx: NativeContext, accountId: string, companyId:
 }
 
 export async function reminderPreview(ctx: NativeContext, body: Row) {
-  const { companyId } = await remindableInvoice(ctx, body.invoiceId);
+  const { companyId } = await remindableInvoice(ctx, body.invoiceId, emailMode(body.mode));
   const account = await reminderAccount(ctx, body.accountId);
   const email = await composeReminder(ctx, account.id, companyId, str(body.subject), str(body.text), str(body.recipientName));
   return { html: emailPreviewDocument(email.html) };
 }
 
-/** PDF faktury do załącznika: zapisany PDF (pliki), a bez niego — wydruk z danych faktury (ten sam szablon co CRM). */
+/**
+ * PDF faktury do załącznika jak w CRM: zapisany PDF (pliki), a bez niego — „Generuj PDF” (wydruk z danych faktury, zapis
+ * w magazynie i dokumentach wydarzenia, jak trasa `/bridge/invoices/invoice-pdf`, z której korzysta okno wysyłki CRM).
+ */
 async function invoicePdf(ctx: NativeContext, invoice: Row): Promise<{ attachment: Row | null; warning: string | null }> {
   const filename = `Faktura_${str(invoice.invoice_number)}.pdf`;
   try {
@@ -669,23 +695,23 @@ async function invoicePdf(ctx: NativeContext, invoice: Row): Promise<{ attachmen
     }
     const { data: canManage, error: permissionError } = await ctx.supabase.rpc('can_manage_invoice', { p_invoice_id: invoice.id });
     if (permissionError || !canManage) throw new Error('Nie masz uprawnień do generowania faktur.');
-    const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
-    const { data: printRow, error: printError } = await admin.from('invoices').select(INVOICE_PRINT_SELECT).eq('id', invoice.id).maybeSingle();
-    if (printError || !printRow) throw new Error('Nie znaleziono faktury.');
-    const document = await buildInvoicePrintDocument(admin, printRow as any);
-    const { pdf } = await renderInvoicePdf(document);
-    return { attachment: { filename, content: Buffer.from(pdf).toString('base64'), contentType: 'application/pdf' }, warning: null };
+    const stored = await generateStoredInvoicePdf(adminClient(), { invoiceId: str(invoice.id), fileName: filename, createdBy: ctx.employee.id });
+    return { attachment: { filename, content: stored.base64, contentType: 'application/pdf' }, warning: null };
   } catch (error) {
     return { attachment: null, warning: `Nie udalo sie przygotowac PDF: ${error instanceof Error ? error.message : 'Nieznany błąd'}. Wysłano bez załącznika.` };
   }
 }
+
+const adminClient = () =>
+  createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
 
 /**
  * „Wyślij przypomnienie” / „Zaplanuj” — `send-invoice-email` z PDF faktury (bez PDF — wysyłka bez załącznika i ostrzeżenie,
  * jak w CRM), potem wpis w historii monitów. Wymaga tokenu pracownika (funkcja poczty jak w przeglądarce).
  */
 export async function sendReminder(ctx: NativeContext, accessToken: string, body: Row) {
-  const { invoice, companyId } = await remindableInvoice(ctx, body.invoiceId);
+  const mode = emailMode(body.mode);
+  const { invoice, companyId } = await remindableInvoice(ctx, body.invoiceId, mode);
   const to = str(body.to).trim();
   const subject = str(body.subject).trim();
   const text = str(body.text);
@@ -723,6 +749,14 @@ export async function sendReminder(ctx: NativeContext, accessToken: string, body
     },
   });
   const scheduledFor = result.scheduled && result.scheduledAt ? String(result.scheduledAt) : null;
+  if (mode === 'invoice') {
+    return {
+      scheduled: Boolean(result.scheduled),
+      scheduledAt: scheduledFor,
+      message: scheduledFor ? 'Faktura została zaplanowana.' : 'Faktura wysłana przez email z załącznikiem PDF',
+      warnings: [pdf.warning, result.warning ? String(result.warning) : null].filter((item): item is string => Boolean(item)),
+    };
+  }
   // Historia monitów (sekcja „Terminy”): adresat, data i kwota pozostała do zapłaty w chwili wysyłki.
   const { error: logError } = await ctx.supabase.rpc('record_invoice_payment_reminder', {
     p_invoice_id: str(invoice.id), p_recipient: to, p_scheduled_at: scheduledFor,
@@ -739,4 +773,67 @@ export async function sendReminder(ctx: NativeContext, accessToken: string, body
     message: scheduledFor ? 'Przypomnienie zostało zaplanowane.' : 'Przypomnienie o płatności wysłane z fakturą w załączniku',
     warnings,
   };
+}
+
+// MARK: Karta faktury — PDF i UPO
+
+/** Faktura widoczna dla pracownika (RLS) — karta faktury. */
+async function visibleInvoice(ctx: NativeContext, idParam: unknown, columns: string) {
+  const id = uuid(idParam, 'Nieprawidłowa faktura.');
+  const { data, error } = await ctx.supabase.from('invoices').select(columns).eq('id', id).maybeSingle();
+  if (error || !data) fail('Nie znaleziono faktury albo nie masz do niej dostępu.', 404);
+  return data as unknown as Row;
+}
+
+/**
+ * „Generuj PDF” / „Regeneruj PDF” z karty faktury (jak `handleGeneratePDF` + trasa `/bridge/invoices/invoice-pdf`):
+ * odbiorca KSeF zapisany na fakturze musi być czytelny, `can_manage_invoice`, wydruk z danych faktury zapisany w magazynie
+ * i w folderze „Faktury” wydarzenia; poprzedni plik jest usuwany.
+ */
+export async function invoicePdfGenerate(ctx: NativeContext, body: Row) {
+  const invoice = await visibleInvoice(ctx, body.id,
+    'id, invoice_number, invoice_type, ksef_recipient_snapshot, correction_kind, correction_party_data_before, pdf_url');
+  try {
+    getInvoiceKsefRecipient(invoice as any);
+    getInvoicePartyDataCorrection(invoice as any);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : 'Nie można odczytać danych odbiorcy zapisanych na fakturze.');
+  }
+  const { data: canManage, error: permissionError } = await ctx.supabase.rpc('can_manage_invoice', { p_invoice_id: invoice.id });
+  if (permissionError || !canManage) fail('Nie masz uprawnień do generowania faktur.', 403);
+  const stored = await generateStoredInvoicePdf(adminClient(), {
+    invoiceId: str(invoice.id), fileName: `Faktura_${str(invoice.invoice_number)}.pdf`, createdBy: ctx.employee.id,
+  });
+  return {
+    ok: true,
+    regenerated: Boolean(invoice.pdf_url),
+    storagePath: stored.storagePath,
+    message: stored.storagePath ? 'PDF wygenerowany i zapisany' : 'PDF wygenerowany',
+  };
+}
+
+/** „Pobierz PDF” / „Podgląd” zapisanego PDF (magazyn `event-files`, dostęp jak w przeglądarce). */
+export async function invoicePdfFile(ctx: NativeContext, idParam: unknown) {
+  const invoice = await visibleInvoice(ctx, idParam, 'id, invoice_number, pdf_url');
+  const path = str(invoice.pdf_url);
+  if (!path) fail('Najpierw wygeneruj PDF');
+  const { data, error } = await ctx.supabase.storage.from('event-files').download(path);
+  if (error || !data) fail('Nie mozna pobrac pliku. Wygeneruj PDF ponownie.');
+  return {
+    kind: 'file' as const,
+    name: path.split('/').pop() || `Faktura_${str(invoice.invoice_number)}.pdf`,
+    mime: 'application/pdf',
+    data: Buffer.from(await data.arrayBuffer()).toString('base64'),
+  };
+}
+
+/** „Pobierz UPO (XML)” — zapisane UPO albo pobrane teraz z KSeF (ta sama logika co trasa CRM `/bridge/ksef/invoices/upo`). */
+export async function invoiceUpo(ctx: NativeContext, body: Row) {
+  const id = uuid(body.id, 'Nieprawidłowa faktura.');
+  const result = await handleKsefUpoRequest(ctx.supabase, { invoiceId: id });
+  const reply = result.body as Row;
+  if (result.status >= 400 || reply.success !== true || typeof reply.xml !== 'string') {
+    fail(str(reply.error) || 'Nie udało się pobrać UPO z KSeF.', result.status >= 400 ? result.status : 400);
+  }
+  return { name: str(reply.fileName) || 'UPO.xml', xml: String(reply.xml) };
 }
