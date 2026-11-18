@@ -2,7 +2,8 @@ import SwiftUI
 
 // MARK: Karta sprzedawcy na Macu — „Gotowość do pracy” (te same kroki co CRM, `src/lib/seller/readiness.ts`), opiekun i konto
 // w portalu, marki, oferty na osi w 5 etapach (widok opiekuna), realizacje oraz „Prowizje i narzuty” — całe konto sprzedawcy
-// (prowizje, narzuty z ofert, wypłaty i saldo; dla osób z dostępem do finansów). Rozmowy ze sprzedawcą i historia zmian —
+// (prowizje, narzuty z ofert, wypłaty i saldo; dla osób z dostępem do finansów) z przełącznikiem „Wynagrodzenie w portalu
+// sprzedawcy” (zakładka „Moje wynagrodzenie” w portalu — `SellerVisibilityView.swift`). Rozmowy ze sprzedawcą i historia zmian —
 // `SellerChatView.swift`; ustawienia (opiekun, widoczność wynagrodzenia, profil, warunki marek, portal) — `SellerSettingsView.swift`,
 // także z akcji „Gotowości do pracy”; indywidualne ceny — `SellerPricingView.swift`; podgląd brandingu — w ustawieniach.
 
@@ -26,6 +27,8 @@ import SwiftUI
     @State private var inviteShown = false
     /// „Rozliczenia” — przewinięcie do konta prowizji i narzutów na tej karcie.
     @State private var scrollTarget: String?
+    /// Pokazanie / ukrycie wynagrodzenia w portalu (cała zakładka albo marka) — okno z powodem i powiadomieniem.
+    @State private var visibility: SellerVisibilityChange?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -37,6 +40,9 @@ import SwiftUI
                     people(card)
                     offers(card)
                     events(card)
+                    // Czy sprzedawca widzi w portalu zakładkę „Moje wynagrodzenie” — niezależnie od dostępu do konta niżej
+                    // (zmienia opiekun sprzedawcy, finanse albo administrator; uprawnienia sprawdza baza).
+                    SellerPortalPayCard(terms: card.terms) { visibility = $0 }
                     // Konto prowizji i narzutów — widoczne, gdy baza udostępni je użytkownikowi (dostęp do finansów).
                     if store.commissionAccount(seller.id)?.hidden != true {
                         EmployeeCommissionsView(store: store, employeeID: seller.id, employeeName: seller.name, kind: .partner)
@@ -79,6 +85,12 @@ import SwiftUI
         .sheet(item: $settings) { request in
             SellerSettingsSheet(store: store, seller: seller, focus: request.focus)
                 .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(item: $visibility) { change in
+            SellerVisibilityDialog(change: change) { reason, notify in
+                await store.setCommissionVisibility(partner: seller.id, change: change, reason: reason, notify: notify)
+            }
+            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
     }
 

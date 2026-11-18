@@ -1041,3 +1041,21 @@ Panel „Przegląd” w karcie wydarzenia otwiera się domyślnie. Na stałe (na
 
 - **Funkcja `send-email`** (`supabase/functions/send-email/index.ts`): wiadomości wysyłane przez serwer CRM kluczem serwisowym (link do ustawienia nowego hasła `/bridge/auth/reset-password`, zaproszenie sprzedawcy i dostęp do portalu `sendPasswordAccessEmail`, wysyłka do Saldeo, bezpośrednia konfiguracja SMTP) kończyły się błędem „Sesja wygasła” — po przeniesieniu projektu klucz service_role z panelu (konfiguracja serwera) różni się od `SUPABASE_SERVICE_ROLE_KEY` w środowisku funkcji, a funkcja porównywała tekst kluczy. Teraz `isServerToken`: klucz ze środowiska funkcji (także `SUPABASE_SECRET_KEYS`) albo klucz serwisowy (rola `service_role` / `sb_secret_…`) potwierdzony przez Auth (endpoint administracyjny), zapamiętany w instancji. Zlecenia z harmonogramu i wysyłki pracowników bez zmian. Wymaga wdrożenia funkcji (`supabase functions deploy send-email`). Bez migracji.
 - **Mac / telefon**: bez zmian (zaproszenie sprzedawcy z aplikacji na Maca korzysta z tej samej wysyłki — działa po wdrożeniu funkcji).
+
+### Mac: powiadomienia bez „brak sekcji natywnej”, „Stan systemu i jakość danych” natywnie
+
+- **Mac** (`desktop/mac/Sources/Mavinci/NotificationsDrawer.swift`, `SystemHealthView.swift` (nowe), `WindowNavigation.swift`, `MavinciApp.swift`): powiadomienia z e-mailem (`/crm/messages/<id>?type=…`) otwierają treść w Wiadomościach (także spoza bieżącej skrzynki), bez id — skrzynkę; `/crm/invoices/<id>` — fakturę, zakładki i sekcje Finansów (Centrum, KSeF, Faktury, Koszty i wypłaty, wyciągi, uzgodnienie, terminy, deklaracje, księgowa, zamknięcie miesięcy) — właściwą część; flota — kartę pojazdu (przegląd → „Serwis i naprawy”, polisa → „Ubezpieczenia”); `/crm/employees/<id>?tab=…` — kartę pracownika na zakładce; broszury — broszurę albo listę; `/crm/settings/system-health` — okno „Stan systemu i jakość danych” (administrator; integracje z 24 godzin, jakość danych, bezpieczeństwo ze szczegółami, odnośnikami na Macu i „Kopiuj SQL”, alerty operacyjne — te same funkcje bazy co CRM); pozostałe adresy CRM — sekcja paska bocznego z ekranem na Macu albo strona CRM zamiast komunikatu bez akcji.
+- **Serwer CRM**: bez zmian. Bez migracji.
+- **Telefon**: bez zmian.
+
+### Mac: przełącznik „Wynagrodzenie w portalu sprzedawcy” na karcie sprzedawcy
+
+- **Mac** (`desktop/mac/Sources/Mavinci/Sellers/SellerVisibilityView.swift` (nowe), `SellerDetailView.swift`, `SellerSettingsView.swift`): karta sprzedawcy nad kontem „Prowizje i narzuty” — czy sprzedawca widzi w portalu zakładkę „Moje wynagrodzenie” (z prognozą na pulpicie i kwotami prowizji przy ofertach) i jeden przełącznik „Pokaż w portalu” dla wszystkich marek z prowizją naraz (wyłączenie — ukrywa wszystkie widoczne, włączenie — pokazuje wszystkie ukryte); przy kilku markach także przełącznik każdej marki. Okno jak `CommissionVisibilityToggle` (opis skutków, powód do historii zmian, powiadomienie przy pokazaniu — osobne dla każdej marki); widoczne także bez dostępu do konta prowizji (opiekun). Ustawienia sprzedawcy używają tego samego okna i informują, gdy zmiana jednej marki chowa albo pokazuje całą zakładkę. Prowizje naliczają się i są widoczne w CRM niezależnie od przełącznika.
+- **Serwer CRM**: bez zmian — `op=visibility` (`set_seller_commission_visibility`, po jednej marce). Bez migracji.
+- **Telefon**: bez zmian.
+
+### Portal sprzedawcy: zdjęcie opiekuna w kadrze jak miniatura w CRM
+
+- **Portal sprzedawcy** (`src/components/seller/SellerManagerCard.tsx`, `src/lib/seller/portal.ts`): karta „Twój opiekun” (pulpit i „Rozmowy z opiekunem”) pokazuje zdjęcie opiekuna w kadrze ustawionym w CRM dla miniatury pracownika (`EmployeeAvatar`: `objectFit` i `translate(posX%, posY%) scale(scale)` z `employees.avatar_metadata.desktop`) zamiast środka oryginału; bez kadru — jak dotąd.
+- **Baza** (`supabase/migrations/20261119003000_seller_portal_manager_photo_frame.sql`): `get_seller_portal_context()` zwraca `manager.photo_frame` (`position`, `objectFit` — bez innych pól metadanych); reszta funkcji i uprawnienia bez zmian. Wymaga wykonania migracji i wdrożenia CRM.
+- **Mac / telefon**: bez zmian.

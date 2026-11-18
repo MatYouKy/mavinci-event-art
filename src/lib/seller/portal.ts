@@ -49,11 +49,20 @@ export type SellerPortalBrand = {
   branding?: SellerBranding | null;
 };
 
+/** Kadr zdjęcia pracownika jak miniatura w CRM (`EmployeeAvatar`, `employees.avatar_metadata.desktop`). */
+export type SellerPhotoFrame = {
+  /** Przesunięcie w % rozmiaru zdjęcia i skala. */
+  position?: { posX?: number | null; posY?: number | null; scale?: number | null } | null;
+  objectFit?: string | null;
+};
+
 export type SellerPortalManager = {
   name: string;
   email?: string | null;
   phone?: string | null;
   photo_url?: string | null;
+  /** Brak przed migracją 20261119003000 — zdjęcie bez kadru (wyśrodkowane). */
+  photo_frame?: SellerPhotoFrame | null;
   position?: string | null;
 };
 

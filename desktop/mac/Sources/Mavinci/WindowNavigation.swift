@@ -34,6 +34,8 @@ import Combine
     @Published var webItem: NavItem?
     /// „Mianuj sprzedawcą” — kreator „Nowy sprzedawca” z wybraną osobą jako arkusz tego okna (`NewSellerWizard.swift`).
     @Published var sellerAppointment: NewSellerPreset?
+    /// „Stan systemu i jakość danych” (administrator) — arkusz tego okna (`SystemHealthView.swift`).
+    @Published var systemHealthShown = false
     /// Komunikator w tym oknie (`Chat/ChatViews.swift`): panel otwarty, zwinięty i widok (lista, rozmowa, nowa rozmowa).
     @Published var chatOpen = false
     @Published var chatMinimized = false
@@ -48,7 +50,7 @@ import Combine
     func reset() {
         selection = .day; eventRoute = nil; sellerFocus = nil; focusedID = nil; notificationsVisible = false
         nativeSet = nil; nativeFocus = nil; screen = nil; sidebarHref = "/crm"; sidebarVisibility = .all; webItem = nil
-        sellerAppointment = nil
+        sellerAppointment = nil; systemHealthShown = false
         chatOpen = false; chatMinimized = false; chatRoute = .list
     }
 }

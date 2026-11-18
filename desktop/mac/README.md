@@ -171,6 +171,17 @@ Przy zmianie sekcji powiadomienie o błędzie nie zwęża list. Skróty: ⌘1 M�
 
 Powiadomienia procesu wydarzeń: dzienny digest trafia wyłącznie do autora wydarzenia. Drawer udostępnia bezpośrednie przyciski do wydarzeń ujętych w podsumowaniu. Odroczenie przypomnienia i pełna kolejka kolejnych kroków są obecnie dostępne w CRM.
 
+**Aktualizacja — każde powiadomienie otwiera sprawę na Macu, „Stan systemu” natywnie.** Przegląd powiadomień z 45 dni: komunikat „brak sekcji natywnej” dawały e-maile (najczęściej), flota, nieobecności, broszury, KSeF i faktury oraz awarie integracji. Teraz:
+1. **Wiadomości** (`/crm/messages/<id>?type=received|sent|contact_form`) — Wiadomości z otwartą treścią, także spoza bieżącej skrzynki (usunięta albo bez dostępu — komunikat); bez id — skrzynka.
+2. **Finanse** — `/crm/invoices/<id>` otwiera fakturę; zakładki Centrum, KSeF, Faktury, Koszty i wypłaty oraz sekcje „Dokumenty i rozliczenia” (wyciągi, uzgodnienie, terminy i monity, deklaracje, przekazanie księgowej, zamknięcie miesięcy) — właściwą część Finansów.
+3. **Flota** — karta pojazdu; przypomnienie o przeglądzie otwiera „Serwis i naprawy”, o polisie — „Ubezpieczenia”.
+4. **Pracownicy** (`/crm/employees/<id>?tab=…`) — karta pracownika na wskazanej zakładce (nieobecności i nadgodziny — oś czasu).
+5. **Broszury** — broszura (np. raport pokazu portalu); bez id — lista broszur.
+6. **Stan systemu i jakość danych** (`/crm/settings/system-health`, administrator) — okno jak strona CRM: podsumowanie, integracje z 24 godzin (błędy, zablokowane, ostatni błąd), jakość danych i bezpieczeństwo z rozwijanymi szczegółami (odnośniki otwierają rekordy na Macu, „Kopiuj SQL”), automatyczne alerty operacyjne; bez migracji kontroli operacyjnej albo drill-down — informacja, którą wykonać.
+7. **Pozostałe adresy CRM** — sekcja z paska bocznego, jeśli ma ekran na Macu, inaczej strona CRM (zamiast komunikatu bez akcji).
+
+Dane: te same funkcje bazy i uprawnienia co CRM (`get_crm_system_health`, `get_crm_data_quality`, `get_crm_security_health`, `get_crm_health_details`, `event_operational_alert_settings`). Bez zmian serwera i migracji.
+
 
 ## Aktualizacja 0.4 — CRM 1:1: menu, dashboard i motywy
 
@@ -702,6 +713,10 @@ Audyt kroku „Osoba”: tryb „Bez organizacji” ukrywał każdego, kto ma ob
 4. **Karta wybranej osoby**: e-mail (bez niego — ostrzeżenie i **„Uzupełnij e-mail”** w formularzu kontaktu z ponownym wczytaniem), telefon, organizacja (jedyna obecna — automatycznie; kilka — wybór; brak — wskazówka do kroku „Hotel i sale”), „Zmień osobę”. „Mianuj sprzedawcą” trafia na tę samą kartę.
 
 Serwer: `GET /bridge/native/v1/sellers?op=lookup&q=…` (`newSellerLookup` w `src/lib/native/sellerCreate.ts`); osoby organizacji (`people&organization=…`) — wszyscy obecni pracownicy z powodem blokady; osoby mają `phone`, `kind`, `blocked`, organizacje — `city`, `peopleCount`. Kod: `Sellers/NewSellerWizard.swift`, `Contacts/ContactSheets.swift` (`initialValues`, `initialOrganizationID`, `onSaved`), `Contacts/OrganizationEditorSheet.swift` (`initialValues`). Bez migracji. Wymaga wdrożenia CRM.
+
+**Aktualizacja — przełącznik „Wynagrodzenie w portalu sprzedawcy” na karcie sprzedawcy.** Nad kontem „Prowizje i narzuty” karta pokazuje, czy sprzedawca widzi w portalu zakładkę **„Moje wynagrodzenie”** (z nią prognozę wynagrodzenia na pulpicie i kwoty prowizji przy ofertach), i ma jeden przełącznik **Pokaż w portalu**: wyłączenie ukrywa wynagrodzenie wszystkich marek naraz (zakładka znika z portalu), włączenie pokazuje je we wszystkich aktywnych markach z prowizją. Przy kilku markach — także przełącznik każdej marki ze stanem „widoczne / ukryte” i opisem „Widoczne tylko dla marek: …”. Każda zmiana przechodzi przez okno jak `CommissionVisibilityToggle` w CRM: co zobaczy albo przestanie widzieć sprzedawca, powód do historii zmian, przy pokazaniu powiadomienie w portalu (zalecane; przy kilku markach — osobne dla każdej). Prowizje naliczają się i są widoczne w CRM niezależnie od przełącznika; narzut sprzedawca widzi zawsze. Przełącznik jest także wtedy, gdy użytkownik nie ma dostępu do konta prowizji (opiekun sprzedawcy); uprawnienia sprawdza baza (opiekun, finanse, administrator). Ustawienia sprzedawcy („Wynagrodzenie w portalu”) korzystają z tego samego okna i informują, kiedy zmiana jednej marki chowa albo pokazuje całą zakładkę.
+
+Serwer: bez zmian — `POST /bridge/native/v1/sellers` `op=visibility` (`set_seller_commission_visibility`, po jednej marce). Bez migracji.
 
 **Aktualizacja — rozmowy w aplikacji, „Mianuj sprzedawcą” i zaproszenie z instrukcją.**
 1. **Rozmowy ze sprzedawcą tylko w aplikacji**: pozycje „Rozmowy czekające na odpowiedź” w kokpicie, powiadomienia o nowej wiadomości sprzedawcy (`seller_chat`), odnośniki CRM do rozmowy (`…?tab=seller&conversation=…`, `/crm/salespeople?seller=…&conversation=…`) i przycisk **Rozmowa** na karcie osoby-sprzedawcy otwierają na ekranie Sprzedawców okno rozmów z właściwą zakładką („Rozmowa ogólna” / „Oferty i realizacje”) i wybraną rozmową — bez przeglądarki. Serwer oznacza takie pozycje jako `kind: 'chat'` (rozmowa i profil sprzedawcy); starsze odnośniki aplikacja rozpoznaje sama.

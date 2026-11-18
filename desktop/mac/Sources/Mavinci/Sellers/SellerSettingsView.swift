@@ -209,10 +209,19 @@ struct SellerSettingsRequest: Identifiable {
 
     // MARK: Widoczność wynagrodzenia
 
+    /// Zmiana jednej marki do okna potwierdzenia (`SellerVisibilityView.swift`) — z informacją, czy dotyczy całej zakładki
+    /// „Moje wynagrodzenie” (żadna inna aktywna marka nie ma widocznego wynagrodzenia).
+    func visibilityChange(_ brand: SellerManagementData.Brand) -> SellerVisibilityChange {
+        let others = (management?.brands ?? []).contains { $0.active && $0.commissionsVisible && $0.companyId != brand.companyId }
+        return SellerVisibilityChange(brands: [SellerVisibilityBrand(companyId: brand.companyId, name: brand.name)],
+                                      visible: !brand.commissionsVisible, wholeTab: !others)
+    }
+
     /// „Pokaż / Ukryj wynagrodzenie” jednej marki (`set_seller_commission_visibility`); zwraca błąd albo nil.
     func setVisibility(_ brand: SellerManagementData.Brand, reason: String, notify: Bool, workspace: Workspace) async -> String? {
         guard let api, workspace.canWrite else { return "Zapis wymaga połączenia z serwerem CRM." }
-        let visible = !brand.commissionsVisible
+        let change = visibilityChange(brand)
+        let visible = change.visible
         do {
             _ = try await api.post("/sellers", [
                 "op": .string("visibility"), "id": .string(partnerID), "companyId": .string(brand.companyId), "visible": .bool(visible),
@@ -223,7 +232,7 @@ struct SellerSettingsRequest: Identifiable {
             workspace.error = message
             return message
         }
-        let message = visible ? "Wynagrodzenie marki \(brand.name) jest teraz widoczne w portalu." : "Ukryto wynagrodzenie marki \(brand.name) w portalu."
+        let message = SellerVisibilityText.done(change)
         workspace.succeed(message)
         banner = Banner(success: true, text: message)
         await loadManagement()
@@ -399,7 +408,7 @@ struct SellerSettingsRequest: Identifiable {
                 .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
         .sheet(item: $visibility) { brand in
-            SellerVisibilityDialog(brand: brand) { reason, notify in
+            SellerVisibilityDialog(change: model.visibilityChange(brand)) { reason, notify in
                 await model.setVisibility(brand, reason: reason, notify: notify, workspace: state)
             }
             .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
@@ -574,7 +583,7 @@ struct SellerSettingsRequest: Identifiable {
 
     private var visibilitySection: some View {
         card("Wynagrodzenie w portalu", symbol: "eye") {
-            Text("Decydujesz, kiedy sprzedawca zobaczy swoje prowizje dla danej marki. Prowizje naliczają się niezależnie od widoczności, a narzut jest zawsze widoczny.")
+            Text("Decydujesz, kiedy sprzedawca zobaczy swoje prowizje dla danej marki. Prowizje naliczają się niezależnie od widoczności, a narzut jest zawsze widoczny. Gdy wynagrodzenie wszystkich marek jest ukryte, portal nie pokazuje zakładki „Moje wynagrodzenie” ani prognozy wynagrodzenia. Przełącznik całej zakładki (wszystkie marki naraz) jest też na karcie sprzedawcy.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             let brands = (model.management?.brands ?? []).filter(\.active)
             if brands.isEmpty {
@@ -885,72 +894,6 @@ struct SellerSettingsRequest: Identifiable {
             Text(message).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             Button("Spróbuj ponownie", action: retry)
         }
-    }
-}
-
-/// „Pokazać / Ukryć wynagrodzenie — marka?” (`CommissionVisibilityToggle`): powód do historii i powiadomienie sprzedawcy.
-@MainActor private struct SellerVisibilityDialog: View {
-    let brand: SellerManagementData.Brand
-    let submit: (_ reason: String, _ notify: Bool) async -> String?
-    @EnvironmentObject private var state: Workspace
-    @Environment(\.dismiss) private var dismiss
-    @State private var reason = ""
-    @State private var notify = true
-    @State private var busy = false
-    @State private var error: String?
-    private var next: Bool { !brand.commissionsVisible }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(verbatim: next ? "Pokazać wynagrodzenie — \(brand.name)?" : "Ukryć wynagrodzenie — \(brand.name)?").font(.title3)
-            Text(next
-                 ? "Sprzedawca zobaczy prowizje i dostanie powiadomienie. W portalu pojawią się stawka, naliczenia i historia wypłat tej marki."
-                 : "Sprzedawca przestanie widzieć stawkę, naliczenia i wypłaty tej marki. Prowizje nadal będą naliczane i rozliczane w CRM.")
-                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Powód (opcjonalnie, trafi do historii zmian)").font(.caption).foregroundStyle(.secondary)
-                ZStack(alignment: .topLeading) {
-                    TextEditor(text: $reason).font(.body).scrollContentBackground(.hidden).frame(height: 72)
-                    if reason.isEmpty {
-                        Text(next ? "np. Pierwsza oferta zaakceptowana — odsłaniamy wynagrodzenie" : "np. Renegocjacja warunków")
-                            .foregroundStyle(.tertiary).padding(.leading, 5).allowsHitTesting(false)
-                    }
-                }
-                .padding(4).background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
-                .onChange(of: reason) { _, value in if value.count > 500 { reason = String(value.prefix(500)) } }
-            }
-            if next {
-                Toggle(isOn: $notify) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Wyślij sprzedawcy powiadomienie w portalu")
-                        Text("Zalecane — sprzedawca dowie się, że może sprawdzić swoje wynagrodzenie.").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.checkbox)
-            }
-            if let error { Text(error).font(.callout).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
-            HStack {
-                Spacer()
-                Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction).disabled(busy)
-                Button {
-                    Task {
-                        busy = true
-                        error = nil
-                        let failure = await submit(reason, notify)
-                        busy = false
-                        if let failure { error = failure } else { dismiss() }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        if busy { ProgressView().controlSize(.small) } else { Image(systemName: next ? "eye" : "eye.slash") }
-                        Text(next ? "Pokaż wynagrodzenie" : "Ukryj wynagrodzenie")
-                    }
-                }
-                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-                .disabled(busy || !state.canWrite)
-            }
-        }
-        .padding(20).frame(width: 500)
     }
 }
 

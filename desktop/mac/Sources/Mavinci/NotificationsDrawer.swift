@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 @MainActor struct NotificationsDrawer:View {
     @EnvironmentObject var state:Workspace
@@ -33,7 +34,7 @@ import SwiftUI
                             Task{
                                 let opened=await state.routeNotification(row)
                                 if opened{nav.notificationsVisible=false;if row.fields["is_read"]?.flag != true && state.canWrite{_ = await state.perform("notification_read",row:row)}}
-                                else{message=state.error ?? state.notice ?? "Ta sprawa nie ma jeszcze dostępnej sekcji natywnej."}
+                                else{message=state.error ?? state.notice ?? "Nie udało się otworzyć powiązanej sprawy."}
                                 opening=false
                             }
                         }.disabled(opening)
@@ -97,16 +98,39 @@ import SwiftUI
                     showTimeTracking(employee:employeeID,discussion:entry)
                     return true
                 }
-                // Finanse: /crm/invoices (Centrum), ?tab=external&section=deadlines (terminy, monity, ZUS i podatki) i section=accountant
-                // (przekazanie księgowej) — na Macu; karta faktury i pozostałe zakładki — w CRM.
+                // Finanse: /crm/invoices/<id> — karta faktury w Finansach; zakładki (Centrum, KSeF, faktury, koszty) i sekcje
+                // „Dokumenty i rozliczenia” (wyciągi, uzgodnienie, terminy, deklaracje, księgowa, zamknięcie miesięcy) — na Macu.
                 if section=="invoices"{
-                    let tab=q["tab"] ?? ""
-                    let part=q["section"] ?? ""
-                    if next.isEmpty && (tab.isEmpty || tab=="center" || (tab=="external" && (part=="deadlines" || part=="accountant"))){
-                        showFinance(part=="deadlines" ? .deadlines : part=="accountant" ? .accountant : .center)
-                    }else{openCRM(raw)}
+                    if UUID(uuidString:next) != nil{showInvoice(next);return true}
+                    if let part=Self.financePart(tab:q["tab"] ?? "",section:q["section"] ?? ""){showFinance(part)}else{openCRM(raw)}
                     return true
                 }
+                // Wiadomości: /crm/messages/<id>?type=received|sent|contact_form — treść w Wiadomościach; bez id — skrzynka.
+                if section=="messages"{
+                    if UUID(uuidString:next) != nil{return await showMessage(next,type:q["type"] ?? "received")}
+                    return showScreen(.messages,fallback:raw)
+                }
+                // Flota: /crm/fleet/<pojazd> — karta pojazdu; przypomnienie o przeglądzie — „Serwis i naprawy”, o polisie — „Ubezpieczenia”.
+                if section=="fleet"{
+                    guard UUID(uuidString:next) != nil else{return showScreen(.fleet,fallback:raw)}
+                    let compliance=metadata["compliance_type"]?.text ?? ""
+                    var vehicleTab: FleetVehicleTab? = nil
+                    if compliance.hasPrefix("insurance"){vehicleTab = .insurance}else if compliance.contains("inspection"){vehicleTab = .maintenance}
+                    showVehicle(next,tab:vehicleTab)
+                    return true
+                }
+                // Pracownicy: /crm/employees/<id>?tab=… — karta pracownika (nieobecności i nadgodziny — oś czasu).
+                if section=="employees",UUID(uuidString:next) != nil{
+                    showEmployee(next,tab:EmployeeTab(rawValue:q["tab"] ?? ""))
+                    return true
+                }
+                // Broszury: /crm/brochures/<id>#seller-demo-report — broszura (raport pokazu) w Broszurach.
+                if section=="brochures"{
+                    if UUID(uuidString:next) != nil{showBrochure(next);return true}
+                    return showScreen(.brochures,fallback:raw)
+                }
+                // Stan systemu: /crm/settings/system-health — integracje, jakość danych i bezpieczeństwo (administrator).
+                if section=="settings",next=="system-health"{return showSystemHealth()}
                 // Kampanie e-mail: /crm/campaigns?campaign=<id> — kampania w Centrum Kampanii (bez id — lista kampanii).
                 if section=="campaigns"{
                     showCampaign(q["campaign"].flatMap{UUID(uuidString:$0) != nil ? $0:nil})
@@ -125,7 +149,11 @@ import SwiftUI
                 if let candidate=metadata[key]?.text,UUID(uuidString:candidate) != nil{type=target;id=candidate;break}
             }
         }
-        guard UUID(uuidString:id) != nil else{notice="Powiadomienie nie zawiera obsługiwanego powiązania.";return false}
+        guard UUID(uuidString:id) != nil else{
+            // Pozostałe adresy CRM: sekcja z paska bocznego, jeśli ma ekran na Macu, inaczej strona CRM.
+            if !raw.isEmpty{return openCRMLink(raw)}
+            notice="Powiadomienie nie zawiera obsługiwanego powiązania.";return false
+        }
         switch type {
         case "event","events":
             guard employee?.canView(.events)==true else{notice="Nie masz dostępu do wydarzeń.";return false}
@@ -137,8 +165,75 @@ import SwiftUI
         case "tender","tenders":return await navigate(.tenders,id:id)
         case "meeting","meetings":showMeeting(id);return true
         case "employee","employees":showEmployee(id);return true
-        default:notice="Powiązana sprawa nie ma jeszcze dostępnej sekcji natywnej.";return false
+        default:
+            if !raw.isEmpty{return openCRMLink(raw)}
+            notice="Powiadomienie nie zawiera obsługiwanego powiązania.";return false
         }
+    }
+    /// Część Finansów dla adresu `/crm/invoices?tab=…&section=…` (jak zakładki strony CRM); `nil` — tylko w CRM.
+    static func financePart(tab:String,section:String) -> FinancePart? {
+        switch tab {
+        case "","center","dashboard":return .center
+        case "ksef":return .ksef
+        case "local":return .invoices
+        case "expenses":return .entries
+        case "external":
+            switch section {
+            case "","deadlines":return section.isEmpty ? .center : .deadlines
+            case "statements":return .statements
+            case "reconciliation":return .reconciliation
+            case "declarations":return .declarations
+            case "accountant":return .accountant
+            case "periods":return .periods
+            default:return nil
+            }
+        default:return nil
+        }
+    }
+    /// Ekran z paska bocznego (np. Wiadomości, Flota); bez dostępu do niego — strona CRM.
+    @discardableResult func showScreen(_ screen:CrmScreen,fallback:String) -> Bool {
+        if let item=navigation.flatMap(\.flattened).first(where:{$0.screen == screen}){openHref(item.href)}else{openCRM(fallback)}
+        return true
+    }
+    /// Wiadomość e-mail z powiadomienia — Wiadomości na Macu z otwartą treścią (także spoza bieżącej skrzynki i kopii na dysku).
+    func showMessage(_ id:String,type:String) async -> Bool {
+        let kind=["received","sent","contact_form"].contains(type) ? type:"received"
+        guard let item=navigation.flatMap(\.flattened).first(where:{$0.screen == .messages}) else{openCRM("/crm/messages/\(id)?type=\(kind)");return true}
+        openHref(item.href)
+        let key="\(kind):\(id)"
+        if messages.item(key) == nil{
+            messages.open(account:"",folder:.all)
+            if messages.item(key) == nil,await messages.loadDetail(id:id,type:kind) == nil{
+                error="Nie udało się otworzyć wiadomości — mogła zostać usunięta albo nie masz dostępu do tej skrzynki."
+                return false
+            }
+        }
+        messages.select(key)
+        return true
+    }
+    /// Stan systemu i jakość danych (`/crm/settings/system-health`) — arkusz w oknie, tylko administrator.
+    @discardableResult func showSystemHealth() -> Bool {
+        guard employee?.isAdmin == true else{notice="Stan systemu i jakość danych są dostępne wyłącznie dla administratora.";return false}
+        activeNavigation.systemHealthShown=true
+        return true
+    }
+    /// Adres CRM bez natywnego rekordu: dokładnie ta sekcja z paska bocznego, jeśli ma ekran na Macu, inaczej strona CRM.
+    @discardableResult func openCRMLink(_ raw:String) -> Bool {
+        let path=URLComponents(string:raw)?.path ?? raw
+        if !raw.hasPrefix("http"),let item=navigation.flatMap(\.flattened).first(where:{($0.module != nil || $0.screen != nil) && $0.path == path}){
+            openHref(item.href);return true
+        }
+        openCRM(raw)
+        return true
+    }
+    /// Odnośnik z treści (np. szczegóły „Stanu systemu”) — rekord albo sekcja na Macu jak powiadomienie, inaczej CRM.
+    func openLink(_ href:String) async {
+        if href.hasPrefix("http"),!href.contains("/crm/"){
+            if let url=URL(string:href){NSWorkspace.shared.open(url)}
+            return
+        }
+        let path=href.hasPrefix("http") ? (URLComponents(string:href).map{$0.path+($0.query.map{"?"+$0} ?? "")} ?? href):href
+        await routeNotification(Row(["action_url":.string(path)]))
     }
     func markAllNotificationsRead() async {
         guard canWrite,let api=eventAPI(),let actor=employee else{return}

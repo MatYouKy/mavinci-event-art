@@ -176,6 +176,11 @@ struct RootView: View {
                     // Pasek „W tej karcie” / „W nowej karcie” / „W nowym oknie” tuż pod kartami — tylko podczas przeciągania.
                     .background(NavDropAccessory(workspace: state, nav: nav, openWindow: openWindow, visible: state.navDrag != nil))
                     .animation(.easeOut(duration: 0.15), value: state.navDrag != nil)
+                    // „Stan systemu i jakość danych” (powiadomienie o awarii integracji, `/crm/settings/system-health`).
+                    .sheet(isPresented: $nav.systemHealthShown) {
+                        SystemHealthView()
+                            .environmentObject(state).environmentObject(nav).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+                    }
                     // „Mianuj sprzedawcą” (karta i lista kontaktów, osoby organizacji) — kreator w tym oknie.
                     .sheet(item: $nav.sellerAppointment) { preset in
                         NewSellerWizard(store: state.sellers, preset: preset) { result in state.sellerAppointed(result) }

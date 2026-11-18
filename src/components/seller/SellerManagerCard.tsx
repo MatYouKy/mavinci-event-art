@@ -1,22 +1,38 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { Mail, MessageCircle, MessageSquare, Phone, UserRound } from 'lucide-react';
-import { sellerPhoneHref, sellerWhatsAppHref, type SellerPortalManager } from '@/lib/seller/portal';
+import { sellerPhoneHref, sellerWhatsAppHref, type SellerPhotoFrame, type SellerPortalManager } from '@/lib/seller/portal';
 import { markSellerOnboarding } from '@/lib/seller/onboarding';
 
 const actionBase = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm transition';
 const action = `${actionBase} bg-white/[0.05] text-[#e5e4e2]/85 hover:bg-[#d3bb73]/15 hover:text-[#d3bb73]`;
 const primaryAction = `${actionBase} bg-[#d3bb73]/15 text-[#d3bb73] hover:bg-[#d3bb73]/25`;
 
+const PHOTO_FITS = ['cover', 'contain', 'fill', 'none', 'scale-down'] as const;
+const frameNumber = (value: unknown, fallback: number) => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
+
+/** Kadr jak miniatura pracownika w CRM (`EmployeeAvatar`): `objectFit` i `translate(posX%, posY%) scale(scale)`. */
+const photoFrameStyle = (frame: SellerPhotoFrame | null | undefined): CSSProperties => {
+  const position = frame?.position;
+  const posX = frameNumber(position?.posX, 0);
+  const posY = frameNumber(position?.posY, 0);
+  const rawScale = frameNumber(position?.scale, 1);
+  const scale = rawScale > 0 ? Math.min(rawScale, 10) : 1;
+  const fit = PHOTO_FITS.find((value) => value === frame?.objectFit) || 'cover';
+  return { objectFit: fit, transform: `translate(${posX}%, ${posY}%) scale(${scale})` };
+};
+
 function ManagerPhoto({ manager }: { manager: SellerPortalManager }) {
   const [failed, setFailed] = useState(false);
   const initials = manager.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   const url = manager.photo_url && /^https?:\/\//i.test(manager.photo_url) ? manager.photo_url : null;
   if (url && !failed) {
-    // eslint-disable-next-line @next/next/no-img-element -- external CRM avatar URL, size is fixed.
-    return <img src={url} alt="" onError={() => setFailed(true)} className="h-16 w-16 shrink-0 rounded-full object-cover" />;
+    return <span aria-hidden="true" className="block h-16 w-16 shrink-0 overflow-hidden rounded-full bg-[#1c1f33]">
+      {/* eslint-disable-next-line @next/next/no-img-element -- external CRM avatar URL, size is fixed. */}
+      <img src={url} alt="" onError={() => setFailed(true)} className="block h-full w-full" style={photoFrameStyle(manager.photo_frame)} />
+    </span>;
   }
   return <span aria-hidden="true" className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#d3bb73]/15 text-lg font-medium text-[#d3bb73]">{initials || <UserRound className="h-7 w-7" />}</span>;
 }
