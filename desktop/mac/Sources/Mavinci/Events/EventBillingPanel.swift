@@ -114,8 +114,18 @@ enum EventBillingQuery {
             var companyCost: Double; var paymentMethod: String; var dividendTaxRate: Double; var skipReason: String?; var source: String
         }
         struct Markup: Decodable, Hashable { var offerId: String; var partnerId: String?; var net: Double; var included: Bool; var detail: String? }
+        /// Sprzedawca wydarzenia z zespołu (udział w sprzedaży) — prowizję liczy podsumowanie stawką z karty pracownika.
+        struct Internal: Decodable, Hashable {
+            var employeeId: String; var name: String; var sharePercent: Double; var rate: Double; var clientOwned: Bool; var amount: Double
+            var enabled: Bool; var blockedReason: String?; var paymentMethod: String
+        }
         var status: String; var profitBeforeExternal: Double; var profitNet: Double; var revenueNet: Double; var costsNet: Double
         var external: [External]; var markups: [Markup]
+        var `internal`: [Internal]?
+    }
+    /// Pracownik z włączoną „Prowizją od sprzedaży” (karta pracownika → Prowizje): stawki własne albo globalne, sposób wypłaty.
+    struct SalesEmployee: Decodable, Hashable, Identifiable {
+        var id: String; var name: String; var standardRate: Double; var ownClientRate: Double; var customRates: Bool; var paymentMethod: String
     }
     /// Wpis prowizji tego wydarzenia (bez anulowanych) — ochrona przed drugą prowizją tej samej osoby.
     struct Existing: Decodable, Hashable {
@@ -126,6 +136,8 @@ enum EventBillingQuery {
         var acceptedOfferNet: Double; var offerCommission: OfferCommission?; var partners: [Partner]; var employees: [Person]; var contacts: [Person]; var organizations: [Option]
         var settlement: SettlementPreview?
         var existing: [Existing]?
+        var salesEmployees: [SalesEmployee]?
+        var employerSocialRate: Double?
     }
     struct Reply: Decodable { var ok: Bool?; var message: String?; var commissionId: String?; var created: Bool?; var tone: String? }
 }
@@ -141,8 +153,10 @@ enum EventBillingText {
     static let paymentMethods: [(String, String)] = [
         ("cash_dividend", "Gotówka z zysku spółki"), ("invoice", "Faktura / rachunek"), ("payroll", "Wynagrodzenie pracownicze"), ("other", "Inny sposób"),
     ]
+    /// „Sprzedawcy” — podpowiedzi z pracowników z prowizją od sprzedaży i z kartoteki sprzedawców (wybór ustawia właściwe źródło).
     static let sources: [(String, String)] = [
-        ("partner", "Kartoteka sprzedawców"), ("contact", "Kontakt CRM / osoba z hotelu"), ("employee", "Pracownik CRM"), ("manual", "Osoba spoza bazy"),
+        ("seller", "Sprzedawcy (zespół i kartoteka)"), ("partner", "Kartoteka sprzedawców"), ("contact", "Kontakt CRM / osoba z hotelu"),
+        ("employee", "Pracownik CRM"), ("manual", "Osoba spoza bazy"),
     ]
     static let statuses: [(String, String)] = [("planned", "Planowana"), ("approved", "Zatwierdzona"), ("paid", "Wypłacona"), ("cancelled", "Anulowana")]
     static let defaultDividendTax = 19.0

@@ -390,6 +390,12 @@ async function settlementPreview(ctx: NativeContext, eventId: string) {
     profitNet: num(totals.profit_net),
     revenueNet: num(totals.revenue_net),
     costsNet: num(totals.costs_net),
+    // Sprzedawcy wydarzenia z zespołu (udział): stawka z warunków pracownika, podstawa = zysk netto × udział.
+    internal: ((Array.isArray(s.internal) ? s.internal : []) as Row[]).map((row) => ({
+      employeeId: str(row.employee_id), name: str(row.name), sharePercent: num(row.share_percent), rate: num(row.rate),
+      clientOwned: row.client_owned === true, amount: num(row.amount), enabled: row.enabled === true,
+      blockedReason: str(row.blocked_reason) || null, paymentMethod: str(row.payment_method) || 'payroll',
+    })),
     external: ((Array.isArray(s.external) ? s.external : []) as Row[]).map((row) => ({
       partnerId: str(row.partner_id) || null, contactId: str(row.contact_id) || null, name: str(row.name),
       rate: num(row.rate), eligible: row.eligible === true, amount: num(row.amount), companyCost: num(row.company_cost),
@@ -409,7 +415,7 @@ async function settlementPreview(ctx: NativeContext, eventId: string) {
 async function commissionOptionsQuery(ctx: NativeContext, eventId: string) {
   requireManage(ctx);
   const s = ctx.supabase;
-  const [eventRes, offer, employeesRes, contactsRes, organizations, relationsRes, partnersRes, termsRes, existingRes, overridesRes, settlement] = await Promise.all([
+  const [eventRes, offer, employeesRes, contactsRes, organizations, relationsRes, partnersRes, termsRes, existingRes, overridesRes, settlement, salesRes] = await Promise.all([
     s.from('events').select('my_company_id').eq('id', eventId).maybeSingle(),
     acceptedOffer(ctx, eventId),
     s.from('employees').select('id,name,surname,email').eq('is_active', true).order('surname').limit(500),
@@ -425,6 +431,8 @@ async function commissionOptionsQuery(ctx: NativeContext, eventId: string) {
     // Stawka ustalona dla tego wydarzenia ma pierwszeństwo przed kartą sprzedawcy (jak w podsumowaniu).
     s.from('event_external_seller_rates').select('sales_partner_id,rate,reason').eq('event_id', eventId),
     settlementPreview(ctx, eventId).catch(() => null),
+    // Pracownicy-sprzedawcy: „Prowizja od sprzedaży” z karty pracownika (stawka własna albo globalna, sposób wypłaty).
+    s.rpc('get_sales_commission_settings'),
   ]);
   const failed = [eventRes, employeesRes, contactsRes, organizations, relationsRes, partnersRes, termsRes].find((result) => result.error);
   if (failed?.error) throw failed.error;
@@ -442,7 +450,21 @@ async function commissionOptionsQuery(ctx: NativeContext, eventId: string) {
     contactOrgs.set(str(relation.contact_id), list);
   }
   const overrides = (overridesRes.error ? [] : overridesRes.data || []) as Row[];
+  const sales = (!salesRes.error && salesRes.data && typeof salesRes.data === 'object' ? salesRes.data : null) as Row | null;
+  const defaultStandard = sales?.standard_rate == null ? 5 : num(sales.standard_rate);
+  const defaultOwn = sales?.own_client_rate == null ? 10 : num(sales.own_client_rate);
+  const salesEmployees = ((Array.isArray(sales?.employees) ? sales?.employees : []) as Row[])
+    .filter((row) => row.enabled === true && row.is_active !== false)
+    .map((row) => ({
+      id: str(row.employee_id), name: str(row.name) || 'Pracownik',
+      standardRate: row.standard_rate == null ? defaultStandard : num(row.standard_rate),
+      ownClientRate: row.own_client_rate == null ? defaultOwn : num(row.own_client_rate),
+      customRates: row.standard_rate != null || row.own_client_rate != null,
+      paymentMethod: str(row.payment_method) || 'payroll',
+    }));
   return {
+    salesEmployees,
+    employerSocialRate: sales?.employer_social_rate == null ? null : num(sales.employer_social_rate),
     acceptedOfferNet: offer.net,
     offerCommission: offer.commission,
     settlement,
