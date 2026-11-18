@@ -179,6 +179,8 @@ enum SellerTone {
     /// Konto prowizji i narzutów sprzedawcy (sekcja „Prowizje i narzuty” karty, `EmployeeCommissionsView`) i błąd wczytania.
     @Published var commissionAccounts: [String: EmployeeCommissionAccount] = [:]
     @Published var commissionErrors: [String: String] = [:]
+    /// Sprzedawca (kontakt) do pokazania po wejściu na ekran — „Sprzedaż sprzedawcy” z karty kontaktu; ekran go zaznacza i czyści.
+    @Published var focusSellerContact: String?
     /// Filtr opiekuna (tylko administrator); pusty — wszyscy.
     @Published var managerFilter: String = UserDefaults.standard.string(forKey: "sellersManagerFilter") ?? "" {
         didSet { UserDefaults.standard.set(managerFilter, forKey: "sellersManagerFilter") }
@@ -188,6 +190,7 @@ enum SellerTone {
 
     func reset() {
         cockpit = nil; loadError = nil; loading = false; help = nil; helpError = nil; cards = [:]; commissionAccounts = [:]; commissionErrors = [:]
+        focusSellerContact = nil
     }
 
     func failureText(_ error: Error, _ fallback: String) -> String {

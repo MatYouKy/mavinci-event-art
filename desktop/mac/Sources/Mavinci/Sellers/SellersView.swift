@@ -38,7 +38,10 @@ import SwiftUI
         .task {
             store.workspace = state
             if store.cockpit == nil { await store.load() }
+            focusRequested()
         }
+        .onChange(of: store.focusSellerContact) { _, _ in focusRequested() }
+        .onChange(of: store.cockpit != nil) { _, loaded in if loaded { focusRequested() } }
         .sheet(isPresented: $helpShown) { SellersHelpSheet(store: store) }
         .sheet(isPresented: $newSellerShown) {
             NewSellerWizard(store: store) { result in
@@ -326,6 +329,18 @@ import SwiftUI
     private func showSeller(_ id: String) {
         tab = .sellers
         selectedSeller = id
+    }
+
+    /// Sprzedawca wskazany spoza ekranu (`Workspace.showSeller(contactID:)`): karta na liście; spoza listy opiekuna — karta w CRM.
+    private func focusRequested() {
+        guard let contactID = store.focusSellerContact, let data = store.cockpit else { return }
+        store.focusSellerContact = nil
+        if let seller = data.sellers.first(where: { $0.contactId == contactID }) {
+            showSeller(seller.id)
+        } else {
+            state.snack = Snack(kind: .info, text: "Tego sprzedawcy nie ma na Twojej liście w kokpicie opiekuna.",
+                                action: Snack.Action(title: "Karta w CRM") { state.openCRM("/crm/contacts/\(contactID)?tab=seller") })
+        }
     }
 
     private func openTarget(_ target: SellerCockpitState.Target) {

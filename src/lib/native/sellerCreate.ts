@@ -13,9 +13,16 @@ import {
  * Te same zapisy co formularz CRM (`CrmSellerProfileSettings.tsx`): profil i warunki marek tokenem pracownika (RLS jak w CRM),
  * te same warunki (`sellerProfileProblems`), zaproszenie przez `/bridge/seller/invite` (wywołane na serwerze), opiekuna
  * przypisuje administrator (`set_seller_manager`). Aplikacja zbiera dane i pokazuje braki — nie rozstrzyga o niczym sama.
+ * Kartoteka, normalizacja formularza, sprawdzenie braków i zaproszenie są wspólne z ustawieniami istniejącego sprzedawcy
+ * (`src/lib/native/sellerSettings.ts`).
  */
 
-type Directory = { employee_id: string; is_admin: boolean; can_manage: boolean; profiles: { id: string; contact_id: string | null; employee_id: string | null }[] };
+export type SellerDirectoryProfile = {
+  id: string; contact_id: string | null; employee_id: string | null; partner_type?: string | null; organization_id?: string | null;
+  status?: string | null; portal_enabled?: boolean | null; portal_auth_user_id?: string | null; notes?: string | null;
+};
+export type SellerDirectory = { employee_id: string; is_admin: boolean; can_manage: boolean; profiles: SellerDirectoryProfile[] };
+type Directory = SellerDirectory;
 type Term = SellerProfileFormTerm & { default_payment_method: string };
 export type NewSellerForm = {
   personSource: 'contact' | 'employee';
@@ -35,14 +42,16 @@ const fail = (message: string, status = 400): never => { throw Object.assign(new
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 const like = (query: string) => `%${query.replace(/[%_,()\\]/g, ' ').trim()}%`;
 
-async function directory(ctx: NativeContext): Promise<Directory> {
+/** Kartoteka sprzedawców (`get_crm_seller_directory`) — uprawnienia oglądającego z bieżącej sesji, jak w CRM. */
+export async function sellerDirectory(ctx: NativeContext, denied = 'Nie masz uprawnień do dodawania sprzedawców.'): Promise<Directory> {
   const { data, error } = await ctx.supabase.rpc('get_crm_seller_directory');
   if (error) fail(error.message || 'Brak dostępu do kartoteki sprzedawców.', error.code === '42501' ? 403 : 400);
   const access = data as Directory | null;
   if (!access?.employee_id || !Array.isArray(access.profiles)) fail('Brak dostępu do ustawień sprzedawcy.', 403);
-  if (!access!.can_manage) fail('Nie masz uprawnień do dodawania sprzedawców.', 403);
+  if (!access!.can_manage) fail(denied, 403);
   return access!;
 }
+const directory = (ctx: NativeContext) => sellerDirectory(ctx);
 
 /** Start kreatora: marki, rodzaje współpracy, sposoby wypłaty i uprawnienia oglądającego. */
 export async function newSellerSetup(ctx: NativeContext) {
@@ -117,7 +126,7 @@ export async function newSellerOrganizations(ctx: NativeContext, query: string, 
   }) };
 }
 
-function normalize(raw: Record<string, unknown>): NewSellerForm {
+export function normalize(raw: Record<string, unknown>): NewSellerForm {
   const text = (value: unknown, max = 200) => typeof value === 'string' ? value.trim().slice(0, max) : '';
   const terms = Array.isArray(raw.terms) ? raw.terms.slice(0, 50).map((value) => {
     const term = (value || {}) as Record<string, unknown>;
@@ -142,8 +151,11 @@ function normalize(raw: Record<string, unknown>): NewSellerForm {
   };
 }
 
-/** Braki (blokują zapis) i wskazówki (nie blokują) — kreator pokazuje je od pierwszego kroku. */
-async function check(ctx: NativeContext, access: Directory, form: NewSellerForm) {
+/**
+ * Braki (blokują zapis) i wskazówki (nie blokują) — kreator pokazuje je od pierwszego kroku. `editingId` — ustawienia
+ * istniejącego sprzedawcy: jego własny profil nie jest „już sprzedawcą”.
+ */
+export async function check(ctx: NativeContext, access: Directory, form: NewSellerForm, editingId?: string) {
   const [person, organization] = await Promise.all([
     form.personId
       ? form.personSource === 'contact'
@@ -166,7 +178,8 @@ async function check(ctx: NativeContext, access: Directory, form: NewSellerForm)
     || (personRow && personRow.owner_id !== access.employee_id))) {
     problems.unshift({ step: 'person', section: 'organization', text: 'Możesz zarządzać tylko przypisanymi do Ciebie sprzedawcami zewnętrznymi.' });
   }
-  const existing = access.profiles.find((profile) => form.personId && (form.personSource === 'contact' ? profile.contact_id : profile.employee_id) === form.personId);
+  const existing = access.profiles.find((profile) => profile.id !== editingId
+    && form.personId && (form.personSource === 'contact' ? profile.contact_id : profile.employee_id) === form.personId);
   if (existing) problems.unshift({ step: 'person', section: 'organization', text: 'Ta osoba jest już sprzedawcą — otwórz jej kartę na liście sprzedawców.' });
   const hints: { step: string; text: string }[] = [];
   if (org?.locationId && org.rooms.length === 0) hints.push({ step: 'hotel', text: `${org.locationName || org.name}: brak sal. Kreator oferty nie pokaże wyboru przestrzeni — dodaj sale w kartotece lokalizacji.` });
@@ -180,6 +193,25 @@ export async function validateNewSeller(ctx: NativeContext, raw: Record<string, 
   const access = await directory(ctx);
   const result = await check(ctx, access, normalize(raw));
   return { problems: result.problems, hints: result.hints, existingSellerId: result.existingSellerId };
+}
+
+/**
+ * Dostęp do portalu: utworzenie lub połączenie konta i zaproszenie — ta sama trasa co `requestPortalAccess` w CRM
+ * (`/bridge/seller/invite`), wywołana na serwerze z tokenem pracownika.
+ */
+export async function invitePortalAccess(request: Request, partnerId: string): Promise<{ ok: true; emailSent: boolean; email: string } | { ok: false; error: string }> {
+  try {
+    const response = await invitePortal(new NextRequest(new URL('/bridge/seller/invite', request.url), {
+      method: 'POST',
+      headers: { authorization: request.headers.get('authorization') || '', 'content-type': 'application/json' },
+      body: JSON.stringify({ salesPartnerId: partnerId }),
+    }));
+    const reply = await response.json() as { emailSent?: boolean; email?: string; error?: string };
+    if (!response.ok) return { ok: false, error: String(reply.error || response.status) };
+    return { ok: true, emailSent: reply.emailSent === true, email: reply.email || '' };
+  } catch (error) {
+    return { ok: false, error: (error as Error)?.message || 'błąd' };
+  }
 }
 
 /** Zapis jak „Zapisz ustawienia” w CRM dla nowego sprzedawcy, potem opiekun (administrator) i zaproszenie do portalu. */
@@ -232,20 +264,11 @@ export async function createSeller(ctx: NativeContext, request: Request, raw: Re
   }
   let invited = false;
   if (form.portalEnabled) {
-    try {
-      const response = await invitePortal(new NextRequest(new URL('/bridge/seller/invite', request.url), {
-        method: 'POST',
-        headers: { authorization: request.headers.get('authorization') || '', 'content-type': 'application/json' },
-        body: JSON.stringify({ salesPartnerId: id }),
-      }));
-      const reply = await response.json() as { emailSent?: boolean; email?: string; error?: string };
-      if (!response.ok) warnings.push(`Profil i warunki zapisano, ale nie udało się przygotować dostępu do portalu: ${reply.error || response.status}. Wyślij zaproszenie z „Gotowości do pracy”.`);
-      else {
-        invited = true;
-        messages.push(reply.emailSent ? `Wiadomość do ustawienia hasła wysłano na ${reply.email}.` : `Konto ${reply.email} jest połączone z portalem.`);
-      }
-    } catch (error) {
-      warnings.push(`Profil i warunki zapisano, ale nie udało się przygotować dostępu do portalu: ${(error as Error)?.message || 'błąd'}. Wyślij zaproszenie z „Gotowości do pracy”.`);
+    const portal = await invitePortalAccess(request, id);
+    if (!portal.ok) warnings.push(`Profil i warunki zapisano, ale nie udało się przygotować dostępu do portalu: ${portal.error}. Wyślij zaproszenie z „Gotowości do pracy”.`);
+    else {
+      invited = true;
+      messages.push(portal.emailSent ? `Wiadomość do ustawienia hasła wysłano na ${portal.email}.` : `Konto ${portal.email} jest połączone z portalem.`);
     }
   }
   return { ok: true, id, contactId, invited, warnings, message: ['Sprzedawca został dodany.', ...messages].join(' ') };

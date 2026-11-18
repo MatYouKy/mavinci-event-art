@@ -6,12 +6,19 @@ import AppKit
 // Faktury, Realizacje; kontakt i osoba prywatna: Dane kontaktowe, Organizacje) oraz „Relacja i segmentacja” (opiekun, etap relacji,
 // segmentacja i komunikacja, domeny organizacji, duplikaty i scalanie, zapytania, broszury). Edycja i dodawanie — arkusze
 // `OrganizationEditorSheet` / `PersonEditorSheet`; zapisy przez `/bridge/native/v1/contacts` (RLS i wyzwalacze jak w CRM).
+// „Klient 360°”, „Zapytania”, „Oferty”, „Sprzedaż sprzedawcy” — `ContactCustomer360View.swift`; „Usługi” podwykonawcy —
+// `SubcontractorServicesPanel`; „Dodaj zapytanie” — `NewInquirySheet` z danymi klienta.
 
 enum ContactCardTab: String, Identifiable {
-    case details, persons, organizations, notes, invoices, events, relation
+    case customer360, inquiries, offers, details, persons, organizations, notes, invoices, events, services, seller, relation
     var id: String { rawValue }
     var symbol: String {
         switch self {
+        case .customer360: return "clock.arrow.circlepath"
+        case .inquiries: return "tray"
+        case .offers: return "doc.richtext"
+        case .services: return "wrench.and.screwdriver"
+        case .seller: return "percent"
         case .details: return "doc.text"
         case .persons: return "person.2"
         case .organizations: return "building.2"
@@ -27,8 +34,11 @@ enum ContactCardTab: String, Identifiable {
 enum ContactCardSheet: Identifiable {
     case edit, linkPerson, linkOrganization, decisionMaker, segmentation
     case merge(ContactEntry)
+    /// „Dodaj zapytanie” z danymi klienta (`ContactQuickActions`).
+    case newInquiry(NewInquiryClient)
     var id: String {
         switch self {
+        case .newInquiry: return "new-inquiry"
         case .edit: return "edit"
         case .linkPerson: return "link-person"
         case .linkOrganization: return "link-organization"
@@ -81,6 +91,7 @@ enum ContactCardConfirm: Identifiable {
     @State private var ownerID = ""
     @State private var lifecycle = "lead"
     @State private var domains = ""
+    @State private var preparingInquiry = false
 
     private var card: ContactCard? { store.card(ref.id) }
     private var entry: ContactEntry? { store.entry(ref.id) }
@@ -174,7 +185,7 @@ enum ContactCardConfirm: Identifiable {
             Button { Task { await store.loadCard(ref) } } label: { Label("Odśwież kartę", systemImage: "arrow.clockwise") }
                 .disabled(loading)
             Menu {
-                Button("Pełna karta w CRM (Klient 360°, oferty, sprzedawca, branding)", systemImage: "safari") {
+                Button(isOrganization ? "Karta w CRM (branding ofert, sale i przestrzenie hotelu)" : "Karta w CRM", systemImage: "safari") {
                     state.openCRM("/crm/contacts/\(ref.id)")
                 }
                 if card?.access.canManage == true, let entry {
@@ -239,8 +250,32 @@ enum ContactCardConfirm: Identifiable {
                     .disabled(entry?.email.isEmpty ?? true)
                 Button { if let entry { actions.meeting(entry) } } label: { Label("Spotkanie", systemImage: "calendar.badge.plus") }
                     .disabled(entry == nil)
+                if canCreateInquiry {
+                    Button { Task { await startInquiry() } } label: { Label("Dodaj zapytanie", systemImage: "plus") }
+                        .help("Utwórz zapytanie w lejku sprzedażowym z danymi klienta.").disabled(preparingInquiry)
+                }
             }
             .controlSize(.small)
+        }
+    }
+
+    /// Jak `canCreateInquiry` w `ContactQuickActions`.
+    private var canCreateInquiry: Bool {
+        guard let employee = state.employee else { return false }
+        return employee.isAdmin || employee.has("inquiries_manage") || employee.has("inquiries_manage_all") || employee.has("tasks_create")
+    }
+
+    /// Dane klienta do nowego zapytania (organizacja — jej dane; osoba — jej dane i jedyna obecna organizacja).
+    private func startInquiry() async {
+        preparingInquiry = true
+        defer { preparingInquiry = false }
+        struct Reply: Decodable { var contactId: String?; var organizationId: String?; var name: String; var email: String; var phone: String }
+        do {
+            let reply = try await Customer360API.get(state, ["op": "inquiryClient", "kind": isOrganization ? "organization" : "contact", "id": ref.id], as: Reply.self)
+            sheet = .newInquiry(NewInquiryClient(contactID: reply.contactId, organizationID: reply.organizationId, name: reply.name.isEmpty ? title : reply.name,
+                                                 email: reply.email.nonEmpty, phone: reply.phone.nonEmpty))
+        } catch {
+            state.error = Customer360API.message(error, "Nie udało się pobrać danych klienta do zapytania. Spróbuj ponownie.")
         }
     }
 
@@ -251,19 +286,33 @@ enum ContactCardConfirm: Identifiable {
 
     // MARK: Zakładki
     private func tabs(_ card: ContactCard) -> [ContactCardTab] {
-        guard isOrganization else { return [.details, .organizations, .relation] }
+        guard isOrganization else {
+            var list: [ContactCardTab] = [.customer360, .inquiries, .offers, .details, .organizations]
+            if entry?.seller == true { list.append(.seller) }
+            list.append(.relation)
+            return list
+        }
         var list: [ContactCardTab] = []
+        if card.tabs.contains("customer360") { list += [.customer360, .inquiries, .offers] }
         if card.tabs.contains("details") { list.append(.details) }
         if card.tabs.contains("contacts") { list.append(.persons) }
         if card.tabs.contains("notes") { list.append(.notes) }
         if card.tabs.contains("invoices") { list.append(.invoices) }
         if card.tabs.contains("events") { list.append(.events) }
+        // „Usługi” — organizacja-podwykonawca z kartą podwykonawcy (jak w CRM).
+        if card.tabs.contains("services"), let organization = card.organization, organization.organizationType == "subcontractor",
+           !organization.subcontractorId.isEmpty { list.append(.services) }
         list.append(.relation)
         return list
     }
 
     private func label(_ item: ContactCardTab, _ card: ContactCard) -> String {
         switch item {
+        case .customer360: return "Klient 360°"
+        case .inquiries: return "Zapytania"
+        case .offers: return "Oferty"
+        case .services: return "Usługi"
+        case .seller: return "Sprzedaż sprzedawcy"
         case .details: return isOrganization ? "Szczegóły" : "Dane kontaktowe"
         case .persons: return "Osoby kontaktowe (\(card.persons?.count ?? 0))"
         case .organizations: return "Organizacje (\(card.organizations?.count ?? 0))"
@@ -299,6 +348,23 @@ enum ContactCardConfirm: Identifiable {
 
     @ViewBuilder private func content(_ card: ContactCard) -> some View {
         switch current(card) {
+        case .customer360:
+            Customer360View(ref: ref, store: store, isHotel: card.organization?.businessType == "hotel", organizationName: title).id(ref.id)
+            if !isOrganization && entry?.seller == true && canViewFinances {
+                Button("Zobacz rozliczenia prowizji, wypłaty i pozostałe saldo →") { state.openCRM("/crm/contacts/\(ref.id)?tab=seller&section=settlements") }
+                    .buttonStyle(.link).linkCursor()
+            }
+        case .inquiries: CustomerInquiriesPanel(ref: ref).id(ref.id)
+        case .offers: CustomerOffersPanel(ref: ref).id(ref.id)
+        case .services:
+            if let organization = card.organization, !organization.subcontractorId.isEmpty {
+                SubcontractorServicesPanel(subcontractorID: organization.subcontractorId)
+                    .id(organization.subcontractorId)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
+            }
+        case .seller: sellerTab
         case .details:
             if let organization = card.organization { organizationDetails(card, organization) }
             else if let person = card.contact { personDetails(person) }
@@ -693,6 +759,29 @@ enum ContactCardConfirm: Identifiable {
         }
     }
 
+    // MARK: Sprzedaż sprzedawcy
+    private var canViewFinances: Bool { state.employee?.has("finances_view") == true || state.employee?.has("finances_manage") == true }
+
+    @ViewBuilder private var sellerTab: some View {
+        panel("Sprzedaż sprzedawcy") {
+            if let entry {
+                HStack(spacing: 8) {
+                    pill(entry.sellerLabel, entry.sellerColor)
+                    Text(entry.sellerHelp).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Text("Gotowość do pracy, oferty na osi, realizacje, prowizje i narzuty tej osoby są na jej karcie w sekcji Sprzedawcy.")
+                .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button { state.showSeller(contactID: ref.id) } label: { Label("Otwórz kartę sprzedawcy", systemImage: "person.crop.rectangle") }
+                    .buttonStyle(.borderedProminent)
+                if canViewFinances {
+                    Button("Rozliczenia prowizji — w CRM") { state.openCRM("/crm/contacts/\(ref.id)?tab=seller&section=settlements") }
+                }
+            }
+        }
+    }
+
     // MARK: Relacja i segmentacja
     @ViewBuilder private func relationTab(_ card: ContactCard) -> some View {
         responsibilityPanel(card)
@@ -705,10 +794,12 @@ enum ContactCardConfirm: Identifiable {
                 ContactBrochureActions(context: BrochureRecipientContext(type: isOrganization ? "organization" : "contact", id: ref.id, name: title)).id(ref.id)
             }
         }
-        Button("Oś aktywności (Klient 360°), oferty, sprzedaż sprzedawcy i branding ofert — pełna karta w CRM", systemImage: "safari") {
-            state.openCRM("/crm/contacts/\(ref.id)")
+        if isOrganization {
+            Button("Branding ofert oraz sale i przestrzenie hotelu — karta w CRM", systemImage: "safari") {
+                state.openCRM("/crm/contacts/\(ref.id)?tab=branding")
+            }
+            .buttonStyle(.link).linkCursor()
         }
-        .buttonStyle(.link).linkCursor()
     }
 
     private func responsibilityPanel(_ card: ContactCard) -> some View {
@@ -875,6 +966,14 @@ enum ContactCardConfirm: Identifiable {
             }
         case .merge(let source):
             MergeContactSheet(store: store, ref: ref, targetName: title, source: source)
+        case .newInquiry(let client):
+            NewInquirySheet(initialClient: client) { id in
+                state.succeed("Zapytanie dodane do lejka sprzedażowego")
+                Task {
+                    await state.inquiries.sync(force: true)
+                    state.showInquiry(id)
+                }
+            }
         }
     }
 

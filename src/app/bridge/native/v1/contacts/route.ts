@@ -4,6 +4,7 @@ import {
   CardFailure, contactCard, createEntity, createSegment, decisionMaker, invoiceBuyers, linkContact, linkNewContact, mergeContacts,
   organizationNote, quickContact, saveDomains, saveOwnership, saveSegmentation, searchLocations, unlinkContact, updateOrganization,
 } from '@/lib/native/contactCard';
+import { customer360, customer360Mail, customerInquiries, customerOffers, inquiryClient } from '@/lib/native/contactCustomer360';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,6 +14,9 @@ export const maxDuration = 60;
  * Kontakty dla aplikacji na Maca — lista jak `/crm/contacts`, karta i zapisy jak `/crm/contacts/[id]` i `/crm/contacts/new`
  * (`src/lib/native/contactCard.ts`: dane karty, osoby kontaktowe, reprezentanci, notatki, dane do faktury, lokalizacja,
  * opiekun, segmentacja, domeny, scalanie, dodawanie). Tokenem pracownika — RLS i wyzwalacze jak w przeglądarce.
+ * Zakładki „Klient 360°”, „Zapytania”, „Oferty” i dane do „Dodaj zapytanie” (`src/lib/native/contactCustomer360.ts`):
+ * GET op=customer360&kind&id | customer360Mail&id&offset | customerOffers&kind&id&offset | customerInquiries&kind&id&offset |
+ * inquiryClient&kind&id.
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -56,6 +60,16 @@ export async function GET(request: Request) {
         return nativeJson(await invoiceBuyers(ctx));
       case 'locations':
         return nativeJson(await searchLocations(ctx, url.searchParams.get('q') || ''));
+      case 'customer360':
+        return nativeJson(await customer360(ctx, url.searchParams.get('kind') || '', url.searchParams.get('id')));
+      case 'customer360Mail':
+        return nativeJson(await customer360Mail(ctx, url.searchParams.get('id'), url.searchParams.get('offset')));
+      case 'customerOffers':
+        return nativeJson(await customerOffers(ctx, url.searchParams.get('kind') || '', url.searchParams.get('id'), url.searchParams.get('offset')));
+      case 'customerInquiries':
+        return nativeJson(await customerInquiries(ctx, url.searchParams.get('kind') || '', url.searchParams.get('id'), url.searchParams.get('offset')));
+      case 'inquiryClient':
+        return nativeJson(await inquiryClient(ctx, url.searchParams.get('kind') || '', url.searchParams.get('id')));
       default:
         return failure('Nieznana operacja.');
     }

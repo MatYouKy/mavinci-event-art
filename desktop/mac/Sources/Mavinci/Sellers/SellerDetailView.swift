@@ -2,7 +2,9 @@ import SwiftUI
 
 // MARK: Karta sprzedawcy na Macu — „Gotowość do pracy” (te same kroki co CRM, `src/lib/seller/readiness.ts`), opiekun i konto
 // w portalu, marki, oferty na osi w 5 etapach (widok opiekuna), realizacje oraz „Prowizje i narzuty” — całe konto sprzedawcy
-// (prowizje, narzuty z ofert, wypłaty i saldo; dla osób z dostępem do finansów). Ustawienia sprzedawcy i rozmowa — w CRM.
+// (prowizje, narzuty z ofert, wypłaty i saldo; dla osób z dostępem do finansów). Rozmowy ze sprzedawcą i historia zmian —
+// `SellerChatView.swift`; ustawienia (opiekun, widoczność wynagrodzenia, profil, warunki marek, portal) — `SellerSettingsView.swift`,
+// także z akcji „Gotowości do pracy”; indywidualne ceny oraz branding — na razie w CRM.
 
 @MainActor struct SellerDetailView: View {
     @ObservedObject var store: SellersStore
@@ -14,8 +16,15 @@ import SwiftUI
     @State private var error: String?
     @State private var readinessOpen: Bool?
     @State private var offerFilter = "all"
+    @State private var chatShown = false
+    @State private var auditShown = false
+    /// Ustawienia sprzedawcy — z przycisku w nagłówku albo z akcji „Gotowości do pracy” (z sekcją do pokazania).
+    @State private var settings: SellerSettingsRequest?
+    /// „Rozliczenia” — przewinięcie do konta prowizji i narzutów na tej karcie.
+    @State private var scrollTarget: String?
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
@@ -27,6 +36,7 @@ import SwiftUI
                     // Konto prowizji i narzutów — widoczne, gdy baza udostępni je użytkownikowi (dostęp do finansów).
                     if store.commissionAccount(seller.id)?.hidden != true {
                         EmployeeCommissionsView(store: store, employeeID: seller.id, employeeName: seller.name, kind: .partner)
+                            .id("commissions")
                     }
                 } else if let error {
                     VStack(alignment: .leading, spacing: 8) {
@@ -39,8 +49,24 @@ import SwiftUI
             }
             .padding(20).frame(maxWidth: 980, alignment: .leading)
         }
+        .onChange(of: scrollTarget) { _, target in
+            guard let target else { return }
+            withAnimation { proxy.scrollTo(target, anchor: .top) }
+            scrollTarget = nil
+        }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task { await load() }
+        .sheet(isPresented: $chatShown) {
+            SellerChatSheet(store: store, seller: seller).environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(isPresented: $auditShown) {
+            SellerAuditSheet(store: store, seller: seller).environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(item: $settings) { request in
+            SellerSettingsSheet(store: store, seller: seller, focus: request.focus, brandingHref: card?.links.branding ?? seller.cardHref + "&section=branding")
+                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
     }
 
     private func load() async {
@@ -66,10 +92,17 @@ import SwiftUI
             .font(.callout)
             HStack(spacing: 8) {
                 Button("Karta w CRM") { state.openCRM(card?.links.card ?? seller.cardHref) }
-                Button("Rozmowa") { state.openCRM(card?.links.chat ?? seller.cardHref + "&section=chat") }
-                Button("Ustawienia") { state.openCRM(card?.links.settings ?? seller.cardHref + "&section=settings") }
+                Button { chatShown = true } label: { Label("Rozmowa", systemImage: "bubble.left.and.bubble.right") }
+                Button { auditShown = true } label: { Label("Historia zmian", systemImage: "clock.arrow.circlepath") }
+                Button { settings = SellerSettingsRequest(focus: nil) } label: { Label("Ustawienia", systemImage: "gearshape") }
                 if let card { Button("Indywidualne ceny") { state.openCRM(card.links.pricing) } }
-                if seller.hasMoney, let card { Button("Rozliczenia (\(seller.payable))") { state.openCRM(card.links.settlements) } }
+                if seller.hasMoney, card != nil {
+                    // Konto prowizji i narzutów jest na tej karcie (niżej) — przewiń; bez dostępu do konta — rozliczenia w CRM.
+                    Button("Rozliczenia (\(seller.payable))") {
+                        if store.commissionAccount(seller.id)?.hidden != true { scrollTarget = "commissions" }
+                        else if let card { state.openCRM(card.links.settlements) }
+                    }
+                }
             }
             .controlSize(.small)
         }
@@ -137,8 +170,8 @@ import SwiftUI
         case "link":
             state.openCRM(action.href ?? card.links.card)
         default:
-            // Sekcje ustawień (organizacja, marki, dostęp, opiekun) są na karcie sprzedawcy w CRM.
-            state.openCRM(card.links.settings)
+            // Sekcje ustawień (organizacja, marki, dostęp, opiekun) — arkusz ustawień przewinięty do wskazanej sekcji.
+            settings = SellerSettingsRequest(focus: action.section)
         }
     }
 

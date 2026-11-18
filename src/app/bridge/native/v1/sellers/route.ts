@@ -5,6 +5,12 @@ import { createSeller, newSellerOrganizations, newSellerPeople, newSellerSetup, 
 import {
   approveCommission, commissionAccount, commissionPayroll, deductCommission, payoutCommission, type CommissionReply,
 } from '@/lib/native/teamCommissions';
+import {
+  openSellerConversation, readSellerChat, sellerAudit, sellerChatMessages, sellerConversations, sendSellerChatMessage,
+} from '@/lib/native/sellerChat';
+import {
+  assignSellerManager, saveSellerSettings, sellerManagement, sellerSettings, setSellerCommissionVisibility, validateSellerSettings,
+} from '@/lib/native/sellerSettings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,6 +29,12 @@ export const maxDuration = 60;
  * Ponowne zaproszenie do portalu: `/bridge/seller/invite` (token pracownika, jak w CRM). Dostęp rozstrzyga baza.
  * Konto prowizji i narzutów sprzedawcy (`src/lib/native/teamCommissions.ts`, konto `partner`): GET op=commissions&id=…;
  * POST op=commissionApprove | commissionPayout | commissionDeduct | commissionPayroll {id: sprzedawca, …} — jak na karcie pracownika.
+ * Rozmowy ze sprzedawcą i historia zmian (`src/lib/native/sellerChat.ts`): GET op=conversations&id=… (sprzedawca) |
+ * messages&id=…&before=… (rozmowa) | audit&id=…&limit=…; POST op=chatOpen {id: sprzedawca, companyId, offerId?} |
+ * chatSend {id: rozmowa, messageId, body} | chatRead {id: rozmowa, through}.
+ * Ustawienia sprzedawcy (`src/lib/native/sellerSettings.ts`): GET op=management&id=… (opiekun, zastępca, marki i widoczność
+ * wynagrodzenia) | settings&id=… (profil do edycji); POST op=manager {id, managerId, backupId, reason} | visibility {id, companyId,
+ * visible, reason, notify} | settingsValidate {id, form} (braki) | settingsSave {id, form} (profil, warunki marek, zaproszenie).
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -69,6 +81,16 @@ export async function GET(request: Request) {
         return nativeJson(await newSellerPeople(ctx, url.searchParams.get('source') || 'contact', (url.searchParams.get('q') || '').slice(0, 100)));
       case 'organizations':
         return nativeJson(await newSellerOrganizations(ctx, (url.searchParams.get('q') || '').slice(0, 100)));
+      case 'conversations':
+        return nativeJson(await sellerConversations(ctx, url.searchParams.get('id')));
+      case 'messages':
+        return nativeJson(await sellerChatMessages(ctx, url.searchParams.get('id'), url.searchParams.get('before')));
+      case 'audit':
+        return nativeJson(await sellerAudit(ctx, url.searchParams.get('id'), url.searchParams.get('limit')));
+      case 'management':
+        return nativeJson(await sellerManagement(ctx, url.searchParams.get('id')));
+      case 'settings':
+        return nativeJson(await sellerSettings(ctx, url.searchParams.get('id')));
       default:
         return failure('Nieznana operacja.');
     }
@@ -119,6 +141,20 @@ export async function POST(request: Request) {
         return reply(await deductCommission(ctx, body));
       case 'commissionPayroll':
         return reply(await commissionPayroll(ctx, 'partner', id, body));
+      case 'chatOpen':
+        return nativeJson(await openSellerConversation(ctx, body));
+      case 'chatSend':
+        return nativeJson(await sendSellerChatMessage(ctx, body));
+      case 'chatRead':
+        return nativeJson(await readSellerChat(ctx, body));
+      case 'manager':
+        return nativeJson(await assignSellerManager(ctx, body));
+      case 'visibility':
+        return nativeJson(await setSellerCommissionVisibility(ctx, body));
+      case 'settingsValidate':
+        return nativeJson(await validateSellerSettings(ctx, body));
+      case 'settingsSave':
+        return nativeJson(await saveSellerSettings(ctx, request, body));
       case 'inquiryConvert': {
         const { data, error } = await ctx.supabase.rpc('convert_seller_inquiry', { p_inquiry: id });
         if (error) throw error;
