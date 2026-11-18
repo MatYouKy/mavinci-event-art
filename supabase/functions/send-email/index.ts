@@ -17,6 +17,43 @@ async function salesDeliveryActor(req: Request, body: any, service: any, functio
   if (error || !data.user) throw new Error('Sesja wygasła');
   return { userId: data.user.id, scheduled: false, deliveryKey: null };
 }
+/**
+ * Wywołanie serwera CRM (klucz service_role albo sekretny klucz projektu) — wiadomości systemowe (link do hasła, zaproszenie
+ * sprzedawcy), wysyłka do Saldeo. Po przeniesieniu projektu klucz service_role z panelu (w konfiguracji serwera CRM) różni się
+ * od `SUPABASE_SERVICE_ROLE_KEY` w środowisku funkcji, więc samo porównanie tekstu odrzucało serwer („Sesja wygasła”). Klucz
+ * spoza środowiska funkcji przechodzi tylko wtedy, gdy jest kluczem serwisowym (rola `service_role` albo `sb_secret_…`)
+ * i potwierdzi go Auth (endpoint administracyjny); potwierdzenie jest zapamiętane do końca życia instancji funkcji.
+ */
+const confirmedServerTokens = new Set<string>();
+async function isServerToken(token: string | null | undefined): Promise<boolean> {
+  const value = (token || '').trim();
+  if (!value) return false;
+  const known = [Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''];
+  try {
+    known.push(...Object.values(JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}')).map(String));
+  } catch {
+    // Brak słownika kluczy sekretnych — zostaje klucz service_role.
+  }
+  if (known.some((key) => key && key === value) || confirmedServerTokens.has(value)) return true;
+  let candidate = value.startsWith('sb_secret_');
+  if (!candidate) {
+    try {
+      const part = value.split('.')[1] || '';
+      const payload = JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')));
+      candidate = payload?.role === 'service_role';
+    } catch {
+      candidate = false;
+    }
+  }
+  if (!candidate) return false;
+  const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/auth/v1/admin/users?page=1&per_page=1`, {
+    headers: { apikey: value, Authorization: `Bearer ${value}` },
+    signal: AbortSignal.timeout(8000),
+  }).catch(() => null);
+  if (response?.ok !== true) return false;
+  confirmedServerTokens.add(value);
+  return true;
+}
 async function assertSalesDocumentPermission(service: any, kind: string, id: string, userId: string) {
   const { data, error } = await service.rpc('sales_actor_can_manage', { p_kind: kind, p_document: id, p_user: userId });
   if (error || !data) throw new Error('Brak uprawnień do dokumentu');
@@ -238,8 +275,7 @@ Deno.serve(async (req: Request) => {
     // na dowolny serwer. Dziś żaden klient CRM ani aplikacji z niej nie korzysta — tylko serwer.
     if (smtpConfig) {
       const bearer = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '').trim() || '';
-      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-      if (!serviceKey || bearer !== serviceKey) {
+      if (!(await isServerToken(bearer))) {
         throw new Error('Bezpośrednia konfiguracja SMTP jest dostępna wyłącznie dla serwera.');
       }
     }
@@ -277,7 +313,8 @@ Deno.serve(async (req: Request) => {
     if (emailAccountId && !salesEmployeeId && !isSaldeoDelivery) {
       const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
       const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-      if (token !== serviceKey || requestBody._scheduledDispatch) {
+      // Serwer CRM (wiadomości systemowe) — bez kontroli skrzynki pracownika; zlecenie z harmonogramu — jak dotąd.
+      if (!(await isServerToken(token)) || requestBody._scheduledDispatch) {
         const service = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey);
         const actor = await salesDeliveryActor(req, requestBody, service, 'send-email');
         const { data: sender, error: senderError } = await service.from('employees').select('id,permissions,role,access_level').or(`id.eq.${actor.userId},auth_user_id.eq.${actor.userId}`).eq('is_active',true).maybeSingle();
@@ -350,7 +387,7 @@ Deno.serve(async (req: Request) => {
     if (isSaldeoDelivery) {
       const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
       const bearer = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
-      if (!serviceKey || bearer !== serviceKey || !saldeoDelivery) throw new Error('Saldeo server authorization required');
+      if (!serviceKey || !(await isServerToken(bearer)) || !saldeoDelivery) throw new Error('Saldeo server authorization required');
       const { companyId, actorUserId, periodMonth, periodYear, documentType, pin } = saldeoDelivery;
       const uuid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
       if (!uuid.test(companyId) || !uuid.test(actorUserId) || typeof pin !== 'string' || !/^[^\s()\r\n]{4,64}$/.test(pin)

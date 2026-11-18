@@ -181,7 +181,8 @@ struct CrmSidebar: View {
             // Sekcja w osobnym oknie lub karcie (np. Wiadomości obok otwartego wydarzenia).
             if item.module != nil || item.screen != nil { OpenInWindowButtons(destination: .href(item.href), workspace: state, nav: nav) }
         }
-        // Przeciągnięcie w stronę kart — pola „Nowa karta” / „Nowe okno” pod paskiem kart (`NavigationDrag.swift`).
-        .modifier(NavDragSource(workspace: state, href: item.module != nil || item.screen != nil ? item.href : nil))
+        // Przeciągnięcie jak w Finderze — etykieta za kursorem i pola „W tej karcie” / „W nowej karcie” / „W nowym oknie” (`NavigationDrag.swift`).
+        .modifier(NavDragSource(workspace: state, href: item.module != nil || item.screen != nil ? item.href : nil,
+                                name: item.name, symbol: item.symbol, dragging: state.navDrag == item.href))
     }
 }

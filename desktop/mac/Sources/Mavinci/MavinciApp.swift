@@ -70,6 +70,8 @@ struct RootView: View {
     /// Nawigacja tego okna (sekcja, karta wydarzenia, panel powiadomień) — inne okna mają własną.
     @EnvironmentObject var nav: WindowNavigation
     @Environment(\.scenePhase) private var phase
+    /// Dla paska upuszczania pod kartami (osobny widok AppKit w pasku tytułu — bez środowiska sceny).
+    @Environment(\.openWindow) private var openWindow
     @State private var help = false
     var body: some View {
         Group {
@@ -167,10 +169,12 @@ struct RootView: View {
                         if let text = state.pending ?? (state.acting ? "Zapisywanie…" : nil), state.showsBusy(in: nav) { PendingOverlay(text: text) }
                     }
                     .overlay { SnackbarHost() }
-                    .overlay(alignment: .top) {
-                        // Przeciąganie pozycji paska bocznego — pola „Nowa karta” / „Nowe okno” pod paskiem kart (`NavigationDrag.swift`).
-                        if state.navDrag != nil { NavDropStrip().transition(.move(edge: .top).combined(with: .opacity)) }
+                    .overlay {
+                        // Przeciąganie pozycji paska bocznego — upuszczenie poza paskiem pod kartami niczego nie otwiera (`NavigationDrag.swift`).
+                        if state.navDrag != nil { NavDropContentShield().transition(.opacity) }
                     }
+                    // Pasek „W tej karcie” / „W nowej karcie” / „W nowym oknie” tuż pod kartami — tylko podczas przeciągania.
+                    .background(NavDropAccessory(workspace: state, nav: nav, openWindow: openWindow, visible: state.navDrag != nil))
                     .animation(.easeOut(duration: 0.15), value: state.navDrag != nil)
                     // „Mianuj sprzedawcą” (karta i lista kontaktów, osoby organizacji) — kreator w tym oknie.
                     .sheet(item: $nav.sellerAppointment) { preset in
