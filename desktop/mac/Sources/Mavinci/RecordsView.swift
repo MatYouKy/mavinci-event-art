@@ -2,6 +2,8 @@ import SwiftUI
 import AppKit
 
 @MainActor struct RecordsView: View {
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     let module:Module
     @EnvironmentObject var state:Workspace
     @State private var search=""
@@ -72,7 +74,7 @@ import AppKit
             }
             .onChange(of:wide){_,value in if value{modalID=nil}else if let selection{modalID=selection}}
             .onAppear{reveal(wide:wide)}
-            .onChange(of:state.focusToken){_,_ in reveal(wide:wide)}
+            .onChange(of:nav.focusToken){_,_ in reveal(wide:wide)}
         }.navigationTitle(module.title).searchable(text:$search,prompt:"Szukaj w tej sekcji")
         .sheet(isPresented:Binding(get:{modalID != nil},set:{if !$0{modalID=nil}})) {
             if let row=state.rows(module).first(where:{$0.id==modalID}) {
@@ -101,7 +103,7 @@ import AppKit
         RecordInspector(row:row,module:module,editTask:{},editContact:module == .contacts ? {editingContact=true}:nil)
     }
     private func reveal(wide:Bool) {
-        guard let id=state.focusedID,state.rows(module).contains(where:{$0.id==id})else{return}
+        guard let id=nav.focusedID,state.rows(module).contains(where:{$0.id==id})else{return}
         search="";status="";includeHidden=true;onlyOpen=false;onlyMine=false;selection=id
         if !wide && module != .events{modalID=id}
     }

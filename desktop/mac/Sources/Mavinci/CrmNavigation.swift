@@ -127,19 +127,14 @@ struct CrmWebPlaceholder: View {
 
 struct CrmSidebar: View {
     @EnvironmentObject private var state: Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     @State private var expanded: Set<String> = []
     var body: some View {
-        List(selection: Binding(get: { state.sidebarHref }, set: { tag in
+        List(selection: Binding(get: { nav.sidebarHref }, set: { tag in
             guard let tag else { return }
-            // Grupa (np. „Zadania”) ma własny znacznik — wcześniej dziedziczyła adres pierwszej pozycji i świeciła razem z nią.
-            if tag.hasPrefix("group:") {
-                let key = String(tag.dropFirst("group:".count))
-                guard let group = state.navigation.first(where: { $0.key == key }) else { return }
-                expanded.insert(key)
-                if let first = group.children?.first { state.openHref(first.href) }
-            } else {
-                state.openHref(tag)
-            }
+            // Przejście w tym oknie (także gdy kliknięcie trafiło do okna, które jeszcze nie jest aktywne).
+            state.inWindow(nav) { follow(tag) }
         })) {
             ForEach(state.navigation) { item in
                 if let children = item.children, !children.isEmpty {
@@ -155,11 +150,22 @@ struct CrmSidebar: View {
             }
         }
         .onAppear { expandSelected() }
-        .onChange(of: state.sidebarHref) { _, _ in expandSelected() }
+        .onChange(of: nav.sidebarHref) { _, _ in expandSelected() }
+    }
+    private func follow(_ tag: String) {
+        // Grupa (np. „Zadania”) ma własny znacznik — wcześniej dziedziczyła adres pierwszej pozycji i świeciła razem z nią.
+        if tag.hasPrefix("group:") {
+            let key = String(tag.dropFirst("group:".count))
+            guard let group = state.navigation.first(where: { $0.key == key }) else { return }
+            expanded.insert(key)
+            if let first = group.children?.first { state.openHref(first.href) }
+        } else {
+            state.openHref(tag)
+        }
     }
     /// Grupa z wybraną pozycją jest rozwinięta (także po otwarciu sekcji z pulpitu lub powiadomienia).
     private func expandSelected() {
-        guard let href = state.sidebarHref else { return }
+        guard let href = nav.sidebarHref else { return }
         for item in state.navigation where item.children?.contains(where: { $0.href == href }) == true { expanded.insert(item.key) }
     }
     private func row(_ item: NavItem) -> some View {
@@ -170,6 +176,10 @@ struct CrmSidebar: View {
             if item.screen == .messages { MessagesUnreadBadge(store: state.messages) }
             if item.screen == .meetings { MeetingsPendingBadge(store: state.meetings) }
             if item.module == .inquiries, state.openInquiries > 0 { Text("\(state.openInquiries)").foregroundStyle(.secondary).monospacedDigit() }
+        }
+        .contextMenu {
+            // Sekcja w osobnym oknie lub karcie (np. Wiadomości obok otwartego wydarzenia).
+            if item.module != nil || item.screen != nil { OpenInWindowButtons(destination: .href(item.href), workspace: state, nav: nav) }
         }
     }
 }

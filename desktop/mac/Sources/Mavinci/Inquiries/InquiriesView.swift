@@ -41,6 +41,8 @@ struct InquiryActions {
 @MainActor struct InquiriesFunnelView: View {
     @ObservedObject var store: InquiriesStore
     @EnvironmentObject private var state: Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     @Environment(\.crmTheme) private var theme
     @AppStorage("inquiries.mode") private var mode: InquiryViewMode = .pipeline
     @AppStorage("inquiries.scope") private var scope: InquiryScope = .pool
@@ -194,7 +196,7 @@ struct InquiryActions {
             }
         }
         .onAppear { reveal() }
-        .onChange(of: state.focusToken) { _, _ in reveal() }
+        .onChange(of: nav.focusToken) { _, _ in reveal() }
         .onChange(of: store.lastSync) { _, _ in reveal() }
         .onChange(of: selectedID) { _, id in if id != nil { inspectorShown = true } }
     }
@@ -351,7 +353,7 @@ struct InquiryActions {
 
     /// Zapytanie wskazane z pulpitu, powiadomienia lub wiadomości: pokaż je mimo filtrów i otwórz szczegóły.
     private func reveal() {
-        guard state.selection == .inquiries, let id = state.focusedID, let inquiry = store.inquiry(id) else { return }
+        guard nav.selection == .inquiries, let id = nav.focusedID, let inquiry = store.inquiry(id) else { return }
         guard selectedID != id else { return }
         if !visible.contains(where: { $0.id == id }) {
             status = .all; attention = nil; search = ""

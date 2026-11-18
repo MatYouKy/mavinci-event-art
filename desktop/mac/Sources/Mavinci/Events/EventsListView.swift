@@ -106,6 +106,8 @@ struct EventSettlementCell: View {
 @MainActor struct EventsListView: View {
     @ObservedObject var store: EventsStore
     @EnvironmentObject private var state: Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     @Environment(\.crmTheme) private var theme
     @AppStorage("events.show") private var show = "active"
     @AppStorage("events.category") private var categoryFilter = "all"
@@ -364,6 +366,8 @@ struct EventSettlementCell: View {
 
     @ViewBuilder private func menu(_ item: EventListItem) -> some View {
         Button("Otwórz", systemImage: "arrow.up.forward.app") { open(item) }
+        // Karta wydarzenia w osobnym oknie lub karcie — ta lista zostaje.
+        OpenInWindowButtons(destination: .event(item.id, tab: nil), workspace: state, nav: nav)
         if !item.salesColleague {
             if store.canManage { Button("Zmień status", systemImage: "flag") { statusFor = item } }
             if let maps = item.mapsURL { Button("Pokaż na mapie", systemImage: "map") { NSWorkspace.shared.open(maps) } }

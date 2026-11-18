@@ -3,6 +3,8 @@ import AppKit
 
 @MainActor struct TendersView:View {
     @EnvironmentObject var state:Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     @State private var search=""
     @State private var includeHidden=false
     @State private var scope="active"
@@ -46,7 +48,7 @@ import AppKit
                 }
             }.frame(width:outer.size.width,height:outer.size.height,alignment:.topLeading)
             .onChange(of:selectedID){_,id in if !wide{modalID=id}}
-            .onAppear{reveal(wide:wide)}.onChange(of:state.focusToken){_,_ in reveal(wide:wide)}
+            .onAppear{reveal(wide:wide)}.onChange(of:nav.focusToken){_,_ in reveal(wide:wide)}
             .onChange(of:wide){_,isWide in if isWide{modalID=nil}else{modalID=selectedID}}
         }.navigationTitle("Przetargi").searchable(text:$search,prompt:"Tytuł, zamawiający lub miejscowość")
         .sheet(isPresented:Binding(get:{modalID != nil},set:{if !$0{modalID=nil}})){
@@ -77,7 +79,7 @@ import AppKit
         guard let deadline=CalendarDates.date(row["submission_deadline"])else{return .secondary}
         return deadline<=now ? .secondary:deadline.timeIntervalSince(now)<=172800 ? .orange:.primary
     }
-    private func reveal(wide:Bool){guard let id=state.focusedID,state.rows(.tenders).contains(where:{$0.id==id})else{return};search="";status="";scope="active";includeHidden=true;selectedID=id;if !wide{modalID=id}}
+    private func reveal(wide:Bool){guard let id=nav.focusedID,state.rows(.tenders).contains(where:{$0.id==id})else{return};search="";status="";scope="active";includeHidden=true;selectedID=id;if !wide{modalID=id}}
 }
 struct TenderScore:View{
     let row:Row

@@ -16,6 +16,8 @@ struct TaskEditRequest: Identifiable {
     /// Tablica osadzona w karcie wydarzenia: własny pasek (bez paska okna) i panel szczegółów obok kolumn.
     var embedded = false
     @EnvironmentObject private var state: Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     @Environment(\.crmTheme) private var theme
     @State private var search = ""
     @State private var selectedID: String?
@@ -138,7 +140,7 @@ struct TaskEditRequest: Identifiable {
             }
         }
         .onAppear { reveal() }
-        .onChange(of: state.focusToken) { _, _ in reveal() }
+        .onChange(of: nav.focusToken) { _, _ in reveal() }
         .onChange(of: store.focusID) { _, _ in reveal() }
         .onChange(of: store.lastSync) { _, _ in reveal() }
         .onChange(of: selectedID) { _, id in if id != nil { inspectorShown = true } }
@@ -275,15 +277,15 @@ struct TaskEditRequest: Identifiable {
 
     /// Zadanie wskazane z pulpitu lub powiadomienia: zaznacz i pokaż szczegóły; zadanie spoza tablicy — druga tablica.
     private func reveal() {
-        let target = store.focusID ?? (board == .mine && state.selection == .tasks ? state.focusedID : nil)
+        let target = store.focusID ?? (board == .mine && nav.selection == .tasks ? nav.focusedID : nil)
         guard let id = target else { return }
         if store.task(id) != nil {
             store.focusID = nil
             search = ""; selectedID = id; inspectorShown = true
         } else if board == .mine, store.loaded, state.companyTasks.task(id) != nil,
                   state.navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/tasks" }) {
-            state.focusedID = nil
-            state.openHref("/crm/tasks")
+            nav.focusedID = nil
+            state.inWindow(nav) { state.openHref("/crm/tasks") }
             state.companyTasks.focusID = id
         }
     }

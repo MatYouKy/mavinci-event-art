@@ -34,7 +34,7 @@ Logowanie: konto pracownika z CRM, e-mail i hasło. Nie wpisano na stałe identy
 | Przetargi | Lista, termin, stan i powiązanie z zapytaniem. |
 | Powiadomienia | Lista, filtr nieprzeczytanych, odczyt treści, indywidualne oznaczenie przeczytania, obsługiwane powiązania natywne. |
 
-Tabele ze zmianą zaznaczenia, sortowaniem nagłówkami, wyszukiwaniem, menu kontekstowym i szczegółami obok listy. SF Symbols, systemowe menu, pola i formularze; interfejs po polsku. ⌘R — odśwież, ⌘1–3 — główne sekcje, ⌘N / ⌘E — nowe zadanie / edycja. Instrukcja jest dostępna pod znakiem zapytania w pasku bocznym.
+Tabele ze zmianą zaznaczenia, sortowaniem nagłówkami, wyszukiwaniem, menu kontekstowym i szczegółami obok listy. SF Symbols, systemowe menu, pola i formularze; interfejs po polsku. ⌘R — odśwież, ⌘1–3 — główne sekcje, ⌘N / ⌘E — nowe zadanie / edycja, ⇧⌘N / ⇧⌘T — nowe okno / nowa karta. Instrukcja jest dostępna pod znakiem zapytania w pasku bocznym.
 
 ## Uprawnienia, dane lokalne i synchronizacja
 
@@ -42,7 +42,7 @@ Tabele ze zmianą zaznaczenia, sortowaniem nagłówkami, wyszukiwaniem, menu kon
 - Menu i czynności są dodatkowo filtrowane po uprawnieniach. Przed zapisem aplikacja potwierdza profil na serwerze. Nie implementuje własnych reguł finansowych.
 - Sesje, token odświeżania, ustawienia połączenia i klucz szyfrowania są w Keychain. Kopia danych jest szyfrowana AES-GCM w Application Support/Mavinci/Desktop/v1 i oddzielona według źródła danych i konta.
 - Start bez czekania: po uruchomieniu aplikacja od razu pokazuje kopię z dysku (zbiory, dashboard, plan dnia, menu, Wiadomości — kopia do 30 dni), a w tle dociąga tylko zmiany w kolejności ekranu: dashboard i menu → plan dnia → zbiory (skróty koszyków) → Wiadomości. Zapis jest możliwy dopiero po potwierdzeniu profilu na serwerze. Bez połączenia dane są wyłącznie do odczytu, a kopia starsza niż 24 godziny od kompletnego udanego odświeżenia jest ukrywana. Zmiana efektywnego profilu usuwa stare dane; wylogowanie usuwa klucz kopii, plik i lokalną sesję. Cofnięcia uprawnień nie da się wykryć bez połączenia — to ograniczenie każdej kopii offline.
-- Odświeżanie co 60 s, tylko gdy aplikacja jest aktywna, oraz przy powrocie i ⌘R. Edycja formularza wstrzymuje automatyczne odświeżanie. Błąd jednego modułu nie przerywa pozostałych. Błędy dostępu / schematu usuwają dane tego modułu; awaria transportu zachowuje ostatnią poprawną kopię.
+- Odświeżanie co 60 s, tylko gdy aplikacja jest aktywna, oraz przy powrocie i ⌘R — jedno niezależnie od liczby otwartych okien. Edycja formularza wstrzymuje automatyczne odświeżanie. Błąd jednego modułu nie przerywa pozostałych. Błędy dostępu / schematu usuwają dane tego modułu; awaria transportu zachowuje ostatnią poprawną kopię.
 - Wynik zapisu musi być potwierdzony. Nie ma automatycznych ponowień operacji tworzenia. Po przerwaniu połączenia należy odświeżyć dane przed ponowną próbą.
 
 ### Synchronizacja przyrostowa — osobna migracja do wdrożenia
@@ -349,6 +349,21 @@ Serwer: `GET /bridge/native/v1/warehouse?op=state` zwraca też stany zbiorów (`
 Karta wydarzenia na razie jak dotąd (zakładki z danymi, zapis do pracy bez internetu); natywna karta 1:1 z CRM — kolejne etapy.
 
 Serwer: `GET/POST /bridge/native/v1/events` (`op=state`, `items|status|delete`; `src/lib/native/events.ts`).
+
+## Aktualizacja — Okna i karty: kilka sekcji jednocześnie
+
+Każde okno Mavinci ma własną nawigację — w jednym oknie mogą być otwarte Wiadomości, w drugim karta wydarzenia, w trzecim Finanse, i wszystkie działają jednocześnie na wspólnych danych (jedna sesja, jedna kopia na dysku, jedna synchronizacja).
+
+1. **Plik → Nowe okno (⇧⌘N)** i **Plik → Nowa karta (⇧⌘T)** — ta sama sekcja co w bieżącym oknie (bez otwartej karty wydarzenia i panelu powiadomień) w nowym oknie albo jako karta bieżącego okna. ⌘N zostaje w sekcjach dla „Nowe zadanie / spotkanie / wiadomość”.
+2. **Prawy przycisk** na pozycji paska bocznego (sekcje natywne) → „Otwórz w nowym oknie” / „Otwórz w nowej karcie”; na wydarzeniu w liście Wydarzeń — karta tego wydarzenia w nowym oknie lub karcie („Wróć” pokazuje tam listę Wydarzeń), a lista zostaje.
+3. Karty to karty okien macOS: pasek kart (Widok → Pokaż pasek kart), przeciągnięcie karty do osobnego okna, Okno → Scal wszystkie okna, przełączanie ⌃⇥ / ⇧⌘] — w karcie wydarzenia te skróty przełączają zakładki wydarzenia. Tytuł karty to nazwa sekcji albo wydarzenia.
+4. Czynności trafiają do okna, w którym pracujesz: pasek boczny, przyciski i adresy `mavinci://` — do swojego okna; menu Mavinci (⌘1–9, ⌘R), pasek menu i odnośniki z osobnego okna wiadomości — do ostatnio aktywnego okna. Wskaźnik „Zapisywanie…” i komunikaty są widoczne w oknie, w którym zaczęła się czynność — pozostałe okna działają dalej (zapisy nadal wykonują się po jednym).
+5. Odświeżanie w tle (co 60 s i przy powrocie do aplikacji) jest jedno niezależnie od liczby okien — pomijane, gdy poprzednie zaczęło się przed chwilą; licznik Wiadomości synchronizuje się raz na 30 s, choć każde okno ma swój pasek boczny.
+6. Zamknięcie okna nie przerywa pracy pozostałych; po zamknięciu ostatniego okna i ponownym otwarciu (Dock, „Otwórz Mavinci” na pasku menu) wraca ostatni widok. Zmiana konta przywraca w każdym oknie dostępne sekcje; wylogowanie zostawia jedno okno (logowanie) i zamyka pozostałe okna i karty.
+
+**Ograniczenie**: stan wewnątrz sekcji przechowywany w jej danych jest wspólny — ta sama sekcja otwarta w dwóch oknach pokazuje ten sam otwarty rekord i wybór (np. karta pracownika, pojazdu, oferty, folder i zaznaczona wiadomość). Wejście do sekcji otwartej w innym oknie nie zamyka tam otwartego rekordu. Karty wydarzeń są niezależne — w każdym oknie może być otwarte inne wydarzenie.
+
+Kod: `WindowNavigation.swift` (nawigacja okna, rejestr okien w `Workspace`, „Nowe okno / Nowa karta”, „Otwórz w nowym oknie”); `Workspace` zachowuje dotychczasowe czynności (`switchSection`, `showEvent`, `openHref`…) — działają w aktywnym oknie, a widoki okna czytają własną `WindowNavigation`.
 
 ## Aktualizacja 0.22 — Finanse: Wyciągi, Uzgodnienie wyciągów i Deklaracje ZUS i podatki natywnie
 

@@ -17,6 +17,8 @@ private struct CellRef: Hashable {
     @ObservedObject var store: CustomDatabasesStore
     let databaseID: String
     @EnvironmentObject private var state: Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     @Environment(\.crmTheme) private var theme
     @State private var renaming = false
     @State private var nameDraft = ""
@@ -95,17 +97,17 @@ private struct CellRef: Hashable {
 
     /// Arkusz na całe okno: chowa pasek boczny (przycisk paska w oknie przywraca go w każdej chwili).
     private func enterFullWindow() {
-        if previousSidebar == nil { previousSidebar = state.sidebarVisibility }
-        guard state.sidebarVisibility != .detailOnly else { return }
-        withAnimation(.easeInOut(duration: 0.2)) { state.sidebarVisibility = .detailOnly }
+        if previousSidebar == nil { previousSidebar = nav.sidebarVisibility }
+        guard nav.sidebarVisibility != .detailOnly else { return }
+        withAnimation(.easeInOut(duration: 0.2)) { nav.sidebarVisibility = .detailOnly }
     }
 
     /// Po wyjściu z arkusza pasek boczny wraca do stanu sprzed otwarcia.
     private func leaveFullWindow() {
         let previous: NavigationSplitViewVisibility = previousSidebar ?? .all
         previousSidebar = nil
-        guard state.sidebarVisibility != previous else { return }
-        withAnimation(.easeInOut(duration: 0.2)) { state.sidebarVisibility = previous }
+        guard nav.sidebarVisibility != previous else { return }
+        withAnimation(.easeInOut(duration: 0.2)) { nav.sidebarVisibility = previous }
     }
 
     private func dialogs<Content: View>(_ content: Content) -> some View {

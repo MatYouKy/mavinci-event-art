@@ -131,6 +131,8 @@ struct CalendarLink:Codable {
 }
 @MainActor struct NativeCalendarView:View {
     @EnvironmentObject var workspace:Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     @StateObject private var apple=AppleCalendarLink()
     @State private var month=Date()
     @State private var selectedDate=Date()
@@ -227,7 +229,7 @@ struct CalendarLink:Codable {
         }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.top).navigationTitle("Kalendarz")
         .onAppear {revealTarget()}
         .task(id:workspace.employee?.id) {if canSeeInquiries {await workspace.inquiries.backgroundSync()}}
-        .onChange(of:workspace.focusedID) {_,_ in revealTarget()}
+        .onChange(of:nav.focusedID) {_,_ in revealTarget()}
         .sheet(isPresented:$calendarSheet) {calendarSettings}
         .sheet(item:$meeting) {row in VStack(alignment:.leading,spacing:16) {Text(row.title).font(.title2.bold());EventRecordFields(row:row);Button("Zamknij") {meeting=nil}}.padding(24).frame(width:540)}
         .sheet(item:$creation,onDismiss:{if creation == nil {Task {await workspace.refresh()}}}) {item in creationSheet(item)}
@@ -435,7 +437,7 @@ struct CalendarLink:Codable {
         }.padding(28).frame(width:620)
     }
     private func revealTarget() {
-        guard let target=workspace.focusedID,let row=rows.first(where:{$0.id==target}),let date=CalendarDates.date(row["event_date"]) else {return}
+        guard let target=nav.focusedID,let row=rows.first(where:{$0.id==target}),let date=CalendarDates.date(row["event_date"]) else {return}
         month=date;selectedDate=date;if row["kind"] == "meeting" {meeting=row}
     }
     private func move(_ offset:Int) {if let next=c.date(byAdding:.month,value:offset,to:month) {month=next}}

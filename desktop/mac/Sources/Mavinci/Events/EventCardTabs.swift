@@ -15,6 +15,8 @@ import AppKit
     /// Nagłówek „Przegląd” w panelu (bez niego, gdy nad panelem jest przełącznik Przegląd | Rozliczenie).
     var title = true
     @EnvironmentObject private var state: Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     @Environment(\.crmTheme) private var theme
 
     private var flags: EventCardFlags? { page.flags }
@@ -94,7 +96,7 @@ import AppKit
                 Button("Odrzuć zaproszenie") {
                     Task {
                         if await store.run(eventID, "Zapisywanie…", "invitation", ["accept": .bool(false)], success: "Zaproszenie zostało odrzucone") {
-                            state.eventRoute = nil
+                            nav.eventRoute = nil
                         }
                     }
                 }

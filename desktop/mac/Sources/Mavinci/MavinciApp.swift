@@ -5,15 +5,17 @@ import AppKit
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var workspace = Workspace()
     var body: some Scene {
+        // Okna obszaru roboczego — każde (także karta okna) z własną nawigacją (`WindowNavigation`); dane i sesja wspólne.
         WindowGroup("Mavinci", id: "main") {
-            RootView().environmentObject(workspace).environmentObject(workspace.native).frame(minWidth: 1080, minHeight: 680)
+            WorkspaceWindow(workspace: workspace).environmentObject(workspace).environmentObject(workspace.native).frame(minWidth: 1080, minHeight: 680)
                 .crmThemed(workspace.theme)
                 .task { await workspace.restore() }
         }
         .defaultSize(width: 1280, height: 800)
         .windowResizability(.contentMinSize)
         .commands {
-            CommandGroup(replacing: .newItem) { }
+            // Plik → Nowe okno (⇧⌘N) / Nowa karta (⇧⌘T) — ⌘N zostaje dla „Nowe zadanie / spotkanie / wiadomość” w sekcjach.
+            CommandGroup(replacing: .newItem) { WindowMenuItems(workspace: workspace) }
             CommandMenu("Mavinci") {
                 Button("Odśwież dane") { Task { await workspace.refresh(); if workspace.screen == .messages { await workspace.messages.refresh() }; if workspace.screen == .meetings { await workspace.meetings.sync(force: true) }; if workspace.selection == .inquiries { await workspace.inquiries.sync(force: true) }; if workspace.selection == .tasks || workspace.screen == .myTasks { await workspace.myTasks.sync(force: true) }; if workspace.screen == .companyTasks { await workspace.companyTasks.sync(force: true) }; if workspace.selection == .contacts { await workspace.contacts.sync(force: true) }; if workspace.selection == .events { await workspace.events.sync(force: true) }; if workspace.screen == .team { await workspace.team.sync(force: true); if let id = workspace.team.openedID { await workspace.team.loadDetail(id) } }; if workspace.screen?.isWarehouse == true { await workspace.warehouse.sync(force: true); if workspace.screen == .warehouse, let id = workspace.warehouse.openedID { await workspace.warehouse.loadDetail(id) } } } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
                 Divider()
@@ -64,16 +66,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct RootView: View {
     @EnvironmentObject var state: Workspace
     @EnvironmentObject var native: NativeStore
+    /// Nawigacja tego okna (sekcja, karta wydarzenia, panel powiadomień) — inne okna mają własną.
+    @EnvironmentObject var nav: WindowNavigation
     @Environment(\.scenePhase) private var phase
     @State private var help = false
     var body: some View {
         Group {
             if state.employee != nil {
-                NavigationSplitView(columnVisibility: $state.sidebarVisibility) {
+                NavigationSplitView(columnVisibility: $nav.sidebarVisibility) {
                     Group {
                     if !state.navigation.isEmpty { CrmSidebar() }
                     else {
-                    List(selection: $state.selection) {
+                    List(selection: $nav.selection) {
                         Section("Miejsce pracy") {
                             ForEach(state.modules.filter { $0 != .notifications }) { module in
                                 HStack {
@@ -105,50 +109,50 @@ struct RootView: View {
                     }
                 } detail: {
                     VStack(spacing: 0) {
-                        if let route = state.eventRoute { EventCardView(eventID: route.id, initialTab: route.tab).id(route.id) }
-                        else if let item = state.webItem { CrmWebPlaceholder(item: item).id(item.href) }
-                        else if state.selection == .calendar { NativeCalendarView() }
-                        else if state.selection == .tasks { TasksBoardView(store: state.myTasks).id("tasks-mine") }
-                        else if state.selection == .tenders { TendersView() }
-                        else if state.selection == .inquiries, state.employee?.canView(.inquiries) == true { InquiriesFunnelView(store: state.inquiries) }
-                        else if state.selection == .contacts, state.employee?.canView(.contacts) == true { ContactsView(store: state.contacts) }
-                        else if state.selection == .events, state.employee?.canView(.events) == true { EventsListView(store: state.events) }
-                        else if state.selection == .day { DashboardView() }
-                        else if state.selection == .offers, state.employee?.canView(.offers) == true { OffersView(store: state.offers) }
-                        else if let module = state.selection, state.employee?.canView(module) == true { RecordsView(module: module).id(module) }
-                        else if state.screen == .messages { MessagesView() }
-                        else if state.screen == .meetings { MeetingsView(store: state.meetings) }
-                        else if state.screen == .companyTasks { TasksBoardView(store: state.companyTasks).id("tasks-company") }
-                        else if state.screen == .myTasks { TasksBoardView(store: state.myTasks).id("tasks-mine") }
-                        else if state.screen == .team { TeamView(store: state.team) }
-                        else if state.screen == .warehouse { WarehouseView(store: state.warehouse) }
-                        else if state.screen == .kits { KitsView(store: state.warehouse) }
-                        else if state.screen == .cables { CablesView(store: state.warehouse) }
-                        else if state.screen == .rental { RentalView(store: state.warehouse) }
-                        else if state.screen == .connectors { ConnectorsView(store: state.warehouse) }
-                        else if state.screen == .warehouseCategories { WarehouseCategoriesView(store: state.warehouse) }
-                        else if state.screen == .contracts { ContractsView(store: state.contracts) }
-                        else if state.screen == .contractTemplates { ContractTemplatesView(store: state.contracts) }
-                        else if state.screen == .products { ProductsView(store: state.products) }
-                        else if state.screen == .offerTemplates { OfferTemplatesView() }
-                        else if state.screen == .brochures { BrochuresView() }
-                        else if state.screen == .sellers { SellersView(store: state.sellers) }
-                        else if state.screen == .fleet { FleetView(store: state.fleet) }
-                        else if state.screen == .timeTracking { TimeTrackingView(store: state.timeTracking) }
-                        else if state.screen == .databases { CustomDatabasesView(store: state.databases) }
-                        else if state.screen == .locations { LocationsView(store: state.locations) }
-                        else if state.screen == .website { WebsiteView(store: state.website) }
-                        else if state.screen == .campaigns { MailCampaignsView(store: state.mailCampaigns) }
-                        else if state.screen == .finance { FinanceView(store: state.finance, bank: state.finance.bank) }
+                        if let route = nav.eventRoute { EventCardView(eventID: route.id, initialTab: route.tab).id(route.id) }
+                        else if let item = nav.webItem { CrmWebPlaceholder(item: item).id(item.href) }
+                        else if nav.selection == .calendar { NativeCalendarView() }
+                        else if nav.selection == .tasks { TasksBoardView(store: state.myTasks).id("tasks-mine") }
+                        else if nav.selection == .tenders { TendersView() }
+                        else if nav.selection == .inquiries, state.employee?.canView(.inquiries) == true { InquiriesFunnelView(store: state.inquiries) }
+                        else if nav.selection == .contacts, state.employee?.canView(.contacts) == true { ContactsView(store: state.contacts) }
+                        else if nav.selection == .events, state.employee?.canView(.events) == true { EventsListView(store: state.events) }
+                        else if nav.selection == .day { DashboardView() }
+                        else if nav.selection == .offers, state.employee?.canView(.offers) == true { OffersView(store: state.offers) }
+                        else if let module = nav.selection, state.employee?.canView(module) == true { RecordsView(module: module).id(module) }
+                        else if nav.screen == .messages { MessagesView() }
+                        else if nav.screen == .meetings { MeetingsView(store: state.meetings) }
+                        else if nav.screen == .companyTasks { TasksBoardView(store: state.companyTasks).id("tasks-company") }
+                        else if nav.screen == .myTasks { TasksBoardView(store: state.myTasks).id("tasks-mine") }
+                        else if nav.screen == .team { TeamView(store: state.team) }
+                        else if nav.screen == .warehouse { WarehouseView(store: state.warehouse) }
+                        else if nav.screen == .kits { KitsView(store: state.warehouse) }
+                        else if nav.screen == .cables { CablesView(store: state.warehouse) }
+                        else if nav.screen == .rental { RentalView(store: state.warehouse) }
+                        else if nav.screen == .connectors { ConnectorsView(store: state.warehouse) }
+                        else if nav.screen == .warehouseCategories { WarehouseCategoriesView(store: state.warehouse) }
+                        else if nav.screen == .contracts { ContractsView(store: state.contracts) }
+                        else if nav.screen == .contractTemplates { ContractTemplatesView(store: state.contracts) }
+                        else if nav.screen == .products { ProductsView(store: state.products) }
+                        else if nav.screen == .offerTemplates { OfferTemplatesView() }
+                        else if nav.screen == .brochures { BrochuresView() }
+                        else if nav.screen == .sellers { SellersView(store: state.sellers) }
+                        else if nav.screen == .fleet { FleetView(store: state.fleet) }
+                        else if nav.screen == .timeTracking { TimeTrackingView(store: state.timeTracking) }
+                        else if nav.screen == .databases { CustomDatabasesView(store: state.databases) }
+                        else if nav.screen == .locations { LocationsView(store: state.locations) }
+                        else if nav.screen == .website { WebsiteView(store: state.website) }
+                        else if nav.screen == .campaigns { MailCampaignsView(store: state.mailCampaigns) }
+                        else if nav.screen == .finance { FinanceView(store: state.finance, bank: state.finance.bank) }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     .background(state.theme.page)
                     .overlay {
-                        if state.notificationsVisible {
+                        if nav.notificationsVisible {
                             GeometryReader { available in
                                 ZStack(alignment:.trailing){
-                                    Color.black.opacity(0.12).contentShape(Rectangle()).onTapGesture{state.notificationsVisible=false}
+                                    Color.black.opacity(0.12).contentShape(Rectangle()).onTapGesture{nav.notificationsVisible=false}
                                     NotificationsDrawer().frame(width:min(480,max(300,available.size.width-28)),height:available.size.height)
                                         .shadow(color:.black.opacity(0.16),radius:18,x:-6,y:0).transition(.move(edge:.trailing))
                                 }.frame(width:available.size.width,height:available.size.height)
@@ -156,13 +160,14 @@ struct RootView: View {
                         }
                     }
                     .overlay {
-                        if let text = state.pending ?? (state.acting ? "Zapisywanie…" : nil) { PendingOverlay(text: text) }
+                        // Wskaźnik zapisu w oknie, w którym zaczęła się czynność — pozostałe okna działają dalej.
+                        if let text = state.pending ?? (state.acting ? "Zapisywanie…" : nil), state.showsBusy(in: nav) { PendingOverlay(text: text) }
                     }
                     .overlay { SnackbarHost() }
                     .toolbar {
                         ToolbarItemGroup(placement: .primaryAction) {
                             Button {
-                                withAnimation(.easeInOut(duration:0.18)){state.notificationsVisible.toggle()}
+                                withAnimation(.easeInOut(duration:0.18)){nav.notificationsVisible.toggle()}
                             } label: {
                                 ZStack(alignment: .topTrailing) {
                                     Image(systemName: "bell")
@@ -175,7 +180,7 @@ struct RootView: View {
                             }.help("Powiadomienia: \(state.unread) nieprzeczytanych").accessibilityLabel("Powiadomienia")
                         }
                         ToolbarItem(placement: .primaryAction) {
-                            Button { Task { await state.refresh(); if state.screen == .messages { await state.messages.refresh() }; if state.screen == .meetings { await state.meetings.sync(force: true) }; if state.selection == .inquiries { await state.inquiries.sync(force: true) }; if state.selection == .tasks || state.screen == .myTasks { await state.myTasks.sync(force: true) }; if state.screen == .companyTasks { await state.companyTasks.sync(force: true) }; if state.screen == .sellers { await state.sellers.load() }; if state.screen == .fleet { await state.fleet.load(); if let id = state.fleet.openedID { await state.fleet.loadDetail(id) } }; if state.screen == .timeTracking { await state.timeTracking.reloadVisible() }; if state.screen == .databases { await state.databases.load(); if let id = state.databases.openedID { await state.databases.loadDetail(id) } }; if state.screen == .locations { await state.locations.load(); if let id = state.locations.openedID { await state.locations.loadDetail(id) } }; if state.screen == .website { await state.website.refreshVisible() }; if state.screen == .campaigns { await state.mailCampaigns.load(); if let id = state.mailCampaigns.selectedID { await state.mailCampaigns.loadRecipients(id) } }; if state.screen == .finance { await state.finance.sync(force: true) }; if state.selection == .contacts { await state.contacts.sync(force: true) }; if state.selection == .events { await state.events.sync(force: true) }; if state.screen == .team { await state.team.sync(force: true); if let id = state.team.openedID { await state.team.loadDetail(id) } }; if state.screen?.isWarehouse == true { await state.warehouse.sync(force: true); if state.screen == .warehouse, let id = state.warehouse.openedID { await state.warehouse.loadDetail(id) } } } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
+                            Button { Task { await state.refresh(); if nav.screen == .messages { await state.messages.refresh() }; if nav.screen == .meetings { await state.meetings.sync(force: true) }; if nav.selection == .inquiries { await state.inquiries.sync(force: true) }; if nav.selection == .tasks || nav.screen == .myTasks { await state.myTasks.sync(force: true) }; if nav.screen == .companyTasks { await state.companyTasks.sync(force: true) }; if nav.screen == .sellers { await state.sellers.load() }; if nav.screen == .fleet { await state.fleet.load(); if let id = state.fleet.openedID { await state.fleet.loadDetail(id) } }; if nav.screen == .timeTracking { await state.timeTracking.reloadVisible() }; if nav.screen == .databases { await state.databases.load(); if let id = state.databases.openedID { await state.databases.loadDetail(id) } }; if nav.screen == .locations { await state.locations.load(); if let id = state.locations.openedID { await state.locations.loadDetail(id) } }; if nav.screen == .website { await state.website.refreshVisible() }; if nav.screen == .campaigns { await state.mailCampaigns.load(); if let id = state.mailCampaigns.selectedID { await state.mailCampaigns.loadRecipients(id) } }; if nav.screen == .finance { await state.finance.sync(force: true) }; if nav.selection == .contacts { await state.contacts.sync(force: true) }; if nav.selection == .events { await state.events.sync(force: true) }; if nav.screen == .team { await state.team.sync(force: true); if let id = state.team.openedID { await state.team.loadDetail(id) } }; if nav.screen?.isWarehouse == true { await state.warehouse.sync(force: true); if nav.screen == .warehouse, let id = state.warehouse.openedID { await state.warehouse.loadDetail(id) } } } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
                                 .disabled(state.syncing || state.acting || state.editing)
                         }
                         ToolbarItem(placement: .primaryAction) { if state.syncing { ProgressView().controlSize(.small) } }
@@ -184,22 +189,26 @@ struct RootView: View {
             } else { LoginView() }
         }
         .sheet(isPresented: $help) { HelpView() }
-        .onChange(of: state.selection) { _, next in
-            if next != nil { state.nativeSet = nil; state.webItem = nil; state.screen = nil }
-            if let route = state.eventRoute, next != route.origin { state.eventRoute = nil }
+        .onChange(of: nav.selection) { _, next in
+            if next != nil { nav.nativeSet = nil; nav.webItem = nil; nav.screen = nil }
+            if let route = nav.eventRoute, next != route.origin { nav.eventRoute = nil }
         }
         .onOpenURL { url in
             guard url.scheme == "mavinci",let id=url.pathComponents.last,UUID(uuidString:id) != nil else {return}
-            if url.host == "event" {state.showEvent(id)}
-            else if url.host == "meeting" {state.showMeeting(id)}
+            // Adres otwiera się w oknie, które go otrzymało.
+            state.inWindow(nav) {
+                if url.host == "event" {state.showEvent(id)}
+                else if url.host == "meeting" {state.showMeeting(id)}
+            }
         }
         .onChange(of: phase) { _, next in
-            if next == .active { Task { await state.refresh() } }
+            // Kilka okien — jedno odświeżenie (pomija, gdy poprzednie zaczęło się przed chwilą).
+            if next == .active { Task { await state.refreshIfIdle(after: 10) } }
         }
         .task(id: state.employee?.id) {
             while !Task.isCancelled && state.employee != nil {
                 do { try await Task.sleep(for: .seconds(60)) } catch { return }
-                if phase == .active { await state.refresh() }
+                if phase == .active { await state.refreshIfIdle(after: 50) }
             }
         }
     }
@@ -287,6 +296,7 @@ struct HelpView: View {
                     Text("Kalendarz i Wydarzenia używają wspólnego zakresu uprawnień i tego samego zbioru wydarzeń. Kolorowe obramowanie wpisu odpowiada kategorii w CRM. Wydarzenia i oferty domyślnie pomijają przeszłe i zamknięte rekordy; zaznacz Pokaż również ukryte lub Szukaj również w ukrytych, aby je odnaleźć. Filtr nie rozszerza uprawnień do danych.")
                     Text("Przetargi domyślnie pokazują aktywne sprawy. Na liście są ocena dopasowania, zamawiający i czas do terminu. Szczegóły zawierają dane jak modal CRM oraz obserwowanie, opiekuna, utworzenie zapytania, notatki, status i ocenę manualną. Starsze i ukryte pozycje włączysz filtrem.")
                     Text("⌘R odświeża dane, ⌘1 otwiera Mój dzień, ⌘2 zapytania, ⌘3 zadania. W Moich zadaniach ⌘N tworzy prywatne zadanie, a ⌘E edytuje zaznaczone.")
+                    Text("Okna i karty: Plik → Nowe okno (⇧⌘N) albo Nowa karta (⇧⌘T) otwiera bieżącą sekcję obok — każde okno ma własną nawigację, więc w jednym możesz mieć Wiadomości, a w drugim wydarzenie. Prawy przycisk na pozycji paska bocznego albo na wydarzeniu w liście: Otwórz w nowym oknie / w nowej karcie. Karty okien obsługujesz jak w Finderze (Widok → Pokaż pasek kart, Okno → Scal wszystkie okna). Ta sama sekcja w dwóch oknach pokazuje ten sam otwarty rekord, np. kartę pracownika; karty wydarzeń są niezależne.")
                     Text("Zapytania: przejmij nieprzypisaną sprawę, zapisz wykonany kontakt lub odłóż przypomnienie o godzinę. Po wykonaniu kontaktu możesz wybrać termin kolejnego działania. Ostateczne uprawnienia sprawdza baza danych.")
                     Text("Zadania: twórz prywatne zadania, zmieniaj tytuł, opis, priorytet, termin i etap. Zapis wymaga połączenia. Konflikt zmian wymaga odświeżenia; formularz zachowuje wpisany tekst.")
                     Text("Bez internetu ostatnia zapisana kopia jest dostępna tylko do odczytu przez maksymalnie 24 godziny od pełnego udanego odświeżenia. Po powrocie do aplikacji uprawnienia są sprawdzane ponownie. Wylogowanie usuwa kopię i lokalną sesję.")

@@ -27,6 +27,8 @@ private struct SellerMessages: Decodable {
     /// Przejście do innej zakładki tej samej karty (bez ponownego otwierania wydarzenia).
     var navigate: ((String) -> Void)? = nil
     @EnvironmentObject private var state: Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     @Environment(\.crmTheme) private var theme
     @State private var selectedID: String?
     @State private var query = ""
@@ -65,7 +67,7 @@ private struct SellerMessages: Decodable {
                 if NSApplication.shared.isActive { await store.loadTab(eventID, "seller-arrangements") }
             }
         }
-        .onChange(of: state.sellerFocus) { _, _ in applyFocus() }
+        .onChange(of: nav.sellerFocus) { _, _ in applyFocus() }
         .onChange(of: data?.offers.count) { _, _ in applyFocus() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refreshKey += 1 }
         .alert("Zmienić ofertę i porzucić niezapisane dane przygotowań?", isPresented: Binding(get: { pendingOfferID != nil }, set: { if !$0 { pendingOfferID = nil } })) {
@@ -88,9 +90,9 @@ private struct SellerMessages: Decodable {
 
     /// Oferta, rozmowa i krok wskazane w powiadomieniu — po wczytaniu listy ofert tej karty.
     private func applyFocus() {
-        guard let focus = state.sellerFocus, focus.eventID == eventID, let offers = data?.offers, !offers.isEmpty else { return }
+        guard let focus = nav.sellerFocus, focus.eventID == eventID, let offers = data?.offers, !offers.isEmpty else { return }
         let target = offers.first { $0.id == focus.offerID } ?? offers.first { $0.conversation?.id != nil && $0.conversation?.id == focus.conversationID }
-        state.sellerFocus = nil
+        nav.sellerFocus = nil
         guard let target else { return }
         focusStep = focus.step
         if arrangementsDirty || wizardDirty {

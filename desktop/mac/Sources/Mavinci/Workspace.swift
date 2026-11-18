@@ -6,17 +6,10 @@ import Network
 @MainActor final class Workspace: ObservableObject {
     @Published var connection = Connection.load()
     @Published var snapshot: Snapshot?
-    @Published var selection: Module? = .day
-    @Published var eventRoute: EventRoute?
-    /// Oferta, rozmowa i krok przygotowań wskazane w powiadomieniu (zakładka „Ustalenia”) — odczytywane przez kartę wydarzenia.
-    @Published var sellerFocus: SellerArrangementsFocus?
     @Published var refreshEventToken = UUID()
-    @Published var focusedID: String?
-    @Published var focusToken = UUID()
-    @Published var notificationsVisible = false
     @Published var loading = false
     @Published var syncing = false
-    @Published var acting = false
+    @Published var acting = false { didSet { if acting && !oldValue { busyWindow = activeNavigation.id } } }
     @Published var editing = false
     @Published var offline = false
     /// Błąd — pokazywany jako czerwony snackbar.
@@ -25,12 +18,9 @@ import Network
     @Published var compatibilityMode = false
     /// Informacja — pokazywana jako snackbar; potwierdzenia udanych czynności przez `succeed(_:)`.
     @Published var notice: String? { didSet { if let notice { snack = Snack(kind: .info, text: notice) } } }
-    @Published var snack: Snack?
+    @Published var snack: Snack? { didSet { if snack != nil { snackWindow = activeNavigation.id } } }
     /// Trwająca czynność (modalny wskaźnik postępu z opisem).
-    @Published var pending: String?
-    /// Sekcje CRM opisywane przez serwer (`/bridge/native/v1`): wybrany zbiór i rekord do pokazania po przejściu.
-    @Published var nativeSet: String?
-    @Published var nativeFocus: String?
+    @Published var pending: String? { didSet { if pending != nil && oldValue == nil { busyWindow = activeNavigation.id } } }
     let native = NativeStore()
     /// Wiadomości (`/crm/messages`) — stan zachowany przy przełączaniu sekcji.
     let messages = MessagesStore()
@@ -72,17 +62,39 @@ import Network
     let mailCampaigns = MailCampaignsStore()
     /// Finanse (`/crm/invoices`) — Centrum finansów, terminy i monity, zamknięcia miesięcy; kopia na dysku.
     let finance = FinanceStore()
-    /// Ekran natywny spoza `Module` (np. Wiadomości) wybrany z paska bocznego CRM.
-    @Published var screen: CrmScreen?
     /// Motyw okna (`employees.crm_theme`); do pierwszego odczytu profilu — ostatni motyw zapisany na tym Macu.
     @Published var theme = CrmTheme.saved
-    /// Menu jak w CRM (z serwera; ostatnie zapisane na tym Macu do pierwszego odczytu) i wybrana pozycja paska bocznego.
+    /// Menu jak w CRM (z serwera; ostatnie zapisane na tym Macu do pierwszego odczytu).
     @Published var navigation: [NavItem] = []
-    @Published var sidebarHref: String? = "/crm"
-    /// Widoczność paska bocznego (np. arkusz bazy danych chowa go i zajmuje całe okno; po wyjściu wraca poprzedni stan).
-    @Published var sidebarVisibility: NavigationSplitViewVisibility = .all
+    // MARK: Okna (`WindowNavigation.swift`) — każde okno ma własną nawigację; dane, sesja i synchronizacja są wspólne
+    /// Okno, w którym pracuje użytkownik (ostatnio aktywne okno obszaru roboczego) — do niego trafiają czynności nawigacji.
+    /// Przed pojawieniem się pierwszego okna i po zamknięciu ostatniego — nawigacja czekająca na następne okno.
+    var activeNavigation = WindowNavigation()
+    /// Otwarte okna obszaru roboczego i okna przygotowane przez „Nowe okno”, „Nowa karta”, „Otwórz w nowym oknie”.
+    var windowNavigations: [WindowNavigation] = []
+    var pendingNavigations: [WindowNavigation] = []
+    /// Okno, w którym zaczęła się trwająca czynność, i okno ostatniego komunikatu.
+    var busyWindow: UUID?
+    var snackWindow: UUID?
+    /// Początek ostatniego odświeżenia (`refreshIfIdle` — jedno odświeżanie w tle niezależnie od liczby okien).
+    var lastRefreshStarted: Date?
+    // Nawigacja aktywnego okna — czynności (`switchSection`, `showEvent`, `openHref`…); widoki okna czytają własną `WindowNavigation`.
+    var selection: Module? { get { activeNavigation.selection } set { activeNavigation.selection = newValue } }
+    var eventRoute: EventRoute? { get { activeNavigation.eventRoute } set { activeNavigation.eventRoute = newValue } }
+    /// Oferta, rozmowa i krok przygotowań wskazane w powiadomieniu (zakładka „Ustalenia”) — odczytywane przez kartę wydarzenia.
+    var sellerFocus: SellerArrangementsFocus? { get { activeNavigation.sellerFocus } set { activeNavigation.sellerFocus = newValue } }
+    var focusedID: String? { get { activeNavigation.focusedID } set { activeNavigation.focusedID = newValue } }
+    var focusToken: UUID { get { activeNavigation.focusToken } set { activeNavigation.focusToken = newValue } }
+    var notificationsVisible: Bool { get { activeNavigation.notificationsVisible } set { activeNavigation.notificationsVisible = newValue } }
+    /// Sekcje CRM opisywane przez serwer (`/bridge/native/v1`): wybrany zbiór i rekord do pokazania po przejściu.
+    var nativeSet: String? { get { activeNavigation.nativeSet } set { activeNavigation.nativeSet = newValue } }
+    var nativeFocus: String? { get { activeNavigation.nativeFocus } set { activeNavigation.nativeFocus = newValue } }
+    /// Ekran natywny spoza `Module` (np. Wiadomości) wybrany z paska bocznego CRM.
+    var screen: CrmScreen? { get { activeNavigation.screen } set { activeNavigation.screen = newValue } }
+    var sidebarHref: String? { get { activeNavigation.sidebarHref } set { activeNavigation.sidebarHref = newValue } }
+    var sidebarVisibility: NavigationSplitViewVisibility { get { activeNavigation.sidebarVisibility } set { activeNavigation.sidebarVisibility = newValue } }
     /// Strona CRM bez ekranu natywnego (tymczasowo otwierana w przeglądarce).
-    @Published var webItem: NavItem?
+    var webItem: NavItem? { get { activeNavigation.webItem } set { activeNavigation.webItem = newValue } }
     /// Dashboard jak strona `/crm` (z serwera, te same reguły widoczności); odświeżany co 5 minut i na ⌘R.
     @Published var dashboard: DashboardData?
     @Published var dashboardError: String?
@@ -223,6 +235,7 @@ import Network
         guard let backend, !syncing, !acting, !editing || force else { return }
         let ticket = generation
         syncing = true
+        lastRefreshStarted = Date()
         defer { if ticket == generation { syncing = false } }
         do {
             let current = try await backend.profile()
@@ -232,9 +245,11 @@ import Network
             if snapshot?.employee != current {
                 try cache?.clear()
                 snapshot = Snapshot(employee: current)
-                eventRoute = nil
-                focusedID = nil
-                if let selection, !current.canView(selection) { self.selection = .day }
+                for nav in allNavigations {
+                    nav.eventRoute = nil
+                    nav.focusedID = nil
+                    if let selection = nav.selection, !current.canView(selection) { nav.selection = .day }
+                }
             }
             if snapshot == nil { snapshot = Snapshot(employee: current) }
             verifiedConnection = true; offline = false; error = nil
@@ -368,11 +383,14 @@ import Network
         AvatarCache.shared.clear()
         // Local sign-out is immediate; server revocation cannot keep data visible.
         backend = nil
-        snapshot = nil; selection = .day; focusedID = nil; eventRoute = nil; notificationsVisible = false
+        snapshot = nil
+        for nav in allNavigations { nav.reset() }
+        // Po wylogowaniu zostaje jedno okno (logowanie) — pozostałe okna i karty są zamykane.
+        for nav in windowNavigations where nav !== activeNavigation { nav.window?.close() }
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        nativeSet = nil; nativeFocus = nil; native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); finance.reset(); screen = nil
-        navigation = []; sidebarHref = "/crm"; sidebarVisibility = .all; webItem = nil; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
+        native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); finance.reset()
+        navigation = []; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }
         cacheNamespace = nil
@@ -394,8 +412,9 @@ import Network
     func switchSection(_ module:Module) {
         guard employee?.canView(module)==true else{return}
         eventRoute=nil;focusedID=nil;notificationsVisible=false;nativeSet=nil;webItem=nil;screen=nil;selection=module
-        // Wejście do Ofert z paska bocznego pokazuje listę (strona oferty otwiera się przez `showOffer`).
-        if module == .offers { offers.openedID = nil }
+        // Wejście do Ofert z paska bocznego pokazuje listę (strona oferty otwiera się przez `showOffer`); oferta otwarta w innym
+        // oknie zostaje (stan sekcji jest wspólny dla okien).
+        if module == .offers && !shownElsewhere(module: .offers) { offers.openedID = nil }
         sidebarHref = navigation.flatMap(\.flattened).first { $0.module == module }?.href ?? sidebarHref
     }
     func eventAPI() -> HTTPBackend? { backend }
@@ -419,6 +438,8 @@ import Network
     }
     @discardableResult func navigate(_ module:Module,id:String) async -> Bool {
         let owner=employee
+        // Okno, z którego przejście — po pobraniu rekordu wynik trafia do niego, nawet gdy użytkownik przełączył okno.
+        let window=activeNavigation
         // Zadanie z tablicy „Moje zadania” (dostępnej dla każdego) — także bez uprawnienia do modułu zadań.
         if module == .tasks, owner != nil, myTasks.task(id) != nil {showTask(id);return true}
         guard let owner,owner.canView(module),UUID(uuidString:id) != nil else {notice="Nie masz dostępu do tej sekcji.";return false}
@@ -436,7 +457,8 @@ import Network
         guard owner.canView(target) else {return false}
         if snapshot?.collections[target.rawValue] == nil {snapshot?.collections[target.rawValue]=CollectionState()}
         if !rows(target).contains(where:{$0.id==record.id}) {snapshot?.collections[target.rawValue]?.buckets["linked"]=Array((snapshot?.collections[target.rawValue]?.buckets["linked"] ?? []).filter{$0.id != record.id})+[record]}
-        eventRoute=nil;focusedID=record.id;selection=target;focusToken=UUID()
+        let destination=windowNavigations.contains{$0===window} ? window:activeNavigation
+        destination.eventRoute=nil;destination.focusedID=record.id;destination.selection=target;destination.focusToken=UUID()
         return true
     }
 
@@ -595,9 +617,10 @@ extension Workspace {
         guard let item = items.first(where: { $0.href == href && ($0.children ?? []).isEmpty }) ?? items.first(where: { $0.href == href }) else { return }
         if let module = item.module, employee?.canView(module) == true { switchSection(module); sidebarHref = href; return }
         if let screen = item.screen {
-            // Wejście do Zespołu z innej sekcji pokazuje listę (karta pracownika otwiera się przez `showEmployee`).
-            if screen == .team && self.screen != .team { team.openedID = nil; team.openedTab = nil; team.openedDate = nil }
-            if screen != self.screen {
+            // Wejście do Zespołu z innej sekcji pokazuje listę (karta pracownika otwiera się przez `showEmployee`). Sekcja otwarta
+            // w innym oknie zachowuje tam otwarty rekord (stan sekcji jest wspólny dla okien).
+            if screen == .team && self.screen != .team && !shownElsewhere(screen: .team) { team.openedID = nil; team.openedTab = nil; team.openedDate = nil }
+            if screen != self.screen && !shownElsewhere(screen: screen) {
                 switch screen {
                 case .warehouse: warehouse.openedID = nil
                 case .kits: warehouse.openedKitID = nil

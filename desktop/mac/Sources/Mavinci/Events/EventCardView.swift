@@ -36,6 +36,8 @@ import AppKit
     @Binding var removing: Bool
     @Binding var duplicating: Bool
     @EnvironmentObject private var state: Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     @Environment(\.crmTheme) private var theme
 
     /// Przegląd jest domyślnie otwarty. Na stałe chowa go tylko przycisk „Przegląd” / ⌥⌘I (nowy klucz — dotychczas zapamiętane
@@ -345,7 +347,7 @@ import AppKit
             }
         }
         ToolbarItem(placement: .navigation) {
-            Button { state.eventRoute = nil } label: { Label("Wróć", systemImage: "chevron.left") }.help("Wróć do poprzedniego widoku")
+            Button { nav.eventRoute = nil } label: { Label("Wróć", systemImage: "chevron.left") }.help("Wróć do poprzedniego widoku")
         }
         ToolbarItemGroup(placement: .primaryAction) {
             if store.loading.contains(eventID) { ProgressView().controlSize(.small).help("Odświeżanie karty") }
@@ -595,7 +597,7 @@ import AppKit
             do { _ = try await api.post("/events", ["op": .string("delete"), "id": .string(eventID)]); ok = true; state.succeed("Wydarzenie zostało usunięte") }
             catch { state.error = store.failureText(error, "Nie udało się usunąć wydarzenia.") }
         }
-        if ok { state.eventRoute = nil; Task { await state.events.sync(force: true) } }
+        if ok { nav.eventRoute = nil; Task { await state.events.sync(force: true) } }
     }
     private func duplicateEvent() async {
         do {

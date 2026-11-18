@@ -26,9 +26,13 @@ extension Workspace {
 /// Snackbar na dole okna: sukces 4 s, informacja 5 s, błąd 9 s (lub do zamknięcia).
 struct SnackbarHost: View {
     @EnvironmentObject private var state: Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
+    /// Komunikat pokazywany w oknie, w którym zaczęła się czynność (`Workspace.showsSnack`).
+    private var shown: Snack? { state.showsSnack(in: nav) ? state.snack : nil }
     var body: some View {
         ZStack(alignment: .bottom) {
-            if let snack = state.snack {
+            if let snack = shown {
                 SnackbarView(snack: snack) { dismiss(snack) }
                     .id(snack.id)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -41,8 +45,8 @@ struct SnackbarHost: View {
         }
         .padding(.bottom, 22).padding(.horizontal, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: state.snack?.id)
-        .allowsHitTesting(state.snack != nil)
+        .animation(.spring(response: 0.32, dampingFraction: 0.86), value: shown?.id)
+        .allowsHitTesting(shown != nil)
     }
     private func dismiss(_ snack: Snack) {
         guard state.snack?.id == snack.id else { return }

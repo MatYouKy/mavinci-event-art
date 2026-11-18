@@ -2,13 +2,15 @@ import SwiftUI
 
 @MainActor struct NotificationsDrawer:View {
     @EnvironmentObject var state:Workspace
+    /// Nawigacja okna, w którym jest widok (inne okna mają własną).
+    @EnvironmentObject private var nav: WindowNavigation
     @State private var unreadOnly=false
     @State private var message:String?
     @State private var opening=false
     private var rows:[Row]{state.rows(.notifications).filter{!unreadOnly || $0.fields["is_read"]?.flag != true}.sorted{$0["created_at"]>$1["created_at"]}}
     var body:some View{
         VStack(spacing:0){
-            HStack{Text("Powiadomienia").font(.title2.bold());Text("\(state.unread)").foregroundStyle(.secondary);Spacer();Button{state.notificationsVisible=false}label:{Image(systemName:"xmark")}.buttonStyle(.plain).accessibilityLabel("Zamknij powiadomienia").keyboardShortcut(.cancelAction)}.padding(18)
+            HStack{Text("Powiadomienia").font(.title2.bold());Text("\(state.unread)").foregroundStyle(.secondary);Spacer();Button{nav.notificationsVisible=false}label:{Image(systemName:"xmark")}.buttonStyle(.plain).accessibilityLabel("Zamknij powiadomienia").keyboardShortcut(.cancelAction)}.padding(18)
             HStack{Toggle("Tylko nieprzeczytane",isOn:$unreadOnly).toggleStyle(.checkbox);Spacer();Button("Przeczytaj wszystkie"){Task{await state.markAllNotificationsRead()}}.disabled(!state.canWrite || state.unread==0)}.font(.caption).padding(.horizontal,18).padding(.bottom,12)
             Divider()
             if let problem=state.moduleErrors["notifications"]{Text(problem).font(.callout).foregroundStyle(.orange).padding(12)}
@@ -30,7 +32,7 @@ import SwiftUI
                             opening=true;message=nil
                             Task{
                                 let opened=await state.routeNotification(row)
-                                if opened{state.notificationsVisible=false;if row.fields["is_read"]?.flag != true && state.canWrite{_ = await state.perform("notification_read",row:row)}}
+                                if opened{nav.notificationsVisible=false;if row.fields["is_read"]?.flag != true && state.canWrite{_ = await state.perform("notification_read",row:row)}}
                                 else{message=state.error ?? state.notice ?? "Ta sprawa nie ma jeszcze dostępnej sekcji natywnej."}
                                 opening=false
                             }

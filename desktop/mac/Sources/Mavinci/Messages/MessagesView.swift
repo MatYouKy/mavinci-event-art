@@ -10,6 +10,8 @@ struct MessagesView: View {
 /// Licznik nieprzeczytanych przy „Wiadomości” w pasku bocznym; odświeżany co minutę jak w CRM.
 struct MessagesUnreadBadge: View {
     @ObservedObject var store: MessagesStore
+    /// Ostatnia synchronizacja z licznika — każde okno ma pasek boczny z licznikiem, a synchronizacja w tle jest jedna.
+    @MainActor private static var lastSync = Date.distantPast
     var body: some View {
         Text(store.unreadTotal > 0 ? (store.unreadTotal > 99 ? "99+" : "\(store.unreadTotal)") : "")
             .foregroundStyle(.secondary).monospacedDigit()
@@ -17,6 +19,8 @@ struct MessagesUnreadBadge: View {
                 // Kopia Wiadomości synchronizowana w tle co 30 s (tylko zmiany), także gdy ekran Wiadomości jest zamknięty.
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(30))
+                    guard !Task.isCancelled, Date().timeIntervalSince(Self.lastSync) >= 25 else { continue }
+                    Self.lastSync = Date()
                     await store.backgroundSync()
                 }
             }
