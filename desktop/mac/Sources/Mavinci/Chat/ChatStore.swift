@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 import AppKit
 import Combine
-import UserNotifications
+@preconcurrency import UserNotifications
 
 // MARK: Komunikator — stan wspólny dla wszystkich okien (jak `ChatWidget` w CRM): rozmowy z licznikami z serwera, zmiany na żywo
 // (Realtime), obecność (zielona kropka), „pisze…”, powiadomienia macOS z dźwiękiem i licznik na ikonie w Docku. Zasady jak

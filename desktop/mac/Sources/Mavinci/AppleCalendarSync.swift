@@ -293,7 +293,7 @@ struct CalendarRemoval:Identifiable {
     func setAutomatic(_ on:Bool) {
         guard var link=load() else {return}
         link.automatic=on
-        do {try persist(link);publish(link)} catch {error="Nie udało się zapisać ustawienia."}
+        do {try persist(link);publish(link)} catch {self.error="Nie udało się zapisać ustawienia."}
     }
     /// Przeniesienie kopii do wybranego kalendarza: usunięcie z poprzedniego, potem zapis w nowym.
     func move(rows:[Row]) {
@@ -479,7 +479,7 @@ extension Workspace {
         return parts.joined(separator:" ")
     }
     private static func relative(_ date:Date) -> String {
-        let f=RelativeDateTimeFormatter();f.locale=Locale(identifier:"pl_PL");f.unitsStyle=.full
+        let f=RelativeDateTimeFormatter();f.locale=Locale(identifier:"pl_PL");f.unitsStyle = .full
         return f.localizedString(for:date,relativeTo:Date())
     }
 
