@@ -386,6 +386,33 @@ import Network
         if succeeded { await refresh(force: true) }
         return succeeded
     }
+    /// Zapis z okna (np. „Nowe zapytanie”, formularz kontaktu): `canWrite` jest fałszywe także wtedy, gdy w tle trwa zwykłe
+    /// odświeżanie danych (co minutę i po powrocie do aplikacji) — wtedy czekamy na jego koniec (do 20 s) zamiast odmawiać.
+    /// Niepotwierdzone połączenie (np. po chwilowej przerwie sieci) sprawdzamy od razu profilem pracownika.
+    /// Zwraca komunikat dla użytkownika albo `nil`, gdy można zapisać.
+    func prepareWrite() async -> String? {
+        guard let employee else { return "Brak aktywnej sesji. Zaloguj się ponownie." }
+        let ticket = generation
+        let deadline = Date().addingTimeInterval(20)
+        while (syncing || loading || acting) && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+        guard ticket == generation else { return "Sesja zmieniła się. Zaloguj się ponownie." }
+        if syncing || loading || acting { return "Trwa odświeżanie danych z serwera CRM. Spróbuj ponownie za chwilę." }
+        if !verifiedConnection || offline {
+            guard pathAvailable else { return "Brak połączenia z internetem. Zapis będzie możliwy po przywróceniu połączenia." }
+            guard let backend else { return "Zapis wymaga połączenia z serwerem CRM." }
+            do {
+                let current = try await backend.profile()
+                guard ticket == generation else { return "Sesja zmieniła się. Zaloguj się ponownie." }
+                guard current.is_active, current == employee else { return "Dane konta zmieniły się. Odśwież dane (⌘R) i spróbuj ponownie." }
+                verifiedConnection = true; offline = false
+            } catch {
+                return error is URLError ? "Brak połączenia z serwerem CRM. Sprawdź internet i spróbuj ponownie." : friendlyError(error)
+            }
+        }
+        return canWrite ? nil : "Zapis wymaga połączenia z serwerem CRM."
+    }
     func logout() async {
         let old = backend
         generation = UUID()

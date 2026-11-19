@@ -1019,11 +1019,11 @@ enum ContactCardConfirm: Identifiable {
         case .merge(let source):
             MergeContactSheet(store: store, ref: ref, targetName: title, source: source)
         case .newInquiry(let client):
-            NewInquirySheet(initialClient: client) { id in
-                state.succeed("Zapytanie dodane do lejka sprzedażowego")
+            NewInquirySheet(initialClient: client) { created in
+                created.announce(state)
                 Task {
                     await state.inquiries.sync(force: true)
-                    state.showInquiry(id)
+                    state.showInquiry(created.id)
                 }
             }
         }

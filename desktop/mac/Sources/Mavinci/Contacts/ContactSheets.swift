@@ -324,9 +324,11 @@ enum ContactEditorMode: Identifiable, Equatable {
         problem = nil; duplicateID = nil
         errors = validate()
         if let first = keys.first(where: { errors[$0] != nil }) { focused = first; return }
-        guard store.workspace?.canWrite == true else { problem = "Zapis wymaga połączenia z serwerem CRM."; return }
+        guard let workspace = store.workspace else { problem = "Zapis wymaga połączenia z serwerem CRM."; return }
         saving = true
         defer { saving = false }
+        // Trwające odświeżanie danych w tle nie blokuje zapisu — czekamy na jego koniec (`Workspace.prepareWrite`).
+        if let blocked = await workspace.prepareWrite() { problem = blocked; return }
         do {
             if creating {
                 var data: [String: JSONValue] = [:]

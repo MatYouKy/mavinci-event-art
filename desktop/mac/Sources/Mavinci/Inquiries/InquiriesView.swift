@@ -173,13 +173,17 @@ struct InquiryActions {
                 .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
         .sheet(isPresented: $addingInquiry) {
-            // Jak w CRM po zapisie: otwarte zapytania, wspólna kolejka, bez filtra „wymaga uwagi”, świeży lejek.
-            NewInquirySheet { _ in
+            // Jak w CRM po zapisie: otwarte zapytania, bez filtra „wymaga uwagi”, świeży lejek — zakres, w którym jest nowe
+            // zapytanie: wspólna kolejka, „Moje” albo (inny opiekun) zespół / wszystkie.
+            NewInquirySheet { created in
                 status = .open
                 attention = nil
-                scope = .pool
+                if created.ownerID == nil { scope = .pool }
+                else if created.ownerID == me { scope = .mine }
+                else if scopes.contains(.all) { scope = .all }
+                else if scopes.contains(.team) { scope = .team }
                 Task { await store.sync(force: true) }
-                state.succeed("Zapytanie zostało dodane do wspólnej kolejki")
+                created.announce(state)
             }
             .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }

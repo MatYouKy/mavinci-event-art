@@ -302,7 +302,10 @@ struct CalendarDay:Identifiable { let id:Int;let date:Date? }
             MeetingEditorSheet(store:workspace.meetings,request:request).warehouseSheetStyle(workspace)
         case .inquiry(let date):
             // Jak w kalendarzu CRM: zapytanie z terminem tego dnia; po zapisie lejek (i kalendarz) pobiera zmiany.
-            NewInquirySheet(initialDate:date) {_ in Task {await workspace.inquiries.sync(force:true)}}.warehouseSheetStyle(workspace)
+            NewInquirySheet(initialDate:date) { created in
+                created.announce(workspace)
+                Task {await workspace.inquiries.sync(force:true)}
+            }.warehouseSheetStyle(workspace)
         }
     }
     /// Wybrany rodzaj na dzień z kalendarza: wydarzenie (kreator z terminem tego dnia), spotkanie (9:00–10:00 jak w CRM)
