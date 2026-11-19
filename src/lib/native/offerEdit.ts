@@ -16,6 +16,7 @@ import {
   type EventAssumptionKey,
 } from '@/lib/CRM/Offers/eventAssumptions';
 import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
+import { locationSelectorLabel } from '@/lib/CRM/Offers/offerVenueBackground';
 
 /*
  * Oferty na Macu, część B — edycja treści oferty jak w CRM: informacje podstawowe (`OfferBasicInfo.handleSave`), założenia
@@ -184,9 +185,26 @@ const IMAGE_TYPES: Array<{ type: string; extension: string; test: (bytes: Buffer
 
 const wholeNumber = (value: unknown) => (value === null || value === undefined || value === '' ? null : Number(value));
 
+/** Miejsce z listy lokalizacji (`offers.location_id` — miejsce okładki z jej „Tłem ofert”): miejsce bez zmian — powiązanie bez zmian;
+ * nowe — lokalizacja o dokładnie takim podpisie z listy („Nazwa, Miasto, Kod”, jak `LocationSelector` i lista w aplikacji) albo
+ * brak powiązania. `undefined` — bez zmiany (także baza bez kolumny `location_id`). */
+async function placeLocationId(ctx: NativeContext, id: string, previous: string, location: string): Promise<string | null | undefined> {
+  if (location === previous.trim()) return undefined;
+  const current = await ctx.supabase.from('offers').select('location_id').eq('id', id).maybeSingle();
+  if (current.error) return undefined;
+  let next: string | null = null;
+  if (location) {
+    const { data, error } = await ctx.supabase.from('locations').select('id, name, city, postal_code').order('name').limit(2000);
+    if (error) return undefined;
+    const matches = ((data || []) as Row[]).filter((row) => locationSelectorLabel(row).trim() === location);
+    next = matches.length === 1 ? String(matches[0].id) : null;
+  }
+  return next === ((current.data as Row | null)?.location_id ?? null) ? undefined : next;
+}
+
 export async function saveOfferBasic(ctx: NativeContext, body: Row) {
   const id = uuid(body.id);
-  const offer = await editable(ctx, id, 'id, status, sales_channel, inquiry_id, event_date, hero_image_path, inquiry:tasks!inquiry_id(id)');
+  const offer = await editable(ctx, id, 'id, status, sales_channel, inquiry_id, event_date, event_location, hero_image_path, inquiry:tasks!inquiry_id(id)');
   const input = body.fields && typeof body.fields === 'object' ? body.fields as Row : {};
   const clientType = input.clientType === 'individual' ? 'individual' : 'business';
   const organizationId = optionalUuid(input.organizationId);
@@ -227,6 +245,7 @@ export async function saveOfferBasic(ctx: NativeContext, body: Row) {
   if (notes.length > 20000) fail('Notatki są za długie.');
   const location = text(input.location).trim();
   if (location.length > 500) fail('Nazwa miejsca jest za długa.');
+  const locationId = await placeLocationId(ctx, id, text(offer.event_location), location);
   const heroAlt = text(input.heroAlt).trim().slice(0, 300);
   const sections = infoSections(input.infoSections).map((section) => ({
     key: section.key, title: section.title.trim().slice(0, 120), content: section.content.trim().slice(0, 4000),
@@ -257,6 +276,7 @@ export async function saveOfferBasic(ctx: NativeContext, body: Row) {
     event_id: optionalUuid(input.eventId),
     event_date: eventDate,
     event_location: location || null,
+    ...(locationId !== undefined ? { location_id: locationId } : {}),
     guest_count: guestCount,
     guests_per_table: guestsPerTable,
     table_count: tableCount,

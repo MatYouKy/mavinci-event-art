@@ -2,6 +2,7 @@ import 'server-only';
 import type { NativeContext } from './auth';
 import { can } from './auth';
 import { allRows } from './page';
+import { venueOutdatedOffers } from '@/lib/CRM/Offers/offerVenueBackground';
 import {
   day, dateTime, eventLink, fitSpans, grosz, revisionOf, rows, searchText, str, zl,
   type DocAction, type DocRecord, type DocSection, type DocSectionMeta, type DocTone,
@@ -78,7 +79,10 @@ function card(ctx: NativeContext, o: Obj): DocRecord {
         ['Otwarta przez klienta', dateTime(o.viewed_at)],
         ['Zaakceptowana', dateTime(o.accepted_at)],
         ['Autor', [str(o.creator?.name), str(o.creator?.surname)].filter(Boolean).join(' ')],
-        ['PDF', o.generated_pdf_url ? (o.modified_after_generation ? 'Nieaktualny — oferta zmieniona po wygenerowaniu' : 'Wygenerowany') : 'Brak'],
+        ['PDF', o.generated_pdf_url
+          ? (o.modified_after_generation ? 'Nieaktualny — oferta zmieniona po wygenerowaniu'
+            : o.venue_pdf_outdated ? 'Nieaktualny — po wygenerowaniu zmieniono „Tło ofert” miejsca' : 'Wygenerowany')
+          : 'Brak'],
       ]),
     },
     {
@@ -157,7 +161,8 @@ function card(ctx: NativeContext, o: Obj): DocRecord {
     amountText: zl(total),
     channelLabel: str(event?.name),
     search: searchText([o.offer_number, o.title, client, person(contact), contact?.email, event?.name, o.event_location]),
-    revision: revisionOf(o.updated_at),
+    // Zmiana „Tła ofert” miejsca nie zmienia oferty — znacznik nieaktualnego PDF zmienia wersję karty.
+    revision: revisionOf(o.updated_at) + (o.venue_pdf_outdated ? 1 : 0),
     updatedAt: str(o.updated_at),
     panelHref: `/crm/offers/${o.id}`,
     sections: fitSpans(sections),
@@ -168,5 +173,6 @@ function card(ctx: NativeContext, o: Obj): DocRecord {
 
 export async function offerRecords(ctx: NativeContext): Promise<DocRecord[]> {
   const data = await allRows<Obj>((c) => c.from('offers').select(select).order('created_at', { ascending: false }).order('id'), ctx.supabase);
-  return data.map((o) => card(ctx, o));
+  const outdated = await venueOutdatedOffers(ctx.supabase, data.filter((o) => o.generated_pdf_url).map((o) => o.id));
+  return data.map((o) => card(ctx, { ...o, venue_pdf_outdated: outdated.has(String(o.id).toLowerCase()) }));
 }

@@ -9,6 +9,10 @@ import { normalizeEventAssumptionItems, syncGuestCountAssumptions } from '@/lib/
 import { expandConfiguredItems, hasOfferAddons } from '@/lib/CRM/Offers/offerAddons';
 import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 import { offerPdfFileName } from '@/lib/CRM/Offers/offerPdfFileName';
+import {
+  LOCATION_BACKGROUND_BUCKET, locationSelectorLabel, offerUsesVenueBackground, offerVenue, offerVenueHint, offerVenueIds, offerVenueLabel,
+  venueOutdatedOffers,
+} from '@/lib/CRM/Offers/offerVenueBackground';
 
 /*
  * Oferty na Macu — lista `/crm/offers` i strona oferty `/crm/offers/[id]` (część A: odczyt, status, usuwanie, PDF do podglądu).
@@ -142,12 +146,12 @@ const VARIANT_FIELDS = `id, product_id, name, short_description, description, be
 
 const DETAIL_SELECT = `
   *,
-  organization:organizations!organization_id(id, name, alias, email),
+  organization:organizations!organization_id(id, name, alias, email, location_id),
   contact:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
   contact_person:contacts!contact_id(id, full_name, first_name, last_name, email, phone, mobile),
   inquiry:tasks!inquiry_id(id, title, description, inquiry_details, due_date, event_id),
   event:events!event_id(
-    id, name, event_date, location, financial_source, accepted_calculation_id,
+    id, name, event_date, location, location_id, financial_source, accepted_calculation_id,
     accepted_calculation:event_calculations!accepted_calculation_id(id, name, created_at, is_accepted, event_calculation_items(quantity, unit_price, days, vat_rate)),
     category:event_categories(id, name, default_offer_template_category_id),
     contact:contacts(email, first_name, last_name)
@@ -173,6 +177,17 @@ async function signedUrls(ctx: NativeContext, bucket: string, paths: string[]) {
   const { data } = await ctx.supabase.storage.from(bucket).createSignedUrls(unique, 3600);
   (data || []).forEach((item: Row) => { if (item?.path && item?.signedUrl) urls.set(String(item.path), String(item.signedUrl)); });
   return urls;
+}
+
+/** Lokalizacja, której podpis z listy (`LocationSelector`: „Nazwa, Miasto, Kod”) jest dokładnie miejscem wpisanym w ofercie
+ * — tylko jednoznaczne dopasowanie; inaczej `null`. */
+async function locationForPlace(ctx: NativeContext, place: string) {
+  const wanted = place.trim().toLocaleLowerCase('pl-PL');
+  if (!wanted) return null;
+  const { data, error } = await ctx.supabase.from('locations').select('id, name, city, postal_code').order('name').limit(2000);
+  if (error || !data) return null;
+  const matches = (data as Row[]).filter((row) => locationSelectorLabel(row).trim().toLocaleLowerCase('pl-PL') === wanted);
+  return matches.length === 1 ? { id: String(matches[0].id), name: text(matches[0].name) } : null;
 }
 
 /** Miejsce wydarzenia jak `resolvedEventLocation` w `OfferBasicInfo`. */
@@ -330,10 +345,18 @@ export async function offerDetail(ctx: NativeContext, id: string) {
   const items = ((offer.offer_items || []) as Row[]).slice()
     .sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0) || String(a.id).localeCompare(String(b.id)));
   const thumbPaths = items.map((item) => item.product_variant?.offer_image_path || item.product?.offer_image_path || item.product?.pdf_thumbnail_url || '');
-  const [thumbs, heroes] = await Promise.all([
+  // Bez własnej grafiki okładka używa „Tła ofert” miejsca (jak PDF — `offerVenue`): podgląd, podpowiedź, nieaktualny PDF po zmianie tła.
+  const venue = offerUsesVenueBackground(offer) ? await offerVenue(ctx.supabase, offerVenueIds(offer)) : null;
+  const venueHint = venue ? offerVenueHint(offer, venue, '') : offerVenueHint(offer, null, eventLocation(offer));
+  // Miejsce wpisane jak wybór z listy lokalizacji (tekst „Nazwa, Miasto, Kod”) — „Powiąż z lokalizacją” jednym kliknięciem.
+  const venueSuggestion = !venue && venueHint ? await locationForPlace(ctx, eventLocation(offer)) : null;
+  const [thumbs, heroes, venueUrls] = await Promise.all([
     signedUrls(ctx, 'offer-product-pages', thumbPaths),
     signedUrls(ctx, 'offer-template-pages', [offer.hero_image_path || '']),
+    signedUrls(ctx, LOCATION_BACKGROUND_BUCKET, [venue?.path || '']),
   ]);
+  // PDF sprzed ostatniej zmiany „Tła ofert” miejsca — nieaktualny (liczy baza, jak w CRM).
+  const venueChanged = Boolean(venue && offer.generated_pdf_url) && (await venueOutdatedOffers(ctx.supabase, [offer.id])).size > 0;
   const vatRate = Number(offer.tax_percent ?? 23) || 0;
   const details = offer.inquiry?.inquiry_details || {};
   const totals = getOfferPricingTotals(offer);
@@ -408,10 +431,17 @@ export async function offerDetail(ctx: NativeContext, id: string) {
       calculation: offer.pricing_source === 'calculation' && pricingCalculation?.id
         ? `${getCalculationNumber(pricingCalculation.id, pricingCalculation.created_at)} — ${text(pricingCalculation.name)}` : null,
       hero: seller && offer.partner_branding_snapshot?.hotel_cover_image_url ? 'Okładka z profilu sprzedawcy'
-        : offer.hero_image_path ? 'Indywidualna grafika tej oferty' : 'Domyślna grafika szablonu',
+        : offer.hero_image_path ? 'Indywidualna grafika tej oferty' : venue?.path ? offerVenueLabel(venue) : 'Domyślna grafika szablonu',
       heroPath: offer.hero_image_path || null,
       heroUrl: offer.hero_image_path ? heroes.get(offer.hero_image_path) || null : null,
       heroAlt: text(offer.hero_image_alt) || null,
+      // Podgląd okładki bez własnej grafiki — „Tło ofert” miejsca (`heroPath` zostaje tylko dla własnej grafiki oferty).
+      venueBackgroundPath: venue?.path || null,
+      venueBackgroundUrl: venue?.path ? venueUrls.get(venue.path) || null : null,
+      // Okładka bez tła miejsca: co zrobić (lokalizacja bez tła / miejsce wpisane ręcznie) i lokalizacja do powiązania.
+      venueHint,
+      venueLocationId: venue?.locationId || null,
+      venueSuggestion,
       start: schedule.startLabel || 'Nie ustalono',
       end: schedule.endLabel || 'Nie ustalono',
       location: eventLocation(offer) || '-',
@@ -456,7 +486,9 @@ export async function offerDetail(ctx: NativeContext, id: string) {
     client: { name: pageClient || null, email: pageEmail || null, phone: pagePhone || null },
     pdf: {
       exists: Boolean(offer.generated_pdf_url),
-      stale: offer.modified_after_generation === true,
+      stale: offer.modified_after_generation === true || venueChanged,
+      // Po wygenerowaniu PDF zmieniono „Tło ofert” miejsca — okładka w PDF jest nieaktualna (wysyłka po ponownym wygenerowaniu).
+      venueNote: venueChanged && venue ? `Po wygenerowaniu PDF zmieniono „Tło ofert” lokalizacji „${venue.name}”.` : null,
       fileName: offerPdfFileName(offer.offer_number),
       en: {
         exists: Boolean(englishPdf?.file_path),
@@ -490,6 +522,22 @@ export async function setOfferStatus(ctx: NativeContext, body: Row) {
   if ((current as Row).sales_channel === 'seller_portal') fail('Status oferty sprzedawcy zmienia się w obsłudze oferty z portalu.');
   const { data, error } = await ctx.supabase.from('offers').update({ status }).eq('id', id).select('id').maybeSingle();
   if (error) fail(error.message || 'Błąd podczas zmiany statusu');
+  if (!data) fail('Nie masz uprawnień do zmiany tej oferty.');
+  return offerDetail(ctx, id);
+}
+
+/** „Powiąż z lokalizacją” (karta oferty): miejsce wpisane w ofercie → lokalizacja z bazy (`offers.location_id`, miejsce okładki
+ * z jej „Tłem ofert”); tekst miejsca bez zmian. Jak w CRM — zmiana oferty, więc zapisany PDF staje się nieaktualny. */
+export async function linkOfferLocation(ctx: NativeContext, body: Row) {
+  const id = offerId(body.id);
+  const locationId = String(body.locationId || '');
+  if (!OFFER_UUID.test(locationId)) fail('Nieprawidłowa lokalizacja.');
+  await requireManage(ctx, id);
+  const { data: location, error: locationError } = await ctx.supabase.from('locations').select('id').eq('id', locationId).maybeSingle();
+  if (locationError || !location) fail('Nie znaleziono lokalizacji.');
+  const { data, error } = await ctx.supabase.from('offers').update({ location_id: locationId }).eq('id', id).select('id').maybeSingle();
+  if (error && /location_id/.test(error.message || '')) fail('Baza nie ma jeszcze powiązania miejsca oferty — wykonaj migrację 20261119150000_location_offer_background.sql.');
+  if (error) fail(error.message || 'Nie udało się powiązać miejsca z lokalizacją.');
   if (!data) fail('Nie masz uprawnień do zmiany tej oferty.');
   return offerDetail(ctx, id);
 }

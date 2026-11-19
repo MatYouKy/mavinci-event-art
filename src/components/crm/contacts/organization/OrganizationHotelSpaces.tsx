@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { LocationOfferBackground } from '@/components/crm/locations/LocationOfferBackground';
 import { LocationRooms } from '@/components/crm/locations/LocationRooms';
 import { LocationTechnicalDetails } from '@/components/crm/locations/LocationTechnicalDetails';
 import OrganizationLocationPicker from './OrganizationLocationPicker';
@@ -19,6 +21,8 @@ export default function OrganizationHotelSpaces({
   editingOrganization: boolean;
   onChangeLink: () => void;
 }) {
+  // Zdjęcie tła dodane do galerii obiektu — „Informacje techniczne” wczytują materiały od nowa.
+  const [materialsVersion, setMaterialsVersion] = useState(0);
   return <div className="space-y-5 text-[#e5e4e2]">
     <section className="space-y-3 rounded-xl bg-white/[0.035] p-5">
       <h2 className="text-lg uppercase">Sale i przestrzenie hotelu</h2>
@@ -40,8 +44,10 @@ export default function OrganizationHotelSpaces({
       Najpierw zapisz lub anuluj zmiany organizacji. Edycja sal będzie dostępna dla zapisanej lokalizacji.
     </p> : locationId && <>
       {!canEditLocation && <p className="text-sm text-white/55">Podgląd danych. Do edycji sal i materiałów wymagane są uprawnienia do zarządzania lokalizacjami.</p>}
+      <LocationOfferBackground key={`background:${locationId}`} locationId={locationId} readOnly={!canEditLocation}
+        onGalleryChange={() => setMaterialsVersion((version) => version + 1)}/>
       <LocationRooms key={`rooms:${locationId}`} locationId={locationId} readOnly={!canEditLocation}/>
-      <LocationTechnicalDetails key={`technical:${locationId}`} locationId={locationId} readOnly={!canEditLocation}/>
+      <LocationTechnicalDetails key={`technical:${locationId}:${materialsVersion}`} locationId={locationId} readOnly={!canEditLocation}/>
     </>}
   </div>;
 }

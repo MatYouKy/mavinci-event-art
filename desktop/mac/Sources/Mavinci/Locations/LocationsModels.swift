@@ -65,6 +65,42 @@ struct CrmLocationDetail: Decodable {
     var rooms: [CrmLocationRoom]
     var technical: [String: JSONValue]
     var urls: [String: String]
+    /// „Tło ofert” (`locations.offer_background_path`) z podpisanym adresem podglądu; `nil` — brak tła.
+    var offerBackground: CrmLocationBackground?
+    /// `false` — baza bez migracji „Tła ofert”; starszy serwer CRM nie przysyła pola (`nil`).
+    var offerBackgroundReady: Bool?
+}
+
+/// „Tło ofert” obiektu: zdjęcie z `location-materials` na okładkę ofert wydarzeń w tym miejscu.
+struct CrmLocationBackground: Decodable, Equatable {
+    var path: String
+    var url: String?
+}
+
+/// Zdjęcie z galerii obiektu lub sali — do wyboru jako „Tło ofert”.
+struct CrmLocationPhoto: Identifiable {
+    var place: String
+    var asset: CrmLocationAsset
+    var id: String { asset.path }
+}
+
+extension CrmLocationDetail {
+    /// Zdjęcia obiektu i sal bez powtórzeń (rzuty i pliki CAD pomijamy) — jak „Wybierz z galerii obiektu” w CRM.
+    var galleryPhotos: [CrmLocationPhoto] {
+        var photos: [CrmLocationPhoto] = []
+        let prefix = location.id.lowercased() + "/"
+        var sources: [(place: String, technical: [String: JSONValue])] = [(place: "Obiekt", technical: technical)]
+        for room in rooms { sources.append((place: room.name.nonEmpty ?? "Sala", technical: room.technical)) }
+        for source in sources {
+            for value in source.technical["assets"]?.array ?? [] {
+                guard let asset = CrmLocationAsset(value), asset.kind == "photo", asset.path.hasPrefix(prefix),
+                      [".jpg", ".png", ".webp"].contains(where: { asset.path.hasSuffix($0) }),
+                      !photos.contains(where: { $0.asset.path == asset.path }) else { continue }
+                photos.append(CrmLocationPhoto(place: source.place, asset: asset))
+            }
+        }
+        return photos
+    }
 }
 
 struct CrmPlacePrediction: Decodable, Identifiable, Hashable {

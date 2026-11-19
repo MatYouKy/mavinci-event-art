@@ -5,6 +5,7 @@ import { emailPreviewDocument, plainTextToEmailHtml } from './messages';
 import { buildCompanyEmailBody, buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
 import { dispatchCrmEmail } from '@/lib/emailScheduling';
 import { inquiryTitleLabel } from '@/lib/ui/systemLabels';
+import { venueOutdatedOffers } from '@/lib/CRM/Offers/offerVenueBackground';
 
 /*
  * Oferty na Macu, część D2 — czynności z karty „Akcje” jak w CRM: wysyłka oferty e-mailem (`SendOfferEmailModal`: skrzynka
@@ -83,7 +84,8 @@ export async function offerEmailSetup(ctx: NativeContext, id: string) {
     recipientName: text(detail.client?.name),
     subject: `Oferta ${number}`,
     text: `Dzień dobry,\n\nW załączeniu przesyłam ofertę ${number}.\n\nW razie pytań proszę o kontakt.`,
-    pdfReady: Boolean(offer.generated_pdf_url) && offer.modified_after_generation !== true,
+    // Także PDF sprzed zmiany „Tła ofert” miejsca oferty (`detail.pdf.stale`) wymaga ponownego wygenerowania.
+    pdfReady: Boolean(offer.generated_pdf_url) && offer.modified_after_generation !== true && detail.pdf.stale !== true,
   };
 }
 
@@ -163,6 +165,8 @@ export async function sendOfferEmail(ctx: NativeContext, body: Row, accessToken:
   const { data: document, error } = await ctx.supabase.from('offers').select('generated_pdf_url, modified_after_generation').eq('id', id).single();
   if (error) fail(error.message || 'Nie udało się sprawdzić PDF oferty.');
   if (!(document as Row).generated_pdf_url || (document as Row).modified_after_generation) fail('Wygeneruj aktualny PDF oferty przed wysyłką.');
+  // PDF sprzed zmiany „Tła ofert” miejsca oferty — okładka nieaktualna.
+  if ((await venueOutdatedOffers(ctx.supabase, [id])).size) fail('Wygeneruj aktualny PDF oferty przed wysyłką.');
   const result = await dispatchCrmEmail({
     accessToken,
     functionName: 'send-offer-email',

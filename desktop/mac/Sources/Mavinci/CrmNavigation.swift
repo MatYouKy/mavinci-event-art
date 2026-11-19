@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Pozycja menu CRM (`/bridge/native/v1/navigation`, `src/lib/CRM/navigation/registry.server.ts`) — ta sama lista, kolejność
 /// i uprawnienia co pasek boczny w przeglądarce. Pozycja bez ekranu natywnego otwiera tymczasowo stronę CRM w przeglądarce.
@@ -130,11 +131,12 @@ struct CrmSidebar: View {
     /// Nawigacja okna, w którym jest widok (inne okna mają własną).
     @EnvironmentObject private var nav: WindowNavigation
     @State private var expanded: Set<String> = []
+    /// Pozycja wciśnięta myszą — przejście po puszczeniu przycisku (podświetlona od razu).
+    @State private var pressed: String?
     var body: some View {
-        List(selection: Binding(get: { nav.sidebarHref }, set: { tag in
+        List(selection: Binding(get: { pressed ?? nav.sidebarHref }, set: { tag in
             guard let tag else { return }
-            // Przejście w tym oknie (także gdy kliknięcie trafiło do okna, które jeszcze nie jest aktywne).
-            state.inWindow(nav) { follow(tag) }
+            select(tag)
         })) {
             ForEach(state.navigation) { item in
                 if let children = item.children, !children.isEmpty {
@@ -151,6 +153,31 @@ struct CrmSidebar: View {
         }
         .onAppear { expandSelected() }
         .onChange(of: nav.sidebarHref) { _, _ in expandSelected() }
+    }
+    /// Kliknięcie od przeciągnięcia: zaznaczenie myszą otwiera sekcję po puszczeniu przycisku — chyba że w tym czasie zaczęło
+    /// się przeciąganie pozycji (do nowej karty lub okna), wtedy bieżąca karta zostaje bez zmian. Klawiatura (strzałki) — od razu.
+    private func select(_ tag: String) {
+        guard NSEvent.pressedMouseButtons & 1 != 0 else {
+            pressed = nil
+            // Przejście w tym oknie (także gdy kliknięcie trafiło do okna, które jeszcze nie jest aktywne).
+            state.inWindow(nav) { follow(tag) }
+            return
+        }
+        let drags = NavDrag.sessions
+        let origin = NSEvent.mouseLocation
+        pressed = tag
+        Task { @MainActor in
+            var travelled: CGFloat = 0
+            while NSEvent.pressedMouseButtons & 1 != 0 {
+                travelled = max(travelled, NavDrag.distance(from: origin))
+                do { try await Task.sleep(nanoseconds: 15_000_000) } catch { break }
+            }
+            guard pressed == tag else { return }
+            pressed = nil
+            // Przeciągnięto pozycję (ruch myszy i rozpoczęte przeciąganie) — bez przejścia w tej karcie.
+            if NavDrag.sessions != drags && travelled > NavDrag.clickSlop { return }
+            state.inWindow(nav) { follow(tag) }
+        }
     }
     private func follow(_ tag: String) {
         // Grupa (np. „Zadania”) ma własny znacznik — wcześniej dziedziczyła adres pierwszej pozycji i świeciła razem z nią.
@@ -181,7 +208,7 @@ struct CrmSidebar: View {
             // Sekcja w osobnym oknie lub karcie (np. Wiadomości obok otwartego wydarzenia).
             if item.module != nil || item.screen != nil { OpenInWindowButtons(destination: .href(item.href), workspace: state, nav: nav) }
         }
-        // Przeciągnięcie jak w Finderze — etykieta za kursorem i pola „W tej karcie” / „W nowej karcie” / „W nowym oknie” (`NavigationDrag.swift`).
+        // Przeciągnięcie jak w Finderze — wiersz za kursorem i pola „W tej karcie” / „W nowej karcie” / „W nowym oknie” (`NavigationDrag.swift`).
         .modifier(NavDragSource(workspace: state, href: item.module != nil || item.screen != nil ? item.href : nil,
                                 name: item.name, symbol: item.symbol, dragging: state.navDrag == item.href))
     }

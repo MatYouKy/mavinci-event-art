@@ -31,6 +31,7 @@ import { readOfferPdfResult } from '@/lib/offer-pdf/readProgress';
 import { offerSource } from '@/lib/CRM/Offers/offerSource';
 import { offerPdfFileName } from '@/lib/CRM/Offers/offerPdfFileName';
 import { deleteOfferPdfFiles } from '@/lib/CRM/Offers/deleteOfferPdfFiles';
+import { venueOutdatedOffers } from '@/lib/CRM/Offers/offerVenueBackground';
 
 interface OfferActionsProps {
   language?: 'pl' | 'en';
@@ -74,7 +75,18 @@ export default function OfferActions({
   }, [offer?.id, generatingPdf]);
   const selectedPdfPath = language === 'en' ? englishPdf?.file_path : offer?.generated_pdf_url;
   const selectedFileName = language === 'en' ? englishPdf?.file_name || offerPdfFileName(offer.offer_number).replace(/\.pdf$/i, '-EN.pdf') : offerPdfFileName(offer.offer_number);
-  const selectedPdfStale = language === 'en' ? englishPdf?.source_revision !== offer.content_revision : offer.modified_after_generation;
+  // Zapisany PDF sprzed ostatniej zmiany „Tła ofert” miejsca oferty — okładka nieaktualna (jak zmiana oferty po wygenerowaniu).
+  const [venueOutdated, setVenueOutdated] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setVenueOutdated(false);
+    if (offer?.id && offer?.generated_pdf_url && !generatingPdf) {
+      void venueOutdatedOffers(supabase, [offer.id]).then((ids) => { if (active) setVenueOutdated(ids.size > 0); });
+    }
+    return () => { active = false; };
+  }, [offer?.id, offer?.generated_pdf_url, offer?.last_generated_at, offer?.hero_image_path, offer?.location_id, generatingPdf]);
+  const plPdfStale = Boolean(offer.modified_after_generation) || venueOutdated;
+  const selectedPdfStale = language === 'en' ? englishPdf?.source_revision !== offer.content_revision : plPdfStale;
   const canGenerate = language === 'pl' || englishReady;
   const { employee } = useCurrentEmployee();
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -499,6 +511,7 @@ export default function OfferActions({
               {selectedPdfStale && (
                 <p role="status" className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                   Zapisany PDF nie zawiera ostatnich zmian oferty. Możesz go obejrzeć lub pobrać. Przed wysłaniem wygeneruj aktualną wersję.
+                  {language === 'pl' && venueOutdated && !offer.modified_after_generation && ' Po wygenerowaniu PDF zmieniono „Tło ofert” miejsca oferty.'}
                 </p>
               )}
               <button
@@ -556,7 +569,7 @@ export default function OfferActions({
                   </>
                 )}
               </button>
-              {language === 'pl' && canSendEmail && !offer.modified_after_generation && (
+              {language === 'pl' && canSendEmail && !plPdfStale && (
                 <button
                   onClick={() => setShowSendEmailModal(true)}
                   className="flex w-full items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-4 py-2 text-sm text-green-400 transition-colors hover:bg-green-500/20"

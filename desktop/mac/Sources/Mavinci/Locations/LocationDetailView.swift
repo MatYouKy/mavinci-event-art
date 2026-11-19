@@ -3,7 +3,8 @@ import MapKit
 
 // MARK: Szczegóły obiektu — 1:1 z `/crm/locations/[id]`: nazwa i adres, „Edytuj”, szczegóły (adres, miasto, kraj,
 // współrzędne, Google Maps, kontakt), notatki, mapa, informacje (utworzono, zaktualizowano, Google Place ID),
-// „Sale i przestrzenie zewnętrzne” (`LocationRooms`) i „Informacje techniczne obiektu” (`LocationTechnicalDetails`).
+// „Tło ofert” (`LocationOfferBackground` — `LocationOfferBackgroundPanel`), „Sale i przestrzenie zewnętrzne” (`LocationRooms`)
+// i „Informacje techniczne obiektu” (`LocationTechnicalDetails`).
 
 /// Sala do edycji w arkuszu: istniejąca albo nowa (identyfikator nadany od razu — ponowienie zapisu nie dubluje sali).
 struct LocationRoomTarget: Identifiable {
@@ -93,6 +94,7 @@ struct LocationRoomTarget: Identifiable {
                     }
                     .frame(width: 360)
                 }
+                LocationOfferBackgroundPanel(store: store, locationID: locationID, detail: detail, canManage: canManage)
                 rooms(detail)
                 technical(detail)
             }

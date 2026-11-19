@@ -133,7 +133,15 @@ import SwiftUI
     /// Kolumna boczna: informacje podstawowe, akcje, kontekst zapytania i podsumowanie.
     @ViewBuilder func sideColumn(_ detail: OfferDetail) -> some View {
         let editBasic: (() -> Void)? = editable(detail) ? { basicSheet = true } : nil
-        OfferBasicInfoCard(detail: detail, onEdit: editBasic)
+        let offerID = detail.offer.id
+        // Miejsce wpisane w ofercie → lokalizacja z bazy (miejsce okładki z jej „Tłem ofert”).
+        let linkLocation: ((String) -> Void)? = editable(detail) ? { locationID in
+            Task {
+                await store.change(offerID, "linkLocation", ["locationId": .string(locationID)], pending: "Powiązywanie miejsca…",
+                                   success: "Miejsce oferty powiązane z lokalizacją")
+            }
+        } : nil
+        OfferBasicInfoCard(detail: detail, onEdit: editBasic, onOpenLocation: { state.showLocation($0) }, onLinkLocation: linkLocation)
         if !detail.offer.seller { OfferActionsCard(store: store, detail: detail) }
         if let inquiry = detail.inquiry { OfferInquiryContextCard(inquiry: inquiry) }
         OfferSummaryCard(store: store, detail: detail)
@@ -197,6 +205,9 @@ struct OfferInfoField<Content: View>: View {
 @MainActor struct OfferBasicInfoCard: View {
     let detail: OfferDetail
     var onEdit: (() -> Void)? = nil
+    /// Okładka bez „Tła ofert”: otwarcie lokalizacji miejsca i powiązanie wpisanego miejsca z lokalizacją z bazy.
+    var onOpenLocation: ((String) -> Void)? = nil
+    var onLinkLocation: ((String) -> Void)? = nil
     @Environment(\.crmTheme) private var theme
     @State private var heroLarge = false
 
@@ -244,13 +255,24 @@ struct OfferInfoField<Content: View>: View {
                 }
                 OfferInfoField(symbol: "photo", label: "Grafika hero oferty") {
                     Text(basic.hero).font(.callout)
-                    if let path = basic.heroPath, let url = basic.heroUrl {
+                    if let cover = basic.coverImage {
+                        let note: String = basic.heroPath != nil ? basic.heroAlt ?? "Grafika hero oferty" : basic.hero
                         Button { heroLarge = true } label: {
-                            ProductThumb(path: path, url: url).frame(width: 180, height: 100)
+                            ProductThumb(path: cover.path, url: cover.url).frame(width: 180, height: 100)
                         }
                         .buttonStyle(.plain)
-                        .help(basic.heroAlt ?? "Grafika hero oferty")
-                        .popover(isPresented: $heroLarge) { ProductLargeImage(path: path, url: url).frame(width: 640, height: 400).padding(10) }
+                        .help(note)
+                        .popover(isPresented: $heroLarge) { ProductLargeImage(path: cover.path, url: cover.url).frame(width: 640, height: 400).padding(10) }
+                    }
+                    if let hint = basic.venueHint {
+                        Text(hint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        if let locationID = basic.venueLocationId, let onOpenLocation {
+                            Button("Otwórz lokalizację") { onOpenLocation(locationID) }.buttonStyle(.link).font(.caption)
+                        }
+                        if let suggestion = basic.venueSuggestion, let onLinkLocation {
+                            let title: String = "Powiąż z lokalizacją „\(suggestion.name)”"
+                            Button(title) { onLinkLocation(suggestion.id) }.buttonStyle(.link).font(.caption)
+                        }
                     }
                 }
                 OfferInfoField(symbol: "calendar", label: "Początek wydarzenia") {
@@ -841,6 +863,9 @@ struct OfferHistoryCard: View {
             if file.stale {
                 Text("Zapisany PDF nie zawiera ostatnich zmian oferty. Możesz go obejrzeć lub pobrać. Przed wysłaniem wygeneruj aktualną wersję.")
                     .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                if language == "pl", let note = detail.pdf.venueNote {
+                    Text(note).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                }
             }
             actionButton("Pokaż PDF (\(code))", "eye") {
                 Task { if let file = await store.pdfPreview(detail.offer.id, language: language) { preview = file } }

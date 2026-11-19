@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { LocationTechnicalDetails } from '@/components/crm/locations/LocationTechnicalDetails';
 import { LocationRooms } from '@/components/crm/locations/LocationRooms';
+import { LocationOfferBackground } from '@/components/crm/locations/LocationOfferBackground';
 import { supabase } from '@/lib/supabase/browser';
 import { MapPin, ArrowLeft, Edit, ExternalLink, Building2, Mail, Phone, Globe } from 'lucide-react';
 
@@ -32,6 +33,8 @@ export default function LocationDetailsPage() {
   const [location, setLocation] = useState<Location | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Zdjęcie tła dodane do galerii obiektu — „Informacje techniczne” wczytują materiały od nowa.
+  const [materialsVersion, setMaterialsVersion] = useState(0);
 
   useEffect(() => {
     if (locationId) {
@@ -248,8 +251,9 @@ export default function LocationDetailsPage() {
             </div>
           </div>
         </div>
+        <LocationOfferBackground locationId={locationId} onGalleryChange={() => setMaterialsVersion((version) => version + 1)} />
         <LocationRooms locationId={locationId} />
-        <LocationTechnicalDetails locationId={locationId} />
+        <LocationTechnicalDetails key={`technical:${materialsVersion}`} locationId={locationId} />
       </div>
     </div>
   );

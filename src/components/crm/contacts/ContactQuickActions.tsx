@@ -5,6 +5,7 @@ import NewInquiryModal from '@/components/crm/NewInquiryModal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { BookOpen, CalendarPlus, FileText, History, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { venueOutdatedOffers } from '@/lib/CRM/Offers/offerVenueBackground';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { Modal } from '@/components/UI/Modal';
 import InvoiceDocumentActionsMenu, { type InvoiceDocumentAction } from '@/components/crm/invoices/InvoiceDocumentActionsMenu';
@@ -47,7 +48,10 @@ export default function ContactQuickActions({context}:{context:RecipientContext}
    const {data:events,error:e}=await supabase.from('events').select('id').eq('contact_person_id',context.id).limit(500);if(e)throw e;
    q=events?.length?q.or(`contact_id.eq.${context.id},event_id.in.(${events.map(e=>e.id).join(',')})`):q.eq('contact_id',context.id);
   }
-  const {data,error:e}=await q;if(e)throw e;setOffers((data||[]) as Offer[]);
+  const {data,error:e}=await q;if(e)throw e;
+  // PDF sprzed zmiany „Tła ofert” miejsca oferty też wymaga ponownego wygenerowania.
+  const list=(data||[]) as Offer[],outdated=await venueOutdatedOffers(supabase,list.map(o=>o.id));
+  setOffers(list.map(o=>outdated.has(o.id.toLowerCase())?{...o,modified_after_generation:true}:o));
  }catch{setError('Nie udało się pobrać ofert powiązanych z tym odbiorcą.');}finally{setWorking(false);}};
  const createEvent=async()=>{if(working)return;setError('');if(context.type==='organization'){setEvent({organizationId:context.id});return;}setEventPicker(true);setWorking(true);try{
   const {data,error:e}=await supabase.from('contact_organizations').select('organization:organizations(id,name)').eq('contact_id',context.id).eq('is_current',true);if(e)throw e;

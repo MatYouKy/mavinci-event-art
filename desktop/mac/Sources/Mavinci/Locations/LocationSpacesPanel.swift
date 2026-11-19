@@ -2,13 +2,16 @@ import SwiftUI
 
 // MARK: Sale i informacje techniczne jednej lokalizacji jako sekcja innego ekranu — 1:1 z `LocationRooms` i
 // `LocationTechnicalDetails` osadzonymi w CRM poza kartą lokalizacji (karta organizacji → „Sale i przestrzenie”, podgląd brandingu
-// sprzedawcy → baza hotelu). Te same dane, zapisy i arkusze co karta lokalizacji (`LocationDetailView`, `LocationsStore`);
+// sprzedawcy → baza hotelu) — na karcie organizacji także „Tło ofert” hotelu (`LocationOfferBackground`). Te same dane, zapisy i arkusze
+// co karta lokalizacji (`LocationDetailView`, `LocationsStore`);
 // `readOnly` — tylko podgląd (bez uprawnienia do zarządzania lokalizacjami albo gdy CRM pokazuje podgląd).
 
 @MainActor struct LocationSpacesPanel: View {
     @ObservedObject var store: LocationsStore
     let locationID: String
     var readOnly = false
+    /// „Tło ofert” nad salami — karta organizacji-hotelu; podgląd brandingu sprzedawcy go nie pokazuje (oferty sprzedawcy mają okładkę z profilu).
+    var showsOfferBackground = false
     @EnvironmentObject private var state: Workspace
     @State private var editingTechnical = false
     @State private var editingRoom: LocationRoomTarget?
@@ -21,6 +24,9 @@ import SwiftUI
         Group {
             if let detail {
                 VStack(alignment: .leading, spacing: 16) {
+                    if showsOfferBackground {
+                        LocationOfferBackgroundPanel(store: store, locationID: locationID, detail: detail, canManage: canManage)
+                    }
                     rooms(detail)
                     technical(detail)
                 }

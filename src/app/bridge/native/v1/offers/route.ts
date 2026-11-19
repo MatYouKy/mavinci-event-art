@@ -1,5 +1,7 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
-import { deleteOffer, deleteOfferPdf, offerDetail, offerEnglish, offerPdf, offersAccess, offersState, setOfferStatus } from '@/lib/native/offers';
+import {
+  deleteOffer, deleteOfferPdf, linkOfferLocation, offerDetail, offerEnglish, offerPdf, offersAccess, offersState, setOfferStatus,
+} from '@/lib/native/offers';
 import {
   deleteOfferItem,
   draftOfferAssumptions,
@@ -70,7 +72,8 @@ export const maxDuration = 300;
  * Oferty dla aplikacji na Maca (`src/lib/native/offers.ts`): GET op=state (lista ofert do kopii na dysku), op=offer&id=… (strona
  * oferty), op=pdf&id=… (podpisany adres zapisanego PDF), op=editor&id=… (dane do edycji informacji podstawowych),
  * op=contacts&organization=… (osoby kontaktowe organizacji), op=calculations&id=…&event=… (kalkulacje), op=assumptions&id=…;
- * POST op=status (szkic, wysłana, odrzucona, wygasła) | delete | basicSave | assumptionsSave | assumptionsAI | discountSave |
+ * POST op=status (szkic, wysłana, odrzucona, wygasła) | delete | linkLocation {id, locationId} (miejsce oferty → lokalizacja, okładka
+ * z jej „Tłem ofert”) | basicSave | assumptionsSave | assumptionsAI | discountSave |
  * itemsReorder | itemPresentation (układ w PDF, warianty) | itemDelete (`src/lib/native/offerEdit.ts`);
  * pozycje (`src/lib/native/offerItems.ts`): GET op=itemCatalog&id=… | itemEditor&id=…&item=…; POST op=itemPreview (wycena
  * szkicu) | itemAdd | itemUpdate | audienceSave (liczba osób i stołów do wyceny);
@@ -153,6 +156,7 @@ export async function POST(request: Request) {
       case 'pdfDelete': return nativeJson(await deleteOfferPdf(ctx, body));
       case 'english': return nativeJson(await offerEnglish(ctx, body));
       case 'basicSave': return nativeJson(await saveOfferBasic(ctx, body));
+      case 'linkLocation': return nativeJson(await linkOfferLocation(ctx, body));
       case 'assumptionsSave': return nativeJson(await saveOfferAssumptions(ctx, body));
       case 'assumptionsAI': return nativeJson(await draftOfferAssumptions(ctx, body));
       case 'discountSave': return nativeJson(await saveOfferDiscount(ctx, body));

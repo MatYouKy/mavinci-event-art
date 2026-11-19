@@ -285,7 +285,7 @@ struct OfferPickList<Item: Identifiable & Hashable>: View where Item.ID == Strin
                     Text("Termin zapisuje się w tej ofercie i jest używany w jej PDF. Nie zmienia terminu powiązanego wydarzenia.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                ProductField(label: "Miejsce wydarzenia", help: "Ta lokalizacja pojawi się na pierwszej stronie oferty.") {
+                ProductField(label: "Miejsce wydarzenia", help: "Ta lokalizacja pojawi się na pierwszej stronie oferty. Miejsce wybrane z listy lokalizacji daje też okładce jego „Tło ofert”.") {
                     TextField("", text: $location, prompt: Text("Wyszukaj miejsce lub wpisz własną lokalizację...")).textFieldStyle(.roundedBorder)
                     let matches = placeMatches(data)
                     if !matches.isEmpty {

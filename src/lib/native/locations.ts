@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import type { NativeContext } from './auth';
 import { can } from './auth';
 import { placeDetails, placeSearch } from './eventClientLocation';
+import { isLocationBackgroundPath } from '@/lib/CRM/Offers/offerVenueBackground';
 
 /*
  * Lokalizacje na Macu (`/crm/locations`, `/crm/locations/[id]`): lista obiektów, dodawanie i edycja (z wyszukiwaniem miejsc
  * Google jak `GoogleMapsPicker`), usuwanie, szczegóły obiektu, sale i przestrzenie zewnętrzne (`locations.rooms`) oraz
- * informacje techniczne obiektu i sal (`technical_details`, materiały w `location-materials`). Tokenem pracownika — RLS
+ * informacje techniczne obiektu i sal (`technical_details`, materiały w `location-materials`) oraz „Tło ofert” — zdjęcie miejsca
+ * na okładkę ofert wydarzeń w tej lokalizacji (`offer_background_path`, `offerVenueBackground.ts`). Tokenem pracownika — RLS
  * (`locations_manage`) i walidacja w bazie (`validate_location_rooms`, `validate_location_technical_details`) jak w przeglądarce.
  */
 
@@ -87,12 +89,59 @@ export async function locationDetail(ctx: NativeContext, id: string) {
   const row = data as Row;
   const rooms = roomsOf(row).map(roomItem);
   const technical = technicalOf(row);
+  // Osobno — baza bez migracji „Tła ofert” nie blokuje szczegółów lokalizacji.
+  const background = await ctx.supabase.from('locations').select('offer_background_path').eq('id', id).maybeSingle();
+  const backgroundPath = !background.error && typeof (background.data as Row | null)?.offer_background_path === 'string'
+    ? text((background.data as Row).offer_background_path) : '';
+  let offerBackground: { path: string; url: string | null } | null = null;
+  if (backgroundPath) {
+    const signed = await ctx.supabase.storage.from(BUCKET).createSignedUrl(backgroundPath, 3600);
+    offerBackground = { path: backgroundPath, url: signed.error ? null : signed.data?.signedUrl ?? null };
+  }
   return {
     access: locationsAccess(ctx),
     location: locationItem(row),
     rooms,
     technical,
     urls: await assetUrls(ctx, [technical, ...rooms.map((room) => room.technical)]),
+    offerBackground,
+    offerBackgroundReady: !background.error,
+  };
+}
+
+/** „Tło ofert”: zdjęcie z galerii obiektu lub sali albo nowo przesłane (`op=upload&kind=photo`) — takie dopisujemy do galerii
+ * obiektu (`name` — nazwa pliku), żeby było widoczne w materiałach i dało się je wybrać ponownie; `null` — usunięcie tła (zdjęcie
+ * zostaje w galerii). Zapis tylko, gdy lokalizacja nie zmieniła się od odczytu (jak informacje techniczne). */
+export async function saveOfferBackground(ctx: NativeContext, id: string, rawPath: unknown, rawName?: unknown) {
+  requireManage(ctx);
+  const path = rawPath === null || rawPath === undefined ? '' : text(rawPath).trim();
+  if (path && !isLocationBackgroundPath(id, path)) fail('Wybierz zdjęcie JPG, PNG lub WebP z materiałów tej lokalizacji.');
+  const row = await current(ctx, id);
+  const technical = technicalOf(row);
+  const assetsOf = (details: Row) => (Array.isArray(details.assets) ? details.assets as Row[] : []);
+  const inGallery = [technical, ...roomsOf(row).map((room) => (isObject(room.technical) ? room.technical : {}))]
+    .some((details) => assetsOf(details).some((asset) => text(asset?.path) === path));
+  const patch: Row = { offer_background_path: path || null };
+  if (path && !inGallery) {
+    const assets = assetsOf(technical);
+    if (assets.length >= 30) {
+      fail('Galeria obiektu ma już 30 materiałów — usuń któryś w „Informacjach technicznych obiektu” albo wybierz zdjęcie z galerii.');
+    }
+    patch.technical_details = { ...technical, assets: [...assets, { path, name: clip(rawName, 255) || 'Tło ofert', kind: 'photo' }] };
+  }
+  const { data, error } = await ctx.supabase.from('locations').update(patch).eq('id', row.id).eq('updated_at', row.updated_at).select('id');
+  if (error?.code === '23514') fail('Wybierz zdjęcie JPG, PNG lub WebP z materiałów tej lokalizacji.');
+  if (error && /offer_background_path/.test(error.message || '')) {
+    fail('Baza nie ma jeszcze „Tła ofert” — wykonaj migrację 20261119150000_location_offer_background.sql.');
+  }
+  check(error, 'Nie udało się zapisać tła ofert.');
+  if (!data?.length) fail('Dane zmieniły się lub nie masz uprawnień. Odśwież lokalizację.', 409);
+  if (!path) return { ok: true, message: 'Usunięto tło ofert — zdjęcie zostaje w galerii' };
+  return {
+    ok: true,
+    message: patch.technical_details
+      ? 'Tło ofert zapisane i dodane do galerii obiektu — nowe PDF ofert z tego miejsca dostaną to zdjęcie na okładce.'
+      : 'Tło ofert zapisane — nowe PDF ofert z tego miejsca dostaną to zdjęcie na okładce.',
   };
 }
 

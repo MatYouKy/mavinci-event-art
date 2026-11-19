@@ -20,6 +20,10 @@ import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
 import { localDatetimeStringToUTC, utcToLocalDatetimeString } from '@/lib/utils/dateTimeUtils';
 import CreateClientFromSellerOffer from '@/components/crm/sellers/CreateClientFromSellerOffer';
+import {
+  LOCATION_BACKGROUND_BUCKET, locationSelectorLabel, offerUsesVenueBackground, offerVenue, offerVenueHint, offerVenueIds, offerVenueLabel,
+  venueOutdatedOffers,
+} from '@/lib/CRM/Offers/offerVenueBackground';
 
 export interface OfferBasicInfoProps {
   offer: any;
@@ -67,6 +71,16 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
     const [heroFile, setHeroFile] = useState<File | null>(null);
     const [heroPreviewUrl, setHeroPreviewUrl] = useState('');
     const [removeHero, setRemoveHero] = useState(false);
+    /** „Tło ofert” miejsca wydarzenia — okładka PDF, gdy oferta nie ma własnej grafiki: podgląd, podpowiedź (lokalizacja bez
+     * tła albo miejsce wpisane ręcznie — z lokalizacją do otwarcia lub powiązania) i PDF sprzed zmiany tła. */
+    const [venueHero, setVenueHero] = useState<{ label: string; url: string } | null>(null);
+    const [venueNote, setVenueNote] = useState<{
+      hint: string | null;
+      locationId: string | null;
+      suggestion: { id: string; name: string } | null;
+      outdated: string | null;
+    } | null>(null);
+    const [linkingVenue, setLinkingVenue] = useState(false);
     const [heroDragActive, setHeroDragActive] = useState(false);
     const heroDragDepth = useRef(0);
     const [eventCalculations, setEventCalculations] = useState<Array<{
@@ -123,6 +137,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
       event_id: offer.event_id || '',
       event_date: utcToLocalDatetimeString(offerEventDate),
       event_location: resolvedEventLocation,
+      location_id: offer.location_id || '',
       guest_count: offer.guest_count == null ? '' : String(offer.guest_count),
       guests_per_table: String(offer.guests_per_table ?? 10),
       table_count: offer.table_count == null ? '' : String(offer.table_count),
@@ -197,6 +212,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
         event_id: offer.event_id || '',
         event_date: utcToLocalDatetimeString(offerEventDate),
         event_location: resolvedEventLocation,
+        location_id: offer.location_id || '',
       guest_count: offer.guest_count == null ? '' : String(offer.guest_count),
       guests_per_table: String(offer.guests_per_table ?? 10),
       table_count: offer.table_count == null ? '' : String(offer.table_count),
@@ -244,6 +260,64 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
         if (objectUrl) URL.revokeObjectURL(objectUrl);
       };
     }, [heroFile, offer.hero_image_path, removeHero]);
+
+    // Bez własnej grafiki okładka PDF używa „Tła ofert” miejsca wydarzenia (`offerVenue`, jak generowanie PDF).
+    useEffect(() => {
+      let active = true;
+      setVenueHero(null);
+      setVenueNote(null);
+      if (!offerUsesVenueBackground(offer) || !offer.id) return () => { active = false; };
+      (async () => {
+        const { data } = await supabase
+          .from('offers')
+          .select('event:events!event_id(location_id), inquiry:tasks!inquiry_id(inquiry_details), organization:organizations!organization_id(location_id)')
+          .eq('id', offer.id)
+          .maybeSingle();
+        const venue = await offerVenue(supabase, { ...offerVenueIds((data || {}) as Record<string, any>), offer: offer.location_id });
+        if (!active) return;
+        let suggestion: { id: string; name: string } | null = null;
+        const placeText = String(resolvedEventLocation || '').trim();
+        if (!venue && placeText) {
+          // Miejsce wpisane jak wybór z listy lokalizacji — jednoznaczne dopasowanie do powiązania jednym kliknięciem.
+          const { data: locations } = await supabase.from('locations').select('id, name, city, postal_code').order('name').limit(2000);
+          const wanted = placeText.toLocaleLowerCase('pl-PL');
+          const matches = ((locations || []) as Array<Record<string, any>>)
+            .filter((row) => locationSelectorLabel(row).trim().toLocaleLowerCase('pl-PL') === wanted);
+          if (matches.length === 1) suggestion = { id: String(matches[0].id), name: String(matches[0].name || '') };
+        }
+        if (!active) return;
+        const outdated = venue && offer.generated_pdf_url ? (await venueOutdatedOffers(supabase, [offer.id])).size > 0 : false;
+        if (!active) return;
+        setVenueNote({
+          hint: venue ? offerVenueHint(offer, venue, '') : offerVenueHint(offer, null, placeText),
+          locationId: venue?.locationId || null,
+          suggestion,
+          outdated: outdated && venue ? `Po wygenerowaniu PDF zmieniono „Tło ofert” lokalizacji „${venue.name}” — wygeneruj PDF ponownie, żeby okładka je uwzględniła.` : null,
+        });
+        if (!venue?.path) return;
+        const { data: signed } = await supabase.storage.from(LOCATION_BACKGROUND_BUCKET).createSignedUrl(venue.path, 3600);
+        if (active) setVenueHero({ label: offerVenueLabel(venue), url: signed?.signedUrl || '' });
+      })();
+      return () => { active = false; };
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- `offer` jako całość zmienia się przy każdym odświeżeniu karty
+    }, [offer.id, offer.hero_image_path, offer.sales_channel, offer.event_id, offer.organization_id, offer.inquiry_id, offer.location_id,
+      offer.generated_pdf_url, offer.last_generated_at, resolvedEventLocation]);
+
+    /** Powiązanie miejsca wpisanego w ofercie z lokalizacją z bazy (tekst się nie zmienia). */
+    const linkVenue = async (locationId: string) => {
+      if (!canEdit || linkingVenue) return;
+      setLinkingVenue(true);
+      try {
+        const { error } = await supabase.from('offers').update({ location_id: locationId }).eq('id', offer.id);
+        if (error) throw error;
+        showSnackbar('Miejsce oferty powiązane z lokalizacją', 'success');
+        onUpdate();
+      } catch (err: any) {
+        showSnackbar(err?.message || 'Nie udało się powiązać miejsca z lokalizacją', 'error');
+      } finally {
+        setLinkingVenue(false);
+      }
+    };
 
     const selectHeroFile = (file?: File) => {
       if (!file) return;
@@ -358,6 +432,8 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             event_id: formData.event_id || null,
             event_date: eventDate,
             event_location: formData.event_location.trim() || null,
+            // Lokalizacja wybrana z listy (miejsce okładki); wysyłana tylko po zmianie wyboru.
+            ...((formData.location_id || '') !== (offer.location_id || '') ? { location_id: formData.location_id || null } : {}),
             guest_count: guestCount, guests_per_table: guestsPerTable, table_count: tableCount,
             valid_until: formData.valid_until || null,
             notes: formData.notes || '',
@@ -532,7 +608,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-[#e5e4e2]/60">Grafika hero oferty</p>
                 <p className="text-sm font-medium text-[#e5e4e2]">
-                  {isSellerOffer && offer.partner_branding_snapshot?.hotel_cover_image_url ? 'Okładka z profilu sprzedawcy' : offer.hero_image_path ? 'Indywidualna grafika tej oferty' : 'Domyślna grafika szablonu'}
+                  {isSellerOffer && offer.partner_branding_snapshot?.hotel_cover_image_url ? 'Okładka z profilu sprzedawcy' : offer.hero_image_path ? 'Indywidualna grafika tej oferty' : venueHero ? venueHero.label : 'Domyślna grafika szablonu'}
                 </p>
                 {offer.hero_image_path && heroPreviewUrl && (
                   <div className="mt-3 overflow-hidden rounded-xl border border-[#d3bb73]/15 bg-[#0f1118]">
@@ -541,6 +617,34 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
                       alt={offer.hero_image_alt || 'Grafika hero oferty'}
                       className="h-44 w-full object-cover"
                     />
+                  </div>
+                )}
+                {!offer.hero_image_path && venueHero?.url && (
+                  <div className="mt-3 overflow-hidden rounded-xl border border-[#d3bb73]/15 bg-[#0f1118]">
+                    <img src={venueHero.url} alt={venueHero.label} className="h-44 w-full object-cover" />
+                  </div>
+                )}
+                {venueNote?.outdated && (
+                  <p className="mt-2 text-xs text-amber-200">{venueNote.outdated}</p>
+                )}
+                {venueNote?.hint && (
+                  <div className="mt-2 space-y-1 text-xs text-[#e5e4e2]/60">
+                    <p>{venueNote.hint}</p>
+                    <div className="flex flex-wrap gap-3">
+                      {venueNote.locationId && (
+                        <a href={`/crm/locations/${venueNote.locationId}`} className="text-[#d3bb73] hover:underline">Otwórz lokalizację</a>
+                      )}
+                      {venueNote.suggestion && canEdit && (
+                        <button
+                          type="button"
+                          disabled={linkingVenue}
+                          onClick={() => void linkVenue(venueNote.suggestion!.id)}
+                          className="text-[#d3bb73] hover:underline disabled:opacity-50"
+                        >
+                          {linkingVenue ? 'Powiązywanie…' : `Powiąż z lokalizacją „${venueNote.suggestion.name}”`}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -810,7 +914,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               Indywidualna grafika hero oferty
             </label>
             <p className="mb-3 text-[11px] leading-5 text-[#e5e4e2]/40">
-              Po wgraniu zastąpi grafikę hero ustawioną w szablonie tylko dla tej oferty.
+              Po wgraniu zastąpi grafikę hero ustawioną w szablonie i tło lokalizacji wydarzenia tylko dla tej oferty.
             </p>
             <label
               className={`relative flex min-h-40 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-all duration-150 ${
@@ -914,11 +1018,11 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             <LocationSelector
               allowFreeText
               value={formData.event_location}
-              onChange={(value) => setFormData({ ...formData, event_location: value })}
+              onChange={(value, location) => setFormData({ ...formData, event_location: value, location_id: location?.id || '' })}
               placeholder="Wyszukaj miejsce lub wpisz własną lokalizację..."
             />
             <p className="mt-1 text-[11px] text-[#e5e4e2]/40">
-              Ta lokalizacja pojawi się na pierwszej stronie oferty.
+              Ta lokalizacja pojawi się na pierwszej stronie oferty. Miejsce wybrane z listy lokalizacji daje też okładce jego „Tło ofert”.
             </p>
           </div>
 

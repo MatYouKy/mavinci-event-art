@@ -23,6 +23,7 @@ import fontkit from "@pdf-lib/fontkit";
 import { drawPaginatedOfferPricingTable } from './offerPricingTable';
 
 import { createSellerDemoOffer } from './shared/sellerDemoOffer';
+import { LOCATION_BACKGROUND_BUCKET, offerVenueBackground, offerVenueIds } from '@/lib/CRM/Offers/offerVenueBackground';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1868,6 +1869,16 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
         1440,
       );
     }
+    // „Tło ofert” miejsca wydarzenia (lokalizacja wybrana w ofercie, wydarzenia, z zapytania albo organizacji klienta) — po własnej grafice
+    // oferty, przed grafiką kategorii szablonu. Oferty sprzedawców i pokazowe — okładka z profilu sprzedawcy, jak dotąd.
+    let venueHeroImage = '';
+    if (!categoryHeroImage && !sellerMode && !demoMode) {
+      const venue = await offerVenueBackground(supabase, offerVenueIds(offer));
+      if (venue) {
+        venueHeroImage = await createOptimizedSignedImageUrl(LOCATION_BACKGROUND_BUCKET, venue.path, 1440);
+        categoryHeroImage = venueHeroImage;
+      }
+    }
     if (!categoryHeroImage && selectedTemplateCategory?.hero_image_path) {
       categoryHeroImage = await createOptimizedSignedImageUrl(
         'offer-template-pages',
@@ -2312,9 +2323,9 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
     };
 
     // Gotowy PDF okładki może zawierać obraz na stałe i nie mieć pola, które
-    // da się zastąpić. Własne hero oferty ma wyższy priorytet, więc w takim
-    // przypadku zawsze korzystamy z dynamicznej okładki.
-    const coverResult = offer.hero_image_path
+    // da się zastąpić. Własne hero oferty i tło miejsca wydarzenia mają wyższy
+    // priorytet, więc w takim przypadku zawsze korzystamy z dynamicznej okładki.
+    const coverResult = offer.hero_image_path || venueHeroImage
       ? { success: false }
       : await addPdfFromTemplate('cover');
     if (!coverResult.success) await addBuiltInCover();

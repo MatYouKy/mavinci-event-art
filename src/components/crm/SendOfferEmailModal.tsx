@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Send, Mail, Loader, Sparkles } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { venueOutdatedOffers } from '@/lib/CRM/Offers/offerVenueBackground';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import {
@@ -252,6 +253,8 @@ W razie pytań proszę o kontakt.`),
       const { data: document, error: documentError } = await supabase.from('offers').select('generated_pdf_url,modified_after_generation').eq('id', offerId).single();
       if (documentError) throw documentError;
       if (!document.generated_pdf_url || document.modified_after_generation) throw new Error('Wygeneruj aktualny PDF oferty przed wysyłką.');
+      // PDF sprzed zmiany „Tła ofert” miejsca oferty — okładka nieaktualna.
+      if ((await venueOutdatedOffers(supabase, [offerId])).size) throw new Error('Wygeneruj aktualny PDF oferty przed wysyłką.');
       const result = await dispatchCrmEmail({
         accessToken: session.access_token,
         functionName: 'send-offer-email',

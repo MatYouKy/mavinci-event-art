@@ -1,7 +1,7 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
 import {
-  deleteLocation, deleteRoom, locationDetail, locationPlaceDetails, locationPlaceSearch, locationsList, saveLocation, saveRoom, saveTechnical,
-  uploadMaterial,
+  deleteLocation, deleteRoom, locationDetail, locationPlaceDetails, locationPlaceSearch, locationsList, saveLocation, saveOfferBackground, saveRoom,
+  saveTechnical, uploadMaterial,
 } from '@/lib/native/locations';
 
 export const runtime = 'nodejs';
@@ -12,7 +12,8 @@ export const maxDuration = 60;
  * Lokalizacje dla aplikacji na Maca (`src/lib/native/locations.ts`): GET op=list | location&id | placeSearch&input&sessiontoken |
  * placeDetails&placeId&sessiontoken; POST multipart ?op=upload&locationId&kind=plan|photo (pole „file”);
  * POST JSON op=save {id?, …pola} | delete {id} | technical {id, details, previous} | roomSave {id, room, previous} |
- * roomDelete {id, roomId}.
+ * roomDelete {id, roomId} | offerBackground {id, path|null, name?} („Tło ofert” — zdjęcie z galerii albo przesłane; `name` —
+ * nazwa przesłanego pliku do galerii obiektu).
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -83,6 +84,9 @@ export async function POST(request: Request) {
       case 'roomSave':
         if (!uuid.test(id)) return failure('Nieprawidłowa lokalizacja.');
         return nativeJson(await saveRoom(ctx, id, body.room, body.previous));
+      case 'offerBackground':
+        if (!uuid.test(id)) return failure('Nieprawidłowa lokalizacja.');
+        return nativeJson(await saveOfferBackground(ctx, id, body.path, body.name));
       case 'roomDelete':
         if (!uuid.test(id) || !uuid.test(String(body.roomId || ''))) return failure('Nieprawidłowa sala.');
         return nativeJson(await deleteRoom(ctx, id, String(body.roomId)));

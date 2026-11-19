@@ -5,7 +5,9 @@ import UniformTypeIdentifiers
 // MARK: Przeciąganie pozycji paska bocznego — jak w Finderze, upuszczanie na pasku pod kartami
 //
 // Pozycję paska bocznego z ekranem natywnym (np. Wiadomości, Kontakty) można chwycić i przeciągnąć. Jak w Finderze: za kursorem
-// idzie wyraźna „etykieta” pozycji (ikona i nazwa w kolorze motywu), a sama pozycja na pasku przygasa. W każdym oknie tuż pod
+// idzie obraz wiersza (ikona i nazwa), a sama pozycja na pasku przygasa. Przeciąganie obsługuje lista systemowa (`itemProvider`
+// — próg ruchu jak w Finderze), więc zwykłe kliknięcie nie jest przechwytywane: sekcja otwiera się po puszczeniu przycisku,
+// a jeśli w tym czasie zaczęło się przeciąganie — bieżąca karta zostaje bez zmian (`CrmSidebar.select`). W każdym oknie tuż pod
 // kartami (akcesorium paska tytułu macOS — `NSTitlebarAccessoryViewController`) wysuwa się pasek z polami „W tej karcie”,
 // „W nowej karcie” (karta dołącza do tego okna) i „W nowym oknie”. Pole pod kursorem podświetla się, a kursor dostaje zielony „+”
 // (jak kopiowanie w Finderze). Systemowy pasek kart nie przyjmuje upuszczania z aplikacji (brak publicznego API), stąd pasek
@@ -15,14 +17,20 @@ import UniformTypeIdentifiers
 extension Workspace {
     /// Początek przeciągania pozycji `href`: pokazuje pola upuszczania do puszczenia przycisku myszy.
     func beginNavDrag(_ href: String) -> NSItemProvider {
-        navDrag = href
+        NavDrag.sessions += 1
+        let origin = NSEvent.mouseLocation
         Task { @MainActor [weak self] in
+            // Pola upuszczania dopiero po ruchu myszy — samo wciśnięcie przycisku (kliknięcie) niczego nie pokazuje.
+            while NSEvent.pressedMouseButtons & 1 != 0 && NavDrag.distance(from: origin) <= NavDrag.clickSlop {
+                do { try await Task.sleep(nanoseconds: 20_000_000) } catch { return }
+            }
+            guard NSEvent.pressedMouseButtons & 1 != 0, let self else { return }
+            self.navDrag = href
             // Przycisk myszy jest wciśnięty przez cały czas przeciągania — jego puszczenie kończy przeciąganie.
-            do { try await Task.sleep(nanoseconds: 250_000_000) } catch { return }
             while NSEvent.pressedMouseButtons & 1 != 0 {
                 do { try await Task.sleep(nanoseconds: 120_000_000) } catch { return }
             }
-            guard let self, self.navDrag == href else { return }
+            guard self.navDrag == href else { return }
             self.navDrag = nil
         }
         return NSItemProvider(object: (NavDrag.prefix + href) as NSString)
@@ -37,6 +45,15 @@ extension Workspace {
 }
 
 enum NavDrag {
+    /// Licznik rozpoczętych przeciągnięć — kliknięcie, w trakcie którego zaczęło się przeciąganie, nie zmienia sekcji.
+    static var sessions = 0
+    /// Ruch myszy (w punktach), do którego wciśnięcie jest jeszcze kliknięciem.
+    static let clickSlop: CGFloat = 4
+    /// Odległość kursora od miejsca wciśnięcia przycisku.
+    static func distance(from origin: NSPoint) -> CGFloat {
+        let current = NSEvent.mouseLocation
+        return hypot(current.x - origin.x, current.y - origin.y)
+    }
     /// Tekst przeciąganej pozycji (gdyby trafił poza aplikację — czytelny adres sekcji).
     static let prefix = "mavinci-nav:"
     static let types: [UTType] = [.utf8PlainText, .plainText, .text]
@@ -47,7 +64,9 @@ extension CrmTheme {
     var onAccent: Color { self == .light ? .white : Self.rgb(0x1d1d1f) }
 }
 
-/// Źródło przeciągania pozycji paska bocznego — tylko pozycje z ekranem natywnym (`href`), pozostałe bez zmian.
+/// Źródło przeciągania pozycji paska bocznego — tylko pozycje z ekranem natywnym (`href`), pozostałe bez zmian. Wiersz listy
+/// dostaje dostawcę danych (`itemProvider`) zamiast `onDrag`: `onDrag` w liście macOS przechwytywał kliknięcie w treść wiersza
+/// (zaznaczenie dopiero przy drugim kliknięciu albo po drobnym ruchu myszy — przeciąganie zamiast przejścia).
 @MainActor struct NavDragSource: ViewModifier {
     let workspace: Workspace
     let href: String?
@@ -59,31 +78,10 @@ extension CrmTheme {
         if let href {
             content
                 .opacity(dragging ? 0.4 : 1)
-                .onDrag { workspace.beginNavDrag(href) } preview: {
-                    NavDragPreview(name: name, symbol: symbol, theme: workspace.theme)
-                }
+                .itemProvider { workspace.beginNavDrag(href) }
         } else {
             content
         }
-    }
-}
-
-/// Etykieta za kursorem podczas przeciągania — ikona i nazwa sekcji na tle w kolorze motywu (jak zaznaczona nazwa w Finderze).
-struct NavDragPreview: View {
-    let name: String
-    let symbol: String
-    let theme: CrmTheme
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: symbol).font(.system(size: 15, weight: .semibold))
-            Text(name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-        }
-        .foregroundStyle(theme.onAccent)
-        .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(theme.accent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
-        .fixedSize()
-        .padding(4)
     }
 }
 

@@ -98,12 +98,26 @@ struct OfferDetail: Codable {
         var heroPath: String?
         var heroUrl: String?
         var heroAlt: String?
+        /// „Tło ofert” miejsca wydarzenia — okładka oferty bez własnej grafiki (`heroPath` — tylko własna grafika oferty).
+        var venueBackgroundPath: String?
+        var venueBackgroundUrl: String?
+        /// Okładka bez tła miejsca: co zrobić (lokalizacja bez tła / miejsce wpisane ręcznie), lokalizacja miejsca (do otwarcia)
+        /// i lokalizacja pasująca do wpisanego miejsca (do powiązania jednym kliknięciem).
+        var venueHint: String?
+        var venueLocationId: String?
+        var venueSuggestion: VenueSuggestion?
         var start: String
         var end: String
         var location: String
         var totals: Totals
         var lastGenerated: Generated?
         var notes: String?
+        /// Okładka do podglądu: własna grafika oferty, a bez niej „Tło ofert” miejsca wydarzenia.
+        var coverImage: (path: String, url: String)? {
+            if let heroPath { return heroUrl.map { (path: heroPath, url: $0) } }
+            guard let venueBackgroundPath, let venueBackgroundUrl else { return nil }
+            return (path: venueBackgroundPath, url: venueBackgroundUrl)
+        }
     }
     struct Assumption: Codable, Hashable {
         var key: String
@@ -208,6 +222,11 @@ struct OfferDetail: Codable {
     struct DraftRevision: Codable {
         var savedRevision: Double?
     }
+    /// Lokalizacja z bazy pasująca do miejsca wpisanego w ofercie.
+    struct VenueSuggestion: Codable {
+        var id: String
+        var name: String
+    }
     struct PdfFile: Codable {
         var exists: Bool
         var stale: Bool
@@ -216,6 +235,8 @@ struct OfferDetail: Codable {
     struct Pdf: Codable {
         var exists: Bool
         var stale: Bool
+        /// Po wygenerowaniu PDF zmieniono „Tło ofert” miejsca oferty (PDF nieaktualny także z tego powodu).
+        var venueNote: String?
         var fileName: String
         /// Ostatni PDF w wersji angielskiej (`offer_language_documents`).
         var en: PdfFile?

@@ -8,7 +8,7 @@ import AppKit
 // `OrganizationEditorSheet` / `PersonEditorSheet`; zapisy przez `/bridge/native/v1/contacts` (RLS i wyzwalacze jak w CRM).
 // „Klient 360°”, „Zapytania”, „Oferty”, „Sprzedaż sprzedawcy” — `ContactCustomer360View.swift`; „Usługi” podwykonawcy —
 // `SubcontractorServicesPanel`; „Dodaj zapytanie” — `NewInquirySheet` z danymi klienta. „Branding ofert” (`CrmOfferBrandingPanel`)
-// — `OfferBrandingPanel`; „Sale i przestrzenie” hotelu (`OrganizationHotelSpaces`) — lokalizacja i `LocationSpacesPanel`.
+// — `OfferBrandingPanel`; „Sale i przestrzenie” hotelu (`OrganizationHotelSpaces`) — lokalizacja i `LocationSpacesPanel` (z „Tłem ofert”).
 
 enum ContactCardTab: String, Identifiable {
     case customer360, inquiries, offers, venue, details, persons, organizations, notes, invoices, events, branding, services, seller, relation
@@ -1094,7 +1094,7 @@ enum ContactCardConfirm: Identifiable {
             if !canEditLocation {
                 Text("Podgląd danych. Do edycji sal i materiałów wymagane są uprawnienia do zarządzania lokalizacjami.").font(.callout).foregroundStyle(.secondary)
             }
-            LocationSpacesPanel(store: state.locations, locationID: org.locationId, readOnly: !canEditLocation).id(org.locationId)
+            LocationSpacesPanel(store: state.locations, locationID: org.locationId, readOnly: !canEditLocation, showsOfferBackground: true).id(org.locationId)
         }
     }
 
