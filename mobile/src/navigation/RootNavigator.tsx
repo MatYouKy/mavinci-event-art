@@ -34,7 +34,7 @@ export type RootStackParamList = {
   /** Instrukcja opiekuna sprzedawców; `chapter` — rozdział otwarty na start (id z managerHelp.ts). */
   SellerHelp: { chapter?: string } | undefined;
   /** Marketing → Social media: akceptacja szkiców, plan publikacji, biblioteka zdjęć marki. */
-  SocialMedia: { segment?: 'comments' } | undefined;
+  SocialMedia: { segment?: 'comments' | 'stats'; report?: string } | undefined;
   /** `comments` — z powiadomienia o komentarzach (przewinięcie do komentarzy). */
   SocialPost: { postId: string; comments?: boolean };
   /** Szybki post lub relacja z szablonu; parametry — zdjęcie z biblioteki, marka i wydarzenie. */

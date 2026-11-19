@@ -1,14 +1,15 @@
 import SwiftUI
 
 // MARK: Social media → „Szablony i AI” (akceptujący) — 1:1 z CRM (`SocialSettingsModal`): opisy AI (zgoda na przekazanie treści
-// realizacji bez danych osobowych), stałe hashtagi i styl opisów oraz szablony grafik — wyłącznie logo, fonty i kolory
-// z księgi znaku marki.
+// realizacji bez danych osobowych), analiza AI raportu tygodniowego (zgoda na zagregowane wyniki), stałe hashtagi i styl opisów
+// oraz szablony grafik — wyłącznie logo, fonty i kolory z księgi znaku marki.
 
 @MainActor struct SocialSettingsSheet: View {
     @ObservedObject var store: SocialStore
     @EnvironmentObject private var state: Workspace
     @Environment(\.dismiss) private var dismiss
     @State private var ai = false
+    @State private var aiReports = false
     @State private var hashtags = ""
     @State private var style = ""
     @State private var templates: [SocialTemplate] = []
@@ -44,6 +45,7 @@ import SwiftUI
         .task {
             if let home = store.home {
                 ai = home.settings.aiCaptionsEnabled
+                aiReports = home.settings.aiReportsEnabled ?? false
                 hashtags = home.settings.defaultHashtags.joined(separator: " ")
                 style = home.settings.captionStyle
                 templates = home.templates
@@ -65,9 +67,18 @@ import SwiftUI
                 }
             }
             .toggleStyle(.checkbox)
+            Toggle(isOn: $aiReports) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Analiza AI w raporcie tygodniowym „Trendy i rekomendacje”")
+                    Text("Do usługi AI trafiają wyłącznie zagregowane wyniki postów (wyświetlenia, zasięg, interakcje, kanał, dzień i pora publikacji, długość opisu, liczba hashtagów, liczba komentarzy) — bez treści postów i komentarzy, tytułów i danych osobowych. Bez zgody raport zawiera same liczby i wnioski z danych.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if let at = store.home?.settings.aiReportsConsentAt { Text("Włączone: \(SocialDates.dateTime(at))").font(.caption2).foregroundStyle(.secondary) }
+                }
+            }
+            .toggleStyle(.checkbox)
             TextField("Stałe hashtagi marki, np. #mavinci #eventy", text: $hashtags).textFieldStyle(.roundedBorder)
             TextField("Styl opisów (wskazówki dla AI)", text: $style, axis: .vertical).lineLimit(2...4).textFieldStyle(.roundedBorder)
-            Button("Zapisz ustawienia") { Task { await store.saveSettings(ai: ai, hashtags: socialHashtags(hashtags), style: style) } }
+            Button("Zapisz ustawienia") { Task { await store.saveSettings(ai: ai, aiReports: aiReports, hashtags: socialHashtags(hashtags), style: style) } }
                 .buttonStyle(.borderedProminent)
         }
     }

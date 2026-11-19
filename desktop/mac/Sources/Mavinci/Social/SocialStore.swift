@@ -5,12 +5,13 @@ import ImageIO
 import UniformTypeIdentifiers
 
 // MARK: Social media — stan ekranu Marketing → „Social media” (`/crm/marketing/social`): kalendarz marki, posty, biblioteka,
-// szablony i AI, publikacja w Meta i komentarze przez `/bridge/native/v1/social` (token pracownika, te same reguły co CRM).
+// szablony i AI, publikacja w Meta, komentarze, statystyki i raport tygodniowy przez `/bridge/native/v1/social` (token
+// pracownika, te same reguły co CRM).
 // Kopia kalendarza i otwartych postów na dysku (zaszyfrowana), obrazy w pamięci podręcznej na dysku — widok otwiera się
 // natychmiast, także bez internetu.
 
 enum SocialTab: String, CaseIterable, Identifiable {
-    case calendar, review, library, comments
+    case calendar, review, library, comments, stats
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -18,6 +19,7 @@ enum SocialTab: String, CaseIterable, Identifiable {
         case .review: return "Do akceptacji"
         case .library: return "Biblioteka"
         case .comments: return "Komentarze"
+        case .stats: return "Statystyki"
         }
     }
     var symbol: String {
@@ -26,6 +28,7 @@ enum SocialTab: String, CaseIterable, Identifiable {
         case .review: return "checklist"
         case .library: return "photo.on.rectangle.angled"
         case .comments: return "bubble.left.and.bubble.right"
+        case .stats: return "chart.bar"
         }
     }
 }
@@ -147,6 +150,12 @@ struct SocialLibraryFilter: Equatable {
     @Published var commentsError: String?
     /// Post otwarty z powiadomienia o komentarzach — kreator przewija do komentarzy.
     @Published var focusComments = false
+    /// Statystyki marki (zakres `statsDays`) i wybrany raport tygodniowy (`nil` — najnowszy).
+    @Published private(set) var stats: SocialStats?
+    @Published var statsDays = 28
+    @Published var statsReportID: String?
+    @Published var statsError: String?
+    @Published private(set) var statsLoading = false
 
     private var namespace: String?
     private var homeFile: SealedFile<SocialHome>?
@@ -175,6 +184,9 @@ struct SocialLibraryFilter: Equatable {
 
     func reset(clearDisk: Bool = true) {
         if clearDisk, let homeFile { try? homeFile.clear() }
+        if clearDisk, let company = home?.company.id ?? companyID {
+            for days in SocialNumbers.ranges { try? statsFile(company, days: days)?.clear() }
+        }
         if clearDisk {
             for id in details.keys { try? detailFile(id)?.clear() }
             SocialImageCache.shared.clear()
@@ -183,6 +195,12 @@ struct SocialLibraryFilter: Equatable {
         month = Self.firstOfMonth(Date()); tab = .calendar; openedPostID = nil; details = [:]; detailErrors = [:]
         library = nil; libraryFilter = SocialLibraryFilter(); libraryError = nil; settingsShown = false
         comments = [:]; commentsFilter = "unanswered"; commentsError = nil; focusComments = false
+        stats = nil; statsDays = 28; statsReportID = nil; statsError = nil; statsLoading = false
+    }
+
+    private func statsFile(_ company: String, days: Int) -> SealedFile<SocialStats>? {
+        guard let namespace else { return nil }
+        return SealedFile<SocialStats>(namespace: "social-stats-\(namespace)-\(company)-\(days)")
     }
 
     private func detailFile(_ id: String) -> SealedFile<SocialPostDetail>? {
@@ -321,6 +339,8 @@ struct SocialLibraryFilter: Equatable {
         library = nil
         libraryFilter = SocialLibraryFilter()
         openedPostID = nil
+        stats = nil
+        statsReportID = nil
         await load()
     }
 
@@ -345,13 +365,14 @@ struct SocialLibraryFilter: Equatable {
 
     /// Termin z kalendarza (przeciągnięcie) — godzina zostaje (bez terminu — 18:00).
     func schedule(_ postID: String, to day: Date) async {
-        guard let post = home?.posts.first(where: { $0.id == postID }), post.status.editable, let workspace else { return }
-        if post.status == .scheduled && home?.access.publish != true {
+        // `item`, nie `post` — lokalna nazwa nie może zasłaniać metody `post(_:_:)` wywoływanej niżej.
+        guard let item = home?.posts.first(where: { $0.id == postID }), item.status.editable, let workspace else { return }
+        if item.status == .scheduled && home?.access.publish != true {
             workspace.error = "Termin zaplanowanej publikacji zmienia osoba z uprawnieniem „Publikacja”."
             return
         }
         let calendar = Calendar.current
-        let base = post.scheduledDate
+        let base = item.scheduledDate
         if let base, calendar.isDate(base, inSameDayAs: day) { return }
         var parts = calendar.dateComponents([.year, .month, .day], from: day)
         parts.hour = base.map { calendar.component(.hour, from: $0) } ?? 18
@@ -360,7 +381,7 @@ struct SocialLibraryFilter: Equatable {
         guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return }
         do {
             _ = try await workspace.withPending("Zmieniam termin") {
-                try await post("schedule", ["id": .string(post.id), "updatedAt": .string(post.updatedAt), "scheduledAt": .string(SocialDates.iso(target))])
+                try await self.post("schedule", ["id": .string(item.id), "updatedAt": .string(item.updatedAt), "scheduledAt": .string(SocialDates.iso(target))])
             }
             workspace.succeed("Zmieniono termin publikacji")
         } catch {
@@ -396,6 +417,77 @@ struct SocialLibraryFilter: Equatable {
         await runDetail("Planuję publikację", "schedulePublication", [
             "id": .string(detail.post.id), "revision": .number(Double(detail.post.revision)), "scheduledAt": .string(SocialDates.iso(date)),
         ], success: detail.post.status == .scheduled ? "Zmieniono termin publikacji" : SocialPostAction.schedule.success)
+    }
+
+    // MARK: Statystyki i raport tygodniowy
+    /// Zakładka „Statystyki”: najpierw kopia z dysku (widok od razu), potem serwer. Raport innej marki (z powiadomienia)
+    /// przełącza markę.
+    func loadStats() async {
+        guard let api else { statsError = "Brak połączenia z serwerem CRM."; return }
+        let owner = workspace?.employee?.id
+        let company = home?.company.id ?? companyID
+        let days = statsDays
+        if let company, stats?.company.id != company || stats?.range.days != days, let file = statsFile(company, days: days),
+           let saved = await Task.detached(priority: .userInitiated, operation: { try? file.load() }).value,
+           statsDays == days, (home?.company.id ?? companyID) == company {
+            stats = saved
+        }
+        var query = ["op": "stats", "days": String(days)]
+        if let company { query["company"] = company }
+        if let statsReportID { query["report"] = statsReportID }
+        statsLoading = true
+        defer { statsLoading = false }
+        do {
+            let data = try JSONDecoder().decode(SocialStats.self, from: try await api.get("/social", query: query))
+            guard owner == workspace?.employee?.id, statsDays == days else { return }
+            applyStats(data)
+        } catch {
+            guard owner == workspace?.employee?.id else { return }
+            statsError = failureText(error, "Nie udało się pobrać statystyk.")
+        }
+    }
+
+    private func applyStats(_ data: SocialStats) {
+        stats = data
+        statsError = nil
+        if let file = statsFile(data.company.id, days: data.range.days) { let copy = data; Task.detached(priority: .utility) { try? file.save(copy) } }
+        if data.company.id != (home?.company.id ?? companyID) {
+            companyID = data.company.id
+            Task { await load(quiet: true) }
+        }
+    }
+
+    /// „Odśwież z Meta” (wyniki z 90 dni) i „Raport za poprzedni tydzień” — odpowiedź to nowa zakładka „Statystyki”.
+    private func runStats(_ pending: String, _ op: String, _ extra: [String: JSONValue], success: String) async {
+        guard let workspace, let company = stats?.company.id ?? home?.company.id else { return }
+        guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return }
+        var body = extra
+        body["companyId"] = .string(company)
+        body["days"] = .number(Double(statsDays))
+        do {
+            let data = try await workspace.withPending(pending) { try await post(op, body, timeout: 300) }
+            let reply = try JSONDecoder().decode(SocialStats.self, from: data)
+            applyStats(reply)
+            if let id = reply.report?.id, id != statsReportID { statsReportID = id }
+            workspace.succeed(success)
+        } catch {
+            workspace.error = failureText(error, "Operacja nie powiodła się")
+        }
+    }
+
+    func refreshStats() async {
+        var extra: [String: JSONValue] = [:]
+        if let statsReportID { extra["report"] = .string(statsReportID) }
+        await runStats("Pobieram wyniki z Meta", "metricsRefresh", extra, success: "Odświeżono statystyki")
+    }
+
+    func generateReport() async {
+        await runStats("Przygotowuję raport tygodniowy", "reportGenerate", [:], success: "Przygotowano raport za poprzedni tydzień")
+    }
+
+    /// Wyniki kanałów posta prosto z Meta (karta posta).
+    @discardableResult func refreshPostMetrics(_ detail: SocialPostDetail) async -> SocialPostDetail? {
+        await runDetail("Pobieram wyniki z Meta", "metricsRefresh", ["postId": .string(detail.post.id)], success: "Odświeżono wyniki posta", timeout: 300)
     }
 
     // MARK: Komentarze
@@ -666,10 +758,10 @@ struct SocialLibraryFilter: Equatable {
         }
     }
 
-    func saveSettings(ai: Bool, hashtags: [String], style: String) async {
+    func saveSettings(ai: Bool, aiReports: Bool, hashtags: [String], style: String) async {
         guard let companyID = home?.company.id else { return }
         let body: [String: JSONValue] = [
-            "companyId": .string(companyID), "aiCaptionsEnabled": .bool(ai),
+            "companyId": .string(companyID), "aiCaptionsEnabled": .bool(ai), "aiReportsEnabled": .bool(aiReports),
             "defaultHashtags": .array(hashtags.map(JSONValue.string)), "captionStyle": .string(style),
         ]
         if await run("Zapisuję ustawienia", "settings", body, success: "Zapisano ustawienia social media") != nil { await load(quiet: true) }
@@ -701,5 +793,21 @@ extension Workspace {
         if comments && id == nil { social.tab = .comments }
         social.openPost(id)
         Task { await social.load(quiet: social.home != nil) }
+    }
+
+    /// Raport tygodniowy z powiadomienia (`/crm/marketing/social?tab=stats&report=<id>`) — zakładka „Statystyki” z raportem.
+    func showSocialStats(report: String?) {
+        guard navigation.flatMap(\.flattened).contains(where: { $0.path == "/crm/marketing/social" }) else {
+            openCRM("/crm/marketing/social?tab=stats" + (report.map { "&report=\($0)" } ?? ""))
+            return
+        }
+        if let item = navigation.flatMap(\.flattened).first(where: { $0.path == "/crm/marketing/social" }) { openHref(item.href) }
+        social.openPost(nil)
+        social.tab = .stats
+        social.statsReportID = report
+        Task {
+            await social.load(quiet: social.home != nil)
+            await social.loadStats()
+        }
     }
 }

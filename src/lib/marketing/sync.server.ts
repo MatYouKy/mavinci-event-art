@@ -374,48 +374,59 @@ async function syncMeta(integration: IntegrationRow, credentials: MetaCredential
 
   if (pageId) {
     const pageToken = credentials.page_access_tokens?.[pageId] || credentials.user_access_token;
-    const pageInsightsUrl = new URL(
-      `https://graph.facebook.com/${graphVersion}/${pageId}/insights`,
-    );
-    pageInsightsUrl.searchParams.set(
-      'metric',
-      'page_impressions,page_post_engagements,page_messages_new_conversations_unique',
-    );
-    pageInsightsUrl.searchParams.set('period', 'day');
-    pageInsightsUrl.searchParams.set('since', start);
-    pageInsightsUrl.searchParams.set('until', end);
-    try {
-      const insights = await readJsonResponse(
-        await fetch(pageInsightsUrl, { cache: 'no-store', headers: metaAuthHeaders(pageToken) }),
-        'Statystyki strony Facebook',
-      );
-      const rowsByDate = new Map<string, any>();
-      for (const metric of insights.data || []) {
-        for (const value of metric.values || []) {
-          const date = String(value.end_time || '').slice(0, 10);
-          if (!date) continue;
-          const row = rowsByDate.get(date) || {
-            company_id: integration.company_id,
-            integration_id: integration.id,
-            source: 'meta_page',
-            metric_date: date,
-            external_campaign_id: '',
-            currency,
-            impressions: 0,
-            engagement: 0,
-            messages: 0,
-            dimensions: { page_id: pageId },
-            synced_at: new Date().toISOString(),
-          };
-          if (metric.name === 'page_impressions') row.impressions = numberValue(value.value);
-          if (metric.name === 'page_post_engagements') row.engagement = numberValue(value.value);
-          if (metric.name === 'page_messages_new_conversations_unique') {
-            row.messages = numberValue(value.value);
+    // Każda metryka strony osobno: metryka wycofana przez Meta nie blokuje pozostałych (od 15.11.2025 wycofaną
+    // page_impressions zastępuje page_media_view — wyświetlenia; starszą nazwę próbujemy tylko, gdy nowej nie ma).
+    const pageMetrics: Array<{ field: 'impressions' | 'engagement' | 'messages'; names: string[] }> = [
+      { field: 'impressions', names: ['page_media_view', 'page_impressions'] },
+      { field: 'engagement', names: ['page_post_engagements'] },
+      { field: 'messages', names: ['page_messages_new_conversations_unique'] },
+    ];
+    const rowsByDate = new Map<string, any>();
+    const pageErrors: string[] = [];
+    for (const metric of pageMetrics) {
+      for (const name of metric.names) {
+        const pageInsightsUrl = new URL(
+          `https://graph.facebook.com/${graphVersion}/${pageId}/insights`,
+        );
+        pageInsightsUrl.searchParams.set('metric', name);
+        pageInsightsUrl.searchParams.set('period', 'day');
+        pageInsightsUrl.searchParams.set('since', start);
+        pageInsightsUrl.searchParams.set('until', end);
+        try {
+          const insights = await readJsonResponse(
+            await fetch(pageInsightsUrl, { cache: 'no-store', headers: metaAuthHeaders(pageToken) }),
+            'Statystyki strony Facebook',
+          );
+          for (const item of insights.data || []) {
+            for (const value of item.values || []) {
+              const date = String(value.end_time || '').slice(0, 10);
+              if (!date) continue;
+              const row = rowsByDate.get(date) || {
+                company_id: integration.company_id,
+                integration_id: integration.id,
+                source: 'meta_page',
+                metric_date: date,
+                external_campaign_id: '',
+                currency,
+                impressions: 0,
+                engagement: 0,
+                messages: 0,
+                dimensions: { page_id: pageId },
+                synced_at: new Date().toISOString(),
+              };
+              row[metric.field] = numberValue(value.value);
+              rowsByDate.set(date, row);
+            }
           }
-          rowsByDate.set(date, row);
+          break;
+        } catch (error: any) {
+          pageErrors.push(`${name}: ${error?.message || 'błąd'}`);
         }
       }
-      if (rowsByDate.size) {
+    }
+    if (pageErrors.length) console.warn('[marketing sync] Meta page insights partially unavailable', pageErrors.join('; '));
+    if (rowsByDate.size) {
+      try {
         const { error } = await admin
           .from('marketing_metrics_daily')
           .upsert(Array.from(rowsByDate.values()), {
@@ -423,9 +434,9 @@ async function syncMeta(integration: IntegrationRow, credentials: MetaCredential
           });
         if (error) throw error;
         metricCount += rowsByDate.size;
+      } catch (error) {
+        console.warn('[marketing sync] Meta page insights not saved', error);
       }
-    } catch (error) {
-      console.warn('[marketing sync] Meta page insights unavailable', error);
     }
 
     const conversationsUrl = new URL(

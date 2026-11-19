@@ -2,7 +2,8 @@ import SwiftUI
 
 // MARK: Marketing → „Social media” — 1:1 z `/crm/marketing/social`: nagłówek z marką, „Szablony i AI”, „Nowy post”, stan
 // publikacji w Meta, widoki Kalendarz (miesiąc z przeciąganiem terminu, szkice bez terminu, wymagające uwagi), Do akceptacji
-// (także błędy publikacji), Biblioteka i Komentarze. Post otwiera się w kreatorze na całej szerokości ekranu (`SocialPostEditorView`).
+// (także błędy publikacji), Biblioteka, Komentarze i Statystyki (z raportem tygodniowym). Post otwiera się w kreatorze na całej
+// szerokości ekranu (`SocialPostEditorView`).
 
 @MainActor struct SocialMediaView: View {
     @ObservedObject var store: SocialStore
@@ -49,6 +50,7 @@ import SwiftUI
             case .library: SocialLibraryView(store: store)
             case .comments: ScrollView { SocialCommentsView(store: store, postID: nil).padding(12) }
                 .background(RoundedRectangle(cornerRadius: 12).fill(theme.card))
+            case .stats: SocialStatsView(store: store)
             }
         }
         .padding(16)
@@ -60,7 +62,7 @@ import SwiftUI
             VStack(alignment: .leading, spacing: 4) {
                 Label("Marketing", systemImage: "sparkles").font(.callout).foregroundStyle(theme.accent)
                 Text("Social media").font(.title.weight(.light))
-                Text("Grafiki z szablonu marki (księga znaku), kalendarz publikacji z akceptacją i biblioteka zdjęć z realizacji ze zgodą klienta.")
+                Text("Grafiki z szablonu marki (księga znaku), kalendarz publikacji z akceptacją, biblioteka zdjęć z realizacji ze zgodą klienta, statystyki i raport tygodniowy.")
                     .font(.callout).foregroundStyle(.secondary).lineLimit(2)
             }
             .layoutPriority(1)
@@ -113,6 +115,7 @@ import SwiftUI
         case .review: return counts.inReview + counts.changesRequested + (counts.failed ?? 0)
         case .library: return counts.proposals
         case .comments: return counts.unansweredComments ?? 0
+        case .stats: return 0
         }
     }
 

@@ -93,13 +93,15 @@ export async function metaGraph<T = any>(
   return payload as T;
 }
 
-/** Uprawnienia Meta potrzebne do publikacji i komentarzy (konfiguracja logowania aplikacji Meta). */
+/** Uprawnienia Meta potrzebne do publikacji, komentarzy i statystyk postów (konfiguracja logowania aplikacji Meta). */
 export const META_SOCIAL_SCOPES = {
   facebookPublish: ['pages_manage_posts', 'pages_read_engagement'],
   instagramPublish: ['instagram_basic', 'instagram_content_publish'],
   facebookCommentsRead: ['pages_read_user_content'],
   facebookCommentsReply: ['pages_manage_engagement'],
   instagramComments: ['instagram_manage_comments'],
+  facebookInsights: ['read_insights'],
+  instagramInsights: ['instagram_manage_insights'],
 } as const;
 
 /** `pages_read_user_content` występuje w nowszych konfiguracjach Meta także jako `pages_read_user_engagement`. */

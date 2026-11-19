@@ -12,7 +12,8 @@ import { errorMessage, inputClass, primaryButton, secondaryButton } from './soci
 
 /*
  * Ustawienia social media marki (akceptujący): opisy AI (zgoda na przekazanie treści realizacji bez danych osobowych),
- * stałe hashtagi i styl opisów oraz szablony grafik — wyłącznie logo, fonty i kolory z księgi znaku marki.
+ * analiza AI raportu tygodniowego (zgoda na przekazanie zagregowanych wyników), stałe hashtagi i styl opisów oraz szablony
+ * grafik — wyłącznie logo, fonty i kolory z księgi znaku marki.
  */
 
 type TemplateForm = {
@@ -38,6 +39,7 @@ export default function SocialSettingsModal({ companyId, settings, templates: in
   const { showSnackbar } = useSnackbar();
   const { showLoader, hideLoader } = useGlobalLoader();
   const [ai, setAi] = useState(settings.aiCaptionsEnabled);
+  const [aiReports, setAiReports] = useState(settings.aiReportsEnabled === true);
   const [hashtags, setHashtags] = useState(settings.defaultHashtags.join(' '));
   const [style, setStyle] = useState(settings.captionStyle);
   const [templates, setTemplates] = useState(initial);
@@ -98,10 +100,17 @@ export default function SocialSettingsModal({ companyId, settings, templates: in
               {settings.aiConsentAt && <span className="mt-1 block text-xs text-[#e5e4e2]/40">Włączone: {new Date(settings.aiConsentAt).toLocaleString('pl-PL')}</span>}
             </span>
           </label>
+          <label className="flex items-start gap-3 rounded-lg bg-[#0f1119] p-3 text-sm">
+            <input type="checkbox" checked={aiReports} onChange={(e) => setAiReports(e.target.checked)} className="mt-1" />
+            <span>Analiza AI w raporcie tygodniowym „Trendy i rekomendacje”
+              <span className="mt-1 block text-xs text-[#e5e4e2]/55">Do usługi AI trafiają wyłącznie zagregowane wyniki postów (wyświetlenia, zasięg, interakcje, kanał, dzień i pora publikacji, długość opisu, liczba hashtagów, liczba komentarzy) — bez treści postów i komentarzy, tytułów i danych osobowych. Bez zgody raport zawiera same liczby i wnioski z danych.</span>
+              {settings.aiReportsConsentAt && <span className="mt-1 block text-xs text-[#e5e4e2]/40">Włączone: {new Date(settings.aiReportsConsentAt).toLocaleString('pl-PL')}</span>}
+            </span>
+          </label>
           <label className="block text-sm">Stałe hashtagi marki<input value={hashtags} onChange={(e) => setHashtags(e.target.value)} className={`${inputClass} mt-1`} placeholder="#mavinci #eventy" /></label>
           <label className="block text-sm">Styl opisów (wskazówki dla AI)<textarea value={style} maxLength={600} rows={2} onChange={(e) => setStyle(e.target.value)} className={`${inputClass} mt-1`} placeholder="np. bez emoji, zawsze zaproszenie do kontaktu na końcu" /></label>
           <button type="button" className={primaryButton} onClick={() => void run('Zapisuję ustawienia', async () => {
-            await socialPost('settings', { companyId, aiCaptionsEnabled: ai, defaultHashtags: normalizeHashtags(hashtags), captionStyle: style });
+            await socialPost('settings', { companyId, aiCaptionsEnabled: ai, aiReportsEnabled: aiReports, defaultHashtags: normalizeHashtags(hashtags), captionStyle: style });
           }, 'Zapisano ustawienia social media')}>Zapisz ustawienia</button>
         </section>
 

@@ -8,6 +8,7 @@ import {
   brandbookOptions, createPost, deletePost, duplicatePost, postPackage, publishNow, refreshComments, renderPost, replyComment, savePost,
   saveSettings, saveTemplate, schedulePost, schedulePublication, socialComments, socialHome, socialPost, suggestPost, transitionPost,
 } from '@/lib/social/socialPosts.server';
+import { generateReport, refreshCompanyMetrics, refreshPostMetrics, socialStats } from '@/lib/social/socialReport.server';
 import { pdfContentDisposition } from '@/lib/print/pdfRenderer.server';
 import { SOCIAL_LIMITS } from '@/lib/social/socialShared';
 
@@ -20,7 +21,8 @@ export const maxDuration = 300;
  * Token pracownika (Bearer), RLS i funkcje bazy jak w przeglądarce (`src/lib/social/*`).
  * GET op=home&company&from&to | post&id | library&company&status&event&consent&used&q&offset&limit | asset&id |
  *   events&company&q | eventImages&event | portfolio&q | brandbook&company | package&id (ZIP: grafiki + opis.txt) |
- *   comments&post | comments&company&filter=unanswered (wątki komentarzy Facebook i Instagram).
+ *   comments&post | comments&company&filter=unanswered (wątki komentarzy Facebook i Instagram) |
+ *   stats&company&days=7|28|90&report (zakładka „Statystyki” i raport tygodniowy „Trendy i rekomendacje”).
  * POST ?op=upload&id=<zdjęcie> — bajty zdjęcia (po assetCreate; Mac i telefon).
  * POST JSON op=createPost {companyId, channels, scheduledAt, eventId, assetId, formats, headline, subline, title} |
  *   savePost {id, updatedAt, …pola, variants[{format, assetId, crop, headline, subline}], render} | renderPost {id} |
@@ -29,7 +31,9 @@ export const maxDuration = 300;
  *   assetImport {companyId, eventFileId | portfolioProjectId + imageUrl} | assetUpdate {id, updatedAt, …} | assetDelete {id} |
  *   consent {eventId | organizationId, status, channels, note} | settings {companyId, …} | template {companyId, id?, …} |
  *   schedulePublication {id, scheduledAt, revision} | publishNow {id, revision} (publikacja w Meta, wynik w `publishResult`) |
- *   commentsRefresh {postId | companyId, filter} | reply {commentId, message, scope: post | company, filter}.
+ *   commentsRefresh {postId | companyId, filter} | reply {commentId, message, scope: post | company, filter} |
+ *   metricsRefresh {postId} → karta posta | metricsRefresh {companyId, days, report} → statystyki |
+ *   reportGenerate {companyId, weekStart?, days} (twórca treści; raport za poprzedni albo wskazany tydzień) → statystyki.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -67,6 +71,8 @@ export async function GET(request: Request) {
         return nativeJson(await brandbookOptions(ctx, params.get('company') || ''));
       case 'comments':
         return nativeJson(await socialComments(ctx, params));
+      case 'stats':
+        return nativeJson(await socialStats(ctx, params));
       case 'package': {
         if (!isUuid(id)) return failure('Nie znaleziono posta.', 404);
         const { fileName, zip } = await postPackage(ctx, id);
@@ -154,6 +160,14 @@ export async function POST(request: Request) {
         return nativeJson(await refreshComments(ctx, body));
       case 'reply':
         return nativeJson(await replyComment(ctx, body));
+      case 'metricsRefresh':
+        if (isUuid(body.postId)) {
+          await refreshPostMetrics(ctx, String(body.postId).toLowerCase());
+          return nativeJson(await socialPost(ctx, String(body.postId).toLowerCase()));
+        }
+        return nativeJson(await refreshCompanyMetrics(ctx, body));
+      case 'reportGenerate':
+        return nativeJson(await generateReport(ctx, body));
       default:
         return failure('Nieznana operacja.');
     }

@@ -244,6 +244,13 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
     else showSnackbar('Publikacja trwa — karta odświeży się sama.', 'info');
   };
 
+  // Wyniki kanałów z Meta (Etap 3) — treść opublikowanego posta jest zablokowana, więc odświeżenie nie gubi zmian.
+  const refreshMetrics = async () => {
+    if (!detail) return;
+    const result = await run('Pobieram wyniki z Meta', () => socialPost<SocialPostDetail>('metricsRefresh', { postId: detail.post.id }), 'Odświeżono wyniki posta');
+    if (result) apply(result);
+  };
+
   const schedule = async () => {
     if (!detail) return;
     const when = fromLocalInput(scheduleAt);
@@ -341,7 +348,7 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                   <p className="whitespace-pre-wrap text-[#e5e4e2]/80">{detail.post.reviewNote}</p>
                 </div>
               )}
-              <MetaPublishPanel detail={detail} />
+              <MetaPublishPanel detail={detail} onRefreshMetrics={() => void refreshMetrics()} />
               <section className={`${cardClass} space-y-3 p-4`}>
                 <h3 className="text-sm font-medium">Publikacja</h3>
                 <div className="space-y-1.5">

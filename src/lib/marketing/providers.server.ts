@@ -17,6 +17,7 @@ export const META_SCOPES = [
   'instagram_content_publish',
   'instagram_manage_comments',
   'instagram_manage_insights',
+  'read_insights',
 ];
 
 export const GOOGLE_SCOPES = [

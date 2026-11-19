@@ -131,8 +131,13 @@ import AppKit
                 }
                 // Stan systemu: /crm/settings/system-health — integracje, jakość danych i bezpieczeństwo (administrator).
                 if section=="settings",next=="system-health"{return showSystemHealth()}
-                // Social media: /crm/marketing/social?post=<id>[&tab=comments] — post w kreatorze (bez id — kalendarz albo komentarze).
+                // Social media: /crm/marketing/social?post=<id>[&tab=comments] — post w kreatorze (bez id — kalendarz albo komentarze);
+                // ?tab=stats&report=<id> — raport tygodniowy w zakładce Statystyki.
                 if section=="marketing",next=="social"{
+                    if q["tab"]=="stats",q["post"]==nil{
+                        showSocialStats(report: q["report"].flatMap{UUID(uuidString:$0) != nil ? $0:nil})
+                        return true
+                    }
                     showSocialPost(q["post"].flatMap{UUID(uuidString:$0) != nil ? $0:nil}, comments: q["tab"]=="comments")
                     return true
                 }

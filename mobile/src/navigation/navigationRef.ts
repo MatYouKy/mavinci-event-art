@@ -115,10 +115,11 @@ export function routeSalesUrl(url: string | null | undefined): boolean {
   }
   if (/^\/crm\/(offers|invoices|settings|salespeople)(\/|\?|$)/i.test(url)) { openInCrmWeb(url); return true; }
   if (/^\/crm\/marketing\/social(\/|\?|$)/i.test(url)) {
-    // Akceptacja, plan, publikacja i komentarze — w aplikacji (karta posta albo ekran Social media).
+    // Akceptacja, plan, publikacja, komentarze i raport tygodniowy — w aplikacji (karta posta albo ekran Social media).
     const post = url.match(new RegExp(`[?&]post=(${UUID})`, 'i'));
     const comments = /[?&]tab=comments(&|$)/i.test(url);
     if (post) navigateToSocialPost(post[1], comments);
+    else if (/[?&]tab=stats(&|$)/i.test(url)) navigateToSocialStats(url.match(new RegExp(`[?&]report=(${UUID})`, 'i'))?.[1]);
     else navigateToSocialMedia(comments);
     return true;
   }
@@ -128,6 +129,13 @@ export function routeSalesUrl(url: string | null | undefined): boolean {
 export function navigateToSocialMedia(comments = false) {
   if (navigationRef.isReady()) {
     navigationRef.navigate('SocialMedia', comments ? { segment: 'comments' } : undefined);
+  }
+}
+
+/** Zakładka „Statystyki” z raportem tygodniowym (powiadomienie „Raport tygodniowy social media”). */
+export function navigateToSocialStats(reportId?: string) {
+  if (navigationRef.isReady()) {
+    navigationRef.navigate('SocialMedia', { segment: 'stats', ...(reportId ? { report: reportId } : {}) });
   }
 }
 

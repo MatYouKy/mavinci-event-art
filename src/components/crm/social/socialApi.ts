@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase/browser';
-import type { SocialAccess, SocialAssetSource, SocialAssetStatus, SocialChannel, SocialConsentSource, SocialConsentStatus, SocialCrop, SocialCrops, SocialFormat, SocialPostAction, SocialPostStatus } from '@/lib/social/socialShared';
+import type { SocialAccess, SocialAssetSource, SocialAssetStatus, SocialChannel, SocialConsentSource, SocialConsentStatus, SocialCrop, SocialCrops, SocialFormat, SocialMetricValues, SocialPostAction, SocialPostStatus } from '@/lib/social/socialShared';
 import type { SocialTemplateSettings } from '@/lib/social/socialGraphic';
 
 /*
@@ -8,7 +8,10 @@ import type { SocialTemplateSettings } from '@/lib/social/socialGraphic';
  */
 
 export type SocialCompany = { id: string; name: string; isDefault: boolean };
-export type SocialSettings = { aiCaptionsEnabled: boolean; aiConsentAt: string | null; defaultHashtags: string[]; captionStyle: string; updatedAt: string | null };
+export type SocialSettings = {
+  aiCaptionsEnabled: boolean; aiConsentAt: string | null; aiReportsEnabled?: boolean; aiReportsConsentAt?: string | null;
+  defaultHashtags: string[]; captionStyle: string; updatedAt: string | null;
+};
 export type SocialTemplate = {
   id: string; name: string; isDefault: boolean; ready: boolean; problems: string[];
   logoId: string | null; titleFontId: string | null; captionFontId: string | null;
@@ -27,6 +30,8 @@ export type SocialMetaStatus = {
   connected: boolean; pageId: string | null; pageName: string | null; instagramId: string | null; instagramUsername: string | null;
   channels: Record<SocialChannel, { ready: boolean; problem: string | null }>;
   comments: { facebookRead: boolean; facebookReply: boolean; instagram: boolean };
+  /** Statystyki postów: Facebook `read_insights`, Instagram `instagram_manage_insights` (Etap 3). */
+  insights?: { facebook: boolean; instagram: boolean };
   missingScopes: string[]; lastError: string | null;
 };
 export type SocialHome = {
@@ -38,6 +43,35 @@ export type SocialHome = {
 export type SocialPublication = {
   channel: SocialChannel; status: string; format: SocialFormat | null; permalink: string | null; error: string | null; attempts: number;
   publishedAt: string | null; attemptedAt: string | null;
+  /** Wyniki z Meta (Etap 3) — stan narastająco od publikacji. */
+  metrics?: SocialMetricValues; rate?: number | null; metricsSyncedAt?: string | null; metricsError?: string | null;
+};
+/** Suma wyników publikacji (`posts` — posty, `publications` — kanały, `rate` — interakcje / zasięg). */
+export type SocialTotals = SocialMetricValues & { posts: number; publications: number; rate: number | null };
+export type SocialBestTime = { weekday: number; band: number; label: string; posts: number; rate: number; avgReach: number; avgInteractions: number };
+export type SocialTopPost = {
+  postId: string; title: string; channels: SocialChannel[]; publishedAt: string | null; permalink: string | null;
+  metrics: SocialMetricValues; thumbnailUrl: string | null;
+};
+export type SocialReportSummary = { id: string; periodStart: string; periodEnd: string; summary: string; aiUsed: boolean; createdAt: string; updatedAt: string | null };
+export type SocialReport = SocialReportSummary & {
+  trends: string[]; recommendations: Array<{ title: string; rationale: string; priority: 'high' | 'medium' | 'low'; channel: string }>;
+  risks: string[]; opportunities: string[]; model: string | null; totals: SocialTotals | null; previous: SocialTotals | null;
+  channels: Array<{ channel: SocialChannel; totals: SocialTotals }>; topPosts: SocialTopPost[]; bestTimes: SocialBestTime[];
+  comments: { received: number; unanswered: number } | null; scheduledNext: number | null; aiNote: string | null;
+};
+/** Zakładka „Statystyki” (`op=stats`). */
+export type SocialStats = {
+  companies: SocialCompany[]; company: SocialCompany; access: SocialAccess; range: { days: number; from: string; to: string };
+  totals: SocialTotals; previous: SocialTotals; channels: Array<{ channel: SocialChannel; totals: SocialTotals }>;
+  timeline: Array<{ date: string; views: number; interactions: number }>;
+  bestTimes: { sample: number; minSample: number; cells: SocialBestTime[]; top: SocialBestTime[] };
+  topPosts: SocialTopPost[];
+  sync: { publications: number; withMetrics: number; lastSyncedAt: string | null; problems: string[] };
+  insights: { connected: boolean; facebook: boolean; instagram: boolean; missingScopes: string[] };
+  reports: SocialReportSummary[]; report: SocialReport | null;
+  settings: { aiReportsEnabled: boolean; aiReportsConsentAt: string | null };
+  canRefresh: boolean; canGenerate: boolean; lastWeekStart: string;
 };
 export type SocialComment = {
   id: string; platform: 'facebook' | 'instagram'; authorName: string; isOwn: boolean; message: string; commentedAt: string; likeCount: number;

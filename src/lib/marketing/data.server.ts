@@ -24,6 +24,21 @@ const EMPTY_TOTALS: MarketingMetricTotals = {
 
 const asNumber = (value: unknown) => Number(value || 0);
 
+/** Najnowsza analiza marketingu (bez raportów tygodniowych social media). */
+function latestMarketingInsight(rows: Array<Record<string, any>> | null): MarketingOverviewDTO['latestInsight'] {
+  const row = (rows || []).find((item) => !item.kind || item.kind === 'marketing');
+  if (!row) return null;
+  return {
+    id: row.id,
+    summary: row.summary,
+    recommendations: row.recommendations,
+    risks: row.risks,
+    opportunities: row.opportunities,
+    model: row.model,
+    created_at: row.created_at,
+  } as MarketingOverviewDTO['latestInsight'];
+}
+
 export async function getMarketingOverview(
   companyIds: string[],
   preferredCompanyId?: string | null,
@@ -109,11 +124,12 @@ export async function getMarketingOverview(
         .eq('is_read', false),
       admin
         .from('marketing_ai_insights')
-        .select('id, summary, recommendations, risks, opportunities, model, created_at')
+        // `*` i wybór w kodzie: raporty tygodniowe social media (`kind = 'social_weekly'`, migracja 20261119230000) mają
+        // własny widok w „Social media → Statystyki”; zapytanie działa także przed tą migracją (bez kolumny `kind`).
+        .select('*')
         .eq('company_id', selectedCompanyId)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+        .limit(30),
       admin
         .from('marketing_company_settings')
         .select('automatic_sync_enabled, ai_analysis_enabled, ai_data_scope, ai_consent_at')
@@ -199,7 +215,7 @@ export async function getMarketingOverview(
     })),
     messages,
     unreadMessages: unreadCountResult.count || 0,
-    latestInsight: (insightResult.data as MarketingOverviewDTO['latestInsight']) || null,
+    latestInsight: latestMarketingInsight(insightResult.data as Array<Record<string, any>> | null),
     settings: {
       automaticSyncEnabled: settingsResult.data?.automatic_sync_enabled !== false,
       aiAnalysisEnabled: settingsResult.data?.ai_analysis_enabled === true,

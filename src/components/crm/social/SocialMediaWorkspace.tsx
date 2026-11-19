@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  CalendarDays, ChevronLeft, ChevronRight, Images, ListChecks, MessagesSquare, Plus, RefreshCw, Settings2, Sparkles,
+  BarChart3, CalendarDays, ChevronLeft, ChevronRight, Images, ListChecks, MessagesSquare, Plus, RefreshCw, Settings2, Sparkles,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
@@ -15,15 +15,17 @@ import SocialLibrary from './SocialLibrary';
 import SocialPostEditor from './SocialPostEditor';
 import SocialSettingsModal from './SocialSettingsModal';
 import SocialComments from './SocialComments';
+import SocialStats from './SocialStats';
 import { MetaStatusBanner } from './SocialMetaPanel';
 
 /*
  * Marketing → „Social media” w CRM (pełna szerokość): kalendarz publikacji z przeciąganiem terminu, lista postów
- * do akceptacji i z błędem publikacji, biblioteka zdjęć, komentarze Facebook i Instagram oraz kreator grafik. Dane i zapis
+ * do akceptacji i z błędem publikacji, biblioteka zdjęć, komentarze Facebook i Instagram, statystyki z raportem tygodniowym
+ * „Trendy i rekomendacje” (`?tab=stats&report=…` z powiadomienia) oraz kreator grafik. Dane i zapis
  * przez `/bridge/native/v1/social` (to samo API co Mac i telefon). Modal ładowania przy akcjach, snackbar po sukcesie lub błędzie.
  */
 
-type Tab = 'calendar' | 'review' | 'library' | 'comments';
+type Tab = 'calendar' | 'review' | 'library' | 'comments' | 'stats';
 const WEEKDAYS = ['pon', 'wt', 'śr', 'czw', 'pt', 'sob', 'nd'];
 
 function monthGrid(month: Date) {
@@ -45,7 +47,12 @@ export default function SocialMediaWorkspace() {
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const { showLoader, hideLoader } = useGlobalLoader();
-  const [tab, setTab] = useState<Tab>(searchParams?.get('tab') === 'comments' && !searchParams?.get('post') ? 'comments' : 'calendar');
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = searchParams?.get('tab');
+    if (requested === 'stats') return 'stats';
+    return requested === 'comments' && !searchParams?.get('post') ? 'comments' : 'calendar';
+  });
+  const initialReportId = searchParams?.get('report') || null;
   const focusComments = searchParams?.get('tab') === 'comments';
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -173,7 +180,7 @@ export default function SocialMediaWorkspace() {
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-[#d3bb73]"><Sparkles className="h-4 w-4" />Marketing</div>
             <h1 className="text-2xl font-light md:text-3xl">Social media</h1>
-            <p className="mt-1 max-w-3xl text-sm text-[#e5e4e2]/50">Grafiki z szablonu marki (księga znaku), kalendarz publikacji z akceptacją i biblioteka zdjęć z realizacji ze zgodą klienta.</p>
+            <p className="mt-1 max-w-3xl text-sm text-[#e5e4e2]/50">Grafiki z szablonu marki (księga znaku), kalendarz publikacji z akceptacją, biblioteka zdjęć z realizacji ze zgodą klienta, statystyki i raport tygodniowy.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {home && home.companies.length > 1 && (
@@ -194,6 +201,7 @@ export default function SocialMediaWorkspace() {
             ['review', 'Do akceptacji', ListChecks, (home?.counts.inReview || 0) + (home?.counts.changesRequested || 0) + (home?.counts.failed || 0)],
             ['library', 'Biblioteka', Images, home?.counts.proposals || 0],
             ['comments', 'Komentarze', MessagesSquare, home?.counts.unansweredComments || 0],
+            ['stats', 'Statystyki', BarChart3, 0],
           ] as const).map(([key, label, Icon, count]) => (
             <button key={key} type="button" onClick={() => setTab(key)}
               className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm ${tab === key ? 'border-[#d3bb73]/50 bg-[#d3bb73]/15 text-[#d3bb73]' : 'border-[#d3bb73]/10 bg-[#1c1f33] text-[#e5e4e2]/70 hover:text-[#e5e4e2]'}`}>
@@ -276,6 +284,10 @@ export default function SocialMediaWorkspace() {
               ))}
             </div>
           </section>
+        )}
+
+        {tab === 'stats' && home && (
+          <SocialStats key={home.company.id} companyId={home.company.id} initialReportId={initialReportId} onOpenPost={(id) => openPost(id)} />
         )}
 
         {tab === 'comments' && home && (

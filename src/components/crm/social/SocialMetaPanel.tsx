@@ -1,15 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { AlertTriangle, CalendarClock, CheckCircle2, ExternalLink, Facebook, Instagram, XCircle } from 'lucide-react';
-import { SOCIAL_CHANNELS, SOCIAL_CHANNEL_LABELS, SOCIAL_PUBLICATION_STATUS_LABELS, type SocialAccess } from '@/lib/social/socialShared';
+import { AlertTriangle, CalendarClock, CheckCircle2, ExternalLink, Facebook, Instagram, RefreshCw, XCircle } from 'lucide-react';
+import {
+  SOCIAL_CHANNELS, SOCIAL_CHANNEL_LABELS, SOCIAL_METRICS, SOCIAL_METRIC_HINTS, SOCIAL_METRIC_LABELS, SOCIAL_PUBLICATION_STATUS_LABELS,
+  formatSocialNumber, formatSocialPercent, type SocialAccess,
+} from '@/lib/social/socialShared';
 import type { SocialMetaStatus, SocialPostDetail } from './socialApi';
 import { cardClass, dateTimeLabel } from './socialUi';
 
 /*
  * Publikacja w Meta: stan konta marki (strona, Instagram, uprawnienia) w nagłówku Social media oraz wyniki kanałów
- * posta (link do opublikowanego posta albo błąd) w kreatorze. Konto i uprawnienia ustawia się w ustawieniach
- * marketingu marki („Połącz” / „Odśwież dostęp” przy Meta).
+ * posta (link do opublikowanego posta albo błąd i — po publikacji — wyniki z Meta) w kreatorze. Konto i uprawnienia ustawia
+ * się w ustawieniach marketingu marki („Połącz” / „Odśwież dostęp” przy Meta).
  */
 
 const settingsHref = (companyId: string) => `/crm/settings/my-companies/${companyId}/marketing`;
@@ -46,13 +49,22 @@ export function MetaStatusBanner({ meta, companyId, access }: { meta: SocialMeta
   );
 }
 
-export function MetaPublishPanel({ detail }: { detail: SocialPostDetail }) {
+export function MetaPublishPanel({ detail, onRefreshMetrics }: { detail: SocialPostDetail; onRefreshMetrics?: () => void }) {
   const { post, meta, publications } = detail;
   const showProblems = ['approved', 'scheduled', 'failed'].includes(post.status) && detail.problems.meta.length > 0;
+  const published = publications.filter((item) => item.status === 'published');
   if (!meta && !publications.length && !['scheduled', 'publishing', 'failed'].includes(post.status)) return null;
   return (
     <section className={`${cardClass} space-y-3 p-4`}>
-      <h3 className="flex items-center gap-2 text-sm font-medium"><CalendarClock className="h-4 w-4 text-[#d3bb73]" />Publikacja w Meta</h3>
+      <h3 className="flex items-center gap-2 text-sm font-medium">
+        <CalendarClock className="h-4 w-4 text-[#d3bb73]" />Publikacja w Meta
+        <span className="flex-1" />
+        {published.length > 0 && onRefreshMetrics && (
+          <button type="button" onClick={onRefreshMetrics} className="inline-flex items-center gap-1 text-xs font-normal text-[#d3bb73] hover:underline" title="Pobierz aktualne wyniki z Meta">
+            <RefreshCw className="h-3 w-3" />Wyniki
+          </button>
+        )}
+      </h3>
       {post.status === 'scheduled' && (
         <p className="rounded-lg border border-sky-400/30 bg-sky-400/10 p-2 text-xs text-sky-100">
           Zaplanowano na {dateTimeLabel(post.scheduledAt)}{post.scheduledByName ? ` — ${post.scheduledByName}` : ''}. Post opublikuje się automatycznie.
@@ -80,6 +92,7 @@ export function MetaPublishPanel({ detail }: { detail: SocialPostDetail }) {
                 {publication?.permalink && <a href={publication.permalink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#d3bb73] hover:underline">Otwórz<ExternalLink className="h-3 w-3" /></a>}
               </div>
               {publication?.status === 'published' && publication.publishedAt && <p className="mt-0.5 text-[#e5e4e2]/40">{dateTimeLabel(publication.publishedAt)}</p>}
+              {publication?.status === 'published' && <PublicationMetrics publication={publication} />}
               {publication?.error && publication.status !== 'published' && <p className="mt-1 text-red-200/80">{publication.error}</p>}
               {!publication && problem && <p className="mt-1 text-amber-100/80">{problem}</p>}
             </li>
@@ -96,5 +109,35 @@ export function MetaPublishPanel({ detail }: { detail: SocialPostDetail }) {
         <Link href={settingsHref(detail.company.id)} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline">Połącz Meta w ustawieniach marketingu<ExternalLink className="h-3 w-3" /></Link>
       )}
     </section>
+  );
+}
+
+/** Wyniki kanału z Meta (stan narastająco od publikacji). */
+function PublicationMetrics({ publication }: { publication: SocialPostDetail['publications'][number] }) {
+  const metrics = publication.metrics || {};
+  const keys = SOCIAL_METRICS.filter((key) => metrics[key] != null);
+  if (!keys.length) {
+    return (
+      <p className="mt-1 text-[#e5e4e2]/40">
+        {publication.metricsError || (publication.metricsSyncedAt ? 'Meta nie podała jeszcze wyników.' : 'Wyniki pojawią się w ciągu godziny od publikacji.')}
+      </p>
+    );
+  }
+  return (
+    <div className="mt-1.5 space-y-1">
+      <div className="grid grid-cols-3 gap-1">
+        {keys.map((key) => (
+          <div key={key} className="rounded bg-[#0f1119]/70 px-1.5 py-1" title={SOCIAL_METRIC_HINTS[key]}>
+            <div className="truncate text-[10px] text-[#e5e4e2]/45">{SOCIAL_METRIC_LABELS[key]}</div>
+            <div className="tabular-nums">{formatSocialNumber(metrics[key])}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-[#e5e4e2]/40">
+        {publication.rate != null ? `Zaangażowanie ${formatSocialPercent(publication.rate)} · ` : ''}
+        {publication.metricsSyncedAt ? `pobrano ${dateTimeLabel(publication.metricsSyncedAt)}` : ''}
+        {publication.metricsError ? ` · ${publication.metricsError}` : ''}
+      </p>
+    </div>
   );
 }

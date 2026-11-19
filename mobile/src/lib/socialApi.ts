@@ -2,14 +2,16 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from './supabase';
 import type {
-  SocialAccess, SocialAssetStatus, SocialChannel, SocialConsentSource, SocialCrop, SocialFormat, SocialPostAction, SocialPostStatus,
+  SocialAccess, SocialAssetStatus, SocialChannel, SocialConsentSource, SocialCrop, SocialFormat, SocialMetricValues, SocialPostAction,
+  SocialPostStatus,
 } from './socialShared';
 
 /*
  * Social media w aplikacji — to samo API co CRM i Mac (`/bridge/native/v1/social`, token sesji pracownika,
  * `x-mavinci-client: phone`). Uprawnienia, zgody klienta i statusy sprawdza serwer i baza. Na telefonie: zdjęcie
  * z wydarzenia do biblioteki (członek zespołu — jako propozycja), szybki post lub relacja z szablonu marki (kadr
- * automatyczny), akceptacja szkiców, oznaczenie publikacji, zapis grafiki w Zdjęciach i kopiowanie opisu.
+ * automatyczny), akceptacja szkiców, oznaczenie publikacji, zapis grafiki w Zdjęciach i kopiowanie opisu, statystyki z raportem
+ * tygodniowym i wyniki posta z Meta.
  */
 
 const CRM_URL = (process.env.EXPO_PUBLIC_CRM_URL || 'https://mavinci.pl').replace(/\/+$/, '');
@@ -31,11 +33,40 @@ export type SocialMetaStatus = {
   connected: boolean; pageName: string | null; instagramUsername: string | null;
   channels: Record<SocialChannel, { ready: boolean; problem: string | null }>;
   comments: { facebookRead: boolean; facebookReply: boolean; instagram: boolean };
+  insights?: { facebook: boolean; instagram: boolean };
   missingScopes: string[];
 };
 export type SocialPublication = {
   channel: SocialChannel; status: string; format: SocialFormat | null; permalink: string | null; error: string | null;
   attempts: number; publishedAt: string | null;
+  /** Wyniki z Meta (stan narastająco od publikacji). */
+  metrics?: SocialMetricValues; rate?: number | null; metricsSyncedAt?: string | null; metricsError?: string | null;
+};
+/** Statystyki (`op=stats`) — jak w CRM i na Macu. */
+export type SocialTotals = SocialMetricValues & { posts: number; publications: number; rate: number | null };
+export type SocialBestTime = { weekday: number; band: number; label: string; posts: number; rate: number; avgReach: number; avgInteractions: number };
+export type SocialTopPost = {
+  postId: string; title: string; channels: SocialChannel[]; publishedAt: string | null; permalink: string | null;
+  metrics: SocialMetricValues; thumbnailUrl: string | null;
+};
+export type SocialReportSummary = { id: string; periodStart: string; periodEnd: string; summary: string; aiUsed: boolean; createdAt: string; updatedAt: string | null };
+export type SocialReport = SocialReportSummary & {
+  trends: string[]; recommendations: Array<{ title: string; rationale: string; priority: 'high' | 'medium' | 'low'; channel: string }>;
+  risks: string[]; opportunities: string[]; model: string | null; totals: SocialTotals | null; previous: SocialTotals | null;
+  channels: Array<{ channel: SocialChannel; totals: SocialTotals }>; topPosts: SocialTopPost[]; bestTimes: SocialBestTime[];
+  comments: { received: number; unanswered: number } | null; scheduledNext: number | null; aiNote: string | null;
+};
+export type SocialStats = {
+  company: { id: string; name: string; isDefault: boolean }; access: SocialAccess; range: { days: number; from: string; to: string };
+  totals: SocialTotals; previous: SocialTotals; channels: Array<{ channel: SocialChannel; totals: SocialTotals }>;
+  timeline: Array<{ date: string; views: number; interactions: number }>;
+  bestTimes: { sample: number; minSample: number; cells: SocialBestTime[]; top: SocialBestTime[] };
+  topPosts: SocialTopPost[];
+  sync: { publications: number; withMetrics: number; lastSyncedAt: string | null; problems: string[] };
+  insights: { connected: boolean; facebook: boolean; instagram: boolean; missingScopes: string[] };
+  reports: SocialReportSummary[]; report: SocialReport | null;
+  settings: { aiReportsEnabled: boolean; aiReportsConsentAt: string | null };
+  canRefresh: boolean; canGenerate: boolean; lastWeekStart: string;
 };
 export type SocialComment = {
   id: string; platform: 'facebook' | 'instagram'; authorName: string; isOwn: boolean; message: string; commentedAt: string;

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
 import { errorMessage, runSocialPublishing, syncSocialComments } from '@/lib/social/socialMeta.server';
+import { syncSocialMetrics } from '@/lib/social/socialMetrics.server';
+import { generateDueSocialReports } from '@/lib/social/socialReport.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -8,7 +10,8 @@ export const maxDuration = 300;
 
 /*
  * Social media — zadania z harmonogramu bazy (pg_cron → `invoke_social_worker`): `publish` — publikacja postów w terminie
- * (i dokończenie przerwanych), `comments` — odświeżenie komentarzy postów z ostatnich 30 dni. Nagłówek
+ * (i dokończenie przerwanych), `comments` — odświeżenie komentarzy postów z ostatnich 30 dni, `metrics` — wyniki
+ * opublikowanych postów z Meta (kolejka `social_metrics_due`), `report` — raporty tygodniowe za poprzedni tydzień. Nagłówek
  * `x-marketing-cron-secret` = `MARKETING_CRON_SECRET` (ten sam sekret co synchronizacja marketingu, w vault bazy:
  * `marketing_cron_secret`).
  */
@@ -37,6 +40,12 @@ export async function POST(request: NextRequest) {
     }
     if (task === 'comments') {
       return NextResponse.json({ ok: true, ...(await syncSocialComments({ limit: 100 })) });
+    }
+    if (task === 'metrics') {
+      return NextResponse.json({ ok: true, ...(await syncSocialMetrics({ limit: 60 })) });
+    }
+    if (task === 'report') {
+      return NextResponse.json({ ok: true, ...(await generateDueSocialReports()) });
     }
     return NextResponse.json({ error: 'Nieznane zadanie.' }, { status: 400 });
   } catch (error) {

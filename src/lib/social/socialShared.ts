@@ -2,7 +2,8 @@
  * Social media (Marketing → „Social media”) — wspólne dla CRM, serwera Next i aplikacji mobilnej
  * (kopia: mobile/src/lib/socialShared.ts, pilnuje scripts/ci/check-shared-copies.mjs). Bez importów.
  * Formaty grafik, kanały, statusy, zgody klienta, kadry (prostokąt znormalizowany do zdjęcia 0…1) i hashtagi —
- * te same reguły co w bazie (migracje 20261119200000_marketing_social_media.sql i 20261119220000_social_media_publishing.sql).
+ * te same reguły co w bazie (migracje 20261119200000_marketing_social_media.sql, 20261119220000_social_media_publishing.sql
+ * i 20261119230000_social_media_insights.sql). Statystyki: metryki, pory publikacji i formatowanie liczb (bez `Intl`).
  */
 
 export const SOCIAL_FORMATS = ['4:5', '1:1', '9:16', '1.91:1'] as const;
@@ -346,3 +347,134 @@ export function socialDateLabel(value: string | null | undefined): string {
     timeZone: 'Europe/Warsaw', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   });
 }
+
+// Statystyki (Etap 3) ------------------------------------------------------------------------------------------------------
+
+/** Metryki opublikowanych postów (stan narastająco od publikacji). Klucze w bazie: snake_case (`profile_visits`). */
+export const SOCIAL_METRICS = [
+  'views', 'reach', 'interactions', 'saves', 'profileVisits', 'shares', 'likes', 'comments', 'follows', 'clicks', 'replies',
+] as const;
+export type SocialMetricKey = (typeof SOCIAL_METRICS)[number];
+export type SocialMetricValues = Partial<Record<SocialMetricKey, number>>;
+
+export const SOCIAL_METRIC_LABELS: Record<SocialMetricKey, string> = {
+  views: 'Wyświetlenia',
+  reach: 'Zasięg',
+  interactions: 'Interakcje',
+  saves: 'Zapisania',
+  profileVisits: 'Wejścia na profil',
+  shares: 'Udostępnienia',
+  likes: 'Polubienia i reakcje',
+  comments: 'Komentarze',
+  follows: 'Nowi obserwujący',
+  clicks: 'Kliknięcia',
+  replies: 'Odpowiedzi na relację',
+};
+
+export const SOCIAL_METRIC_HINTS: Record<SocialMetricKey, string> = {
+  views: 'Ile razy treść została wyświetlona (z powtórzeniami).',
+  reach: 'Liczba osób (kont), które zobaczyły treść — na Facebooku: unikalne wyświetlenia.',
+  interactions: 'Polubienia, komentarze, zapisania i udostępnienia razem.',
+  saves: 'Ile osób zapisało post na Instagramie.',
+  profileVisits: 'Wejścia na profil Instagram z tego posta lub relacji.',
+  shares: 'Udostępnienia posta.',
+  likes: 'Polubienia (Instagram) i reakcje (Facebook).',
+  comments: 'Komentarze pod postem.',
+  follows: 'Konta, które zaczęły obserwować profil po tym poście.',
+  clicks: 'Kliknięcia w post na Facebooku.',
+  replies: 'Odpowiedzi na relację Instagram.',
+};
+
+/** Kafelki podsumowania (web, Mac, telefon). */
+export const SOCIAL_KPI_METRICS: SocialMetricKey[] = ['views', 'reach', 'interactions', 'saves', 'profileVisits'];
+
+export const SOCIAL_METRIC_COLUMNS: Record<SocialMetricKey, string> = {
+  views: 'views', reach: 'reach', interactions: 'interactions', saves: 'saves', profileVisits: 'profile_visits', shares: 'shares',
+  likes: 'likes', comments: 'comments', follows: 'follows', clicks: 'clicks', replies: 'replies',
+};
+
+/** Metryki z wiersza bazy (`social_publications.metrics` / `social_post_metrics_daily`) — tylko liczby ≥ 0. */
+export function socialMetricsFromRow(row: Record<string, unknown> | null | undefined): SocialMetricValues {
+  const result: SocialMetricValues = {};
+  if (!row) return result;
+  for (const key of SOCIAL_METRICS) {
+    const value = Number(row[SOCIAL_METRIC_COLUMNS[key]]);
+    if (row[SOCIAL_METRIC_COLUMNS[key]] != null && Number.isFinite(value) && value >= 0) result[key] = value;
+  }
+  return result;
+}
+
+/** Wskaźnik zaangażowania: interakcje / zasięg (gdy brak zasięgu — / wyświetlenia); `null` — brak danych. */
+export function socialEngagementRate(metrics: SocialMetricValues): number | null {
+  const base = metrics.reach && metrics.reach > 0 ? metrics.reach : metrics.views && metrics.views > 0 ? metrics.views : 0;
+  return base > 0 && metrics.interactions != null ? metrics.interactions / base : null;
+}
+
+/** Pory publikacji (godziny w strefie Warszawa) do „Najlepszych godzin”. */
+export const SOCIAL_TIME_BANDS = [
+  { id: 'night', from: 0, to: 6, label: '0–6' },
+  { id: 'morning', from: 6, to: 9, label: '6–9' },
+  { id: 'forenoon', from: 9, to: 12, label: '9–12' },
+  { id: 'noon', from: 12, to: 15, label: '12–15' },
+  { id: 'afternoon', from: 15, to: 18, label: '15–18' },
+  { id: 'evening', from: 18, to: 21, label: '18–21' },
+  { id: 'late', from: 21, to: 24, label: '21–24' },
+] as const;
+
+export const socialTimeBand = (hour: number) =>
+  Math.max(0, SOCIAL_TIME_BANDS.findIndex((band) => hour >= band.from && hour < band.to));
+
+/** Dni tygodnia od poniedziałku (0 = poniedziałek). */
+export const SOCIAL_WEEKDAYS = ['poniedziałek', 'wtorek', 'środa', 'czwartek', 'piątek', 'sobota', 'niedziela'] as const;
+export const SOCIAL_WEEKDAYS_SHORT = ['pon', 'wt', 'śr', 'czw', 'pt', 'sob', 'nd'] as const;
+
+export const socialSlotLabel = (weekday: number, band: number) =>
+  `${SOCIAL_WEEKDAYS[weekday] || ''} ${SOCIAL_TIME_BANDS[band]?.label || ''}`.trim();
+
+/** Najmniej opublikowanych postów z wynikami, by pokazać najlepsze pory (i najmniej postów w jednej porze). */
+export const SOCIAL_BEST_TIMES_MIN_SAMPLE = 5;
+export const SOCIAL_BEST_TIMES_MIN_POSTS = 2;
+
+/** Zakresy statystyk (dni). */
+export const SOCIAL_STATS_RANGES = [7, 28, 90] as const;
+
+/** Liczba: „1 234”, „12,3 tys.”, „1,2 mln”; brak danych — „—”. */
+export function formatSocialNumber(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  const abs = Math.abs(value);
+  const sign = value < 0 ? '−' : '';
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1).replace('.', ',')} mln`;
+  if (abs >= 10_000) return `${sign}${(abs / 1000).toFixed(1).replace('.', ',')} tys.`;
+  return `${sign}${String(Math.round(abs)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0')}`;
+}
+
+/** Odsetek: „4,2%”. */
+export const formatSocialPercent = (value: number | null | undefined) =>
+  value == null || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(1).replace('.', ',')}%`;
+
+/** Zmiana wobec poprzedniego okresu: „+12%”, „−5%”, „nowe” (poprzednio 0), `null` — brak porównania. */
+export function socialChangeLabel(current: number | null | undefined, previous: number | null | undefined): string | null {
+  if (current == null || previous == null) return null;
+  if (previous === 0) return current > 0 ? 'nowe' : null;
+  const change = Math.round(((current - previous) / previous) * 100);
+  return change === 0 ? '0%' : change > 0 ? `+${change}%` : `−${Math.abs(change)}%`;
+}
+
+/** Okres raportu z dat „RRRR-MM-DD”: „10–16.11.2026”, „27.10–02.11.2026”, „29.12.2025–04.01.2026”. */
+export function socialPeriodLabel(start: string, end: string): string {
+  const a = /^(\d{4})-(\d{2})-(\d{2})/.exec(start || '');
+  const b = /^(\d{4})-(\d{2})-(\d{2})/.exec(end || '');
+  if (!a || !b) return [start, end].filter(Boolean).join(' – ');
+  if (a[1] !== b[1]) return `${a[3]}.${a[2]}.${a[1]}–${b[3]}.${b[2]}.${b[1]}`;
+  if (a[2] !== b[2]) return `${a[3]}.${a[2]}–${b[3]}.${b[2]}.${b[1]}`;
+  return `${a[3]}–${b[3]}.${b[2]}.${b[1]}`;
+}
+
+/** Odmiana: 1 post, 2 posty, 5 postów. */
+export function socialPlural(count: number, one: string, few: string, many: string): string {
+  const n = Math.abs(Math.trunc(count));
+  if (n === 1) return one;
+  return n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many;
+}
+
+export const SOCIAL_RECOMMENDATION_PRIORITY_LABELS: Record<string, string> = { high: 'Wysoki', medium: 'Średni', low: 'Niski' };

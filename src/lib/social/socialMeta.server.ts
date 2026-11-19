@@ -11,7 +11,7 @@ import {
 /*
  * Social media ↔ Meta (Etap 2): konto marki (strona Facebook, połączony Instagram firmowy, uprawnienia z ostatniej
  * autoryzacji), publikacja zaplanowanych postów (Facebook — zdjęcie z opisem, Instagram — post i relacja), komentarze
- * (pobieranie, odpowiedź) i ostatnie posty Instagram do siatki profilu.
+ * (pobieranie, odpowiedź) i ostatnie posty Instagram do siatki profilu. Statystyki postów (Etap 3): `socialMetrics.server.ts`.
  * Tokeny odczytuje wyłącznie serwer (klucz serwisowy, `marketing_integrations.credentials_encrypted`) i wysyła tylko
  * w nagłówku `Authorization`. Do przeglądarki, Maca i telefonu trafia stan bez tokenów (`SocialMetaStatus`).
  * Publikacja jest odporna na przerwanie: kanał „wysyłany” (`sending`) przy następnej próbie najpierw sprawdzamy w Meta
@@ -30,6 +30,9 @@ export type SocialMetaStatus = {
   instagramUsername: string | null;
   channels: Record<SocialChannel, SocialMetaChannelState>;
   comments: { facebookRead: boolean; facebookReply: boolean; instagram: boolean };
+  /** Statystyki postów: Facebook — `read_insights` (bez niego tylko reakcje, komentarze i udostępnienia), Instagram —
+   * `instagram_manage_insights` (bez niego tylko polubienia i komentarze). */
+  insights: { facebook: boolean; instagram: boolean };
   missingScopes: string[];
   lastError: string | null;
 };
@@ -124,6 +127,10 @@ export async function loadMetaAccount(admin: SupabaseClient, companyId: string):
       facebookReply: usable && hasMetaScope(scopes, 'pages_read_user_content') && hasMetaScope(scopes, 'pages_manage_engagement'),
       instagram: usable && Boolean(instagramId) && hasMetaScope(scopes, 'instagram_manage_comments'),
     },
+    insights: {
+      facebook: usable && hasMetaScope(scopes, 'read_insights'),
+      instagram: usable && Boolean(instagramId) && hasMetaScope(scopes, 'instagram_manage_insights'),
+    },
     missingScopes: connected ? missingMetaScopes(scopes, ALL_SOCIAL_SCOPES) : [],
     lastError: text(row?.last_error) || null,
   };
@@ -139,6 +146,7 @@ export function metaStatusDTO(account: SocialMetaAccount): SocialMetaStatus {
     instagramUsername: account.instagramUsername,
     channels: account.channels,
     comments: account.comments,
+    insights: account.insights,
     missingScopes: account.missingScopes,
     lastError: account.lastError,
   };

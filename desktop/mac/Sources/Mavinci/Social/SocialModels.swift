@@ -219,6 +219,9 @@ struct SocialCompany: Codable, Identifiable, Hashable {
 struct SocialSettings: Codable, Hashable {
     var aiCaptionsEnabled: Bool
     var aiConsentAt: String?
+    /// Analiza AI w raporcie tygodniowym (Etap 3; zgoda akceptującego).
+    var aiReportsEnabled: Bool?
+    var aiReportsConsentAt: String?
     var defaultHashtags: [String]
     var captionStyle: String
     var updatedAt: String?
@@ -293,6 +296,12 @@ struct SocialMetaComments: Codable, Hashable {
     var instagram: Bool
 }
 
+/// Statystyki postów: Facebook — `read_insights`, Instagram — `instagram_manage_insights` (Etap 3).
+struct SocialMetaInsights: Codable, Hashable {
+    var facebook: Bool
+    var instagram: Bool
+}
+
 struct SocialMetaStatus: Codable, Hashable {
     var connected: Bool
     var pageId: String?
@@ -301,6 +310,7 @@ struct SocialMetaStatus: Codable, Hashable {
     var instagramUsername: String?
     var channels: [String: SocialMetaChannelState]
     var comments: SocialMetaComments
+    var insights: SocialMetaInsights?
     var missingScopes: [String]
     var lastError: String?
 
@@ -521,6 +531,11 @@ struct SocialPublication: Codable, Hashable {
     var attempts: Int
     var publishedAt: String?
     var attemptedAt: String?
+    /// Wyniki z Meta (Etap 3): stan narastająco od publikacji; brak wartości — Meta nie podaje metryki dla kanału.
+    var metrics: SocialMetricValues?
+    var rate: Double?
+    var metricsSyncedAt: String?
+    var metricsError: String?
 
     var statusLabel: String {
         switch status {
@@ -757,6 +772,307 @@ struct SocialUploadTicket: Codable {
     var path: String
     var companyId: String
     var proposal: Bool
+}
+
+// MARK: Statystyki (Etap 3) — te same metryki, pory i formatowanie co `socialShared.ts` w CRM i w telefonie.
+
+enum SocialMetric: String, CaseIterable, Identifiable {
+    case views, reach, interactions, saves, profileVisits, shares, likes, comments, follows, clicks, replies
+    var id: String { rawValue }
+    static let kpis: [SocialMetric] = [.views, .reach, .interactions, .saves, .profileVisits]
+
+    var label: String {
+        switch self {
+        case .views: return "Wyświetlenia"
+        case .reach: return "Zasięg"
+        case .interactions: return "Interakcje"
+        case .saves: return "Zapisania"
+        case .profileVisits: return "Wejścia na profil"
+        case .shares: return "Udostępnienia"
+        case .likes: return "Polubienia i reakcje"
+        case .comments: return "Komentarze"
+        case .follows: return "Nowi obserwujący"
+        case .clicks: return "Kliknięcia"
+        case .replies: return "Odpowiedzi na relację"
+        }
+    }
+
+    var hint: String {
+        switch self {
+        case .views: return "Ile razy treść została wyświetlona (z powtórzeniami)."
+        case .reach: return "Liczba osób (kont), które zobaczyły treść — na Facebooku: unikalne wyświetlenia."
+        case .interactions: return "Polubienia, komentarze, zapisania i udostępnienia razem."
+        case .saves: return "Ile osób zapisało post na Instagramie."
+        case .profileVisits: return "Wejścia na profil Instagram z tego posta lub relacji."
+        case .shares: return "Udostępnienia posta."
+        case .likes: return "Polubienia (Instagram) i reakcje (Facebook)."
+        case .comments: return "Komentarze pod postem."
+        case .follows: return "Konta, które zaczęły obserwować profil po tym poście."
+        case .clicks: return "Kliknięcia w post na Facebooku."
+        case .replies: return "Odpowiedzi na relację Instagram."
+        }
+    }
+}
+
+/// Wyniki postu / kanału (brak wartości — Meta nie podaje metryki).
+struct SocialMetricValues: Codable, Hashable {
+    var views: Double? = nil
+    var reach: Double? = nil
+    var interactions: Double? = nil
+    var saves: Double? = nil
+    var profileVisits: Double? = nil
+    var shares: Double? = nil
+    var likes: Double? = nil
+    var comments: Double? = nil
+    var follows: Double? = nil
+    var clicks: Double? = nil
+    var replies: Double? = nil
+
+    subscript(metric: SocialMetric) -> Double? {
+        switch metric {
+        case .views: return views
+        case .reach: return reach
+        case .interactions: return interactions
+        case .saves: return saves
+        case .profileVisits: return profileVisits
+        case .shares: return shares
+        case .likes: return likes
+        case .comments: return comments
+        case .follows: return follows
+        case .clicks: return clicks
+        case .replies: return replies
+        }
+    }
+
+    var available: [SocialMetric] { SocialMetric.allCases.filter { self[$0] != nil } }
+}
+
+/// Suma wyników publikacji: `posts` — posty, `publications` — kanały, `rate` — interakcje / zasięg.
+struct SocialTotals: Codable, Hashable {
+    var posts: Int
+    var publications: Int
+    var rate: Double?
+    var views: Double?
+    var reach: Double?
+    var interactions: Double?
+    var saves: Double?
+    var profileVisits: Double?
+    var shares: Double?
+    var likes: Double?
+    var comments: Double?
+    var follows: Double?
+    var clicks: Double?
+    var replies: Double?
+
+    var metrics: SocialMetricValues {
+        SocialMetricValues(views: views, reach: reach, interactions: interactions, saves: saves, profileVisits: profileVisits, shares: shares,
+                           likes: likes, comments: comments, follows: follows, clicks: clicks, replies: replies)
+    }
+}
+
+struct SocialChannelTotals: Codable, Hashable, Identifiable {
+    var channel: SocialChannel
+    var totals: SocialTotals
+    var id: String { channel.rawValue }
+}
+
+/// Pora publikacji (dzień od poniedziałku = 0, pasmo godzin — `SocialNumbers.timeBands`) i średni wynik postów w tej porze.
+struct SocialBestTime: Codable, Hashable, Identifiable {
+    var weekday: Int
+    var band: Int
+    var label: String
+    var posts: Int
+    var rate: Double
+    var avgReach: Double
+    var avgInteractions: Double
+    var id: String { "\(weekday)-\(band)" }
+}
+
+struct SocialBestTimes: Codable, Hashable {
+    var sample: Int
+    var minSample: Int
+    var cells: [SocialBestTime]
+    var top: [SocialBestTime]
+
+    func cell(_ weekday: Int, _ band: Int) -> SocialBestTime? { cells.first { $0.weekday == weekday && $0.band == band } }
+}
+
+struct SocialTopPost: Codable, Hashable, Identifiable {
+    var postId: String
+    var title: String
+    var channels: [SocialChannel]
+    var publishedAt: String?
+    var permalink: String?
+    var metrics: SocialMetricValues
+    var thumbnailUrl: String?
+    var id: String { postId }
+}
+
+struct SocialTimelinePoint: Codable, Hashable {
+    var date: String
+    var views: Double
+    var interactions: Double
+}
+
+struct SocialRecommendation: Codable, Hashable {
+    var title: String
+    var rationale: String
+    var priority: String
+    var channel: String
+
+    var priorityLabel: String {
+        switch priority {
+        case "high": return "Wysoki"
+        case "low": return "Niski"
+        default: return "Średni"
+        }
+    }
+    var priorityColor: Color {
+        switch priority {
+        case "high": return .red
+        case "low": return .secondary
+        default: return .orange
+        }
+    }
+}
+
+struct SocialReportSummary: Codable, Hashable, Identifiable {
+    var id: String
+    var periodStart: String
+    var periodEnd: String
+    var summary: String
+    var aiUsed: Bool
+    var createdAt: String
+    var updatedAt: String?
+}
+
+struct SocialReportComments: Codable, Hashable {
+    var received: Int
+    var unanswered: Int
+}
+
+/// Raport tygodniowy „Trendy i rekomendacje” (`marketing_ai_insights`, `kind = social_weekly`).
+struct SocialReport: Codable, Hashable, Identifiable {
+    var id: String
+    var periodStart: String
+    var periodEnd: String
+    var summary: String
+    var aiUsed: Bool
+    var createdAt: String
+    var updatedAt: String?
+    var trends: [String]
+    var recommendations: [SocialRecommendation]
+    var risks: [String]
+    var opportunities: [String]
+    var model: String?
+    var totals: SocialTotals?
+    var previous: SocialTotals?
+    var channels: [SocialChannelTotals]
+    var topPosts: [SocialTopPost]
+    var bestTimes: [SocialBestTime]
+    var comments: SocialReportComments?
+    var scheduledNext: Int?
+    var aiNote: String?
+}
+
+struct SocialStatsRange: Codable, Hashable {
+    var days: Int
+    var from: String
+    var to: String
+}
+
+struct SocialStatsSync: Codable, Hashable {
+    var publications: Int
+    var withMetrics: Int
+    var lastSyncedAt: String?
+    var problems: [String]
+}
+
+struct SocialStatsInsights: Codable, Hashable {
+    var connected: Bool
+    var facebook: Bool
+    var instagram: Bool
+    var missingScopes: [String]
+}
+
+struct SocialStatsSettings: Codable, Hashable {
+    var aiReportsEnabled: Bool
+    var aiReportsConsentAt: String?
+}
+
+/// Zakładka „Statystyki” (`op=stats`).
+struct SocialStats: Codable {
+    var companies: [SocialCompany]
+    var company: SocialCompany
+    var access: SocialAccess
+    var range: SocialStatsRange
+    var totals: SocialTotals
+    var previous: SocialTotals
+    var channels: [SocialChannelTotals]
+    var timeline: [SocialTimelinePoint]
+    var bestTimes: SocialBestTimes
+    var topPosts: [SocialTopPost]
+    var sync: SocialStatsSync
+    var insights: SocialStatsInsights
+    var reports: [SocialReportSummary]
+    var report: SocialReport?
+    var settings: SocialStatsSettings
+    var canRefresh: Bool
+    var canGenerate: Bool
+    var lastWeekStart: String
+}
+
+/// Liczby jak w CRM: „1 234”, „12,3 tys.”, „1,2 mln”, „4,2%”, zmiana „+12%” / „−5%” / „nowe”, okres „10–16.11.2026”.
+enum SocialNumbers {
+    static let ranges = [7, 28, 90]
+    static let timeBands = ["0–6", "6–9", "9–12", "12–15", "15–18", "18–21", "21–24"]
+    static let weekdaysShort = ["pon", "wt", "śr", "czw", "pt", "sob", "nd"]
+
+    static func number(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
+        let sign = value < 0 ? "−" : ""
+        let magnitude = abs(value)
+        if magnitude >= 1_000_000 { return sign + String(format: "%.1f", magnitude / 1_000_000).replacingOccurrences(of: ".", with: ",") + " mln" }
+        if magnitude >= 10_000 { return sign + String(format: "%.1f", magnitude / 1000).replacingOccurrences(of: ".", with: ",") + " tys." }
+        let digits = Array(String(Int(magnitude.rounded())))
+        var result = ""
+        for (index, digit) in digits.enumerated() {
+            if index > 0 && (digits.count - index) % 3 == 0 { result.append("\u{00A0}") }
+            result.append(digit)
+        }
+        return sign + result
+    }
+
+    static func number(_ value: Int) -> String { number(Double(value)) }
+
+    static func percent(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "—" }
+        return String(format: "%.1f", value * 100).replacingOccurrences(of: ".", with: ",") + "%"
+    }
+
+    static func change(_ current: Double?, _ previous: Double?) -> String? {
+        guard let current, let previous else { return nil }
+        if previous == 0 { return current > 0 ? "nowe" : nil }
+        let change = Int(((current - previous) / previous * 100).rounded())
+        if change == 0 { return "0%" }
+        return change > 0 ? "+\(change)%" : "−\(abs(change))%"
+    }
+
+    static func period(_ start: String, _ end: String) -> String {
+        let a = start.split(separator: "-").map(String.init)
+        let b = end.split(separator: "-").map(String.init)
+        guard a.count == 3, b.count == 3 else { return [start, end].filter { !$0.isEmpty }.joined(separator: " – ") }
+        let dayA = String(a[2].prefix(2)), dayB = String(b[2].prefix(2))
+        if a[0] != b[0] { return "\(dayA).\(a[1]).\(a[0])–\(dayB).\(b[1]).\(b[0])" }
+        if a[1] != b[1] { return "\(dayA).\(a[1])–\(dayB).\(b[1]).\(b[0])" }
+        return "\(dayA)–\(dayB).\(b[1]).\(b[0])"
+    }
+
+    static func plural(_ count: Int, _ one: String, _ few: String, _ many: String) -> String {
+        let n = abs(count)
+        if n == 1 { return one }
+        return (2...4).contains(n % 10) && !(12...14).contains(n % 100) ? few : many
+    }
 }
 
 enum SocialDates {

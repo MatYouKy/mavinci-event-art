@@ -13,8 +13,8 @@ import {
 import {
   SOCIAL_CHANNELS, SOCIAL_FORMATS, SOCIAL_LIMITS, channelFormat, defaultFormatsForChannels, effectiveCrop, fitCrop, formatSlug,
   SOCIAL_CHANNEL_LABELS, isSocialChannel, isSocialCrop, isSocialFormat, normalizeHashtags, socialCanPublishNow, socialPostActions,
-  socialPublicationText,
-  type SocialAccess, type SocialChannel, type SocialCrop, type SocialFormat, type SocialPostAction, type SocialPostStatus,
+  socialPublicationText, socialEngagementRate, socialMetricsFromRow,
+  type SocialAccess, type SocialChannel, type SocialMetricValues, type SocialCrop, type SocialFormat, type SocialPostAction, type SocialPostStatus,
 } from './socialShared';
 import { createZip } from './zip.server';
 import {
@@ -27,7 +27,8 @@ import {
  * Posty social media: kalendarz (lista w zakresie dat + szkice bez terminu + czekające na akceptację), karta posta
  * (warianty grafik, podglądy, braki, historia, akcje), zapis treści i grafik z renderem, zmiany statusu
  * (`social_post_transition`), termin z kalendarza, kopia, usunięcie, opisy AI i paczka do ręcznej publikacji (Etap 1),
- * planowanie i publikacja w Meta, wyniki kanałów, komentarze z odpowiedziami i siatka profilu z Instagrama (Etap 2).
+ * planowanie i publikacja w Meta, wyniki kanałów, komentarze z odpowiedziami i siatka profilu z Instagrama (Etap 2),
+ * statystyki kanałów posta z Meta (Etap 3; zakładka „Statystyki” i raport tygodniowy — `socialReport.server.ts`).
  * Te same funkcje obsługują web CRM, Maca i telefon (`/bridge/native/v1/social`).
  */
 
@@ -110,6 +111,8 @@ function settingsDTO(row: Row | null | undefined) {
   return {
     aiCaptionsEnabled: row?.ai_captions_enabled === true,
     aiConsentAt: text(row?.ai_consent_at) || null,
+    aiReportsEnabled: row?.ai_reports_enabled === true,
+    aiReportsConsentAt: text(row?.ai_reports_consent_at) || null,
     defaultHashtags: Array.isArray(row?.default_hashtags) ? (row!.default_hashtags as unknown[]).map(text) : [],
     captionStyle: text(row?.caption_style),
     updatedAt: text(row?.updated_at) || null,
@@ -266,6 +269,11 @@ export type SocialPublicationDTO = {
   attempts: number;
   publishedAt: string | null;
   attemptedAt: string | null;
+  /** Wyniki z Meta (Etap 3): stan narastająco od publikacji; brak klucza — Meta nie podaje metryki dla kanału. */
+  metrics: SocialMetricValues;
+  rate: number | null;
+  metricsSyncedAt: string | null;
+  metricsError: string | null;
 };
 
 const publicationDTO = (row: Row): SocialPublicationDTO => ({
@@ -277,6 +285,10 @@ const publicationDTO = (row: Row): SocialPublicationDTO => ({
   attempts: Number(row.attempts) || 0,
   publishedAt: text(row.published_at) || null,
   attemptedAt: text(row.attempted_at) || null,
+  metrics: socialMetricsFromRow(isObject(row.metrics) ? row.metrics : null),
+  rate: socialEngagementRate(socialMetricsFromRow(isObject(row.metrics) ? row.metrics : null)),
+  metricsSyncedAt: text(row.metrics_synced_at) || null,
+  metricsError: text(row.metrics_error) || null,
 });
 
 /** Braki blokujące publikację w Meta: konto i uprawnienia kanałów oraz wygenerowane grafiki. */
@@ -304,7 +316,8 @@ export async function socialPost(ctx: NativeContext, id: string): Promise<Social
     ctx.supabase.rpc('social_post_problems', { p_post_id: id, p_require_consent: true }),
     ctx.supabase.from('social_settings').select('*').eq('company_id', companyId).maybeSingle(),
     ctx.supabase.from('my_companies').select('id, name').eq('id', companyId).maybeSingle(),
-    ctx.supabase.from('social_publications').select('channel, status, format, permalink, error, attempts, published_at, attempted_at').eq('post_id', id),
+    ctx.supabase.from('social_publications')
+      .select('channel, status, format, permalink, error, attempts, published_at, attempted_at, metrics, metrics_synced_at, metrics_error').eq('post_id', id),
     ctx.supabase.from('social_comments').select('parent_external_id, is_own, answered_at').eq('post_id', id).limit(2000),
     socialMetaAccount(companyId).catch((error) => {
       console.warn('[social] meta account', errorMessage(error));
@@ -807,13 +820,14 @@ export async function postPackage(ctx: NativeContext, id: string): Promise<{ fil
   return { fileName: `${base}.zip`, zip: createZip(files) };
 }
 
-/** Ustawienia marki: opisy AI (zgoda), stałe hashtagi i wskazówki stylu — akceptujący. */
+/** Ustawienia marki: opisy AI i analiza AI raportu tygodniowego (zgody), stałe hashtagi i wskazówki stylu — akceptujący. */
 export async function saveSettings(ctx: NativeContext, body: Row) {
   const companyId = uuidOrNull(body.companyId);
   if (!companyId) fail('Wybierz markę.');
   await requireAccess(ctx, companyId, 'approve');
   const values: Row = { company_id: companyId };
   if ('aiCaptionsEnabled' in body) values.ai_captions_enabled = body.aiCaptionsEnabled === true;
+  if ('aiReportsEnabled' in body) values.ai_reports_enabled = body.aiReportsEnabled === true;
   if ('defaultHashtags' in body) {
     const tags = normalizeHashtags(Array.isArray(body.defaultHashtags) ? body.defaultHashtags.map(text) : text(body.defaultHashtags));
     if (tags.length > SOCIAL_LIMITS.hashtags) fail(`Najwyżej ${SOCIAL_LIMITS.hashtags} stałych hashtagów.`);

@@ -10,7 +10,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { colors, spacing, borderRadius, typography } from '../theme';
 import {
   SOCIAL_CHANNEL_LABELS, SOCIAL_FORMAT_INFO, SOCIAL_LIMITS, SOCIAL_POST_ACTION_LABELS, SOCIAL_POST_ACTION_SUCCESS,
-  SOCIAL_PUBLICATION_STATUS_LABELS, normalizeHashtags, socialConsentAllows, socialDateLabel, socialPostEditable, socialPublicationText,
+  SOCIAL_METRICS, SOCIAL_METRIC_LABELS, SOCIAL_PUBLICATION_STATUS_LABELS, formatSocialNumber, formatSocialPercent, normalizeHashtags, socialConsentAllows, socialDateLabel, socialPostEditable, socialPublicationText,
   type SocialPostAction,
 } from '../lib/socialShared';
 import SocialCommentsList from '../components/Social/SocialCommentsList';
@@ -245,7 +245,15 @@ export default function SocialPostScreen() {
 
         {(detail.meta || (detail.publications || []).length > 0 || ['scheduled', 'publishing', 'failed'].includes(detail.post.status)) && (
           <View style={styles.section}>
-            <Text style={styles.label}>Publikacja w Meta</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={styles.label}>Publikacja w Meta</Text>
+              {(detail.publications || []).some((item) => item.status === 'published') && (
+                <TouchableOpacity onPress={() => void run('Pobieram wyniki z Meta', () => socialPost<SocialPostDetail>('metricsRefresh', { postId: detail.post.id }), 'Odświeżono wyniki posta.')}
+                  accessibilityRole="button" accessibilityLabel="Odśwież wyniki z Meta">
+                  <Text style={styles.linkText}>↻ Wyniki</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             {detail.post.status === 'scheduled' && (
               <Text style={[styles.body, { color: colors.status.info }]}>Zaplanowano na {socialDateLabel(detail.post.scheduledAt)}{detail.post.scheduledByName ? ` — ${detail.post.scheduledByName}` : ''}. Post opublikuje się automatycznie.</Text>
             )}
@@ -264,6 +272,23 @@ export default function SocialPostScreen() {
                   ) : null}
                   {publication?.error && publication.status !== 'published' ? <Text style={[styles.muted, { color: colors.status.error }]}>{publication.error}</Text> : null}
                   {!publication && problem ? <Text style={[styles.muted, { color: colors.status.warning }]}>{problem}</Text> : null}
+                  {publication?.status === 'published' ? (
+                    SOCIAL_METRICS.some((key) => publication.metrics?.[key] != null) ? (
+                      <View style={{ gap: 2 }}>
+                        <Text style={styles.muted}>
+                          {SOCIAL_METRICS.filter((key) => publication.metrics?.[key] != null)
+                            .map((key) => `${SOCIAL_METRIC_LABELS[key]}: ${formatSocialNumber(publication.metrics?.[key])}`).join(' · ')}
+                        </Text>
+                        <Text style={styles.muted}>
+                          {publication.rate != null ? `Zaangażowanie ${formatSocialPercent(publication.rate)}` : ''}
+                          {publication.metricsSyncedAt ? `${publication.rate != null ? ' · ' : ''}pobrano ${socialDateLabel(publication.metricsSyncedAt)}` : ''}
+                          {publication.metricsError ? ` · ${publication.metricsError}` : ''}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.muted}>{publication.metricsError || (publication.metricsSyncedAt ? 'Meta nie podała jeszcze wyników.' : 'Wyniki pojawią się w ciągu godziny od publikacji.')}</Text>
+                    )
+                  ) : null}
                 </View>
               );
             })}

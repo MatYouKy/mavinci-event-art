@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator, Alert, FlatList, Image, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
@@ -9,6 +9,7 @@ import {
   SOCIAL_CHANNEL_LABELS, socialConsentAllows, socialDateLabel, socialPostStatusLabel, type SocialPostStatus,
 } from '../lib/socialShared';
 import SocialCommentsList from '../components/Social/SocialCommentsList';
+import SocialStatsView from '../components/Social/SocialStatsView';
 import {
   pickSocialPhoto, socialErrorMessage, socialGet, socialPost, uploadSocialPhoto, type SocialAssetItem, type SocialHome,
   type SocialLibrary, type SocialPostItem,
@@ -17,11 +18,12 @@ import {
 /*
  * Marketing → „Social media” w aplikacji: „Do akceptacji” (posty czekające na akceptującego, do poprawy u autora i z błędem
  * publikacji), „Plan” (posty z terminem i szkice), „Biblioteka” (zdjęcia marki i propozycje z wydarzeń) i „Komentarze”
- * (Facebook i Instagram, odpowiedzi jako marka). Szybki post lub relacja z szablonu marki — ekran „Szybki post”; post — karta
+ * (Facebook i Instagram, odpowiedzi jako marka) i „Statystyki” (wyniki z Meta, najlepsze pory, raport tygodniowy „Trendy
+ * i rekomendacje”). Szybki post lub relacja z szablonu marki — ekran „Szybki post”; post — karta
  * z grafikami z serwera (te same pliki co w CRM i na Macu). Dane i zapis przez `/bridge/native/v1/social` (uprawnienia jak w CRM).
  */
 
-type Segment = 'review' | 'plan' | 'library' | 'comments';
+type Segment = 'review' | 'plan' | 'library' | 'comments' | 'stats';
 
 export const POST_STATUS_COLORS: Record<SocialPostStatus, string> = {
   draft: colors.text.tertiary,
@@ -47,7 +49,14 @@ export function SocialStatusBadge({ status }: { status: SocialPostStatus }) {
 export default function SocialMediaScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const [segment, setSegment] = useState<Segment>(route.params?.segment === 'comments' ? 'comments' : 'review');
+  const [segment, setSegment] = useState<Segment>(
+    route.params?.segment === 'comments' ? 'comments' : route.params?.segment === 'stats' ? 'stats' : 'review',
+  );
+  const [statsVersion, setStatsVersion] = useState(0);
+  // Powiadomienie (komentarze, raport tygodniowy) przy otwartym już ekranie — zmiana zakładki z nowych parametrów.
+  useEffect(() => {
+    if (route.params?.segment === 'comments' || route.params?.segment === 'stats') setSegment(route.params.segment);
+  }, [route.params?.segment, route.params?.report]);
   const [commentsVersion, setCommentsVersion] = useState(0);
   const [home, setHome] = useState<SocialHome | null>(null);
   const [library, setLibrary] = useState<SocialLibrary | null>(null);
@@ -179,21 +188,29 @@ export default function SocialMediaScreen() {
           </TouchableOpacity>
         )}
       </View>
-      <View style={styles.segments}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={styles.tabs}>
         {([
           ['review', `Akceptacja${review.length ? ` (${review.length})` : ''}`],
           ['plan', 'Plan'],
           ['library', `Biblioteka${home.counts.proposals ? ` (${home.counts.proposals})` : ''}`],
           ['comments', `Komentarze${unanswered ? ` (${unanswered})` : ''}`],
+          ['stats', 'Statystyki'],
         ] as const).map(([key, label]) => (
-          <TouchableOpacity key={key} style={[styles.segment, segment === key && styles.segmentActive]} onPress={() => setSegment(key)}>
+          <TouchableOpacity key={key} style={[styles.tab, segment === key && styles.segmentActive]} onPress={() => setSegment(key)}>
             <Text style={[styles.segmentText, segment === key && styles.segmentTextActive]}>{label}</Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
       {busy && <View style={styles.busy}><ActivityIndicator color={colors.primary.gold} /><Text style={styles.muted}>Proszę chwilę poczekać…</Text></View>}
 
-      {segment === 'comments' ? (
+      {segment === 'stats' ? (
+        <ScrollView
+          contentContainerStyle={{ padding: spacing.md, gap: spacing.md }}
+          refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.primary.gold} onRefresh={() => { setRefreshing(true); setStatsVersion((value) => value + 1); void load(); }} />}>
+          <SocialStatsView key={`${home.company.id}-${route.params?.report || ''}`} companyId={home.company.id} initialReportId={route.params?.report || null}
+            refreshKey={statsVersion} onOpenPost={(id) => navigation.navigate('SocialPost', { postId: id })} />
+        </ScrollView>
+      ) : segment === 'comments' ? (
         <ScrollView
           contentContainerStyle={{ padding: spacing.md, gap: spacing.md }}
           refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.primary.gold} onRefresh={() => { setRefreshing(true); setCommentsVersion((value) => value + 1); void load(); }} />}>
@@ -254,6 +271,8 @@ const styles = StyleSheet.create({
   secondary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: colors.border.hover, paddingVertical: spacing.sm, borderRadius: borderRadius.md },
   secondaryText: { color: colors.primary.gold, fontSize: typography.fontSizes.sm },
   segments: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.md },
+  tabs: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.md },
+  tab: { alignItems: 'center', paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: borderRadius.md, backgroundColor: colors.background.secondary },
   segment: { flex: 1, alignItems: 'center', paddingVertical: spacing.sm, borderRadius: borderRadius.md, backgroundColor: colors.background.secondary },
   segmentActive: { backgroundColor: 'rgba(211,187,115,0.18)' },
   segmentText: { color: colors.text.secondary, fontSize: typography.fontSizes.xs },

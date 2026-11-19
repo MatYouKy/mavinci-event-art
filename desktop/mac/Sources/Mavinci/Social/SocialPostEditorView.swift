@@ -565,13 +565,22 @@ private enum SocialPickerTarget: Identifiable {
     }
 
     // MARK: Publikacja w Meta
-    /// Stan publikacji: termin i osoba planująca, błąd, wyniki kanałów (link albo błąd) i braki konta Meta.
+    /// Stan publikacji: termin i osoba planująca, błąd, wyniki kanałów (link albo błąd, po publikacji — statystyki z Meta)
+    /// i braki konta Meta.
     @ViewBuilder private func metaCard(_ detail: SocialPostDetail) -> some View {
         let publications = detail.publications ?? []
         let status = detail.post.status
+        let anyPublished = publications.contains { $0.status == "published" }
         if detail.meta != nil || !publications.isEmpty || [.scheduled, .publishing, .failed].contains(status) {
             card {
-                Label("Publikacja w Meta", systemImage: "calendar.badge.clock").font(.headline)
+                HStack {
+                    Label("Publikacja w Meta", systemImage: "calendar.badge.clock").font(.headline)
+                    Spacer()
+                    if anyPublished {
+                        Button { Task { await store.refreshPostMetrics(detail) } } label: { Label("Wyniki", systemImage: "arrow.clockwise") }
+                            .buttonStyle(.link).font(.caption).help("Pobierz aktualne wyniki z Meta")
+                    }
+                }
                 if status == .scheduled {
                     Text("Zaplanowano na \(SocialDates.dateTime(detail.post.scheduledAt))\(detail.post.scheduledByName.map { " — \($0)" } ?? ""). Post opublikuje się automatycznie.")
                         .font(.caption).padding(8).frame(maxWidth: .infinity, alignment: .leading)
@@ -601,6 +610,7 @@ private enum SocialPickerTarget: Identifiable {
                         }
                         if let error = publication?.error, publication?.status != "published" { Text(error).font(.caption2).foregroundStyle(.red) }
                         if publication == nil, let problem { Text(problem).font(.caption2).foregroundStyle(.orange) }
+                        if let publication, publication.status == "published" { publicationMetrics(publication) }
                     }
                 }
                 if let meta = detail.meta, !meta.connected {
@@ -609,6 +619,38 @@ private enum SocialPickerTarget: Identifiable {
                 }
             }
         }
+    }
+
+    /// Wyniki kanału z Meta (stan narastająco od publikacji).
+    @ViewBuilder private func publicationMetrics(_ publication: SocialPublication) -> some View {
+        let values = publication.metrics ?? SocialMetricValues()
+        let available = values.available
+        if available.isEmpty {
+            Text(publication.metricsError ?? (publication.metricsSyncedAt == nil ? "Wyniki pojawią się w ciągu godziny od publikacji." : "Meta nie podała jeszcze wyników."))
+                .font(.caption2).foregroundStyle(.secondary)
+        } else {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 88), spacing: 4)], alignment: .leading, spacing: 4) {
+                ForEach(available) { metric in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(metric.label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        Text(SocialNumbers.number(values[metric])).font(.caption.monospacedDigit())
+                    }
+                    .padding(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.05)))
+                    .help(metric.hint)
+                }
+            }
+            Text(metricsInfo(publication)).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    private func metricsInfo(_ publication: SocialPublication) -> String {
+        var parts: [String] = []
+        if let rate = publication.rate { parts.append("Zaangażowanie \(SocialNumbers.percent(rate))") }
+        if let synced = publication.metricsSyncedAt { parts.append("pobrano \(SocialDates.dateTime(synced))") }
+        if let error = publication.metricsError { parts.append(error) }
+        return parts.joined(separator: " · ")
     }
 
     private func defaultScheduleDate(_ detail: SocialPostDetail) -> Date {
