@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canAccessMarketingCompany, getMarketingAccess } from '@/lib/marketing/auth.server';
 import { encryptMarketingCredentials } from '@/lib/marketing/crypto.server';
+import { metaAuthHeaders, hasMetaScope } from '@/lib/marketing/metaGraph.server';
 import {
   GOOGLE_SCOPES,
   getGoogleAdsVersion,
@@ -212,30 +213,27 @@ export async function GET(
         console.warn('[marketing oauth] long-lived Meta token unavailable', error);
       }
 
-      const fields = encodeURIComponent('id,name,access_token,category');
+      // Token w nagłówku, nie w adresie. Strony z połączonym kontem Instagram (publikacja social media).
+      const userHeaders = { headers: metaAuthHeaders(userAccessToken) };
+      const fields = encodeURIComponent('id,name,access_token,category,instagram_business_account{id,username}');
       const [profile, pages, adAccounts, permissionResponse] = await Promise.all([
         readJsonResponse(
-          await fetch(
-            `https://graph.facebook.com/${graphVersion}/me?fields=id,name&access_token=${encodeURIComponent(userAccessToken)}`,
-          ),
+          await fetch(`https://graph.facebook.com/${graphVersion}/me?fields=id,name`, userHeaders),
           'Profil Meta',
         ),
         readJsonResponse(
-          await fetch(
-            `https://graph.facebook.com/${graphVersion}/me/accounts?fields=${fields}&limit=100&access_token=${encodeURIComponent(userAccessToken)}`,
-          ),
+          await fetch(`https://graph.facebook.com/${graphVersion}/me/accounts?fields=${fields}&limit=100`, userHeaders),
           'Strony Meta',
         ),
         readJsonResponse(
           await fetch(
-            `https://graph.facebook.com/${graphVersion}/me/adaccounts?fields=id,name,account_status,currency&limit=100&access_token=${encodeURIComponent(userAccessToken)}`,
+            `https://graph.facebook.com/${graphVersion}/me/adaccounts?fields=id,name,account_status,currency&limit=100`,
+            userHeaders,
           ),
           'Konta reklamowe Meta',
         ).catch(() => ({ data: [] })),
         readJsonResponse(
-          await fetch(
-            `https://graph.facebook.com/${graphVersion}/me/permissions?access_token=${encodeURIComponent(userAccessToken)}`,
-          ),
+          await fetch(`https://graph.facebook.com/${graphVersion}/me/permissions`, userHeaders),
           'Uprawnienia Meta',
         ).catch(() => ({ data: [] })),
       ]);
@@ -251,24 +249,28 @@ export async function GET(
         availableAdAccounts.find((account: any) => account.id === currentSettings.ad_account_id) ||
         availableAdAccounts[0];
 
+      // Webhook strony: wiadomości (pages_messaging) i komentarze postów (feed) — gdy Meta przyznała uprawnienia.
+      const subscribedFields = [
+        grantedScopes.includes('pages_messaging') && 'messages',
+        hasMetaScope(grantedScopes, 'pages_read_user_content') && 'feed',
+      ].filter(Boolean).join(',');
       if (
         selectedPage?.id &&
         selectedPage?.access_token &&
-        grantedScopes.includes('pages_messaging') &&
+        subscribedFields &&
         grantedScopes.includes('pages_manage_metadata')
       ) {
         const subscribeUrl = new URL(
           `https://graph.facebook.com/${graphVersion}/${selectedPage.id}/subscribed_apps`,
         );
-        subscribeUrl.searchParams.set('access_token', selectedPage.access_token);
         try {
           await readJsonResponse(
             await fetch(subscribeUrl, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ subscribed_fields: 'messages' }),
+              headers: { ...metaAuthHeaders(selectedPage.access_token), 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ subscribed_fields: subscribedFields }),
             }),
-            'Subskrypcja wiadomości strony Meta',
+            'Subskrypcja webhooka strony Meta',
           );
         } catch (error) {
           console.warn('[marketing oauth] Meta webhook subscription unavailable', error);
@@ -293,6 +295,10 @@ export async function GET(
         ad_account_name: currentSettings.ad_account_name || selectedAdAccount?.name || '',
         currency: currentSettings.currency || selectedAdAccount?.currency || 'PLN',
       };
+      // Konto Instagram połączone z przypisaną stroną (publikacja i komentarze social media).
+      const assignedPage = availablePages.find((page: any) => page.id === settings.page_id);
+      settings.instagram_account_id = String(assignedPage?.instagram_business_account?.id || '');
+      settings.instagram_username = String(assignedPage?.instagram_business_account?.username || '');
       displayName = profile.name || selectedPage?.name || 'Meta';
       externalAccountId = String(settings.page_id || settings.ad_account_id || '') || null;
       scopes = grantedScopes;

@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import { decryptMarketingCredentials, encryptMarketingCredentials } from './crypto.server';
+import { metaAuthHeaders } from './metaGraph.server';
 import {
   getMetaGraphVersion,
   getGoogleAdsVersion,
@@ -287,8 +288,10 @@ async function syncMeta(integration: IntegrationRow, credentials: MetaCredential
     insightsUrl.searchParams.set('time_increment', '1');
     insightsUrl.searchParams.set('time_range', JSON.stringify({ since: start, until: end }));
     insightsUrl.searchParams.set('limit', '5000');
-    insightsUrl.searchParams.set('access_token', credentials.user_access_token);
-    const insights = await readJsonResponse(await fetch(insightsUrl, { cache: 'no-store' }), 'Meta Ads');
+    const insights = await readJsonResponse(
+      await fetch(insightsUrl, { cache: 'no-store', headers: metaAuthHeaders(credentials.user_access_token) }),
+      'Meta Ads',
+    );
     const metricRows = (insights.data || []).map((row: any) => ({
       company_id: integration.company_id,
       integration_id: integration.id,
@@ -321,9 +324,8 @@ async function syncMeta(integration: IntegrationRow, credentials: MetaCredential
       'id,name,status,effective_status,objective,daily_budget,lifetime_budget,start_time,stop_time',
     );
     campaignsUrl.searchParams.set('limit', '500');
-    campaignsUrl.searchParams.set('access_token', credentials.user_access_token);
     const campaignData = await readJsonResponse(
-      await fetch(campaignsUrl, { cache: 'no-store' }),
+      await fetch(campaignsUrl, { cache: 'no-store', headers: metaAuthHeaders(credentials.user_access_token) }),
       'Kampanie Meta',
     );
     const totals = new Map<string, any>();
@@ -382,10 +384,9 @@ async function syncMeta(integration: IntegrationRow, credentials: MetaCredential
     pageInsightsUrl.searchParams.set('period', 'day');
     pageInsightsUrl.searchParams.set('since', start);
     pageInsightsUrl.searchParams.set('until', end);
-    pageInsightsUrl.searchParams.set('access_token', pageToken);
     try {
       const insights = await readJsonResponse(
-        await fetch(pageInsightsUrl, { cache: 'no-store' }),
+        await fetch(pageInsightsUrl, { cache: 'no-store', headers: metaAuthHeaders(pageToken) }),
         'Statystyki strony Facebook',
       );
       const rowsByDate = new Map<string, any>();
@@ -435,10 +436,9 @@ async function syncMeta(integration: IntegrationRow, credentials: MetaCredential
       'id,updated_time,participants,messages.limit(10){id,message,from,created_time}',
     );
     conversationsUrl.searchParams.set('limit', '50');
-    conversationsUrl.searchParams.set('access_token', pageToken);
     try {
       const conversations = await readJsonResponse(
-        await fetch(conversationsUrl, { cache: 'no-store' }),
+        await fetch(conversationsUrl, { cache: 'no-store', headers: metaAuthHeaders(pageToken) }),
         'Wiadomości Facebook',
       );
       const messages = (conversations.data || []).flatMap((thread: any) =>
@@ -537,11 +537,10 @@ export async function updateExternalCampaignStatus(
     const url = new URL(
       `https://graph.facebook.com/${getMetaGraphVersion()}/${campaign.external_campaign_id}`,
     );
-    url.searchParams.set('access_token', credentials.user_access_token);
     await readJsonResponse(
       await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: { ...metaAuthHeaders(credentials.user_access_token), 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ status: nextStatus }),
       }),
       'Zmiana statusu kampanii Meta',

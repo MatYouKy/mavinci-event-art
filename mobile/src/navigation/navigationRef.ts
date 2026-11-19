@@ -114,7 +114,27 @@ export function routeSalesUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (/^\/crm\/(offers|invoices|settings|salespeople)(\/|\?|$)/i.test(url)) { openInCrmWeb(url); return true; }
+  if (/^\/crm\/marketing\/social(\/|\?|$)/i.test(url)) {
+    // Akceptacja, plan, publikacja i komentarze — w aplikacji (karta posta albo ekran Social media).
+    const post = url.match(new RegExp(`[?&]post=(${UUID})`, 'i'));
+    const comments = /[?&]tab=comments(&|$)/i.test(url);
+    if (post) navigateToSocialPost(post[1], comments);
+    else navigateToSocialMedia(comments);
+    return true;
+  }
   return false;
+}
+
+export function navigateToSocialMedia(comments = false) {
+  if (navigationRef.isReady()) {
+    navigationRef.navigate('SocialMedia', comments ? { segment: 'comments' } : undefined);
+  }
+}
+
+export function navigateToSocialPost(postId: string, comments = false) {
+  if (navigationRef.isReady()) {
+    navigationRef.navigate('SocialPost', { postId, comments });
+  }
 }
 
 export function navigateToEvent(eventId: string, initialTab?: EventNotificationTab) {

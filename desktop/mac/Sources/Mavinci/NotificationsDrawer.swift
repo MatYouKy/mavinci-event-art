@@ -131,6 +131,11 @@ import AppKit
                 }
                 // Stan systemu: /crm/settings/system-health — integracje, jakość danych i bezpieczeństwo (administrator).
                 if section=="settings",next=="system-health"{return showSystemHealth()}
+                // Social media: /crm/marketing/social?post=<id>[&tab=comments] — post w kreatorze (bez id — kalendarz albo komentarze).
+                if section=="marketing",next=="social"{
+                    showSocialPost(q["post"].flatMap{UUID(uuidString:$0) != nil ? $0:nil}, comments: q["tab"]=="comments")
+                    return true
+                }
                 // Kampanie e-mail: /crm/campaigns?campaign=<id> — kampania w Centrum Kampanii (bez id — lista kampanii).
                 if section=="campaigns"{
                     showCampaign(q["campaign"].flatMap{UUID(uuidString:$0) != nil ? $0:nil})

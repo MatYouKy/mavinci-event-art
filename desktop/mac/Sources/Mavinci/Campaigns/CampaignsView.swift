@@ -62,12 +62,15 @@ import SwiftUI
 
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
+            // Opis najwyżej w dwóch wierszach: tekst „rosnący w pionie” poza przewijaniem zawyżał minimalną wysokość ekranu
+            // (przy minimalnej szerokości — po słowie w wierszu), okno dostosowywało się do treści i całość, z paskiem bocznym, uciekała w górę.
             VStack(alignment: .leading, spacing: 4) {
                 Label("Sprzedaż i relacje", systemImage: "megaphone").font(.callout).foregroundStyle(theme.accent)
                 Text("Centrum Kampanii").font(.title.weight(.light))
                 Text("Twórz kampanie tylko do klientów z właściwą podstawą komunikacji. Każda grupa jest przeliczana, testowana i zatwierdzana przed wysyłką.")
-                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.callout).foregroundStyle(.secondary).lineLimit(2)
             }
+            .layoutPriority(1)
             Spacer(minLength: 16)
             if store.loading { ProgressView().controlSize(.small) }
             Button { Task { await refresh() } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }

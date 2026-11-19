@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
+import { publicationsForExternalIds, syncSocialComments } from '@/lib/social/socialMeta.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,8 +38,29 @@ export async function POST(request: NextRequest) {
 
   try {
     const payload = JSON.parse(rawBody);
-    if (payload.object !== 'page') return NextResponse.json({ received: true });
     const admin = createSupabaseAdminClient();
+    // Komentarze opublikowanych postów social media: strona (pole `feed`, komentarz) i Instagram (pole `comments`).
+    // Treść pobieramy z Graph API (te same reguły co odświeżanie), webhook wskazuje tylko, który post odświeżyć.
+    const commentTargets = { facebook: [] as string[], instagram: [] as string[] };
+    for (const entry of payload.entry || []) {
+      for (const change of entry.changes || []) {
+        if (payload.object === 'page' && change.field === 'feed' && change.value?.item === 'comment' && change.value?.post_id) {
+          commentTargets.facebook.push(String(change.value.post_id));
+        }
+        if (payload.object === 'instagram' && change.field === 'comments' && change.value?.media?.id) {
+          commentTargets.instagram.push(String(change.value.media.id));
+        }
+      }
+    }
+    if (commentTargets.facebook.length || commentTargets.instagram.length) {
+      try {
+        const publicationIds = await publicationsForExternalIds(admin, commentTargets);
+        if (publicationIds.length) await syncSocialComments({ publicationIds: publicationIds.slice(0, 20) });
+      } catch (commentError) {
+        console.error('[meta marketing webhook] comments', commentError);
+      }
+    }
+    if (payload.object !== 'page') return NextResponse.json({ received: true });
     let inserted = 0;
 
     for (const entry of payload.entry || []) {

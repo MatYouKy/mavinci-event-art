@@ -81,7 +81,12 @@ export interface MenuItem {
   label: string;
   screen: string;
   module?: ModuleName;
+  /** Pozycja widoczna dla administratora albo przy dowolnym z uprawnień (jak `anyPermissions` w nawigacji CRM). */
+  anyPermissions?: string[];
 }
+
+/** Social media (Marketing) — te same klucze co w CRM; zakres marek i akcji sprawdza serwer. */
+export const SOCIAL_MEDIA_PERMISSIONS = ['marketing_social_view', 'marketing_social_create', 'marketing_social_approve', 'marketing_social_publish'];
 
 export const MENU_ITEMS: MenuItem[] = [
   { icon: 'home', label: 'Dashboard', screen: 'Dashboard' },
@@ -98,12 +103,14 @@ export const MENU_ITEMS: MenuItem[] = [
   { icon: 'users', label: 'Pracownicy', screen: 'Employees', module: 'employees' },
   { icon: 'truck', label: 'Flota', screen: 'Fleet', module: 'fleet' },
   { icon: 'package', label: 'Sprzęt', screen: 'Equipment', module: 'equipment' },
+  { icon: 'image', label: 'Social media', screen: 'SocialMedia', anyPermissions: SOCIAL_MEDIA_PERMISSIONS },
   { icon: 'user', label: 'Profil', screen: 'Profile' },
   { icon: 'settings', label: 'Ustawienia', screen: 'Settings' },
 ];
 
 export const getVisibleMenuItems = (employee: PermissionEmployee): MenuItem[] => {
   return MENU_ITEMS.filter((item) => {
+    if (item.anyPermissions) return item.anyPermissions.some((scope) => hasPermission(employee, scope));
     if (!item.module) return true;
     return canView(employee, item.module);
   });

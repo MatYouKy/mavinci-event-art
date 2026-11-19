@@ -5,6 +5,7 @@ import { useOperationalStages } from '../hooks/useOperationalStages';
 import { OPERATIONAL_LABELS, usesOperationalStages } from '../lib/operationalStages';
 import RealizationWorkspace from '../components/Events/RealizationWorkspace';
 import EventCardButton from '../components/Events/EventCardButton';
+import SocialEventPhotoButton from '../components/Social/SocialEventPhotoButton';
 import { respondToAssignment } from '../services/assignmentResponse';
 import WarehouseHandoffPanel from '../components/Events/WarehouseHandoffPanel';
 import EventStepsPanel, { type EventStepRowLink } from '../components/Events/EventStepsPanel';
@@ -1245,6 +1246,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       >
         {activeTab === 'details' && isEventOrganizer(event.created_by, employee?.id, session?.user?.id) && <TouchableOpacity onPress={() => openInCrmWeb('/crm/events/actions')} style={{ margin: 16, padding: 12, borderRadius: 10, backgroundColor: colors.background.secondary }}><Text style={{ color: colors.primary.gold }}>Moje wydarzenia — następne kroki i przypomnienia →</Text></TouchableOpacity>}
         {activeTab === 'details' && canPrintCard && <EventCardButton eventId={eventId} />}
+        {activeTab === 'details' && <SocialEventPhotoButton eventId={eventId} />}
         {activeTab === 'details' && <RealizationActions eventId={eventId} onChanged={() => void loadAll(true)} />}
         {activeTab === 'details' && accessResult?.mode === 'error' && (
           <View style={styles.accessNotice} accessibilityRole="alert">

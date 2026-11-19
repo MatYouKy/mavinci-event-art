@@ -117,6 +117,14 @@ export const allNavigation: NavigationItemDTO[] = [
         module: 'marketing_campaigns',
         permissions: ['marketing_campaigns_view'],
       },
+      {
+        key: 'marketing-campaigns',
+        name: 'Social media',
+        href: '/crm/marketing/social',
+        iconKey: 'social',
+        module: 'marketing_social',
+        anyPermissions: ['marketing_social_view', 'marketing_social_create', 'marketing_social_approve', 'marketing_social_publish'],
+      },
     ],
   },
   {

@@ -246,6 +246,77 @@ export async function renderPrintJob(job: PrintJob): Promise<RenderedPdf> {
   }
 }
 
+/**
+ * HTML z własnym skryptem (np. grafika social media, `src/lib/social/socialGraphic.ts`) → obraz w dokładnych wymiarach.
+ * Bez sieci (tylko `data:`), skala 1, czeka na `data-ready="1"` na <html> (fonty, zdjęcia, dopasowanie tekstu).
+ */
+export async function renderHtmlToImage(
+  html: string,
+  options: { width: number; height: number; type?: 'jpeg' | 'png'; quality?: number; timeoutMs?: number },
+): Promise<Buffer> {
+  activeRenders += 1;
+  if (idleTimer) clearTimeout(idleTimer);
+  try {
+    const browser = await getBrowser();
+    const context = await browser.newContext({
+      javaScriptEnabled: true,
+      viewport: { width: options.width, height: options.height },
+      deviceScaleFactor: 1,
+    });
+    try {
+      const page = await context.newPage();
+      await page.route('**/*', (route) => {
+        const url = route.request().url();
+        return url.startsWith('data:') || url === 'about:blank' ? route.continue() : route.abort();
+      });
+      const timeout = options.timeoutMs ?? 20_000;
+      await page.setContent(html, { waitUntil: 'load', timeout });
+      await page.waitForFunction(() => document.documentElement.getAttribute('data-ready') === '1', null, { timeout });
+      const type = options.type ?? 'jpeg';
+      return Buffer.from(await page.screenshot({
+        type,
+        ...(type === 'jpeg' ? { quality: options.quality ?? 92 } : {}),
+        clip: { x: 0, y: 0, width: options.width, height: options.height },
+        animations: 'disabled',
+      }));
+    } finally {
+      await context.close().catch(() => undefined);
+    }
+  } finally {
+    activeRenders -= 1;
+    scheduleIdleClose();
+  }
+}
+
+/**
+ * Funkcja (kod źródłowy JavaScript `(arg) => …`, bez odwołań na zewnątrz) wykonana w pustej stronie Chromium bez sieci —
+ * np. analiza zdjęcia na canvasie (`src/lib/social/socialAnalyze.server.ts`). Ta sama przeglądarka co render PDF i grafik
+ * (orientacja EXIF i dekodowanie obrazów jak przy renderze). Kod jako tekst — kompilacja serwera go nie zmienia.
+ */
+export async function evaluateInBrowser<A, T>(source: string, arg: A, timeoutMs = 60_000): Promise<T> {
+  activeRenders += 1;
+  if (idleTimer) clearTimeout(idleTimer);
+  try {
+    const browser = await getBrowser();
+    const context = await browser.newContext({ javaScriptEnabled: true, viewport: { width: 800, height: 600 } });
+    try {
+      const page = await context.newPage();
+      page.setDefaultTimeout(timeoutMs);
+      await page.route('**/*', (route) => {
+        const url = route.request().url();
+        return url.startsWith('data:') || url.startsWith('blob:') || url === 'about:blank' ? route.continue() : route.abort();
+      });
+      await page.setContent('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
+      return (await page.evaluate(([code, value]) => (0, eval)(`(${code})`)(value), [source, arg] as const)) as T;
+    } finally {
+      await context.close().catch(() => undefined);
+    }
+  } finally {
+    activeRenders -= 1;
+    scheduleIdleClose();
+  }
+}
+
 /** Nagłówek Content-Disposition z nazwą pliku w UTF-8. */
 export function pdfContentDisposition(fileName: string, download: boolean) {
   return `${download ? 'attachment' : 'inline'}; filename="${fileName.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;

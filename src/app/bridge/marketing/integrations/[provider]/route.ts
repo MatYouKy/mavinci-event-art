@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import type { MarketingProvider } from '@/lib/marketing/types';
 import { decryptMarketingCredentials } from '@/lib/marketing/crypto.server';
 import { getMetaGraphVersion, normaliseGoogleCustomerId, readJsonResponse } from '@/lib/marketing/providers.server';
+import { hasMetaScope, metaAuthHeaders, metaGraph } from '@/lib/marketing/metaGraph.server';
 
 const PROVIDERS = new Set<MarketingProvider>(['meta', 'google']);
 const ALLOWED_SETTINGS = new Set([
@@ -59,16 +60,41 @@ export async function PATCH(
     const admin = createSupabaseAdminClient();
     const { data: current, error: currentError } = await admin
       .from('marketing_integrations')
-      .select('id, settings, credentials_encrypted, status')
+      .select('id, settings, credentials_encrypted, status, scopes')
       .eq('company_id', companyId)
       .eq('provider', provider)
       .maybeSingle();
     if (currentError) throw currentError;
 
+    const mergedSettings: Record<string, unknown> = { ...(current?.settings || {}), ...settings };
+    // Meta: konto Instagram połączone z przypisaną stroną (z listy stron po autoryzacji, a przy nowej stronie — z Meta).
+    if (provider === 'meta' && 'page_id' in settings) {
+      const pageId = String(settings.page_id || '');
+      const pages = Array.isArray((current?.settings as any)?.available_pages) ? (current?.settings as any).available_pages : [];
+      const listed = pages.find((page: any) => page?.id === pageId)?.instagram_business_account;
+      let instagram: { id?: string; username?: string } | null = listed || null;
+      if (pageId && !instagram && current?.credentials_encrypted) {
+        try {
+          const credentials = decryptMarketingCredentials<{ user_access_token: string; page_access_tokens?: Record<string, string> }>(
+            current.credentials_encrypted,
+          );
+          const token = credentials.page_access_tokens?.[pageId] || credentials.user_access_token;
+          const page = await metaGraph<{ instagram_business_account?: { id: string; username?: string } }>(pageId, {
+            token, label: 'Konto Instagram strony', params: { fields: 'instagram_business_account{id,username}' },
+          });
+          instagram = page.instagram_business_account || null;
+        } catch (lookupError) {
+          console.warn('[marketing integration] Instagram account lookup unavailable', lookupError);
+        }
+      }
+      mergedSettings.instagram_account_id = String(instagram?.id || '');
+      mergedSettings.instagram_username = String(instagram?.username || '');
+    }
+
     const payload = {
       company_id: companyId,
       provider,
-      settings: { ...(current?.settings || {}), ...settings },
+      settings: mergedSettings,
       display_name: body?.displayName?.trim() || null,
       external_account_id:
         provider === 'meta'
@@ -86,7 +112,14 @@ export async function PATCH(
       .single();
     if (error) throw error;
 
-    if (provider === 'meta' && current?.credentials_encrypted && settings.page_id) {
+    // Webhook strony: wiadomości i komentarze postów — tylko pola, do których Meta przyznała uprawnienia.
+    const grantedScopes: string[] = Array.isArray(current?.scopes) ? current.scopes.map(String) : [];
+    const subscribedFields = [
+      grantedScopes.includes('pages_messaging') && 'messages',
+      hasMetaScope(grantedScopes, 'pages_read_user_content') && 'feed',
+    ].filter(Boolean).join(',');
+    if (provider === 'meta' && current?.credentials_encrypted && settings.page_id && subscribedFields
+      && grantedScopes.includes('pages_manage_metadata')) {
       try {
         const credentials = decryptMarketingCredentials<{
           user_access_token: string;
@@ -97,14 +130,13 @@ export async function PATCH(
         const subscribeUrl = new URL(
           `https://graph.facebook.com/${getMetaGraphVersion()}/${pageId}/subscribed_apps`,
         );
-        subscribeUrl.searchParams.set('access_token', pageToken);
         await readJsonResponse(
           await fetch(subscribeUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ subscribed_fields: 'messages' }),
+            headers: { ...metaAuthHeaders(pageToken), 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ subscribed_fields: subscribedFields }),
           }),
-          'Subskrypcja wiadomości strony Meta',
+          'Subskrypcja webhooka strony Meta',
         );
       } catch (subscriptionError) {
         console.warn('[marketing integration] Meta webhook subscription unavailable', subscriptionError);

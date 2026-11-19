@@ -17,6 +17,9 @@ import MyCommissionsScreen from '../screens/MyCommissionsScreen';
 import SellerCockpitScreen from '../screens/SellerCockpitScreen';
 import SellerDetailScreen from '../screens/SellerDetailScreen';
 import SellerHelpScreen from '../screens/SellerHelpScreen';
+import SocialMediaScreen from '../screens/SocialMediaScreen';
+import SocialPostScreen from '../screens/SocialPostScreen';
+import SocialQuickPostScreen from '../screens/SocialQuickPostScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -30,6 +33,14 @@ export type RootStackParamList = {
   SellerDetail: { sellerId: string; contactId: string | null; name: string; organization: string | null };
   /** Instrukcja opiekuna sprzedawców; `chapter` — rozdział otwarty na start (id z managerHelp.ts). */
   SellerHelp: { chapter?: string } | undefined;
+  /** Marketing → Social media: akceptacja szkiców, plan publikacji, biblioteka zdjęć marki. */
+  SocialMedia: { segment?: 'comments' } | undefined;
+  /** `comments` — z powiadomienia o komentarzach (przewinięcie do komentarzy). */
+  SocialPost: { postId: string; comments?: boolean };
+  /** Szybki post lub relacja z szablonu; parametry — zdjęcie z biblioteki, marka i wydarzenie. */
+  SocialQuickPost: {
+    companyId?: string | null; assetId?: string; assetThumb?: string | null; eventId?: string | null; eventName?: string | null;
+  } | undefined;
   PdfViewer: { url: string };
   EventDetail: {
     eventId: string;
@@ -158,6 +169,36 @@ export default function RootNavigator() {
               options={{
                 headerShown: true,
                 title: 'Instrukcja opiekuna'.toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="SocialMedia"
+              component={SocialMediaScreen}
+              options={{
+                headerShown: true,
+                title: 'Social media'.toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="SocialPost"
+              component={SocialPostScreen}
+              options={{
+                headerShown: true,
+                title: 'Post'.toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="SocialQuickPost"
+              component={SocialQuickPostScreen}
+              options={{
+                headerShown: true,
+                title: 'Szybki post'.toLocaleUpperCase('pl-PL'),
                 headerStyle: { backgroundColor: colors.background.secondary },
                 headerTintColor: colors.text.primary,
               }}

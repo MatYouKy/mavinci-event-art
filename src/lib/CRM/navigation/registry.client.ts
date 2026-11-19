@@ -33,6 +33,7 @@ import {
   MonitorPlay,
   BookOpen,
   BadgePercent,
+  Images,
 } from 'lucide-react';
 
 /**
@@ -51,6 +52,7 @@ export const NavigationIcons = {
   mavinciLive: MonitorPlay,
   messages: Mail,
   campaigns: Megaphone,
+  social: Images,
   inquiries: Inbox,
   tasks: CheckSquare,
   employees: Users,

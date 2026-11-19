@@ -116,7 +116,8 @@ struct MailCampaignTile: View {
                         .padding(6)
                         .background(theme.page.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
                         .overlay(RoundedRectangle(cornerRadius: 7).stroke(theme.accent.opacity(0.15)))
-                        .frame(minHeight: 280)
+                        // Stała wysokość (jak 14 wierszy w CRM): dłuższa treść przewija się w polu, karta nie rośnie do całego HTML.
+                        .frame(height: 300)
                 }
                 .gridCellColumns(2)
             }

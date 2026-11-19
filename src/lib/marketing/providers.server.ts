@@ -1,5 +1,7 @@
 import 'server-only';
 
+// Uprawnienia konfiguracji logowania aplikacji Meta (Facebook Login for Business) — wiadomości, reklamy, a od Etapu 2
+// social media także publikacja na stronie i Instagramie oraz komentarze.
 export const META_SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
@@ -8,6 +10,13 @@ export const META_SCOPES = [
   'ads_read',
   'ads_management',
   'business_management',
+  'pages_manage_posts',
+  'pages_read_user_content',
+  'pages_manage_engagement',
+  'instagram_basic',
+  'instagram_content_publish',
+  'instagram_manage_comments',
+  'instagram_manage_insights',
 ];
 
 export const GOOGLE_SCOPES = [
