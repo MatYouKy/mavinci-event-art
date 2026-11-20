@@ -17,6 +17,7 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "calendar": return "calendar"
         case "meetings": return "person.2"
         case "events": return "sparkles"
+        case "materials": return "archivebox"
         case "mavinciLive": return "play.tv"
         case "messages": return "envelope"
         case "campaigns": return "megaphone"

@@ -587,11 +587,13 @@ struct SocialLibraryFilter: Equatable {
 
     /// Zdjęcia z Findera lub z okna wyboru: JPEG, PNG i WebP bez zmian (do 24 MB), inne (HEIC, TIFF) i większe — JPEG
     /// z orientacją zapisaną w pikselach. Każde zdjęcie: wpis w bibliotece → plik przez serwer CRM → analiza.
-    func upload(_ urls: [URL], eventID: String? = nil) async {
-        guard let workspace, let companyID = home?.company.id else { return }
-        guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return }
+    /// Zwraca wgrane zdjęcia (także te, które już były w bibliotece) — kreator posta wstawia je od razu.
+    @discardableResult func upload(_ urls: [URL], eventID: String? = nil) async -> [SocialAsset] {
+        guard let workspace, let companyID = home?.company.id else { return [] }
+        guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return [] }
         var added = 0, duplicates = 0
         var errors: [String] = []
+        var assets: [SocialAsset] = []
         for (index, url) in urls.enumerated() {
             do {
                 try await workspace.withPending("Wgrywam zdjęcia (\(index + 1)/\(urls.count))") {
@@ -604,6 +606,7 @@ struct SocialLibraryFilter: Equatable {
                     let ticket = try JSONDecoder().decode(SocialUploadTicket.self, from: try await post("assetCreate", body))
                     let reply = try await uploadBytes(data, mime: mime, assetID: ticket.assetId)
                     if reply.duplicateOf != nil { duplicates += 1 } else { added += 1 }
+                    if let asset = reply.asset { assets.append(asset) }
                 }
             } catch {
                 errors.append(failureText(error, "Nie udało się wgrać „\(url.lastPathComponent)”."))
@@ -615,6 +618,7 @@ struct SocialLibraryFilter: Equatable {
         libraryFilter.offset = 0
         await loadLibrary()
         await load(quiet: true)
+        return assets
     }
 
     private func uploadBytes(_ data: Data, mime: String, assetID: String) async throws -> SocialAssetDetail {

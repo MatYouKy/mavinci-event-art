@@ -9,6 +9,7 @@ export type NavKey =
   | 'calendar'
   | 'meetings'
   | 'events'
+  | 'materials'
   | 'mavinci-live'
   | 'messages'
   | 'marketing-campaigns'
@@ -76,6 +77,15 @@ export const allNavigation: NavigationItemDTO[] = [
     iconKey: 'events',
     module: 'events',
     permissions: ['events_view'],
+  },
+  {
+    // Materiały — baza plików firmy (logotypy, zdjęcia, wideo, prezentacje, dokumenty marek). „manage” obejmuje „view”.
+    key: 'materials',
+    name: 'Materiały',
+    href: '/crm/materials',
+    iconKey: 'materials',
+    module: 'materials',
+    permissions: ['materials_view'],
   },
   {
     key: 'mavinci-live',

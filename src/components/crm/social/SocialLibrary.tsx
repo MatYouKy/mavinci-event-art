@@ -19,6 +19,8 @@ import { ConsentBadge, cardClass, dangerButton, errorMessage, inputClass, primar
  * Biblioteka zdjęć marki: filtry (status, zgoda klienta, użycie, wydarzenie, wyszukiwanie), wgrywanie z dysku
  * (także przeciąganie), import z plików wydarzenia i z realizacji na stronie, karta zdjęcia (opis, powiązania, zgoda
  * klienta na poziomie zdjęcia, wydarzenia i klienta, archiwum, usunięcie, nowy post z tego zdjęcia).
+ * W trybie wyboru (kreator posta) też można wgrać zdjęcie z dysku lub przeciągnąć je z pulpitu — jedno wgrane zdjęcie
+ * od razu trafia do posta.
  */
 
 type Props = { companyId: string; access: SocialAccess; onCreatePost: (assetId: string) => void; onChanged: () => void; pickMode?: { onPick: (asset: SocialAsset) => void } };
@@ -68,12 +70,14 @@ export default function SocialLibrary({ companyId, access, onCreatePost, onChang
     let added = 0;
     let duplicates = 0;
     const errors: string[] = [];
+    const uploaded: SocialAsset[] = [];
     for (const [index, file] of images.entries()) {
       showLoader(`Wgrywam zdjęcia (${index + 1}/${images.length})`, 'Zdjęcie jest analizowane — wymiary, miniatura i propozycje kadrów.');
       try {
         if (file.size > SOCIAL_LIMITS.uploadBytes) throw new Error(`„${file.name}” ma więcej niż 40 MB.`);
         const result = await uploadSocialPhoto(file, { companyId, eventId: event?.id || null });
         if (result.duplicateOf) duplicates += 1; else added += 1;
+        if (result.asset) uploaded.push(result.asset);
       } catch (cause) {
         errors.push(errorMessage(cause, `Nie udało się wgrać „${file.name}”.`));
       }
@@ -85,6 +89,8 @@ export default function SocialLibrary({ companyId, access, onCreatePost, onChang
     setOffset(0);
     void load();
     onChanged();
+    // Kreator posta: jedno zdjęcie (nowe albo już będące w bibliotece) od razu w poście.
+    if (pickMode && uploaded.length === 1 && images.length === 1) pickMode.onPick(uploaded[0]);
   };
 
   const assets = data?.assets || [];
@@ -123,7 +129,7 @@ export default function SocialLibrary({ companyId, access, onCreatePost, onChang
             <input value={query} onChange={(e) => { setQuery(e.target.value); setOffset(0); }} placeholder="Szukaj w opisach i nazwach" className={`${inputClass} w-64 pl-8`} />
           </label>
         </div>
-        {access.create && !pickMode && (
+        {access.create && (
           <div className="flex flex-wrap gap-2">
             <input ref={fileInput} type="file" multiple accept={SOCIAL_UPLOAD_TYPES.join(',')} className="hidden"
               onChange={(e) => { const files = Array.from(e.target.files || []); e.target.value = ''; void upload(files); }} />
@@ -133,7 +139,14 @@ export default function SocialLibrary({ companyId, access, onCreatePost, onChang
           </div>
         )}
       </div>
-      {access.create && !pickMode && <p className="mb-3 text-xs text-[#e5e4e2]/40">Możesz też przeciągnąć zdjęcia z dysku na tę sekcję.{event ? ` Nowe zdjęcia zostaną powiązane z „${event.name}”.` : ''}</p>}
+      {access.create && (
+        <p className="mb-3 text-xs text-[#e5e4e2]/40">
+          {pickMode
+            ? 'Wybierz zdjęcie z biblioteki albo wgraj nowe z dysku (także przeciągając je tutaj) — jedno wgrane zdjęcie od razu trafi do posta.'
+            : 'Możesz też przeciągnąć zdjęcia z dysku na tę sekcję.'}
+          {event ? ` Nowe zdjęcia zostaną powiązane z „${event.name}”.` : ''}
+        </p>
+      )}
 
       {loading && !data ? <p className="p-8 text-center text-sm text-[#e5e4e2]/45">Ładowanie biblioteki…</p> : (
         <>

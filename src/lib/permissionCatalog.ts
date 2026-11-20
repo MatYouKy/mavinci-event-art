@@ -86,8 +86,10 @@ export const PERMISSION_SCOPE_GROUPS: PermissionScopeGroup[] = [
   {
     key: 'operations',
     label: 'Zasoby i operacje',
-    description: 'Magazyn, flota, lokalizacje, podwykonawcy i czas pracy.',
+    description: 'Materiały firmy, magazyn, flota, lokalizacje, podwykonawcy i czas pracy.',
     scopes: [
+      { key: 'materials_view', label: 'Materiały — podgląd', description: 'Przegląda, podgląda i pobiera materiały przypisanych marek (logotypy, zdjęcia, wideo, prezentacje, dokumenty). W wyszukiwaniu widzi też pliki wydarzeń, do których ma dostęp.' },
+      { key: 'materials_manage', label: 'Materiały — zarządzanie', description: 'Wgrywa i podmienia pliki, tworzy foldery, zmienia nazwy, przenosi, opisuje i usuwa materiały przypisanych marek, obsługuje kosz; zapisuje pliki wydarzeń w Materiałach. Obejmuje podgląd.' },
       { key: 'equipment_view', label: 'Podgląd magazynu', description: 'Widzi sprzęt, zestawy, przewody i dostępność.' },
       { key: 'equipment_manage', label: 'Zarządzanie magazynem', description: 'Może edytować sprzęt i operacje magazynowe oraz przyjmować zaakceptowane realizacje do przygotowania.' },
       { key: 'equipment_create', label: 'Dodawanie sprzętu', description: 'Może dodawać nowe pozycje magazynowe.' },

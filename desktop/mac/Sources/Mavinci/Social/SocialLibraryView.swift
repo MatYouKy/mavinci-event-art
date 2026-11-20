@@ -5,7 +5,8 @@ import UniformTypeIdentifiers
 // MARK: Social media → Biblioteka — 1:1 z CRM: filtry (status, zgoda klienta, użycie, wydarzenie, wyszukiwanie), siatka zdjęć
 // ze zgodą i liczbą postów, wgrywanie z Findera (przeciąganie i okno wyboru — HEIC zapisywany jako JPEG), import z plików
 // wydarzenia i z realizacji na stronie, karta zdjęcia (opis, wydarzenie, zgoda zdjęcia / wydarzenia / klienta, archiwum,
-// usunięcie, „Nowy post z tego zdjęcia”). W trybie wyboru (`onPick`) — wybór zdjęcia do grafiki posta.
+// usunięcie, „Nowy post z tego zdjęcia”). W trybie wyboru (`onPick`) — wybór zdjęcia do grafiki posta; tam też można wgrać
+// zdjęcie z dysku lub przeciągnąć je z Findera (jedno wgrane zdjęcie od razu trafia do posta).
 
 @MainActor struct SocialLibraryView: View {
     @ObservedObject var store: SocialStore
@@ -19,12 +20,15 @@ import UniformTypeIdentifiers
 
     private var access: SocialAccess? { store.home?.access }
     private var canCreate: Bool { access?.create == true && onPick == nil }
+    /// Wgrywanie i import — także w trybie wyboru (kreator posta).
+    private var canUpload: Bool { access?.create == true }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             filters
-            if canCreate {
-                Text("Przeciągnij zdjęcia z Findera na bibliotekę.\(store.libraryFilter.eventName.map { " Nowe zdjęcia zostaną powiązane z „\($0)”." } ?? "")")
+            if canUpload {
+                Text((onPick == nil ? "Przeciągnij zdjęcia z Findera na bibliotekę." : "Wybierz zdjęcie z biblioteki albo przeciągnij je z Findera / wgraj z dysku — jedno wgrane zdjęcie od razu trafi do posta.")
+                     + (store.libraryFilter.eventName.map { " Nowe zdjęcia zostaną powiązane z „\($0)”." } ?? ""))
                     .font(.caption).foregroundStyle(.secondary)
             }
             grid
@@ -32,8 +36,8 @@ import UniformTypeIdentifiers
         .padding(onPick == nil ? 12 : 0)
         .background(RoundedRectangle(cornerRadius: 12).fill(onPick == nil ? theme.card : Color.clear))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(dropping ? theme.accent : Color.clear, lineWidth: 2))
-        .onDrop(of: [UTType.fileURL], isTargeted: canCreate ? $dropping : .constant(false)) { providers in
-            guard canCreate else { return false }
+        .onDrop(of: [UTType.fileURL], isTargeted: canUpload ? $dropping : .constant(false)) { providers in
+            guard canUpload else { return false }
             accept(providers)
             return true
         }
@@ -80,7 +84,7 @@ import UniformTypeIdentifiers
             }
             TextField("Szukaj w opisach i nazwach", text: $store.libraryFilter.query).textFieldStyle(.roundedBorder).frame(maxWidth: 240)
             Spacer(minLength: 8)
-            if canCreate {
+            if canUpload {
                 Button { choose() } label: { Label("Wgraj z dysku", systemImage: "square.and.arrow.up") }.buttonStyle(.borderedProminent)
                 Button { importer = .event } label: { Label("Z plików wydarzenia", systemImage: "folder") }
                 Button { importer = .portfolio } label: { Label("Z realizacji", systemImage: "photo.stack") }
@@ -154,7 +158,13 @@ import UniformTypeIdentifiers
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
         let eventID = store.libraryFilter.eventID
-        Task { await store.upload(urls, eventID: eventID) }
+        Task { await uploadAndPick(urls, eventID: eventID) }
+    }
+
+    /// Wgranie do biblioteki; w kreatorze posta jedno wgrane zdjęcie (nowe albo już będące w bibliotece) od razu w poście.
+    private func uploadAndPick(_ urls: [URL], eventID: String?) async {
+        let assets = await store.upload(urls, eventID: eventID)
+        if let onPick, urls.count == 1, let asset = assets.first { onPick(asset) }
     }
 
     private func accept(_ providers: [NSItemProvider]) {
@@ -165,7 +175,7 @@ import UniformTypeIdentifiers
                 if let url = await Self.fileURL(provider) { urls.append(url) }
             }
             guard !urls.isEmpty else { return }
-            await store.upload(urls, eventID: eventID)
+            await uploadAndPick(urls, eventID: eventID)
         }
     }
 

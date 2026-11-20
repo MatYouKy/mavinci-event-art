@@ -26,6 +26,7 @@ export const allNavigation: NavigationItem[] = [
   },
   { key: 'contacts', name: 'Kontakty', href: '/crm/contacts', iconKey: 'contacts', module: 'clients' },
   { key: 'events', name: 'Eventy', href: '/crm/events', iconKey: 'events', module: 'events' },
+  { key: 'materials', name: 'Materiały', href: '/crm/materials', iconKey: 'materials', module: 'materials' },
   { key: 'mavinci-live', name: 'Mavinci LIVE', href: '/crm/mavinci-live', iconKey: 'mavinciLive', module: 'mavinci_live' },
   {
     key: 'offers',
