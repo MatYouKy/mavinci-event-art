@@ -27,22 +27,23 @@ enum SocialFormat: String, Codable, CaseIterable, Identifiable, Hashable {
     }
     var hint: String {
         switch self {
-        case .portrait: return "Instagram i Facebook — najlepszy zasięg w feedzie"
-        case .square: return "Instagram i Facebook"
+        case .portrait: return "Instagram, Facebook i LinkedIn — najlepszy zasięg w feedzie"
+        case .square: return "Instagram, Facebook i LinkedIn"
         case .story: return "Relacje — strefy bezpieczne u góry i u dołu"
-        case .landscape: return "Facebook — post poziomy"
+        case .landscape: return "Facebook i LinkedIn — post poziomy"
         }
     }
 }
 
 enum SocialChannel: String, Codable, CaseIterable, Identifiable, Hashable {
-    case instagramFeed = "instagram_feed", instagramStory = "instagram_story", facebookFeed = "facebook_feed"
+    case instagramFeed = "instagram_feed", instagramStory = "instagram_story", facebookFeed = "facebook_feed", linkedinPage = "linkedin_page"
     var id: String { rawValue }
     var label: String {
         switch self {
         case .instagramFeed: return "Instagram — post"
         case .instagramStory: return "Instagram — relacja"
         case .facebookFeed: return "Facebook — post"
+        case .linkedinPage: return "LinkedIn — post"
         }
     }
     /// Formaty grafiki kanału w kolejności wyboru (jak `SOCIAL_CHANNEL_FORMATS`).
@@ -50,9 +51,11 @@ enum SocialChannel: String, Codable, CaseIterable, Identifiable, Hashable {
         switch self {
         case .instagramFeed: return [.portrait, .square]
         case .instagramStory: return [.story]
-        case .facebookFeed: return [.landscape, .portrait, .square]
+        case .facebookFeed, .linkedinPage: return [.landscape, .portrait, .square]
         }
     }
+    /// Kanał publikowany przez Meta (Facebook, Instagram); LinkedIn — osobna integracja marki (`isMetaChannel`).
+    var isMeta: Bool { self != .linkedinPage }
     func format(in available: [SocialFormat]) -> SocialFormat? { formats.first { available.contains($0) } }
 }
 
@@ -150,9 +153,16 @@ enum SocialConsentStatus: String, Codable, CaseIterable, Identifiable, Hashable 
 }
 
 enum SocialConsentPlatform: String, CaseIterable, Identifiable {
-    case instagram, facebook, website
+    case instagram, facebook, linkedin, website
     var id: String { rawValue }
-    var label: String { self == .instagram ? "Instagram" : self == .facebook ? "Facebook" : "Strona WWW" }
+    var label: String {
+        switch self {
+        case .instagram: return "Instagram"
+        case .facebook: return "Facebook"
+        case .linkedin: return "LinkedIn"
+        case .website: return "Strona WWW"
+        }
+    }
 }
 
 struct SocialCrop: Codable, Hashable {
@@ -195,6 +205,41 @@ struct SocialCrop: Codable, Hashable {
     /// Powiększenie wokół środka (`factor` < 1 — przybliżenie).
     func zoomed(_ factor: Double, width: Double, height: Double, format: SocialFormat) -> SocialCrop {
         SocialCrop(x: x + (w - w * factor) / 2, y: y + (h - h * factor) / 2, w: w * factor, h: h * factor).fitted(width: width, height: height, format: format)
+    }
+
+    // Kadr w proporcjach miejsca zdjęcia w układzie (jak `socialAspectCrop` / `fitAspectCrop` / `socialCropFitsAspect`).
+
+    static func center(width: Double, height: Double, aspect: Double) -> SocialCrop {
+        let imageAspect = width / max(1, height)
+        if imageAspect > aspect {
+            let w = aspect / imageAspect
+            return SocialCrop(x: round((1 - w) / 2), y: 0, w: round(w), h: 1)
+        }
+        let h = imageAspect / aspect
+        return SocialCrop(x: 0, y: round((1 - h) / 2), w: 1, h: round(h))
+    }
+
+    func fitted(width: Double, height: Double, aspect: Double) -> SocialCrop {
+        let centerX = x + w / 2
+        let centerY = y + h / 2
+        var widthPx = min(1, max(0.08, w)) * width
+        var heightPx = widthPx / aspect
+        if heightPx > height { heightPx = height; widthPx = heightPx * aspect }
+        if widthPx > width { widthPx = width; heightPx = widthPx / aspect }
+        let nw = widthPx / width
+        let nh = heightPx / height
+        return SocialCrop(x: Self.round(min(max(centerX - nw / 2, 0), 1 - nw)), y: Self.round(min(max(centerY - nh / 2, 0), 1 - nh)),
+                          w: Self.round(nw), h: Self.round(nh))
+    }
+
+    func zoomed(_ factor: Double, width: Double, height: Double, aspect: Double) -> SocialCrop {
+        SocialCrop(x: x + (w - w * factor) / 2, y: y + (h - h * factor) / 2, w: w * factor, h: h * factor).fitted(width: width, height: height, aspect: aspect)
+    }
+
+    /// Kadr ma proporcje miejsca (tolerancja 1,5%).
+    func fits(width: Double, height: Double, aspect: Double) -> Bool {
+        let actual = (w * width) / max(1, h * height)
+        return abs(actual / aspect - 1) < 0.015
     }
 
     var json: JSONValue { .object(["x": .number(x), "y": .number(y), "w": .number(w), "h": .number(h)]) }
@@ -250,6 +295,10 @@ struct SocialTemplate: Codable, Identifiable, Hashable {
     var titleFontLabel: String
     var captionFontLabel: String
     var updatedAt: String
+    /// Styl grafik nowych postów marki (`classic` gdy brak).
+    var defaultStyle: String?
+
+    var graphicStyle: SocialGraphicStyle { SocialGraphicStyle(raw: defaultStyle) }
 }
 
 struct SocialPostItem: Codable, Identifiable, Hashable {
@@ -262,6 +311,8 @@ struct SocialPostItem: Codable, Identifiable, Hashable {
     var captionPreview: String
     var thumbnailUrl: String?
     var formats: [SocialFormat]
+    /// Liczba zdjęć w poście (okładka + karuzela; starszy serwer — brak).
+    var photos: Int?
     var authorId: String?
     var authorName: String?
     var revision: Int
@@ -302,6 +353,14 @@ struct SocialMetaInsights: Codable, Hashable {
     var instagram: Bool
 }
 
+/// Strona firmowa LinkedIn marki (kanał „LinkedIn — post”); gotowość kanału — `channels["linkedin_page"]`.
+struct SocialLinkedInStatus: Codable, Hashable {
+    var connected: Bool
+    var organizationId: String?
+    var organizationName: String?
+    var comments: Bool
+}
+
 struct SocialMetaStatus: Codable, Hashable {
     var connected: Bool
     var pageId: String?
@@ -313,9 +372,13 @@ struct SocialMetaStatus: Codable, Hashable {
     var insights: SocialMetaInsights?
     var missingScopes: [String]
     var lastError: String?
+    var linkedin: SocialLinkedInStatus?
 
     func channel(_ channel: SocialChannel) -> SocialMetaChannelState? { channels[channel.rawValue] }
-    var allReady: Bool { SocialChannel.allCases.allSatisfy { channel($0)?.ready == true } }
+    /// LinkedIn bez połączonej strony — publikacja ręczna (paczka + „Oznacz jako opublikowany”), nie błąd.
+    func manual(_ channel: SocialChannel) -> Bool { channel == .linkedinPage && linkedin?.connected != true }
+    /// Kanały z automatyczną publikacją (Meta zawsze, LinkedIn po połączeniu strony) są gotowe.
+    var allReady: Bool { SocialChannel.allCases.filter { !manual($0) }.allSatisfy { channel($0)?.ready == true } }
 }
 
 struct SocialRange: Codable, Hashable {
@@ -444,6 +507,8 @@ struct SocialGuides: Codable, Hashable {
     var text: SocialGuideRect
     var unsafeTop: SocialGuideRect?
     var unsafeBottom: SocialGuideRect?
+    /// Widoczna część zdjęcia (passe-partout, kino); brak — zdjęcie na całej grafice.
+    var window: SocialGuideRect?
 }
 
 struct SocialSpecLogo: Codable, Hashable {
@@ -451,12 +516,19 @@ struct SocialSpecLogo: Codable, Hashable {
     var aspect: Double?
 }
 
-/// Część danych szablonu potrzebna na Macu: gotowość, logo i strefy grafiki dla nakładki edytora kadru.
+/// Część danych szablonu potrzebna na Macu: gotowość, logo i strefy grafiki dla nakładki edytora kadru (styl → format).
 struct SocialSpec: Codable, Hashable {
     var templateId: String
     var ready: Bool
     var logo: SocialSpecLogo?
     var guides: [String: SocialGuides]
+    var styleGuides: [String: [String: SocialGuides]]?
+    var defaultStyle: String?
+
+    /// Strefy formatu w stylu grafiki (starszy serwer bez stylów — strefy stylu „Klasyczny”).
+    func guides(_ style: SocialGraphicStyle, _ format: SocialFormat) -> SocialGuides? {
+        styleGuides?[style.rawValue]?[format.rawValue] ?? guides[format.rawValue]
+    }
 }
 
 struct SocialVariant: Codable, Identifiable, Hashable {
@@ -467,17 +539,356 @@ struct SocialVariant: Codable, Identifiable, Hashable {
     var effectiveCrop: SocialCrop?
     var headline: String
     var subline: String
+    /// Styl grafiki i napis nad tytułem (starszy serwer — brak: „Klasyczny” bez napisu).
+    var style: String?
+    var kicker: String?
+    /// Proporcje kadru: format albo — w układzie — miejsce zdjęcia 1 (starszy serwer — brak).
+    var aspect: Double?
     var renderedUrl: String?
     var renderedAt: String?
     var upToDate: Bool
     var asset: SocialAsset?
 }
 
+/// Kolejne zdjęcie karuzeli (pozycja 1–9; okładka to warianty) z grafikami w formatach feedu.
+struct SocialSlide: Codable, Hashable {
+    struct Format: Codable, Hashable {
+        var format: SocialFormat
+        var crop: SocialCrop?
+        var effectiveCrop: SocialCrop?
+        var renderedUrl: String?
+        var upToDate: Bool
+    }
+    var position: Int
+    var assetId: String
+    var asset: SocialAsset?
+    var formats: [Format]
+
+    func format(_ format: SocialFormat) -> Format? { formats.first { $0.format == format } }
+}
+
+// MARK: Układy grafik jako dane (`socialLayout.ts`)
+
+/// Prostokąt 0…1 grafiki.
+struct SocialLayoutRect: Codable, Hashable {
+    var x: Double
+    var y: Double
+    var w: Double
+    var h: Double
+    var json: JSONValue { .object(["x": .number(x), "y": .number(y), "w": .number(w), "h": .number(h)]) }
+}
+
+struct SocialLayoutFill: Codable, Hashable {
+    var color: String
+    var opacity: Double
+}
+
+struct SocialLayoutStroke: Codable, Hashable {
+    var color: String
+    var width: Double
+    var opacity: Double
+}
+
+/// Element układu (zdjęcie, przyciemnienie, prostokąt, logo, tekst) — pola typu jak w definicji JSON.
+struct SocialLayoutElement: Codable, Hashable, Identifiable {
+    var id: String
+    var type: String
+    var rect: SocialLayoutRect
+    var formats: [String: SocialLayoutRect]?
+    var slot: Int?
+    var radius: Double?
+    var color: String?
+    var direction: String?
+    var from: Double?
+    var to: Double?
+    var fill: SocialLayoutFill?
+    var stroke: SocialLayoutStroke?
+    var align: String?
+    var valign: String?
+    var bind: String?
+    var font: String?
+    var size: Double?
+    var tracking: Double?
+
+    func rect(_ format: SocialFormat) -> SocialLayoutRect { formats?[format.rawValue] ?? rect }
+
+    var json: JSONValue {
+        var object: [String: JSONValue] = ["id": .string(id), "type": .string(type), "rect": rect.json]
+        if let formats, !formats.isEmpty { object["formats"] = .object(formats.mapValues { $0.json }) }
+        if let slot { object["slot"] = .number(Double(slot)) }
+        if let radius { object["radius"] = .number(radius) }
+        if let color { object["color"] = .string(color) }
+        if let direction { object["direction"] = .string(direction) }
+        if let from { object["from"] = .number(from) }
+        if let to { object["to"] = .number(to) }
+        if type == "box" {
+            object["fill"] = fill.map { .object(["color": .string($0.color), "opacity": .number($0.opacity)]) } ?? .null
+            object["stroke"] = stroke.map { .object(["color": .string($0.color), "width": .number($0.width), "opacity": .number($0.opacity)]) } ?? .null
+        }
+        if let align { object["align"] = .string(align) }
+        if let valign { object["valign"] = .string(valign) }
+        if let bind { object["bind"] = .string(bind) }
+        if let font { object["font"] = .string(font) }
+        if let size { object["size"] = .number(size) }
+        if let tracking { object["tracking"] = .number(tracking) }
+        return .object(object)
+    }
+}
+
+/// Definicja układu: tło (rola koloru szablonu), elementy w kolejności rysowania (zdjęcia zawsze pod resztą).
+struct SocialLayoutDefinition: Codable, Hashable {
+    var v: Int
+    var background: String
+    var elements: [SocialLayoutElement]
+
+    /// Liczba miejsc na zdjęcia (miejsce 0 — zdjęcie wariantu, kolejne — kolaż).
+    var slots: Int { max(1, elements.compactMap { $0.type == "photo" ? ($0.slot ?? 0) + 1 : nil }.max() ?? 1) }
+
+    func slotRect(_ slot: Int, _ format: SocialFormat) -> SocialLayoutRect? {
+        elements.first { $0.type == "photo" && ($0.slot ?? 0) == slot }?.rect(format)
+    }
+
+    /// Proporcje miejsca w px formatu (szerokość / wysokość) — kadr zdjęcia w układzie ma te proporcje.
+    func slotAspect(_ slot: Int, _ format: SocialFormat) -> Double {
+        guard let rect = slotRect(slot, format) else { return format.aspect }
+        return max(0.05, (rect.w * format.width) / max(1, rect.h * format.height))
+    }
+
+    /// Zaokrąglenie rogów miejsca (px dla szerokości 1080).
+    func slotRadius(_ slot: Int) -> Double { elements.first { $0.type == "photo" && ($0.slot ?? 0) == slot }?.radius ?? 0 }
+
+    var json: JSONValue { .object(["v": .number(Double(v)), "background": .string(background), "elements": .array(elements.map(\.json))]) }
+}
+
+/// Układ do wyboru w kreatorze: układ marki (`id`) albo gotowy (`key`).
+struct SocialLayoutOption: Codable, Hashable {
+    var id: String?
+    var key: String?
+    var name: String
+    var description: String
+    var definition: SocialLayoutDefinition
+    var slots: Int
+    var archived: Bool
+    var choice: SocialLayoutChoice { SocialLayoutChoice(id: id, key: key) }
+    /// Klucz listy (gotowe układy nie mają `id`).
+    var identity: String { id ?? key ?? name }
+}
+
+/// Wybrany układ (`id` — układ marki, `key` — gotowy).
+struct SocialLayoutChoice: Hashable {
+    var id: String?
+    var key: String?
+    var json: JSONValue { json(refresh: false) }
+    /// `refresh` — ten sam układ w aktualnej wersji (zmieniony w edytorze układów po zapisaniu posta).
+    func json(refresh: Bool) -> JSONValue {
+        var object: [String: JSONValue] = ["id": id.map { .string($0) } ?? .null, "key": key.map { .string($0) } ?? .null]
+        if refresh { object["refresh"] = .bool(true) }
+        return .object(object)
+    }
+}
+
+/// Układ posta (migawka definicji zapisana w wariantach).
+struct SocialPostLayout: Codable, Hashable {
+    var id: String?
+    var key: String?
+    var name: String
+    var definition: SocialLayoutDefinition
+    var slots: Int
+    /// Układ zmieniono po zapisaniu posta (post ma migawkę) — „Wczytaj nową wersję” (starszy serwer — brak).
+    var outdated: Bool?
+    var choice: SocialLayoutChoice { SocialLayoutChoice(id: id, key: key) }
+}
+
+/// Układ marki w edytorze układów (`op=layouts`).
+struct SocialLayoutItem: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var definition: SocialLayoutDefinition
+    var slots: Int
+    var archived: Bool
+    /// Liczba postów z tym układem (usunąć można tylko nieużywany — inaczej archiwum).
+    var usedBy: Int
+    var updatedAt: String
+}
+
+/// Gotowy układ — punkt wyjścia nowego układu marki.
+struct SocialLayoutPreset: Codable, Identifiable, Hashable {
+    var key: String
+    var name: String
+    var description: String
+    var definition: SocialLayoutDefinition
+    var slots: Int
+    var id: String { key }
+}
+
+/// Odpowiedź edytora układów: układy marki (także archiwalne), gotowe układy, szablon marki do podglądu (logo, fonty,
+/// kolory z księgi znaku); po zapisie — `savedId`. Kopia na dysku per marka.
+struct SocialLayoutsReply: Codable, Hashable {
+    var companyId: String
+    var access: SocialAccess
+    var layouts: [SocialLayoutItem]
+    var presets: [SocialLayoutPreset]
+    var template: SocialTemplate?
+    var spec: SocialSpec?
+    var savedId: String?
+}
+
+/// Limity edytora układów (te same co `SOCIAL_LAYOUT_LIMITS`).
+enum SocialLayoutLimits {
+    static let elements = 40
+    static let slots = 4
+    static let name = 80
+}
+
+extension SocialLayoutDefinition {
+    /// Powód, dla którego definicji nie da się zapisać — 1:1 z `socialLayoutProblem` (`nil` — w porządku).
+    var problem: String? {
+        if elements.isEmpty { return "Dodaj elementy układu." }
+        if elements.count > SocialLayoutLimits.elements { return "Układ może mieć najwyżej \(SocialLayoutLimits.elements) elementów." }
+        let used = Array(Set(elements.filter { $0.type == "photo" }.map { $0.slot ?? 0 })).sorted()
+        if used.isEmpty || used.enumerated().contains(where: { $0.offset != $0.element }) {
+            return "Układ musi mieć zdjęcie 1, a kolejne zdjęcia kolażu numerowane po kolei (2, 3, 4)."
+        }
+        return nil
+    }
+}
+
+/// Zdjęcie kolażu w miejscu 1–3 (miejsce 0 — zdjęcie wariantu) z kadrami w formatach posta.
+struct SocialSlot: Codable, Hashable {
+    struct Format: Codable, Hashable {
+        var format: SocialFormat
+        var crop: SocialCrop?
+        var effectiveCrop: SocialCrop?
+        var aspect: Double
+    }
+    var slot: Int
+    var assetId: String
+    var asset: SocialAsset?
+    var formats: [Format]
+    func format(_ format: SocialFormat) -> Format? { formats.first { $0.format == format } }
+}
+
+/// Karuzela: najwyżej 9 kolejnych zdjęć (Instagram — 10 w poście), tylko formaty feedu (`SOCIAL_SLIDE_FORMATS`).
+let socialSlidesLimit = 9
+let socialSlideFormats: [SocialFormat] = [.portrait, .square, .landscape]
+
 struct SocialAiSuggestion: Codable, Hashable {
     var caption: String
     var hashtags: [String]
     var headline: String
     var subline: String
+}
+
+// MARK: Asystent AI (te same wartości co `SOCIAL_AI_*` w `src/lib/social/socialShared.ts`)
+
+enum SocialAiGoal: String, CaseIterable, Identifiable {
+    case realization, backstage, announcement, offer, team, inspiration
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .realization: return "Realizacja"
+        case .backstage: return "Za kulisami"
+        case .announcement: return "Zapowiedź"
+        case .offer: return "Oferta i usługi"
+        case .team: return "Zespół i sprzęt"
+        case .inspiration: return "Inspiracja"
+        }
+    }
+}
+
+enum SocialAiTone: String, CaseIterable, Identifiable {
+    case elegant, warm, factual, energetic
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .elegant: return "Elegancki"
+        case .warm: return "Ciepły"
+        case .factual: return "Rzeczowy"
+        case .energetic: return "Energiczny"
+        }
+    }
+}
+
+enum SocialAiLength: String, CaseIterable, Identifiable {
+    case short, medium, long
+    var id: String { rawValue }
+    var label: String { self == .short ? "Krótki" : self == .medium ? "Średni" : "Dłuższy" }
+}
+
+enum SocialAiRewrite: String, CaseIterable, Identifiable {
+    case shorter, elegant, cta, story, fix, english
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .shorter: return "Krócej"
+        case .elegant: return "Bardziej elegancko"
+        case .cta: return "Dodaj zaproszenie do kontaktu"
+        case .story: return "Jak krótka historia"
+        case .fix: return "Popraw język"
+        case .english: return "Po angielsku"
+        }
+    }
+}
+
+struct SocialAiHashtagGroup: Codable, Hashable {
+    var key: String
+    var label: String
+    var tags: [String]
+}
+
+/// Odpowiedź asystenta (`op=assist`) — bez zapisu w poście.
+struct SocialAssistReply: Codable {
+    var mode: String
+    var suggestions: [SocialAiSuggestion]
+    var hashtagGroups: [SocialAiHashtagGroup]
+    var usedPhoto: Bool
+    var photoNote: String?
+}
+
+// MARK: Style grafik (te same wartości co `SOCIAL_GRAPHIC_STYLES` w `src/lib/social/socialShared.ts`)
+
+enum SocialGraphicStyle: String, CaseIterable, Identifiable {
+    case classic, frame, mat, cinema, vignette, cover
+    var id: String { rawValue }
+
+    init(raw: String?) { self = raw.flatMap { SocialGraphicStyle(rawValue: $0) } ?? .classic }
+
+    var label: String {
+        switch self {
+        case .classic: return "Klasyczny"
+        case .frame: return "Rama"
+        case .mat: return "Passe-partout"
+        case .cinema: return "Kino"
+        case .vignette: return "Winieta"
+        case .cover: return "Okładka"
+        }
+    }
+
+    var hint: String {
+        switch self {
+        case .classic: return "Zdjęcie na całej grafice, przyciemniona góra i dół, logo u góry, tytuł i podpis na dole."
+        case .frame: return "Jak klasyczny, z cienką ramką w kolorze akcentu i miękkim cieniem przy krawędziach."
+        case .mat: return "Zdjęcie w passe-partout w kolorze marki z linią akcentu; tytuł i podpis na pasie pod zdjęciem."
+        case .cinema: return "Kinowe pasy u góry i u dołu: logo na górnym pasie, tytuł i podpis na dolnym."
+        case .vignette: return "Ciemna winieta wokół kadru — mocniejszy nastrój i uwaga na środku zdjęcia."
+        case .cover: return "Układ okładki: logo w rogu, duży tytuł wyrównany do lewej."
+        }
+    }
+}
+
+/// Podpowiedzi napisu nad tytułem (jak `SOCIAL_KICKER_SUGGESTIONS`) i limity (jak `SOCIAL_LIMITS.kicker`).
+let socialKickerSuggestions = ["Realizacja", "Za kulisami", "Zapowiedź", "Case study", "Nowość"]
+let socialKickerLimit = 40
+let socialKickerRecommended = 22
+
+/// Zalecana liczba hashtagów (jak `SOCIAL_HASHTAGS_RECOMMENDED`).
+let socialHashtagsRecommended = 3...12
+
+/// Przełącza hashtag (dodaje na końcu albo usuwa) — bez względu na wielkość liter (jak `toggleHashtag`).
+func socialToggleHashtag(_ current: [String], _ tag: String) -> [String] {
+    guard let normalized = socialHashtags(tag).first else { return current }
+    let key = normalized.lowercased()
+    return current.contains { $0.lowercased() == key } ? current.filter { $0.lowercased() != key } : current + [normalized]
 }
 
 struct SocialPostFull: Codable, Hashable {
@@ -490,6 +901,8 @@ struct SocialPostFull: Codable, Hashable {
     var captionPreview: String
     var thumbnailUrl: String?
     var formats: [SocialFormat]
+    /// Liczba zdjęć w poście (okładka + karuzela; starszy serwer — brak).
+    var photos: Int?
     var authorId: String?
     var authorName: String?
     var revision: Int
@@ -557,7 +970,7 @@ struct SocialPublishResult: Codable, Hashable {
     var error: String?
 }
 
-/// Komentarz Facebook / Instagram (`isOwn` — konto marki; `repliedByName` — odpowiedź wysłana z CRM).
+/// Komentarz Facebook / Instagram / LinkedIn (`isOwn` — konto marki; `repliedByName` — odpowiedź wysłana z CRM).
 struct SocialComment: Codable, Identifiable, Hashable {
     var id: String
     var platform: String
@@ -569,7 +982,24 @@ struct SocialComment: Codable, Identifiable, Hashable {
     var answeredAt: String?
     var repliedByName: String?
 
-    var platformLabel: String { platform == "facebook" ? "Facebook" : "Instagram" }
+    var platformLabel: String { SocialCommentPlatform.label(platform) }
+}
+
+/// Platforma komentarza (jak `SOCIAL_COMMENT_PLATFORM_LABELS`, `SOCIAL_REPLY_SUCCESS`, `SOCIAL_REPLY_AUTHOR`).
+enum SocialCommentPlatform {
+    static func label(_ platform: String) -> String {
+        platform == "facebook" ? "Facebook" : platform == "linkedin" ? "LinkedIn" : "Instagram"
+    }
+    static func replySuccess(_ platform: String) -> String {
+        platform == "facebook" ? "Odpowiedź opublikowana na Facebooku"
+            : platform == "linkedin" ? "Odpowiedź opublikowana na LinkedInie" : "Odpowiedź opublikowana na Instagramie"
+    }
+    static func replyAuthor(_ platform: String) -> String {
+        platform == "facebook" ? "strona marki" : platform == "linkedin" ? "strona firmowa marki" : "profil marki"
+    }
+    static func symbol(_ platform: String) -> String {
+        platform == "facebook" ? "f.square" : platform == "linkedin" ? "building.2" : "camera"
+    }
 }
 
 struct SocialCommentPost: Codable, Hashable {
@@ -602,6 +1032,7 @@ struct SocialCommentThread: Codable, Identifiable, Hashable {
 struct SocialReplyChannels: Codable, Hashable {
     var facebook: Bool
     var instagram: Bool
+    var linkedin: Bool?
 }
 
 struct SocialCommentsReply: Codable, Hashable {
@@ -612,7 +1043,12 @@ struct SocialCommentsReply: Codable, Hashable {
     var replyChannels: SocialReplyChannels
 
     func canReply(to thread: SocialCommentThread) -> Bool {
-        canReply && (thread.platform == "facebook" ? replyChannels.facebook : replyChannels.instagram)
+        guard canReply else { return false }
+        switch thread.platform {
+        case "facebook": return replyChannels.facebook
+        case "linkedin": return replyChannels.linkedin == true
+        default: return replyChannels.instagram
+        }
     }
 }
 
@@ -675,6 +1111,12 @@ struct SocialPostDetail: Codable {
     var actions: [SocialPostAction]
     var canPublishNow: Bool?
     var variants: [SocialVariant]
+    /// Karuzela (starszy serwer — brak).
+    var slides: [SocialSlide]?
+    /// Układ jako dane, układy do wyboru i zdjęcia kolażu (starszy serwer — brak).
+    var layout: SocialPostLayout?
+    var layouts: [SocialLayoutOption]?
+    var slots: [SocialSlot]?
     var problems: SocialProblems
     var publications: [SocialPublication]?
     var meta: SocialMetaStatus?

@@ -3,9 +3,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { decryptMarketingCredentials } from '@/lib/marketing/crypto.server';
 import { META_SOCIAL_SCOPES, MetaGraphError, hasMetaScope, metaGraph, missingMetaScopes } from '@/lib/marketing/metaGraph.server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
-import { SOCIAL_BUCKET, isObject, text, type Row } from './socialCommon.server';
+import { SOCIAL_BUCKET, downloadSocialFile, isObject, text, type Row } from './socialCommon.server';
 import {
-  SOCIAL_CHANNELS, SOCIAL_CHANNEL_LABELS, channelFormat, isSocialFormat, socialPublicationText, type SocialChannel, type SocialFormat,
+  LINKEDIN_TEXT_LIMIT, LinkedInUncertainError, linkedInComments, linkedInRecentPost, loadLinkedInAccount, publishLinkedInPost, replyOnLinkedIn,
+  type LinkedInAccount,
+} from './socialLinkedIn.server';
+import {
+  SOCIAL_CHANNELS, SOCIAL_CHANNEL_LABELS, channelFormat, isSocialFormat, socialChannelPlatform, socialPublicationText, type SocialChannel,
+  type SocialFormat,
 } from './socialShared';
 
 /*
@@ -16,6 +21,8 @@ import {
  * w nagłówku `Authorization`. Do przeglądarki, Maca i telefonu trafia stan bez tokenów (`SocialMetaStatus`).
  * Publikacja jest odporna na przerwanie: kanał „wysyłany” (`sending`) przy następnej próbie najpierw sprawdzamy w Meta
  * (post na stronie / status kontenera Instagram) i dopiero potem wysyłamy — bez podwójnej publikacji.
+ * Kanał „LinkedIn — post” (strona firmowa, `socialLinkedIn.server.ts`) korzysta z tych samych stanów publikacji
+ * i komentarzy; jego gotowość jest w `channels.linkedin_page`, a stan połączenia (bez tokenu) w `linkedin`.
  */
 
 type MetaCredentials = { user_access_token: string; page_access_tokens?: Record<string, string> };
@@ -35,9 +42,15 @@ export type SocialMetaStatus = {
   insights: { facebook: boolean; instagram: boolean };
   missingScopes: string[];
   lastError: string | null;
+  /** Strona firmowa LinkedIn marki (integracja marketingu `linkedin`) — bez tokenu. */
+  linkedin: SocialLinkedInStatus;
 };
 
-export type SocialMetaAccount = SocialMetaStatus & { integrationId: string | null; pageToken: string | null; scopes: string[] };
+export type SocialLinkedInStatus = { connected: boolean; organizationId: string | null; organizationName: string | null; comments: boolean };
+
+export type SocialMetaAccount = SocialMetaStatus & {
+  integrationId: string | null; pageToken: string | null; scopes: string[]; linkedinAccount: LinkedInAccount;
+};
 
 const ALL_SOCIAL_SCOPES = Array.from(new Set(Object.values(META_SOCIAL_SCOPES).flat()));
 const REAUTHORIZE = 'kliknij „Odśwież dostęp” przy Meta w ustawieniach marketingu marki';
@@ -48,6 +61,10 @@ export const errorMessage = (error: unknown) =>
 
 /** Konto Meta marki z tokenem strony (tylko serwer). */
 export async function loadMetaAccount(admin: SupabaseClient, companyId: string): Promise<SocialMetaAccount> {
+  const linkedinAccount = await loadLinkedInAccount(admin, companyId).catch((error): LinkedInAccount => ({
+    integrationId: null, connected: false, organizationId: null, organizationName: null, token: null, scopes: [], comments: false, reply: false,
+    problem: `nie udało się sprawdzić połączenia z LinkedIn (${errorMessage(error)}).`,
+  }));
   const { data } = await admin.from('marketing_integrations')
     .select('id, status, settings, scopes, credentials_encrypted, last_error')
     .eq('company_id', companyId).eq('provider', 'meta').maybeSingle();
@@ -91,6 +108,7 @@ export async function loadMetaAccount(admin: SupabaseClient, companyId: string):
   }
 
   const channelProblem = (channel: SocialChannel): string | null => {
+    if (channel === 'linkedin_page') return linkedinAccount.problem;
     if (!row || !row.credentials_encrypted || row.status === 'not_connected') {
       return 'Meta nie jest połączona z marką — połącz konto w ustawieniach marketingu marki.';
     }
@@ -116,6 +134,13 @@ export async function loadMetaAccount(admin: SupabaseClient, companyId: string):
     integrationId: row?.id ? String(row.id) : null,
     pageToken,
     scopes,
+    linkedinAccount,
+    linkedin: {
+      connected: linkedinAccount.connected,
+      organizationId: linkedinAccount.organizationId,
+      organizationName: linkedinAccount.organizationName,
+      comments: Boolean(linkedinAccount.token && linkedinAccount.reply),
+    },
     connected,
     pageId,
     pageName: text(settings.page_name) || null,
@@ -149,6 +174,7 @@ export function metaStatusDTO(account: SocialMetaAccount): SocialMetaStatus {
     insights: account.insights,
     missingScopes: account.missingScopes,
     lastError: account.lastError,
+    linkedin: account.linkedin,
   };
 }
 
@@ -192,7 +218,7 @@ export async function instagramRecentMedia(account: SocialMetaAccount, companyId
 const MAX_ATTEMPTS = 5;
 /** Instagram: opis razem z hashtagami. */
 export const INSTAGRAM_CAPTION_LIMIT = 2200;
-const CHANNEL_ORDER: SocialChannel[] = ['instagram_feed', 'facebook_feed', 'instagram_story'];
+const CHANNEL_ORDER: SocialChannel[] = ['instagram_feed', 'facebook_feed', 'linkedin_page', 'instagram_story'];
 
 export type SocialPublishResult = { postId: string; status: string; error: string | null };
 
@@ -206,8 +232,8 @@ class UncertainPublishError extends Error {}
 class PrecheckError extends Error {}
 
 const uncertain = (error: unknown) =>
-  error instanceof MetaGraphError && error.status === 0
-    ? new UncertainPublishError(`${error.message} Sprawdzę przy następnej próbie, czy post już jest, zanim wyślę go ponownie.`)
+  (error instanceof MetaGraphError && error.status === 0) || error instanceof LinkedInUncertainError
+    ? new UncertainPublishError(`${(error as Error).message} Sprawdzę przy następnej próbie, czy post już jest, zanim wyślę go ponownie.`)
     : error;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -330,8 +356,13 @@ async function recoverPublication(
   }
 }
 
+/**
+ * Publikacja kanału. `paths` — grafika okładki i (feed Instagram, Facebook) kolejne zdjęcia karuzeli w tym samym formacie:
+ * Instagram — karuzela (kontenery zdjęć `is_carousel_item` + kontener `CAROUSEL`), Facebook — jeden post z kilkoma zdjęciami
+ * (zdjęcia bez publikacji + post `/feed` z `attached_media`). Relacja — zawsze jedno zdjęcie.
+ */
 async function publishChannel(
-  admin: SupabaseClient, account: SocialMetaAccount, post: Row, channel: SocialChannel, format: SocialFormat, path: string, message: string,
+  admin: SupabaseClient, account: SocialMetaAccount, post: Row, channel: SocialChannel, format: SocialFormat, paths: string[], message: string,
 ) {
   const publication = await publicationRow(admin, post, channel, format);
   if (publication.status === 'published') return;
@@ -346,7 +377,36 @@ async function publishChannel(
     status: 'sending', attempts: (Number(publication.attempts) || 0) + 1, attempted_at: new Date().toISOString(), error: null, format,
     account_id: channel === 'facebook_feed' ? account.pageId : account.instagramId,
   });
-  const imageUrl = await signedImageUrl(admin, path);
+  const imageUrls: string[] = [];
+  for (const path of channel === 'instagram_story' ? paths.slice(0, 1) : paths.slice(0, 10)) imageUrls.push(await signedImageUrl(admin, path));
+  const imageUrl = imageUrls[0];
+
+  if (channel === 'facebook_feed' && imageUrls.length > 1) {
+    // Kilka zdjęć: najpierw zdjęcia bez publikacji, potem jeden post z nimi (niepewny wynik — tylko przy samym poście).
+    const mediaIds: string[] = [];
+    for (const url of imageUrls) {
+      const photo = await metaGraph<{ id?: string }>(`${account.pageId}/photos`, {
+        token, method: 'POST', label: 'Facebook', params: { url, published: false }, timeoutMs: 90_000,
+      });
+      if (!text(photo.id)) throw new Error('Facebook nie przyjął zdjęcia karuzeli.');
+      mediaIds.push(text(photo.id));
+    }
+    const params: Record<string, string> = { message };
+    mediaIds.forEach((id, index) => { params[`attached_media[${index}]`] = JSON.stringify({ media_fbid: id }); });
+    let created: { id?: string };
+    try {
+      created = await metaGraph(`${account.pageId}/feed`, { token, method: 'POST', label: 'Facebook', params, timeoutMs: 90_000 });
+    } catch (error) {
+      throw uncertain(error);
+    }
+    const externalId = text(created.id);
+    if (!externalId) throw new Error('Facebook nie zwrócił identyfikatora posta.');
+    await updatePublication(admin, publication.id, {
+      status: 'published', external_id: externalId, permalink: await facebookPermalink(token, externalId),
+      published_at: new Date().toISOString(), error: null,
+    });
+    return;
+  }
 
   if (channel === 'facebook_feed') {
     let result: { id?: string; post_id?: string };
@@ -366,6 +426,24 @@ async function publishChannel(
   }
 
   let container = reusable;
+  if (!container && channel === 'instagram_feed' && imageUrls.length > 1) {
+    // Karuzela: kontener każdego zdjęcia, potem kontener karuzeli z opisem (jego identyfikator — do wznowienia publikacji).
+    const children: string[] = [];
+    for (const url of imageUrls) {
+      const child = await metaGraph<{ id?: string }>(`${account.instagramId}/media`, {
+        token, method: 'POST', label: 'Instagram', params: { image_url: url, is_carousel_item: true }, timeoutMs: 90_000,
+      });
+      if (!text(child.id)) throw new Error('Instagram nie przyjął zdjęcia karuzeli.');
+      children.push(text(child.id));
+    }
+    for (const child of children) await waitForContainer(token, child);
+    const created = await metaGraph<{ id?: string }>(`${account.instagramId}/media`, {
+      token, method: 'POST', label: 'Instagram', params: { media_type: 'CAROUSEL', children: children.join(','), caption: message }, timeoutMs: 90_000,
+    });
+    container = text(created.id);
+    if (!container) throw new Error('Instagram nie zwrócił identyfikatora karuzeli.');
+    await updatePublication(admin, publication.id, { container_id: container });
+  }
   if (!container) {
     const created = await metaGraph<{ id?: string }>(`${account.instagramId}/media`, {
       token,
@@ -394,6 +472,52 @@ async function publishChannel(
   });
 }
 
+/**
+ * Publikacja na stronie firmowej LinkedIn: zdjęcia (okładka i karuzela w tym samym formacie) wysłane z serwera CRM, potem
+ * jeden post z opisem. Kanał przerwany w trakcie wysyłki — najpierw sprawdzamy ostatnie posty strony (ten sam opis, czas
+ * próby), dopiero potem wysyłamy ponownie.
+ */
+async function publishLinkedInChannel(
+  admin: SupabaseClient, account: LinkedInAccount, post: Row, format: SocialFormat, paths: string[], message: string,
+) {
+  const publication = await publicationRow(admin, post, 'linkedin_page', format);
+  if (publication.status === 'published') return;
+  if (publication.status === 'sending') {
+    const since = (publication.attempted_at ? new Date(publication.attempted_at).getTime() : Date.now()) - 5 * 60_000;
+    let found: { id: string; permalink: string } | null;
+    try {
+      found = await linkedInRecentPost(account, message, since);
+    } catch (error) {
+      await updatePublication(admin, publication.id, {
+        status: 'failed',
+        error: `Nie udało się sprawdzić, czy post już jest na LinkedIn (${errorMessage(error)}). Sprawdź stronę przed ponowieniem publikacji.`.slice(0, 2000),
+      });
+      throw new Error('nie udało się sprawdzić, czy post już jest na LinkedIn — sprawdź stronę przed ponowieniem publikacji.');
+    }
+    if (found) {
+      await updatePublication(admin, publication.id, {
+        status: 'published', external_id: found.id, permalink: found.permalink, published_at: new Date().toISOString(), error: null,
+      });
+      return;
+    }
+  }
+  await updatePublication(admin, publication.id, {
+    status: 'sending', attempts: (Number(publication.attempts) || 0) + 1, attempted_at: new Date().toISOString(), error: null, format,
+    account_id: account.organizationId,
+  });
+  const files: Buffer[] = [];
+  for (const path of paths.slice(0, 10)) files.push(await downloadSocialFile(admin, path));
+  let created: { id: string; permalink: string };
+  try {
+    created = await publishLinkedInPost(account, files, message);
+  } catch (error) {
+    throw uncertain(error);
+  }
+  await updatePublication(admin, publication.id, {
+    status: 'published', external_id: created.id, permalink: created.permalink, published_at: new Date().toISOString(), error: null,
+  });
+}
+
 async function publishClaimedPost(admin: SupabaseClient, postId: string, actorId: string | null): Promise<SocialPublishResult> {
   const errors: string[] = [];
   try {
@@ -402,16 +526,20 @@ async function publishClaimedPost(admin: SupabaseClient, postId: string, actorId
     const post = data as Row | null;
     if (!post) throw new Error('Nie znaleziono posta.');
     if (Number(post.publish_attempts) > MAX_ATTEMPTS) {
-      throw new Error('Publikacja nie powiodła się po kilku próbach — sprawdź połączenie z Meta i ponów publikację.');
+      throw new Error('Publikacja nie powiodła się po kilku próbach — sprawdź połączenie kont marki (Meta, LinkedIn) i ponów publikację.');
     }
     const { data: problems } = await admin.rpc('social_post_problems', { p_post_id: postId, p_require_consent: true });
     if (Array.isArray(problems) && problems.length) throw new Error((problems as unknown[]).map(text).join(' '));
     const account = await loadMetaAccount(admin, String(post.company_id));
-    const { data: variantData } = await admin.from('social_post_variants').select('format, rendered_path, asset_id').eq('post_id', postId);
+    const [{ data: variantData }, { data: slideData }] = await Promise.all([
+      admin.from('social_post_variants').select('format, rendered_path, asset_id').eq('post_id', postId),
+      admin.from('social_post_slides').select('format, position, rendered_path').eq('post_id', postId).order('position'),
+    ]);
     const rendered = new Map<SocialFormat, string>();
     for (const variant of (variantData || []) as Row[]) {
       if (variant.rendered_path && variant.asset_id && isSocialFormat(variant.format)) rendered.set(variant.format, String(variant.rendered_path));
     }
+    const slides = (slideData || []) as Row[];
     const channels = CHANNEL_ORDER.filter((channel) => Array.isArray(post.channels) && post.channels.includes(channel));
     const hashtags = Array.isArray(post.hashtags) ? (post.hashtags as unknown[]).map(text) : [];
     const message = socialPublicationText(text(post.caption), hashtags);
@@ -424,7 +552,18 @@ async function publishClaimedPost(admin: SupabaseClient, postId: string, actorId
         if (channel === 'instagram_feed' && message.length > INSTAGRAM_CAPTION_LIMIT) {
           throw new PrecheckError(`opis z hashtagami ma ${message.length} znaków — Instagram przyjmuje najwyżej ${INSTAGRAM_CAPTION_LIMIT}.`);
         }
-        await publishChannel(admin, account, post, channel, format, rendered.get(format) as string, message);
+        if (channel === 'linkedin_page' && message.length > LINKEDIN_TEXT_LIMIT) {
+          throw new PrecheckError(`opis z hashtagami ma ${message.length} znaków — LinkedIn przyjmuje najwyżej ${LINKEDIN_TEXT_LIMIT}.`);
+        }
+        // Karuzela (feed): kolejne zdjęcia w formacie okładki kanału — bez grafiki któregoś zdjęcia nie wysyłamy niepełnej karuzeli.
+        const extra = channel === 'instagram_story' ? [] : slides.filter((slide) => slide.format === format);
+        const positions = new Set(slides.map((slide) => Number(slide.position)));
+        if (channel !== 'instagram_story' && (extra.length < positions.size || extra.some((slide) => !slide.rendered_path))) {
+          throw new PrecheckError('brak grafik karuzeli — zapisz post, żeby je utworzyć.');
+        }
+        const paths = [rendered.get(format) as string, ...extra.map((slide) => String(slide.rendered_path))];
+        if (channel === 'linkedin_page') await publishLinkedInChannel(admin, account.linkedinAccount, post, format, paths, message);
+        else await publishChannel(admin, account, post, channel, format, paths, message);
       } catch (error) {
         const failure = `${SOCIAL_CHANNEL_LABELS[channel]}: ${errorMessage(error)}`.slice(0, 2000);
         errors.push(failure);
@@ -471,6 +610,8 @@ const commentTime = (value: unknown) => {
 };
 
 async function fetchComments(account: SocialMetaAccount, publication: Row): Promise<CommentInput[] | null> {
+  if (publication.channel === 'linkedin_page') return linkedInComments(account.linkedinAccount, text(publication.external_id));
+  if (!account.connected || !account.pageToken) return null;
   const token = account.pageToken as string;
   if (publication.channel === 'facebook_feed') {
     if (!account.comments.facebookRead) return null;
@@ -523,10 +664,9 @@ async function fetchComments(account: SocialMetaAccount, publication: Row): Prom
 
 /** Komentarze jednej publikacji: zapis, „ma odpowiedź marki”; zwraca liczbę nowych komentarzy bez odpowiedzi. */
 async function syncPublicationComments(admin: SupabaseClient, account: SocialMetaAccount, publication: Row): Promise<number> {
-  if (!account.connected || !account.pageToken) return 0;
   const comments = await fetchComments(account, publication);
   if (!comments) return 0;
-  const platform = publication.channel === 'facebook_feed' ? 'facebook' : 'instagram';
+  const platform = socialChannelPlatform(publication.channel as SocialChannel);
   const { data: existingData } = await admin.from('social_comments').select('external_id').eq('publication_id', publication.id);
   const existing = new Set(((existingData || []) as Row[]).map((row) => text(row.external_id)));
   if (comments.length) {
@@ -564,7 +704,7 @@ async function syncPublicationComments(admin: SupabaseClient, account: SocialMet
 export async function syncSocialComments(options: { postId?: string; companyId?: string; publicationIds?: string[]; limit?: number } = {}) {
   const admin = createSupabaseAdminClient();
   let query = admin.from('social_publications').select('id, post_id, company_id, channel, external_id, published_at')
-    .eq('status', 'published').not('external_id', 'is', null).in('channel', ['instagram_feed', 'facebook_feed']);
+    .eq('status', 'published').not('external_id', 'is', null).in('channel', ['instagram_feed', 'facebook_feed', 'linkedin_page']);
   if (options.postId) query = query.eq('post_id', options.postId);
   else if (options.publicationIds?.length) query = query.in('id', options.publicationIds);
   else {
@@ -589,7 +729,7 @@ export async function syncSocialComments(options: { postId?: string; companyId?:
       synced += 1;
       if (fresh) freshByPost.set(String(publication.post_id), (freshByPost.get(String(publication.post_id)) || 0) + fresh);
     } catch (syncError) {
-      errors.push(`${SOCIAL_CHANNEL_LABELS[publication.channel as SocialChannel] || 'Meta'}: ${errorMessage(syncError)}`);
+      errors.push(`${SOCIAL_CHANNEL_LABELS[publication.channel as SocialChannel] || 'Social media'}: ${errorMessage(syncError)}`);
     }
   }
   for (const [postId, count] of freshByPost) {
@@ -599,9 +739,10 @@ export async function syncSocialComments(options: { postId?: string; companyId?:
   return { publications: (data || []).length, synced, newComments: Array.from(freshByPost.values()).reduce((sum, value) => sum + value, 0), errors };
 }
 
-/** Odpowiedź marki na komentarz (strona Facebook / profil Instagram) — zapis w bazie i „ma odpowiedź”. */
+/** Odpowiedź marki na komentarz (strona Facebook / profil Instagram / strona LinkedIn) — zapis w bazie i „ma odpowiedź”. */
 export async function replyAsBrand(comment: Row, message: string, employeeId: string) {
   const admin = createSupabaseAdminClient();
+  if (comment.platform === 'linkedin') return replyAsLinkedInPage(admin, comment, message, employeeId);
   const account = await loadMetaAccount(admin, String(comment.company_id));
   const facebook = comment.platform === 'facebook';
   if (facebook ? !account.comments.facebookReply : !account.comments.instagram) {
@@ -636,6 +777,40 @@ export async function replyAsBrand(comment: Row, message: string, employeeId: st
     }, { onConflict: 'platform,external_id' });
   }
   await admin.from('social_comments').update({ answered_at: now }).eq('platform', comment.platform).eq('external_id', root).is('answered_at', null);
+}
+
+/** Odpowiedź strony LinkedIn: zawsze w wątku komentarza najwyższego poziomu. */
+async function replyAsLinkedInPage(admin: SupabaseClient, comment: Row, message: string, employeeId: string) {
+  const account = await loadLinkedInAccount(admin, String(comment.company_id));
+  const { data: publication } = await admin.from('social_publications').select('external_id').eq('id', comment.publication_id).maybeSingle();
+  const postUrn = text((publication as Row | null)?.external_id);
+  if (!postUrn) throw Object.assign(new Error('Nie znaleziono posta LinkedIn tego komentarza.'), { status: 404 });
+  const root = text(comment.parent_external_id) || text(comment.external_id);
+  let id: string | null;
+  try {
+    id = await replyOnLinkedIn(account, postUrn, root, message);
+  } catch (error) {
+    const status = Number((error as { status?: unknown })?.status) === 422 ? 422 : 502;
+    throw Object.assign(new Error(errorMessage(error)), { status });
+  }
+  const now = new Date().toISOString();
+  if (id) {
+    await admin.from('social_comments').upsert({
+      company_id: comment.company_id,
+      post_id: comment.post_id,
+      publication_id: comment.publication_id,
+      platform: 'linkedin',
+      external_id: id,
+      parent_external_id: root,
+      author_name: account.organizationName || 'Strona marki',
+      author_external_id: account.organizationId ? `urn:li:organization:${account.organizationId}` : null,
+      is_own: true,
+      message,
+      commented_at: now,
+      replied_by: employeeId,
+    }, { onConflict: 'platform,external_id' });
+  }
+  await admin.from('social_comments').update({ answered_at: now }).eq('platform', 'linkedin').eq('external_id', root).is('answered_at', null);
 }
 
 /** Publikacje odpowiadające zdarzeniom webhooka (post strony albo media Instagram). */

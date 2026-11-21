@@ -6,19 +6,21 @@ import { Check, Plus, Sparkles } from 'lucide-react';
 import { Modal } from '@/components/UI/Modal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
-import { normalizeHashtags } from '@/lib/social/socialShared';
+import {
+  SOCIAL_GRAPHIC_STYLES, SOCIAL_GRAPHIC_STYLE_HINTS, SOCIAL_GRAPHIC_STYLE_LIST, normalizeHashtags, type SocialGraphicStyle,
+} from '@/lib/social/socialShared';
 import { socialGet, socialPost, type SocialBrandbook, type SocialSettings, type SocialTemplate } from './socialApi';
 import { errorMessage, inputClass, primaryButton, secondaryButton } from './socialUi';
 
 /*
  * Ustawienia social media marki (akceptujący): opisy AI (zgoda na przekazanie treści realizacji bez danych osobowych),
  * analiza AI raportu tygodniowego (zgoda na przekazanie zagregowanych wyników), stałe hashtagi i styl opisów oraz szablony
- * grafik — wyłącznie logo, fonty i kolory z księgi znaku marki.
+ * grafik — wyłącznie logo, fonty i kolory z księgi znaku marki — z domyślnym stylem grafik nowych postów.
  */
 
 type TemplateForm = {
   id: string | null; name: string; isDefault: boolean; logoId: string | null; titleFontId: string | null; captionFontId: string | null;
-  overlayColorId: string | null; accentColorId: string | null; textColorId: string | null;
+  overlayColorId: string | null; accentColorId: string | null; textColorId: string | null; defaultStyle: SocialGraphicStyle;
 };
 
 const formFrom = (template: SocialTemplate | null): TemplateForm => ({
@@ -31,6 +33,7 @@ const formFrom = (template: SocialTemplate | null): TemplateForm => ({
   overlayColorId: template?.overlayColorId || null,
   accentColorId: template?.accentColorId || null,
   textColorId: template?.textColorId || null,
+  defaultStyle: template?.defaultStyle || 'classic',
 });
 
 export default function SocialSettingsModal({ companyId, settings, templates: initial, onClose, onSaved }: {
@@ -145,6 +148,18 @@ export default function SocialSettingsModal({ companyId, settings, templates: in
           {colorSelect('Przyciemnienie', 'overlayColorId', '(dół zdjęcia)')}
           {colorSelect('Akcent', 'accentColorId', '(kreska i podpis)')}
           {colorSelect('Tytuł', 'textColorId', '(tekst na zdjęciu)')}
+          <div className="text-sm">
+            <div className="mb-1">Domyślny styl grafik <span className="text-xs text-[#e5e4e2]/40">(nowe posty; w kreatorze można wybrać inny)</span></div>
+            <div className="flex flex-wrap gap-1.5">
+              {SOCIAL_GRAPHIC_STYLE_LIST.map((item) => (
+                <button key={item} type="button" title={SOCIAL_GRAPHIC_STYLE_HINTS[item]} onClick={() => setForm({ ...form, defaultStyle: item })}
+                  className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs ${form.defaultStyle === item ? 'border-[#d3bb73] bg-[#d3bb73]/15' : 'border-[#d3bb73]/10'}`}>
+                  {SOCIAL_GRAPHIC_STYLES[item]}{form.defaultStyle === item && <Check className="h-3 w-3 text-[#d3bb73]" />}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] text-[#e5e4e2]/45">{SOCIAL_GRAPHIC_STYLE_HINTS[form.defaultStyle]}</p>
+          </div>
           <button type="button" className={primaryButton} onClick={() => void run('Zapisuję szablon', async () => {
             const result = await socialPost<{ templates: SocialTemplate[] }>('template', { companyId, ...form });
             setTemplates(result.templates);

@@ -2,18 +2,20 @@
  * Social media (Marketing → „Social media”) — wspólne dla CRM, serwera Next i aplikacji mobilnej
  * (kopia: mobile/src/lib/socialShared.ts, pilnuje scripts/ci/check-shared-copies.mjs). Bez importów.
  * Formaty grafik, kanały, statusy, zgody klienta, kadry (prostokąt znormalizowany do zdjęcia 0…1) i hashtagi —
- * te same reguły co w bazie (migracje 20261119200000_marketing_social_media.sql, 20261119220000_social_media_publishing.sql
- * i 20261119230000_social_media_insights.sql). Statystyki: metryki, pory publikacji i formatowanie liczb (bez `Intl`).
+ * te same reguły co w bazie (migracje 20261119200000_marketing_social_media.sql, 20261119220000_social_media_publishing.sql,
+ * 20261119230000_social_media_insights.sql, 20261120140000_social_graphic_styles.sql i 20261121120000_social_carousels.sql).
+ * Statystyki: metryki, pory publikacji i formatowanie liczb (bez `Intl`). Style grafik i napis nad tytułem. Karuzele.
+ * LinkedIn (`linkedin_page`, migracja 20261121140000_social_linkedin.sql).
  */
 
 export const SOCIAL_FORMATS = ['4:5', '1:1', '9:16', '1.91:1'] as const;
 export type SocialFormat = (typeof SOCIAL_FORMATS)[number];
 
 export const SOCIAL_FORMAT_INFO: Record<SocialFormat, { width: number; height: number; label: string; hint: string }> = {
-  '4:5': { width: 1080, height: 1350, label: 'Post 4:5', hint: 'Instagram i Facebook — najlepszy zasięg w feedzie' },
-  '1:1': { width: 1080, height: 1080, label: 'Kwadrat 1:1', hint: 'Instagram i Facebook' },
+  '4:5': { width: 1080, height: 1350, label: 'Post 4:5', hint: 'Instagram, Facebook i LinkedIn — najlepszy zasięg w feedzie' },
+  '1:1': { width: 1080, height: 1080, label: 'Kwadrat 1:1', hint: 'Instagram, Facebook i LinkedIn' },
   '9:16': { width: 1080, height: 1920, label: 'Relacja 9:16', hint: 'Relacje — strefy bezpieczne u góry i u dołu' },
-  '1.91:1': { width: 1200, height: 628, label: 'Poziomy 1,91:1', hint: 'Facebook — post poziomy' },
+  '1.91:1': { width: 1200, height: 628, label: 'Poziomy 1,91:1', hint: 'Facebook i LinkedIn — post poziomy' },
 };
 
 export const isSocialFormat = (value: unknown): value is SocialFormat =>
@@ -25,7 +27,7 @@ export const formatAspect = (format: SocialFormat) => SOCIAL_FORMAT_INFO[format]
 /** Nazwa pliku bez dwukropka: „4x5”, „1x1”, „9x16”, „1.91x1”. */
 export const formatSlug = (format: SocialFormat) => format.replace(':', 'x');
 
-export const SOCIAL_CHANNELS = ['instagram_feed', 'instagram_story', 'facebook_feed'] as const;
+export const SOCIAL_CHANNELS = ['instagram_feed', 'instagram_story', 'facebook_feed', 'linkedin_page'] as const;
 export type SocialChannel = (typeof SOCIAL_CHANNELS)[number];
 
 export const isSocialChannel = (value: unknown): value is SocialChannel =>
@@ -35,6 +37,7 @@ export const SOCIAL_CHANNEL_LABELS: Record<SocialChannel, string> = {
   instagram_feed: 'Instagram — post',
   instagram_story: 'Instagram — relacja',
   facebook_feed: 'Facebook — post',
+  linkedin_page: 'LinkedIn — post',
 };
 
 /** Formaty grafiki kanału w kolejności wyboru (pierwszy istniejący trafia do publikacji). */
@@ -42,7 +45,14 @@ export const SOCIAL_CHANNEL_FORMATS: Record<SocialChannel, SocialFormat[]> = {
   instagram_feed: ['4:5', '1:1'],
   instagram_story: ['9:16'],
   facebook_feed: ['1.91:1', '4:5', '1:1'],
+  linkedin_page: ['1.91:1', '4:5', '1:1'],
 };
+
+/** Kanały publikowane przez Meta (Facebook, Instagram); LinkedIn — osobna integracja marki. */
+export const isMetaChannel = (channel: SocialChannel) => channel !== 'linkedin_page';
+/** Platforma kanału (zgoda klienta, komentarze). */
+export const socialChannelPlatform = (channel: SocialChannel): 'instagram' | 'facebook' | 'linkedin' =>
+  channel.startsWith('instagram') ? 'instagram' : channel === 'linkedin_page' ? 'linkedin' : 'facebook';
 
 /** Format grafiki, który trafi do kanału (z formatów posta ze zdjęciem) albo `null`. */
 export function channelFormat(channel: SocialChannel, formats: SocialFormat[]): SocialFormat | null {
@@ -52,7 +62,7 @@ export function channelFormat(channel: SocialChannel, formats: SocialFormat[]): 
 /** Formaty proponowane dla kanałów nowego posta (feed i Facebook — 4:5, relacja — 9:16). */
 export function defaultFormatsForChannels(channels: SocialChannel[]): SocialFormat[] {
   const formats = new Set<SocialFormat>();
-  if (channels.includes('instagram_feed') || channels.includes('facebook_feed')) formats.add('4:5');
+  if (channels.includes('instagram_feed') || channels.includes('facebook_feed') || channels.includes('linkedin_page')) formats.add('4:5');
   if (channels.includes('instagram_story')) formats.add('9:16');
   if (!formats.size) formats.add('4:5');
   return SOCIAL_FORMATS.filter((format) => formats.has(format));
@@ -165,7 +175,7 @@ export const socialCanPublishNow = (
 export const SOCIAL_CONSENT_STATUSES = ['inherit', 'unknown', 'requested', 'granted', 'denied', 'not_required'] as const;
 export type SocialConsentStatus = (typeof SOCIAL_CONSENT_STATUSES)[number];
 export type SocialConsentSource = 'asset' | 'event' | 'organization' | 'none';
-export const SOCIAL_CONSENT_PLATFORMS = ['instagram', 'facebook', 'website'] as const;
+export const SOCIAL_CONSENT_PLATFORMS = ['instagram', 'facebook', 'linkedin', 'website'] as const;
 export type SocialConsentPlatform = (typeof SOCIAL_CONSENT_PLATFORMS)[number];
 
 export const SOCIAL_CONSENT_LABELS: Record<SocialConsentStatus, string> = {
@@ -187,7 +197,30 @@ export const SOCIAL_CONSENT_SOURCE_LABELS: Record<SocialConsentSource, string> =
 export const SOCIAL_CONSENT_PLATFORM_LABELS: Record<SocialConsentPlatform, string> = {
   instagram: 'Instagram',
   facebook: 'Facebook',
+  linkedin: 'LinkedIn',
   website: 'Strona WWW',
+};
+
+/** Platforma komentarza (skrzynka komentarzy): Facebook, Instagram albo LinkedIn. */
+export type SocialCommentPlatform = 'facebook' | 'instagram' | 'linkedin';
+export const socialCommentPlatform = (value: unknown): SocialCommentPlatform =>
+  value === 'facebook' || value === 'linkedin' ? value : 'instagram';
+export const SOCIAL_COMMENT_PLATFORM_LABELS: Record<SocialCommentPlatform, string> = {
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  linkedin: 'LinkedIn',
+};
+/** Komunikat po opublikowaniu odpowiedzi marki. */
+export const SOCIAL_REPLY_SUCCESS: Record<SocialCommentPlatform, string> = {
+  facebook: 'Odpowiedź opublikowana na Facebooku',
+  instagram: 'Odpowiedź opublikowana na Instagramie',
+  linkedin: 'Odpowiedź opublikowana na LinkedInie',
+};
+/** Kto odpowiada (podpowiedź pola odpowiedzi). */
+export const SOCIAL_REPLY_AUTHOR: Record<SocialCommentPlatform, string> = {
+  facebook: 'strona marki',
+  instagram: 'profil marki',
+  linkedin: 'strona firmowa marki',
 };
 
 /** Zgoda pozwala na publikację (jak w bazie: „jest” albo „niepotrzebna”). */
@@ -221,11 +254,20 @@ export const SOCIAL_LIMITS = {
   /** Zalecana długość tytułu na grafice (dłuższy tytuł jest zmniejszany, żeby zmieścił się w marginesach). */
   headlineRecommended: 30,
   sublineRecommended: 60,
+  /** Napis nad tytułem (np. „Realizacja”, „Za kulisami”). */
+  kicker: 40,
+  kickerRecommended: 22,
   note: 1000,
   /** Odpowiedź na komentarz (Facebook i Instagram). */
   reply: 1000,
   uploadBytes: 40 * 1024 * 1024,
+  /** Kolejne zdjęcia karuzeli (poza okładką) — Instagram przyjmuje najwyżej 10 zdjęć w poście. */
+  slides: 9,
 } as const;
+
+/** Formaty z karuzelą (feed Instagram i Facebook); relacja (9:16) ma jedno zdjęcie. */
+export const SOCIAL_SLIDE_FORMATS: SocialFormat[] = ['4:5', '1:1', '1.91:1'];
+export const isSocialSlideFormat = (format: SocialFormat) => SOCIAL_SLIDE_FORMATS.includes(format);
 
 export const SOCIAL_UPLOAD_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
@@ -337,6 +379,109 @@ export function socialPublicationText(caption: string, hashtags: readonly string
 
 /** Tytuł i podpis na grafice — wersaliki jak w szablonie marki. */
 export const socialGraphicText = (value: string) => value.trim().replace(/\s+/g, ' ').toLocaleUpperCase('pl-PL');
+
+// Asystent AI (opisy i hashtagi) ----------------------------------------------------------------------------------------------
+
+/** Cel posta — podpowiada asystentowi AI, o czym pisać. */
+export const SOCIAL_AI_GOALS = {
+  realization: 'Realizacja',
+  backstage: 'Za kulisami',
+  announcement: 'Zapowiedź',
+  offer: 'Oferta i usługi',
+  team: 'Zespół i sprzęt',
+  inspiration: 'Inspiracja',
+} as const;
+export type SocialAiGoal = keyof typeof SOCIAL_AI_GOALS;
+
+export const SOCIAL_AI_TONES = {
+  elegant: 'Elegancki',
+  warm: 'Ciepły',
+  factual: 'Rzeczowy',
+  energetic: 'Energiczny',
+} as const;
+export type SocialAiTone = keyof typeof SOCIAL_AI_TONES;
+
+export const SOCIAL_AI_LENGTHS = {
+  short: 'Krótki',
+  medium: 'Średni',
+  long: 'Dłuższy',
+} as const;
+export type SocialAiLength = keyof typeof SOCIAL_AI_LENGTHS;
+
+/** Szybkie poprawki opisu (asystent przepisuje bieżący opis). */
+export const SOCIAL_AI_REWRITES = {
+  shorter: 'Krócej',
+  elegant: 'Bardziej elegancko',
+  cta: 'Dodaj zaproszenie do kontaktu',
+  story: 'Jak krótka historia',
+  fix: 'Popraw język',
+  english: 'Po angielsku',
+} as const;
+export type SocialAiRewrite = keyof typeof SOCIAL_AI_REWRITES;
+
+export type SocialAiMode = 'write' | 'rewrite' | 'hashtags';
+
+/** Grupy podpowiedzi hashtagów: marka, branża, lokalne, temat posta. */
+export const SOCIAL_AI_HASHTAG_GROUPS = {
+  brand: 'Marka',
+  industry: 'Branża',
+  local: 'Lokalne',
+  topic: 'Temat posta',
+} as const;
+export type SocialAiHashtagGroupKey = keyof typeof SOCIAL_AI_HASHTAG_GROUPS;
+export type SocialAiHashtagGroup = { key: SocialAiHashtagGroupKey; label: string; tags: string[] };
+
+/** Zalecana liczba hashtagów w poście (Instagram pozwala na 30, najlepiej działa kilka trafnych). */
+export const SOCIAL_HASHTAGS_RECOMMENDED = { min: 3, max: 12 } as const;
+
+const isKey = <T extends Record<string, string>>(map: T) => (value: unknown): value is keyof T & string =>
+  typeof value === 'string' && Object.prototype.hasOwnProperty.call(map, value);
+export const isSocialAiGoal = isKey(SOCIAL_AI_GOALS);
+export const isSocialAiTone = isKey(SOCIAL_AI_TONES);
+export const isSocialAiLength = isKey(SOCIAL_AI_LENGTHS);
+export const isSocialAiRewrite = isKey(SOCIAL_AI_REWRITES);
+
+/** Przełącza hashtag w liście (dodaje na końcu albo usuwa) — bez względu na wielkość liter. */
+export function toggleHashtag(current: readonly string[], tag: string): string[] {
+  const [normalized] = normalizeHashtags([tag]);
+  if (!normalized) return [...current];
+  const key = normalized.toLocaleLowerCase('pl');
+  return current.some((item) => item.toLocaleLowerCase('pl') === key)
+    ? current.filter((item) => item.toLocaleLowerCase('pl') !== key)
+    : [...current, normalized];
+}
+
+// Style grafik -----------------------------------------------------------------------------------------------------------
+
+/**
+ * Style grafiki posta — ten sam HTML na serwerze (render), w podglądzie na żywo CRM i w warstwie podglądu Maca.
+ * Logo, kolory i fonty zawsze z szablonu marki (księga znaku); styl zmienia tylko układ, ramki, maski i cienie.
+ * Zdjęcie zawsze wypełnia całą grafikę pod pozostałymi warstwami (passe-partout i kinowe pasy je zasłaniają).
+ */
+export const SOCIAL_GRAPHIC_STYLES = {
+  classic: 'Klasyczny',
+  frame: 'Rama',
+  mat: 'Passe-partout',
+  cinema: 'Kino',
+  vignette: 'Winieta',
+  cover: 'Okładka',
+} as const;
+export type SocialGraphicStyle = keyof typeof SOCIAL_GRAPHIC_STYLES;
+export const SOCIAL_GRAPHIC_STYLE_LIST = Object.keys(SOCIAL_GRAPHIC_STYLES) as SocialGraphicStyle[];
+
+export const SOCIAL_GRAPHIC_STYLE_HINTS: Record<SocialGraphicStyle, string> = {
+  classic: 'Zdjęcie na całej grafice, przyciemniona góra i dół, logo u góry, tytuł i podpis na dole.',
+  frame: 'Jak klasyczny, z cienką ramką w kolorze akcentu i miękkim cieniem przy krawędziach.',
+  mat: 'Zdjęcie w passe-partout w kolorze marki z linią akcentu; tytuł i podpis na pasie pod zdjęciem.',
+  cinema: 'Kinowe pasy u góry i u dołu: logo na górnym pasie, tytuł i podpis na dolnym.',
+  vignette: 'Ciemna winieta wokół kadru — mocniejszy nastrój i uwaga na środku zdjęcia.',
+  cover: 'Układ okładki: logo w rogu, duży tytuł wyrównany do lewej.',
+};
+
+/** Podpowiedzi napisu nad tytułem (wpisać można dowolny). */
+export const SOCIAL_KICKER_SUGGESTIONS = ['Realizacja', 'Za kulisami', 'Zapowiedź', 'Case study', 'Nowość'] as const;
+
+export const isSocialGraphicStyle = isKey(SOCIAL_GRAPHIC_STYLES);
 
 /** Termin w kalendarzu: „pt 21.11, 18:30” (strefa Warszawa). */
 export function socialDateLabel(value: string | null | undefined): string {

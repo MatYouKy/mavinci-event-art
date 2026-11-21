@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: Social media → „Szablony i AI” (akceptujący) — 1:1 z CRM (`SocialSettingsModal`): opisy AI (zgoda na przekazanie treści
 // realizacji bez danych osobowych), analiza AI raportu tygodniowego (zgoda na zagregowane wyniki), stałe hashtagi i styl opisów
-// oraz szablony grafik — wyłącznie logo, fonty i kolory z księgi znaku marki.
+// oraz szablony grafik — wyłącznie logo, fonty i kolory z księgi znaku marki — z domyślnym stylem grafik nowych postów.
 
 @MainActor struct SocialSettingsSheet: View {
     @ObservedObject var store: SocialStore
@@ -23,6 +23,7 @@ import SwiftUI
     @State private var overlayID: String?
     @State private var accentID: String?
     @State private var textID: String?
+    @State private var defaultStyle: SocialGraphicStyle = .classic
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -124,6 +125,12 @@ import SwiftUI
             colorRow("Przyciemnienie (dół zdjęcia)", selection: $overlayID)
             colorRow("Akcent (kreska i podpis)", selection: $accentID)
             colorRow("Tytuł (tekst na zdjęciu)", selection: $textID)
+            Picker("Domyślny styl grafik", selection: $defaultStyle) {
+                ForEach(SocialGraphicStyle.allCases) { style in Text(style.label).tag(style) }
+            }
+            .frame(maxWidth: 330)
+            Text(defaultStyle.hint + " Nowe posty dostają ten styl; w kreatorze można wybrać inny.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button("Zapisz szablon") { Task { await save() } }.buttonStyle(.borderedProminent)
         }
     }
@@ -171,6 +178,7 @@ import SwiftUI
         overlayID = template?.overlayColorId
         accentID = template?.accentColorId
         textID = template?.textColorId
+        defaultStyle = template?.graphicStyle ?? .classic
     }
 
     private func save() async {
@@ -178,7 +186,7 @@ import SwiftUI
         let body: [String: JSONValue] = [
             "id": value(templateID), "name": .string(name), "isDefault": .bool(isDefault), "logoId": value(logoID),
             "titleFontId": value(titleFontID), "captionFontId": value(captionFontID), "overlayColorId": value(overlayID),
-            "accentColorId": value(accentID), "textColorId": value(textID),
+            "accentColorId": value(accentID), "textColorId": value(textID), "defaultStyle": .string(defaultStyle.rawValue),
         ]
         guard let saved = await store.saveTemplate(body) else { return }
         templates = saved

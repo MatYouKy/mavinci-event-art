@@ -2,8 +2,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from './supabase';
 import type {
-  SocialAccess, SocialAssetStatus, SocialChannel, SocialConsentSource, SocialCrop, SocialFormat, SocialMetricValues, SocialPostAction,
-  SocialPostStatus,
+  SocialAccess, SocialAssetStatus, SocialChannel, SocialCommentPlatform, SocialConsentSource, SocialCrop, SocialFormat, SocialGraphicStyle, SocialMetricValues,
+  SocialPostAction, SocialPostStatus,
 } from './socialShared';
 
 /*
@@ -25,7 +25,7 @@ export type SocialAssetItem = {
 };
 export type SocialPostItem = {
   id: string; companyId: string; title: string; status: SocialPostStatus; channels: SocialChannel[]; scheduledAt: string | null;
-  captionPreview: string; thumbnailUrl: string | null; formats: SocialFormat[]; authorId: string | null; authorName: string | null;
+  captionPreview: string; thumbnailUrl: string | null; formats: SocialFormat[]; photos?: number; authorId: string | null; authorName: string | null;
   revision: number; approvedRevision: number | null; publishError?: string | null; updatedAt: string;
 };
 /** Konto Meta marki (bez tokenów) — gotowość kanałów do publikacji i komentarze. */
@@ -35,7 +35,12 @@ export type SocialMetaStatus = {
   comments: { facebookRead: boolean; facebookReply: boolean; instagram: boolean };
   insights?: { facebook: boolean; instagram: boolean };
   missingScopes: string[];
+  /** Strona firmowa LinkedIn (kanał „LinkedIn — post”); gotowość kanału — `channels.linkedin_page`. */
+  linkedin?: { connected: boolean; organizationId: string | null; organizationName: string | null; comments: boolean };
 };
+/** LinkedIn bez połączonej strony — publikacja ręczna (paczka + „Oznacz jako opublikowany”), nie błąd. */
+export const socialManualChannel = (meta: SocialMetaStatus | null | undefined, channel: SocialChannel) =>
+  channel === 'linkedin_page' && !meta?.linkedin?.connected;
 export type SocialPublication = {
   channel: SocialChannel; status: string; format: SocialFormat | null; permalink: string | null; error: string | null;
   attempts: number; publishedAt: string | null;
@@ -69,7 +74,7 @@ export type SocialStats = {
   canRefresh: boolean; canGenerate: boolean; lastWeekStart: string;
 };
 export type SocialComment = {
-  id: string; platform: 'facebook' | 'instagram'; authorName: string; isOwn: boolean; message: string; commentedAt: string;
+  id: string; platform: SocialCommentPlatform; authorName: string; isOwn: boolean; message: string; commentedAt: string;
   likeCount: number; answeredAt: string | null; repliedByName: string | null;
 };
 export type SocialCommentThread = SocialComment & {
@@ -78,7 +83,7 @@ export type SocialCommentThread = SocialComment & {
 };
 export type SocialComments = {
   companyId: string; threads: SocialCommentThread[]; unanswered: number; canReply: boolean;
-  replyChannels: { facebook: boolean; instagram: boolean };
+  replyChannels: { facebook: boolean; instagram: boolean; linkedin?: boolean };
 };
 export type SocialHome = {
   companies: Array<{ id: string; name: string; isDefault: boolean }>;
@@ -93,6 +98,27 @@ export type SocialHome = {
 export type SocialVariant = {
   id: string; format: SocialFormat; assetId: string | null; crop: SocialCrop | null; headline: string; subline: string; renderedUrl: string | null;
   renderedAt: string | null; upToDate: boolean; asset: SocialAssetItem | null;
+  /** Styl grafiki i napis nad tytułem (starszy serwer — brak). */
+  style?: SocialGraphicStyle; kicker?: string;
+};
+/** Kolejne zdjęcie karuzeli (pozycja 1–9; okładka to `variants`) z grafikami w formatach feedu. */
+export type SocialSlide = {
+  position: number; assetId: string; asset: SocialAssetItem | null;
+  formats: Array<{ format: SocialFormat; crop: SocialCrop | null; renderedUrl: string | null; upToDate: boolean }>;
+};
+/** Układ grafiki do wyboru (układ marki — `id`, gotowy — `key`); `slots` — liczba zdjęć (kolejne niż pierwsze — kolaż). */
+export type SocialLayoutOption = {
+  id: string | null; key: string | null; name: string; description: string; definition: Record<string, unknown>; slots: number; archived: boolean;
+};
+export type SocialPostLayout = {
+  id: string | null; key: string | null; name: string; definition: Record<string, unknown>; slots: number;
+  /** Układ zmieniono po zapisaniu posta (post ma migawkę) — „Wczytaj nową wersję” (`refresh`). */
+  outdated?: boolean;
+};
+/** Zdjęcie kolażu w miejscu 1–3 (miejsce 0 — zdjęcie wariantu). */
+export type SocialSlot = {
+  slot: number; assetId: string; asset: SocialAssetItem | null;
+  formats: Array<{ format: SocialFormat; crop: SocialCrop | null; effectiveCrop: SocialCrop | null; aspect: number }>;
 };
 export type SocialAiSuggestion = { caption: string; hashtags: string[]; headline: string; subline: string };
 export type SocialPostDetail = {
@@ -106,6 +132,13 @@ export type SocialPostDetail = {
   actions: SocialPostAction[];
   canPublishNow?: boolean;
   variants: SocialVariant[];
+  /** Karuzela (starszy serwer — brak). */
+  slides?: SocialSlide[];
+  /** Układ jako dane, układy do wyboru i zdjęcia kolażu (starszy serwer — brak). */
+  layout?: SocialPostLayout | null;
+  layouts?: SocialLayoutOption[];
+  slots?: SocialSlot[];
+  channelFormats?: Partial<Record<SocialChannel, SocialFormat | null>>;
   problems: { submit: string[]; publish: string[]; meta?: string[] };
   publications?: SocialPublication[];
   meta?: SocialMetaStatus | null;
@@ -116,7 +149,7 @@ export type SocialPostDetail = {
   event: { id: string; name: string; date: string | null; location: string; organizationName: string | null } | null;
   publicationText: string;
   settings: { aiCaptionsEnabled: boolean };
-  template: { id: string; name: string; ready: boolean; problems: string[] } | null;
+  template: { id: string; name: string; ready: boolean; problems: string[]; defaultStyle?: SocialGraphicStyle } | null;
 };
 export type SocialLibrary = { company: { id: string; name: string }; access: SocialAccess; assets: SocialAssetItem[]; total: number; proposals: number };
 export type SocialEventOption = { id: string; name: string; date: string | null; location: string; organizationName: string | null };

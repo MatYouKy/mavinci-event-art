@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/browser';
-import type { SocialAccess, SocialAssetSource, SocialAssetStatus, SocialChannel, SocialConsentSource, SocialConsentStatus, SocialCrop, SocialCrops, SocialFormat, SocialMetricValues, SocialPostAction, SocialPostStatus } from '@/lib/social/socialShared';
+import type { SocialLayoutDefinition } from '@/lib/social/socialLayout';
+import type { SocialAccess, SocialAssetSource, SocialAssetStatus, SocialChannel, SocialCommentPlatform, SocialConsentSource, SocialConsentStatus, SocialCrop, SocialCrops, SocialFormat, SocialGraphicStyle, SocialMetricValues, SocialPostAction, SocialPostStatus } from '@/lib/social/socialShared';
 import type { SocialTemplateSettings } from '@/lib/social/socialGraphic';
 
 /*
@@ -18,10 +19,12 @@ export type SocialTemplate = {
   overlayColorId: string | null; accentColorId: string | null; textColorId: string | null;
   colors: { overlay: string | null; accent: string | null; text: string | null };
   logoUrl: string | null; titleFontLabel: string; captionFontLabel: string; updatedAt: string;
+  /** Styl grafik nowych postów marki. */
+  defaultStyle?: SocialGraphicStyle;
 };
 export type SocialPostItem = {
   id: string; companyId: string; title: string; status: SocialPostStatus; channels: SocialChannel[]; scheduledAt: string | null;
-  captionPreview: string; thumbnailUrl: string | null; formats: SocialFormat[]; authorId: string | null; authorName: string | null;
+  captionPreview: string; thumbnailUrl: string | null; formats: SocialFormat[]; photos?: number; authorId: string | null; authorName: string | null;
   revision: number; approvedRevision: number | null; eventId: string | null; publishedAt: string | null; publishedUrl: string | null;
   publishError: string | null; updatedAt: string;
 };
@@ -33,6 +36,8 @@ export type SocialMetaStatus = {
   /** Statystyki postów: Facebook `read_insights`, Instagram `instagram_manage_insights` (Etap 3). */
   insights?: { facebook: boolean; instagram: boolean };
   missingScopes: string[]; lastError: string | null;
+  /** Strona firmowa LinkedIn (kanał „LinkedIn — post”); gotowość kanału — `channels.linkedin_page`. */
+  linkedin?: { connected: boolean; organizationId: string | null; organizationName: string | null; comments: boolean };
 };
 export type SocialHome = {
   companies: SocialCompany[]; company: SocialCompany; access: SocialAccess; range: { from: string; to: string };
@@ -74,7 +79,7 @@ export type SocialStats = {
   canRefresh: boolean; canGenerate: boolean; lastWeekStart: string;
 };
 export type SocialComment = {
-  id: string; platform: 'facebook' | 'instagram'; authorName: string; isOwn: boolean; message: string; commentedAt: string; likeCount: number;
+  id: string; platform: SocialCommentPlatform; authorName: string; isOwn: boolean; message: string; commentedAt: string; likeCount: number;
   answeredAt: string | null; repliedByName: string | null;
 };
 export type SocialCommentThread = SocialComment & {
@@ -83,7 +88,7 @@ export type SocialCommentThread = SocialComment & {
 };
 export type SocialComments = {
   companyId: string; threads: SocialCommentThread[]; unanswered: number; canReply: boolean;
-  replyChannels: { facebook: boolean; instagram: boolean };
+  replyChannels: { facebook: boolean; instagram: boolean; linkedin?: boolean };
 };
 export type SocialConsentState = { status: string; channels: string[]; source: SocialConsentSource };
 export type SocialAsset = {
@@ -98,16 +103,43 @@ export type SocialLibrary = {
   companies: SocialCompany[]; company: SocialCompany; access: SocialAccess; assets: SocialAsset[]; total: number; offset: number; limit: number; proposals: number;
 };
 export type SocialAssetDetail = { asset: SocialAsset; access: SocialAccess; posts: Array<{ id: string; title: string; status: string; scheduledAt: string | null }>; duplicateOf?: string; message?: string };
-export type SocialGuides = { logo: GuideRect; text: GuideRect; unsafeTop: GuideRect | null; unsafeBottom: GuideRect | null };
+export type SocialGuides = {
+  logo: GuideRect; text: GuideRect; unsafeTop: GuideRect | null; unsafeBottom: GuideRect | null;
+  /** Widoczna część zdjęcia (passe-partout, kino); brak — zdjęcie na całej grafice. */
+  window?: GuideRect | null;
+};
 type GuideRect = { x: number; y: number; w: number; h: number };
 export type SocialSpec = {
   templateId: string; ready: boolean; logo: { src: string; aspect: number | null } | null;
   titleFont: { family: string; src: string | null }; captionFont: { family: string; src: string | null };
   colors: { overlay: string; accent: string; text: string }; settings: SocialTemplateSettings; guides: Record<SocialFormat, SocialGuides>;
+  styleGuides?: Record<SocialGraphicStyle, Record<SocialFormat, SocialGuides>>; defaultStyle?: SocialGraphicStyle;
 };
 export type SocialVariant = {
   id: string; format: SocialFormat; assetId: string | null; crop: SocialCrop | null; effectiveCrop: SocialCrop | null; headline: string; subline: string;
+  style: SocialGraphicStyle; kicker: string;
+  /** Proporcje kadru (format albo — w układzie — miejsce zdjęcia 1). */
+  aspect?: number;
   renderedUrl: string | null; renderedAt: string | null; upToDate: boolean; asset: SocialAsset | null;
+};
+/** Układ do wyboru: układ marki (`id`) albo gotowy (`key`); `slots` — liczba zdjęć (1 — zdjęcie wariantu, kolejne — kolaż). */
+export type SocialLayoutOption = {
+  id: string | null; key: string | null; name: string; description: string; definition: SocialLayoutDefinition; slots: number; archived: boolean;
+};
+export type SocialPostLayout = {
+  id: string | null; key: string | null; name: string; definition: SocialLayoutDefinition; slots: number;
+  /** Układ zmieniono po zapisaniu posta (post ma migawkę) — nowa wersja po „Wczytaj nową wersję” (`refresh`). */
+  outdated?: boolean;
+};
+/** Zdjęcie kolażu w miejscu 1–3 (miejsce 0 — zdjęcie wariantu) z kadrami w formatach posta. */
+export type SocialSlot = {
+  slot: number; assetId: string; asset: SocialAsset | null;
+  formats: Array<{ format: SocialFormat; crop: SocialCrop | null; effectiveCrop: SocialCrop | null; aspect: number }>;
+};
+/** Kolejne zdjęcie karuzeli (pozycja 1–9; okładka to `variants`) z grafikami w formatach feedu. */
+export type SocialSlide = {
+  position: number; assetId: string; asset: SocialAsset | null;
+  formats: Array<{ format: SocialFormat; crop: SocialCrop | null; effectiveCrop: SocialCrop | null; renderedUrl: string | null; upToDate: boolean }>;
 };
 export type SocialAiSuggestion = { caption: string; hashtags: string[]; headline: string; subline: string; model?: string; createdAt?: string };
 export type SocialPostDetail = {
@@ -118,6 +150,12 @@ export type SocialPostDetail = {
     scheduledByName: string | null; publishAttempts: number; createdAt: string;
   };
   access: SocialAccess; actions: SocialPostAction[]; canPublishNow: boolean; variants: SocialVariant[];
+  /** Karuzela (brak — starszy serwer). */
+  slides?: SocialSlide[];
+  /** Układ jako dane (zamiast stylu), układy do wyboru i zdjęcia kolażu. */
+  layout?: SocialPostLayout | null;
+  layouts?: SocialLayoutOption[];
+  slots?: SocialSlot[];
   channelFormats: Partial<Record<SocialChannel, SocialFormat | null>>;
   problems: { submit: string[]; publish: string[]; meta: string[] };
   publications: SocialPublication[]; meta: SocialMetaStatus | null; comments: { total: number; unanswered: number };

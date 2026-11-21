@@ -1,4 +1,5 @@
-export type MarketingProvider = 'meta' | 'google';
+/** `linkedin` — strona firmowa LinkedIn (publikacja postów social media i komentarze; bez statystyk reklam). */
+export type MarketingProvider = 'meta' | 'google' | 'linkedin';
 
 export type MarketingIntegrationStatus =
   | 'not_connected'

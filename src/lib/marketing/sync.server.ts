@@ -15,7 +15,7 @@ import {
 type IntegrationRow = {
   id: string;
   company_id: string;
-  provider: 'meta' | 'google';
+  provider: 'meta' | 'google' | 'linkedin';
   settings: Record<string, any>;
   credentials_encrypted: string | null;
 };
@@ -485,6 +485,10 @@ async function syncMeta(integration: IntegrationRow, credentials: MetaCredential
 }
 
 export async function syncMarketingIntegration(integration: IntegrationRow) {
+  // LinkedIn służy tylko publikacji social media i komentarzom (bez statystyk kampanii) — nie synchronizujemy go tutaj.
+  if (integration.provider !== 'google' && integration.provider !== 'meta') {
+    return { integrationId: integration.id, provider: integration.provider, ok: true, result: { skipped: true } };
+  }
   if (!integration.credentials_encrypted) throw new Error('Integracja nie jest autoryzowana.');
   await markIntegration(integration.id, { status: 'syncing', last_error: null });
   try {

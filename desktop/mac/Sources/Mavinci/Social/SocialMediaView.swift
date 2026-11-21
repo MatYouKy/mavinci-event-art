@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: Marketing → „Social media” — 1:1 z `/crm/marketing/social`: nagłówek z marką, „Szablony i AI”, „Nowy post”, stan
 // publikacji w Meta, widoki Kalendarz (miesiąc z przeciąganiem terminu, szkice bez terminu, wymagające uwagi), Do akceptacji
 // (także błędy publikacji), Biblioteka, Komentarze i Statystyki (z raportem tygodniowym). Post otwiera się w kreatorze na całej
-// szerokości ekranu (`SocialPostEditorView`).
+// szerokości ekranu (`SocialPostEditorView`), „Układy grafik” — edytor układów na płótnie (`SocialLayoutEditorView`, akceptujący).
 
 @MainActor struct SocialMediaView: View {
     @ObservedObject var store: SocialStore
@@ -26,6 +26,8 @@ import SwiftUI
     @ViewBuilder private var content: some View {
         if let id = store.openedPostID {
             SocialPostEditorView(store: store, postID: id)
+        } else if store.layoutsShown, let home = store.home {
+            SocialLayoutEditorView(store: store, companyID: home.company.id, onClose: { store.layoutsShown = false })
         } else if let home = store.home {
             main(home)
         } else if let error = store.loadError {
@@ -79,6 +81,7 @@ import SwiftUI
             Button { Task { await store.load() } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
             if home.access.approve {
                 Button { store.settingsShown = true } label: { Label("Szablony i AI", systemImage: "slider.horizontal.3") }
+                Button { store.layoutsShown = true } label: { Label("Układy grafik", systemImage: "rectangle.3.group") }
             }
             if home.access.create {
                 Button { Task { await store.createPost() } } label: { Label("Nowy post", systemImage: "plus") }.buttonStyle(.borderedProminent)
@@ -119,21 +122,26 @@ import SwiftUI
         }
     }
 
-    /// Stan konta Meta marki: strona, Instagram, gotowość kanałów i braki (konto ustawia się w ustawieniach marketingu marki).
+    /// Stan kont marki: strona Facebook, Instagram, strona LinkedIn, gotowość kanałów i braki (konta ustawia się w ustawieniach
+    /// marketingu marki). LinkedIn bez połączenia — publikacja ręczna, bez ostrzeżenia.
     private func metaBanner(_ meta: SocialMetaStatus, company: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Text("Publikacja w Meta:").font(.callout).foregroundStyle(.secondary)
+            Text("Publikacja:").font(.callout).foregroundStyle(.secondary)
             Label(meta.pageName ?? "brak strony", systemImage: "f.square").font(.callout)
             Label(meta.instagramUsername.map { "@\($0)" } ?? "brak konta Instagram", systemImage: "camera").font(.callout)
+            Label(meta.linkedin?.organizationName ?? (meta.linkedin?.connected == true ? "brak strony" : "ręcznie"), systemImage: "building.2").font(.callout)
             ForEach(SocialChannel.allCases) { channel in
                 let ready = meta.channel(channel)?.ready == true
-                Label(channel.label, systemImage: ready ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .font(.caption).foregroundStyle(ready ? Color.green : Color.orange)
+                let manual = meta.manual(channel)
+                let symbol: String = manual ? "circle.dashed" : ready ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                let tint: Color = manual ? Color.secondary : ready ? Color.green : Color.orange
+                Label(channel.label + (manual ? " (ręcznie)" : ""), systemImage: symbol)
+                    .font(.caption).foregroundStyle(tint)
                     .help(meta.channel(channel)?.problem ?? "Gotowe do publikacji")
             }
             Spacer(minLength: 8)
             if !meta.allReady {
-                let problems = Array(Set(SocialChannel.allCases.compactMap { meta.channel($0)?.problem })).sorted()
+                let problems = Array(Set(SocialChannel.allCases.filter { !meta.manual($0) }.compactMap { meta.channel($0)?.problem })).sorted()
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(problems.prefix(2), id: \.self) { Text($0).font(.caption2) }
                     if !meta.missingScopes.isEmpty { Text("Brakujące uprawnienia Meta: " + meta.missingScopes.joined(separator: ", ") + ".").font(.caption2).foregroundStyle(.secondary) }
@@ -141,7 +149,7 @@ import SwiftUI
                 .frame(maxWidth: 460, alignment: .leading)
                 .foregroundStyle(.orange)
             }
-            Button { state.openCRM("/crm/settings/my-companies/\(company)/marketing") } label: { Label("Ustawienia Meta", systemImage: "arrow.up.right.square") }
+            Button { state.openCRM("/crm/settings/my-companies/\(company)/marketing") } label: { Label("Ustawienia kont", systemImage: "arrow.up.right.square") }
                 .buttonStyle(.link).font(.caption)
         }
         .padding(10)

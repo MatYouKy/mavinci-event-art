@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Crosshair, Minus, Plus, RotateCcw, Sparkles } from 'lucide-react';
-import { centerCrop, fitCrop, formatAspect, moveCrop, zoomCrop, type SocialCrop, type SocialFormat } from '@/lib/social/socialShared';
+import { centerCrop, fitCrop, formatAspect, moveCrop, type SocialCrop, type SocialFormat } from '@/lib/social/socialShared';
+import { fitAspectCrop, socialAspectCrop } from '@/lib/social/socialLayout';
 import type { SocialGuides } from './socialApi';
 import { secondaryButton } from './socialUi';
 
 /*
  * Edytor kadru: zdjęcie (wersja robocza) z ramką formatu — przeciąganie, powiększanie (suwak, kółko myszy, przyciski),
- * propozycja kadru z analizy i środek zdjęcia. W ramce: siatka trójpodziału, pole logo i tekstów z szablonu marki
- * oraz strefy zasłaniane w relacji. Kadr zawsze w proporcjach formatu i w granicach zdjęcia (`fitCrop`).
+ * propozycja kadru z analizy i środek zdjęcia. W ramce: siatka trójpodziału, pole logo i tekstów ze stylu grafiki i szablonu
+ * marki, widoczna część zdjęcia (passe-partout, kino — reszta przyciemniona) oraz strefy zasłaniane w relacji. Kadr zawsze
+ * w proporcjach formatu i w granicach zdjęcia (`fitCrop`). Zdjęcie w układzie (miejsce kolażu) — proporcje miejsca (`aspect`).
  */
 
 type Props = {
@@ -20,11 +22,13 @@ type Props = {
   crop: SocialCrop;
   proposal: SocialCrop | null;
   guides: SocialGuides | null;
+  /** Proporcje kadru innego niż format (miejsce zdjęcia w układzie, szerokość / wysokość). */
+  aspect?: number | null;
   disabled?: boolean;
   onChange: (crop: SocialCrop) => void;
 };
 
-export default function SocialCropEditor({ imageUrl, imageWidth, imageHeight, format, crop, proposal, guides, disabled, onChange }: Props) {
+export default function SocialCropEditor({ imageUrl, imageWidth, imageHeight, format, crop, proposal, guides, aspect, disabled, onChange }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const drag = useRef<{ x: number; y: number; crop: SocialCrop } | null>(null);
@@ -45,9 +49,15 @@ export default function SocialCropEditor({ imageUrl, imageWidth, imageHeight, fo
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
   }, [imageWidth, imageHeight]);
 
-  const zoom = useCallback((factor: number) => onChange(zoomCrop(crop, factor, imageWidth, imageHeight, format)), [crop, imageWidth, imageHeight, format, onChange]);
+  // Kadr w proporcjach formatu albo miejsca w układzie (`aspect`).
+  const fit = useCallback((value: SocialCrop) => (aspect ? fitAspectCrop(value, imageWidth, imageHeight, aspect) : fitCrop(value, imageWidth, imageHeight, format)),
+    [aspect, imageWidth, imageHeight, format]);
+  const zoomed = useCallback((factor: number) => fit({
+    ...crop, w: crop.w * factor, h: crop.h * factor, x: crop.x + (crop.w - crop.w * factor) / 2, y: crop.y + (crop.h - crop.h * factor) / 2,
+  }), [crop, fit]);
+  const zoom = useCallback((factor: number) => onChange(zoomed(factor)), [zoomed, onChange]);
 
-  const maxW = fitCrop({ x: 0, y: 0, w: 1, h: 1 }, imageWidth, imageHeight, format).w;
+  const maxW = fit({ x: 0, y: 0, w: 1, h: 1 }).w;
   const zoomLevel = Math.round((maxW / crop.w) * 100);
 
   return (
@@ -87,7 +97,11 @@ export default function SocialCropEditor({ imageUrl, imageWidth, imageHeight, fo
               left: crop.x * size.width, top: crop.y * size.height, width: crop.w * size.width, height: crop.h * size.height,
               boxShadow: '0 0 0 9999px rgba(0,0,0,0.62)',
             }}>
-            <div className="pointer-events-none absolute inset-0">
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              {guides?.window && (
+                <span className="absolute border border-white/40" title="Widoczne zdjęcie"
+                  style={{ left: `${guides.window.x * 100}%`, top: `${guides.window.y * 100}%`, width: `${guides.window.w * 100}%`, height: `${guides.window.h * 100}%`, boxShadow: '0 0 0 9999px rgba(15,17,25,0.55)' }} />
+              )}
               {[1, 2].map((part) => (
                 <span key={`v${part}`} className="absolute top-0 h-full w-px bg-white/25" style={{ left: `${(part * 100) / 3}%` }} />
               ))}
@@ -111,14 +125,14 @@ export default function SocialCropEditor({ imageUrl, imageWidth, imageHeight, fo
         <input type="range" min={100} max={400} value={Math.min(400, Math.max(100, zoomLevel))} disabled={disabled} aria-label="Powiększenie kadru"
           onChange={(event) => {
             const target = maxW / (Number(event.target.value) / 100);
-            onChange(zoomCrop(crop, target / crop.w, imageWidth, imageHeight, format));
+            onChange(zoomed(target / crop.w));
           }} className="w-40 accent-[#d3bb73]" />
         <button type="button" className={secondaryButton} disabled={disabled} onClick={() => zoom(0.92)} aria-label="Przybliż"><Plus className="h-4 w-4" /></button>
-        {proposal && <button type="button" className={secondaryButton} disabled={disabled} onClick={() => onChange(fitCrop(proposal, imageWidth, imageHeight, format))}><Sparkles className="h-4 w-4" />Propozycja</button>}
-        <button type="button" className={secondaryButton} disabled={disabled} onClick={() => onChange(centerCrop(imageWidth, imageHeight, format))}><Crosshair className="h-4 w-4" />Środek</button>
-        <span className="text-xs text-[#e5e4e2]/40"><RotateCcw className="mr-1 inline h-3 w-3" />Przeciągnij kadr, kółko myszy — powiększenie. Proporcje {format.replace('.', ',')} ({formatAspect(format).toFixed(2)})</span>
+        {proposal && <button type="button" className={secondaryButton} disabled={disabled} onClick={() => onChange(fit(proposal))}><Sparkles className="h-4 w-4" />Propozycja</button>}
+        <button type="button" className={secondaryButton} disabled={disabled} onClick={() => onChange(aspect ? socialAspectCrop(imageWidth, imageHeight, aspect) : centerCrop(imageWidth, imageHeight, format))}><Crosshair className="h-4 w-4" />Środek</button>
+        <span className="text-xs text-[#e5e4e2]/40"><RotateCcw className="mr-1 inline h-3 w-3" />Przeciągnij kadr, kółko myszy — powiększenie. {aspect ? `Proporcje miejsca w układzie (${aspect.toFixed(2).replace('.', ',')})` : `Proporcje ${format.replace('.', ',')} (${formatAspect(format).toFixed(2)})`}</span>
       </div>
-      {guides && <p className="text-center text-[11px] text-[#e5e4e2]/40">Ramki: białą — logo, złotą — tytuł i podpis{guides.unsafeTop ? ', czerwone — zasłaniane w relacji przez Instagram' : ''}.</p>}
+      {guides && <p className="text-center text-[11px] text-[#e5e4e2]/40">Ramki: białą — logo, złotą — tytuł i podpis{guides.window ? ', przyciemnione — passe-partout albo kinowe pasy (zdjęcie widać tylko w jasnym polu)' : ''}{guides.unsafeTop ? ', czerwone — zasłaniane w relacji przez Instagram' : ''}.</p>}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   Facebook,
   HelpCircle,
   Link2,
+  Linkedin,
   RefreshCw,
   Save,
   Search,
@@ -28,6 +29,7 @@ type MarketingConfigStatus = {
   security: { tokenEncryptionConfigured: boolean; missing: string[] };
   meta: { oauthConfigured: boolean; webhookConfigured: boolean; missing: string[] };
   google: { oauthConfigured: boolean; adsConfigured: boolean; missing: string[] };
+  linkedin?: { oauthConfigured: boolean; missing: string[] };
 };
 
 const MARKETING_PUBLIC_BASE_URL = (
@@ -45,6 +47,11 @@ const providerDefinition = {
     description: 'Ruch organiczny z Search Console i kampanie Google Ads.',
     icon: Search,
   },
+  linkedin: {
+    title: 'LinkedIn',
+    description: 'Publikacja postów social media na stronie firmowej marki i odpowiedzi na komentarze.',
+    icon: Linkedin,
+  },
 } as const;
 
 export default function MarketingIntegrationSettings({ companyId }: { companyId: string }) {
@@ -52,7 +59,7 @@ export default function MarketingIntegrationSettings({ companyId }: { companyId:
   const searchParams = useSearchParams();
   const [overview, setOverview] = useState<MarketingOverviewDTO | null>(null);
   const [configStatus, setConfigStatus] = useState<MarketingConfigStatus | null>(null);
-  const [forms, setForms] = useState<Record<MarketingProvider, ProviderForm>>({ meta: {}, google: {} });
+  const [forms, setForms] = useState<Record<MarketingProvider, ProviderForm>>({ meta: {}, google: {}, linkedin: {} });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<MarketingProvider | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -72,6 +79,7 @@ export default function MarketingIntegrationSettings({ companyId }: { companyId:
       setOverview(data);
       const meta = data.integrations.find((item: MarketingIntegrationDTO) => item.provider === 'meta');
       const google = data.integrations.find((item: MarketingIntegrationDTO) => item.provider === 'google');
+      const linkedin = data.integrations.find((item: MarketingIntegrationDTO) => item.provider === 'linkedin');
       setForms({
         meta: {
           page_id: String(meta?.settings?.page_id || ''),
@@ -85,6 +93,9 @@ export default function MarketingIntegrationSettings({ companyId }: { companyId:
           google_ads_customer_id: String(google?.settings?.google_ads_customer_id || ''),
           google_ads_login_customer_id: String(google?.settings?.google_ads_login_customer_id || ''),
           currency: String(google?.settings?.currency || 'PLN'),
+        },
+        linkedin: {
+          organization_id: String(linkedin?.settings?.organization_id || ''),
         },
       });
     } catch (error: any) {
@@ -108,7 +119,7 @@ export default function MarketingIntegrationSettings({ companyId }: { companyId:
       setHelpProvider('overview');
       showSnackbar('Najpierw skonfiguruj szyfrowanie tokenów marketingowych.', 'error');
     } else if (oauthStatus.includes('not_configured')) {
-      const provider = oauthStatus.startsWith('meta_') ? 'meta' : 'google';
+      const provider = oauthStatus.startsWith('meta_') ? 'meta' : oauthStatus.startsWith('linkedin_') ? 'linkedin' : 'google';
       setHelpProvider(provider);
       showSnackbar('Brakuje globalnych danych aplikacji OAuth. Otworzyłem instrukcję konfiguracji.', 'error');
     } else if (oauthStatus.startsWith('error_')) {
@@ -229,16 +240,29 @@ export default function MarketingIntegrationSettings({ companyId }: { companyId:
         })}
       </div>
 
+      <LinkedInIntegrationCard
+        companyId={companyId}
+        integration={integrations.linkedin}
+        configured={configStatus?.linkedin?.oauthConfigured === true}
+        organizationId={forms.linkedin?.organization_id || ''}
+        onOrganizationChange={(value) => updateForm('linkedin', 'organization_id', value)}
+        saving={saving === 'linkedin'}
+        onSave={() => void saveProvider('linkedin')}
+        onDisconnect={() => void disconnect('linkedin')}
+        onHelp={() => setHelpProvider('linkedin')}
+      />
+
       <div className="grid gap-5 lg:grid-cols-2">
         <SettingCard icon={<RefreshCw className="h-5 w-5" />} title="Automatyczna synchronizacja" description="CRM odświeża statystyki i kampanie co 6 godzin. Wiadomości Facebook trafiają przez webhook bez oczekiwania na harmonogram."><Toggle checked={overview?.settings.automaticSyncEnabled !== false} onChange={(checked) => void toggleAutomaticSync(checked)} /></SettingCard>
         <SettingCard icon={<Bot className="h-5 w-5" />} title="Analiza i rekomendacje AI" description="Po włączeniu do OpenAI wysyłane są wyłącznie zagregowane statystyki kampanii i SEO. Treści wiadomości oraz dane klientów nie są przekazywane."><Toggle checked={overview?.settings.aiAnalysisEnabled === true} onChange={(checked) => { if (!checked || window.confirm('Włączyć analizę AI i przekazywanie zagregowanych wyników tej marki do OpenAI?')) void toggleAI(checked); }} /></SettingCard>
       </div>
 
       <section className="rounded-xl border border-[#d3bb73]/25 bg-[#351020] p-5">
-        <div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#d3bb73]" /><div><h2 className="text-sm text-[#e5e4e2]">Konfiguracja po stronie dostawców</h2><p className="mt-1 text-xs leading-5 text-[#e5e4e2]/50">Poniższe adresy są adresami produkcyjnymi. Wklej je dokładnie w panelach Meta i Google — nie używaj adresu localhost.</p></div></div>
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#d3bb73]" /><div><h2 className="text-sm text-[#e5e4e2]">Konfiguracja po stronie dostawców</h2><p className="mt-1 text-xs leading-5 text-[#e5e4e2]/50">Poniższe adresy są adresami produkcyjnymi. Wklej je dokładnie w panelach Meta, Google i LinkedIn — nie używaj adresu localhost.</p></div></div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
           <div className="rounded-xl border border-[#d3bb73]/20 bg-[#411326] p-4"><div className="flex items-center gap-2 text-[#d3bb73]"><Facebook className="h-4 w-4" /><h3 className="text-xs font-medium uppercase tracking-wide">Meta / Facebook</h3></div><p className="mt-4 text-xs text-[#e5e4e2]/65">Adres webhooka dla wiadomości strony</p><CopyValue value={`${MARKETING_PUBLIC_BASE_URL}/bridge/marketing/meta-webhook`} /><p className="mt-4 text-xs text-[#e5e4e2]/65">Adres przekierowania OAuth</p><CopyValue value={`${MARKETING_PUBLIC_BASE_URL}/bridge/marketing/oauth/meta/callback`} /><p className="mt-4 text-[11px] leading-5 text-[#e5e4e2]/45">Token weryfikacyjny w Meta musi odpowiadać zmiennej <code className="text-[#d3bb73]">META_WEBHOOK_VERIFY_TOKEN</code>. Dla strony zasubskrybuj zdarzenia <code className="text-[#d3bb73]">messages</code> i <code className="text-[#d3bb73]">feed</code> (komentarze), a dla Instagrama — <code className="text-[#d3bb73]">comments</code>.</p></div>
           <div className="rounded-xl border border-[#d3bb73]/20 bg-[#411326] p-4"><div className="flex items-center gap-2 text-[#d3bb73]"><Search className="h-4 w-4" /><h3 className="text-xs font-medium uppercase tracking-wide">Google</h3></div><p className="mt-4 text-xs text-[#e5e4e2]/65">Adres przekierowania OAuth</p><CopyValue value={`${MARKETING_PUBLIC_BASE_URL}/bridge/marketing/oauth/google/callback`} /><p className="mt-4 text-[11px] leading-5 text-[#e5e4e2]/45">Dostęp do Google Ads API wymaga uprawnień produkcyjnych projektu OAuth w Google Cloud. Tokeny OAuth są szyfrowane na serwerze i nie są udostępniane przeglądarce.</p></div>
+          <div className="rounded-xl border border-[#d3bb73]/20 bg-[#411326] p-4"><div className="flex items-center gap-2 text-[#d3bb73]"><Linkedin className="h-4 w-4" /><h3 className="text-xs font-medium uppercase tracking-wide">LinkedIn</h3></div><p className="mt-4 text-xs text-[#e5e4e2]/65">Adres przekierowania OAuth (Authorized redirect URL)</p><CopyValue value={`${MARKETING_PUBLIC_BASE_URL}/bridge/marketing/oauth/linkedin/callback`} /><p className="mt-4 text-[11px] leading-5 text-[#e5e4e2]/45">Aplikacja LinkedIn z produktem <code className="text-[#d3bb73]">Community Management API</code> i zakresami <code className="text-[#d3bb73]">w_organization_social</code>, <code className="text-[#d3bb73]">r_organization_social</code>, <code className="text-[#d3bb73]">rw_organization_admin</code>.</p></div>
         </div>
       </section>
 
@@ -304,6 +328,7 @@ function IntegrationHelpModal({
     { value: 'overview', label: 'Jak zacząć' },
     { value: 'meta', label: 'Meta / Facebook' },
     { value: 'google', label: 'Google' },
+    { value: 'linkedin', label: 'LinkedIn' },
   ];
 
   return (
@@ -322,6 +347,7 @@ function IntegrationHelpModal({
           {topic === 'overview' && <OverviewHelp />}
           {topic === 'meta' && <MetaHelp />}
           {topic === 'google' && <GoogleHelp />}
+          {topic === 'linkedin' && <LinkedInHelp />}
         </div>
       </div>
     </div>
@@ -338,6 +364,56 @@ function MetaHelp() {
 
 function GoogleHelp() {
   return <div className="space-y-6"><Notice>Google wymaga klienta OAuth oraz dostępu do Google Ads API dla tego samego projektu w Google Cloud. Wybrana marka przechowuje później tylko usługę Search Console i identyfikator konta reklamowego.</Notice><HelpTitle>Konfiguracja Google — krok po kroku</HelpTitle><ol className="space-y-3"><HelpStep number="1" title="Utwórz lub wybierz projekt Google Cloud">W Google Cloud Console włącz Google Search Console API oraz Google Ads API. Skonfiguruj ekran zgody OAuth dla aplikacji używanej przez CRM.</HelpStep><HelpStep number="2" title="Utwórz klienta OAuth typu Web application">Przejdź do Google Auth Platform → Clients, wybierz „Create Client” i typ „Web application”. W sekcji Authorized redirect URIs wklej dokładnie poniższy adres.</HelpStep></ol><CopyValue value={`${MARKETING_PUBLIC_BASE_URL}/bridge/marketing/oauth/google/callback`} /><ol start={3} className="space-y-3"><HelpStep number="3" title="Skopiuj Client ID i Client Secret">Zapisz je jako sekrety hostingu CRM. W Vercel: <strong>Project → Settings → Environment Variables</strong>. Po zapisaniu wykonaj redeploy.</HelpStep></ol><EnvironmentBlock values={['GOOGLE_MARKETING_CLIENT_ID=<Client ID>', 'GOOGLE_MARKETING_CLIENT_SECRET=<Client Secret>']} /><ol start={4} className="space-y-3"><HelpStep number="4" title="Sprawdź dostęp projektu do Google Ads API">W Google Cloud otwórz Google Ads API dla projektu używanego przez klienta OAuth i sprawdź poziom dostępu do kont produkcyjnych. Od 9 września 2026 dostęp jest zarządzany w Google Cloud; token deweloperski nie jest już wymagany.</HelpStep></ol><ol start={5} className="space-y-3"><HelpStep number="5" title="Wróć do CRM i kliknij Połącz Google">Zaloguj się kontem mającym dostęp do zweryfikowanej usługi Search Console oraz odpowiedniego konta Google Ads. Po powrocie wybierz zasoby i zapisz przypisanie.</HelpStep></ol><div className="flex flex-wrap gap-2"><GuideLink href="https://console.cloud.google.com/apis/credentials">Dane logowania Google Cloud</GuideLink><GuideLink href="https://console.cloud.google.com/apis/library/googleads.googleapis.com">Google Ads API w Google Cloud</GuideLink><GuideLink href="https://search.google.com/search-console">Search Console</GuideLink></div><HelpTitle>Identyfikatory marki</HelpTitle><div className="space-y-3"><HelpBox title="Usługa Search Console">Musi być wcześniej dodana i zweryfikowana. Usługa domenowa pojawi się jako <code>sc-domain:twojadomena.pl</code>, a usługa prefiksowa jako pełny adres HTTPS.</HelpBox><HelpBox title="Customer ID Google Ads">10-cyfrowy numer w formacie <code>123-456-7890</code>, widoczny przy nazwie konta. Pole MCC wypełnia się tylko przy dostępie przez konto menedżera.</HelpBox></div></div>;
+}
+
+// LinkedIn (strona firmowa): publikacja postów social media i komentarze. Do czasu konfiguracji aplikacji LinkedIn — ręcznie.
+const LINKEDIN_PERMISSIONS: Array<[string, string]> = [
+  ['w_organization_social', 'Publikacja postów i odpowiedzi jako strona'],
+  ['r_organization_social', 'Odczyt postów i komentarzy strony'],
+  ['rw_organization_admin', 'Lista stron, którymi zarządzasz'],
+];
+function LinkedInIntegrationCard({
+  companyId, integration, configured, organizationId, onOrganizationChange, saving, onSave, onDisconnect, onHelp,
+}: {
+  companyId: string;
+  integration?: MarketingIntegrationDTO;
+  configured: boolean;
+  organizationId: string;
+  onOrganizationChange: (value: string) => void;
+  saving: boolean;
+  onSave: () => void;
+  onDisconnect: () => void;
+  onHelp: () => void;
+}) {
+  const connected = integration?.status === 'connected';
+  const organizations = (Array.isArray(integration?.settings?.available_organizations) ? integration?.settings?.available_organizations : []) as Array<{ id: string; name: string; vanityName?: string | null }>;
+  const discoveryError = typeof integration?.settings?.linkedin_discovery_error === 'string' ? integration.settings.linkedin_discovery_error : '';
+  const scopes = integration?.scopes || [];
+  const start = `/bridge/marketing/oauth/linkedin/start?companyId=${companyId}`;
+  return <div className="rounded-xl border border-[#d3bb73]/22 bg-[#411326] p-5">
+    <div className="flex items-start justify-between gap-4"><div className="flex gap-3"><div className="rounded-lg bg-[#d3bb73]/10 p-2 text-[#d3bb73]"><Linkedin className="h-5 w-5" /></div><div><h2 className="text-base text-[#e5e4e2]">LinkedIn</h2><p className="mt-1 text-xs leading-5 text-[#e5e4e2]/45">Publikacja postów social media na stronie firmowej marki (jedno zdjęcie albo karuzela zdjęć) i odpowiedzi na komentarze jako strona.</p></div></div><div className="flex items-center gap-2"><button type="button" onClick={onHelp} className="rounded-full border border-[#d3bb73]/25 p-1.5 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/12" title="Instrukcja integracji LinkedIn" aria-label="Otwórz instrukcję integracji LinkedIn"><HelpCircle className="h-4 w-4" /></button><span className={`rounded-full px-2 py-1 text-[10px] ${connected ? 'bg-emerald-400/15 text-emerald-300' : 'bg-[#d3bb73]/10 text-[#d3bb73]'}`}>{connected ? 'Połączona' : configured ? 'Niepołączona' : 'Do skonfigurowania'}</span></div></div>
+    {!configured && !connected && <p className="mt-4 rounded-lg border border-[#d3bb73]/25 bg-[#d3bb73]/10 p-3 text-xs leading-5 text-[#e5e4e2]/70">Aplikacja LinkedIn nie jest jeszcze skonfigurowana na serwerze CRM. Do tego czasu posty z kanałem „LinkedIn — post” publikujesz ręcznie: w karcie posta „Pobierz paczkę” (grafiki i opis), a po publikacji na stronie — „Oznacz jako opublikowany” z linkiem do posta.</p>}
+    <div className="mt-5 flex flex-wrap gap-2">{!connected
+      ? (configured
+        ? <a href={start} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-xs font-medium text-[#210811]"><Link2 className="h-4 w-4" />Połącz LinkedIn</a>
+        : <button type="button" onClick={onHelp} className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/25 px-4 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"><BookOpen className="h-4 w-4" />Jak skonfigurować LinkedIn</button>)
+      : <><a href={start} className="rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10">Odśwież dostęp</a><button type="button" onClick={onDisconnect} className="inline-flex items-center gap-2 rounded-lg border border-red-300/20 px-3 py-2 text-xs text-red-200 hover:bg-red-400/10"><Unplug className="h-3.5 w-3.5" />Odłącz</button></>}</div>
+    {connected && <div className="mt-5 grid gap-4 border-t border-[#d3bb73]/15 pt-5 lg:grid-cols-2">
+      <div className="space-y-4">
+        <Field label="Strona firmowa LinkedIn" hint="Lista zawiera strony, których administratorem jest konto użyte przy połączeniu. Ręczny identyfikator (liczba z adresu panelu administratora strony) — tylko gdy LinkedIn nie zwrócił listy.">{organizations.length
+          ? <select value={organizationId} onChange={(event) => onOrganizationChange(event.target.value)} className="field-marketing"><option value="">Wybierz stronę</option>{organizations.map((item) => <option key={item.id} value={item.id}>{item.name}{item.vanityName ? ` (linkedin.com/company/${item.vanityName})` : ''}</option>)}</select>
+          : <input value={organizationId} onChange={(event) => onOrganizationChange(event.target.value)} className="field-marketing" placeholder="ID strony, np. 12345678" inputMode="numeric" />}</Field>
+        {discoveryError && <p className="text-xs text-amber-200">{discoveryError}</p>}
+        <button type="button" onClick={onSave} disabled={saving} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-2.5 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20 disabled:opacity-50"><Save className="h-4 w-4" />{saving ? 'Zapisuję…' : 'Zapisz stronę LinkedIn'}</button>
+        {integration?.last_error && <p className="rounded border border-red-400/20 bg-red-400/10 p-2 text-xs text-red-200">{integration.last_error}</p>}
+      </div>
+      <div className="space-y-2 rounded-lg border border-[#d3bb73]/18 bg-[#210811] p-3"><p className="text-xs font-medium text-[#e5e4e2]">Social media — publikacja i komentarze</p><p className="text-xs text-[#e5e4e2]/60">Strona: {integration?.settings?.organization_name ? <span className="text-[#e2cd8d]">{String(integration.settings.organization_name)}</span> : <span className="text-amber-200">nie wybrano</span>}</p><ul className="space-y-1">{LINKEDIN_PERMISSIONS.map(([scope, label]) => <li key={scope} className={`text-xs ${scopes.includes(scope) ? 'text-emerald-200' : 'text-amber-200'}`}>{scopes.includes(scope) ? '✓' : '!'} {label} <code className="text-[10px] text-[#e5e4e2]/40">{scope}</code></li>)}</ul>{integration?.token_expires_at && <p className="text-[11px] text-[#e5e4e2]/45">Dostęp ważny do: {new Date(integration.token_expires_at).toLocaleDateString('pl-PL')} — CRM odnawia go automatycznie, gdy LinkedIn na to pozwala; inaczej kliknij „Odśwież dostęp”.</p>}</div>
+    </div>}
+  </div>;
+}
+
+function LinkedInHelp() {
+  return <div className="space-y-6"><Notice>LinkedIn publikuje posty social media na stronie firmowej marki (Instagram i Facebook — przez Meta). Jedna globalna aplikacja LinkedIn obsługuje wszystkie marki; każda marka wybiera później swoją stronę. Do czasu konfiguracji posty na LinkedIn publikujesz ręcznie: „Pobierz paczkę” w karcie posta, a po publikacji „Oznacz jako opublikowany”.</Notice><HelpTitle>Konfiguracja aplikacji LinkedIn — krok po kroku</HelpTitle><ol className="space-y-3"><HelpStep number="1" title="Utwórz aplikację w LinkedIn Developers">W portalu LinkedIn Developers wybierz „Create app”, podaj nazwę i logo oraz przypisz aplikację do strony firmowej, którą zarządzasz. Administrator tej strony musi zatwierdzić powiązanie.</HelpStep><HelpStep number="2" title="Dodaj produkt Community Management API">W zakładce Products poproś o „Community Management API” (LinkedIn weryfikuje firmę; aplikacja z tym produktem nie może mieć innych produktów). Po akceptacji pojawią się zakresy w_organization_social, r_organization_social i rw_organization_admin.</HelpStep><HelpStep number="3" title="Wklej adres przekierowania">W zakładce Auth, w sekcji „Authorized redirect URLs for your app”, wklej dokładnie poniższy adres.</HelpStep></ol><CopyValue value={`${MARKETING_PUBLIC_BASE_URL}/bridge/marketing/oauth/linkedin/callback`} /><ol start={4} className="space-y-3"><HelpStep number="4" title="Zapisz Client ID i Client Secret na serwerze CRM">Skopiuj je z zakładki Auth i zapisz jako zmienne środowiskowe serwera CRM, a potem uruchom go ponownie. Wersję API możesz zmienić bez wdrożenia kodu zmienną LINKEDIN_API_VERSION (format RRRRMM).</HelpStep></ol><EnvironmentBlock values={['LINKEDIN_CLIENT_ID=<Client ID>', 'LINKEDIN_CLIENT_SECRET=<Client Secret>', 'LINKEDIN_API_VERSION=<RRRRMM, opcjonalnie>']} /><ol start={5} className="space-y-3"><HelpStep number="5" title="Wróć do CRM i kliknij Połącz LinkedIn">Zaloguj się kontem, które jest administratorem strony firmowej marki. Po powrocie wybierz stronę z listy i zapisz. Od tej chwili posty z kanałem „LinkedIn — post” publikują się automatycznie (od razu albo w zaplanowanym terminie), a komentarze trafiają do skrzynki komentarzy social media.</HelpStep></ol><div className="flex flex-wrap gap-2"><GuideLink href="https://www.linkedin.com/developers/apps">Aplikacje LinkedIn Developers</GuideLink><GuideLink href="https://learn.microsoft.com/linkedin/marketing/community-management/community-management-overview">Dokumentacja Community Management API</GuideLink></div><HelpTitle>Co publikuje CRM</HelpTitle><div className="space-y-3"><HelpBox title="Post strony">Grafika w formacie 1,91:1, 4:5 albo 1:1 (jak na Facebooku) z opisem i hashtagami (do 3000 znaków). Karuzela posta trafia na LinkedIn jako post z kilkoma zdjęciami.</HelpBox><HelpBox title="Komentarze">Komentarze postów strony są pobierane razem z komentarzami Meta; odpowiedź z CRM publikuje się jako strona marki.</HelpBox></div></div>;
 }
 
 function HelpTitle({ children }: { children: ReactNode }) { return <h3 className="text-sm font-medium uppercase tracking-wide text-[#d3bb73]">{children}</h3>; }

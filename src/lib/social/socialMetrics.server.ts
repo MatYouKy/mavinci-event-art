@@ -238,8 +238,9 @@ export async function syncSocialMetrics(options: { postId?: string; companyId?: 
     const { data, error } = await query.order('published_at', { ascending: false }).limit(limit);
     if (error) throw error;
     const storyLimit = Date.now() - 24 * 3_600_000;
-    rows = ((data || []) as Row[]).filter((row) =>
-      row.channel !== 'instagram_story' || new Date(text(row.published_at)).getTime() > storyLimit);
+    // LinkedIn — bez statystyk (osobny etap); relacje tylko z ostatnich 24 h.
+    rows = ((data || []) as Row[]).filter((row) => row.channel !== 'linkedin_page'
+      && (row.channel !== 'instagram_story' || new Date(text(row.published_at)).getTime() > storyLimit));
   } else {
     const { data: due, error: dueError } = await admin.rpc('social_metrics_due', { p_limit: limit, p_company: null });
     if (dueError) throw dueError;
@@ -247,7 +248,7 @@ export async function syncSocialMetrics(options: { postId?: string; companyId?: 
     if (ids.length) {
       const { data, error } = await admin.from('social_publications').select(PUBLICATION_FIELDS).in('id', ids);
       if (error) throw error;
-      rows = (data || []) as Row[];
+      rows = ((data || []) as Row[]).filter((row) => row.channel !== 'linkedin_page');
     }
   }
 

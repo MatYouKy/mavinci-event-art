@@ -252,7 +252,7 @@ export async function renderPrintJob(job: PrintJob): Promise<RenderedPdf> {
  */
 export async function renderHtmlToImage(
   html: string,
-  options: { width: number; height: number; type?: 'jpeg' | 'png'; quality?: number; timeoutMs?: number },
+  options: { width: number; height: number; type?: 'jpeg' | 'png'; quality?: number; timeoutMs?: number; transparent?: boolean },
 ): Promise<Buffer> {
   activeRenders += 1;
   if (idleTimer) clearTimeout(idleTimer);
@@ -276,6 +276,8 @@ export async function renderHtmlToImage(
       return Buffer.from(await page.screenshot({
         type,
         ...(type === 'jpeg' ? { quality: options.quality ?? 92 } : {}),
+        // PNG z przezroczystym tłem (np. warstwa grafiki social media bez zdjęcia).
+        ...(type === 'png' && options.transparent ? { omitBackground: true } : {}),
         clip: { x: 0, y: 0, width: options.width, height: options.height },
         animations: 'disabled',
       }));

@@ -86,20 +86,22 @@ export async function assetDTOs(ctx: NativeContext, rows: Row[], options: { work
   // Klient zdjęcia: wskazany przy zdjęciu albo klient wydarzenia (zgoda klienta jest domyślna dla jego wydarzeń).
   const clientOf = (row: Row) => uuidOrNull(row.organization_id) || eventOrganization.get(text(row.event_id)) || null;
   const organizationIds = Array.from(new Set(rows.map(clientOf).filter((id): id is string => Boolean(id))));
-  const [events, organizations, portfolio, usage, names, urls] = await Promise.all([
+  const [events, organizations, portfolio, usage, names, urls, slideUsage, slotUsage] = await Promise.all([
     Promise.resolve({ data: eventData }),
     organizationIds.length ? ctx.supabase.from('organizations').select('id, name').in('id', organizationIds) : Promise.resolve({ data: [] }),
     portfolioIds.length ? ctx.supabase.from('portfolio_projects').select('id, title').in('id', portfolioIds) : Promise.resolve({ data: [] }),
     ctx.supabase.from('social_post_variants').select('asset_id, post_id').in('asset_id', ids),
     employeeNames(ctx.supabase, rows.map((row) => row.created_by)),
     signedUrls(ctx.supabase, rows.flatMap((row) => [row.thumbnail_path, options.work ? row.work_path : null])),
+    ctx.supabase.from('social_post_slides').select('asset_id, post_id').in('asset_id', ids),
+    ctx.supabase.from('social_post_slots').select('asset_id, post_id').in('asset_id', ids),
   ]);
   const map = (data: unknown) => new Map(((data || []) as Row[]).map((row) => [String(row.id), row]));
   const eventRows = map(events.data);
   const organizationRows = map(organizations.data);
   const portfolioRows = map(portfolio.data);
   const used = new Map<string, Set<string>>();
-  for (const row of (usage.data || []) as Row[]) {
+  for (const row of [...((usage.data || []) as Row[]), ...((slideUsage.data || []) as Row[]), ...((slotUsage.data || []) as Row[])]) {
     const set = used.get(String(row.asset_id)) || new Set<string>();
     set.add(String(row.post_id));
     used.set(String(row.asset_id), set);
@@ -195,10 +197,13 @@ export async function assetDetail(ctx: NativeContext, id: string) {
   const row = await assetRow(ctx, id);
   const access = await socialAccess(ctx, String(row.company_id));
   const [asset] = await assetDTOs(ctx, [row], { work: true });
-  const { data: usage } = await ctx.supabase.from('social_post_variants').select('format, post:social_posts(id, title, status, scheduled_at)')
-    .eq('asset_id', id);
+  const [{ data: usage }, { data: slideUsage }, { data: slotUsage }] = await Promise.all([
+    ctx.supabase.from('social_post_variants').select('format, post:social_posts(id, title, status, scheduled_at)').eq('asset_id', id),
+    ctx.supabase.from('social_post_slides').select('format, post:social_posts(id, title, status, scheduled_at)').eq('asset_id', id),
+    ctx.supabase.from('social_post_slots').select('format, post:social_posts(id, title, status, scheduled_at)').eq('asset_id', id),
+  ]);
   const posts = new Map<string, Row>();
-  for (const item of (usage || []) as Row[]) {
+  for (const item of [...((usage || []) as Row[]), ...((slideUsage || []) as Row[]), ...((slotUsage || []) as Row[])]) {
     const post = isObject(item.post) ? item.post : null;
     if (post) posts.set(String(post.id), { id: String(post.id), title: text(post.title), status: text(post.status), scheduledAt: text(post.scheduled_at) || null });
   }
@@ -342,6 +347,23 @@ export async function assetImport(ctx: NativeContext, body: Row) {
     fileName = decodeURIComponent(imageUrl.split('/').pop() || 'realizacja.jpg');
     portfolioId = String(project.id);
     source = 'portfolio';
+  } else if (isUuid(body.portfolioItemId) && typeof body.imageUrl === 'string') {
+    // Zdjęcie z karty realizacji (Marketing → Realizacje), także jeszcze nieopublikowanej — dostęp sprawdza baza (edycja strony).
+    const imageUrl = body.imageUrl.trim();
+    if (!isOwnPublicStorageUrl(imageUrl)) fail('Nieobsługiwany adres zdjęcia realizacji.', 400);
+    const { data: item } = await ctx.supabase.from('marketing_portfolio_items').select('id, portfolio_project_id, event_id, content')
+      .eq('id', body.portfolioItemId).maybeSingle();
+    if (!item) fail('Nie znaleziono realizacji.', 404);
+    const content = isObject(item.content) ? item.content : {};
+    const photos = [content.image, ...(Array.isArray(content.gallery) ? content.gallery : [])].filter(isObject);
+    if (!photos.some((photo) => text(photo.src) === imageUrl)) fail('To zdjęcie nie należy do tej realizacji.', 400);
+    bytes = (await fetchPublicStorageFile(imageUrl, SOCIAL_LIMITS.uploadBytes)).bytes;
+    fileName = decodeURIComponent(imageUrl.split('/').pop() || 'realizacja.webp');
+    portfolioId = uuidOrNull(item.portfolio_project_id);
+    // Wydarzenie realizacji (zgoda klienta) — tylko gdy pracownik je widzi.
+    eventId = uuidOrNull(item.event_id);
+    if (eventId && !(await eventInfo(ctx, eventId))) eventId = null;
+    source = 'portfolio';
   } else {
     fail('Wybierz zdjęcie do importu.', 400);
   }
@@ -400,8 +422,12 @@ export async function assetDelete(ctx: NativeContext, id: string) {
   const access = await socialAccess(ctx, String(row.company_id));
   const own = row.status === 'uploading' && row.created_by === ctx.employee.id;
   if (!access.create && !own) fail('Zdjęcia z biblioteki usuwa twórca treści.', 403);
-  const { count } = await ctx.supabase.from('social_post_variants').select('id', { count: 'exact', head: true }).eq('asset_id', id);
-  if ((count || 0) > 0) fail('Zdjęcie jest użyte w postach — zamiast usuwać, przenieś je do archiwum.', 409);
+  const [{ count }, { count: slideCount }, { count: slotCount }] = await Promise.all([
+    ctx.supabase.from('social_post_variants').select('id', { count: 'exact', head: true }).eq('asset_id', id),
+    ctx.supabase.from('social_post_slides').select('id', { count: 'exact', head: true }).eq('asset_id', id),
+    ctx.supabase.from('social_post_slots').select('id', { count: 'exact', head: true }).eq('asset_id', id),
+  ]);
+  if ((count || 0) + (slideCount || 0) + (slotCount || 0) > 0) fail('Zdjęcie jest użyte w postach — zamiast usuwać, przenieś je do archiwum.', 409);
   const { data, error } = await ctx.supabase.from('social_assets').delete().eq('id', id).select('id');
   check(error, 'Nie udało się usunąć zdjęcia.');
   if (!data?.length) fail('Nie udało się usunąć zdjęcia.', 403);

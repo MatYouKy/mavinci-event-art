@@ -6,7 +6,9 @@ import { decryptMarketingCredentials } from '@/lib/marketing/crypto.server';
 import { getMetaGraphVersion, normaliseGoogleCustomerId, readJsonResponse } from '@/lib/marketing/providers.server';
 import { hasMetaScope, metaAuthHeaders, metaGraph } from '@/lib/marketing/metaGraph.server';
 
-const PROVIDERS = new Set<MarketingProvider>(['meta', 'google']);
+const PROVIDERS = new Set<MarketingProvider>(['meta', 'google', 'linkedin']);
+/** LinkedIn: tylko wybór strony firmowej (nazwa — z listy stron po autoryzacji). */
+const LINKEDIN_SETTINGS = new Set(['organization_id']);
 const ALLOWED_SETTINGS = new Set([
   'page_id',
   'page_name',
@@ -41,9 +43,16 @@ export async function PATCH(
 
     const settings = Object.fromEntries(
       Object.entries(body?.settings || {})
-        .filter(([key]) => ALLOWED_SETTINGS.has(key))
+        .filter(([key]) => (provider === 'linkedin' ? LINKEDIN_SETTINGS : ALLOWED_SETTINGS).has(key))
         .map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]),
     );
+    if (provider === 'linkedin' && 'organization_id' in settings) {
+      const value = String(settings.organization_id || '').replace(/^urn:li:organization:/, '');
+      if (value && !/^\d{1,20}$/.test(value)) {
+        return NextResponse.json({ error: 'Identyfikator strony LinkedIn to liczba (z adresu panelu administratora strony).' }, { status: 400 });
+      }
+      settings.organization_id = value;
+    }
     if (provider === 'google') {
       for (const key of ['google_ads_customer_id', 'google_ads_login_customer_id']) {
         if (!(key in settings)) continue;
@@ -90,16 +99,26 @@ export async function PATCH(
       mergedSettings.instagram_account_id = String(instagram?.id || '');
       mergedSettings.instagram_username = String(instagram?.username || '');
     }
+    if (provider === 'linkedin' && 'organization_id' in settings) {
+      const organizations = Array.isArray((current?.settings as any)?.available_organizations)
+        ? (current?.settings as any).available_organizations : [];
+      const organizationId = String(settings.organization_id || '');
+      const listed = organizations.find((item: any) => String(item?.id) === organizationId);
+      mergedSettings.organization_name = organizationId ? String(listed?.name || `Strona ${organizationId}`) : '';
+    }
 
     const payload = {
       company_id: companyId,
       provider,
       settings: mergedSettings,
-      display_name: body?.displayName?.trim() || null,
+      display_name: body?.displayName?.trim()
+        || (provider === 'linkedin' ? String(mergedSettings.organization_name || '') || null : null),
       external_account_id:
         provider === 'meta'
           ? String(settings.page_id || settings.ad_account_id || '') || null
-          : String(settings.google_ads_customer_id || settings.search_console_site_url || '') || null,
+          : provider === 'linkedin'
+            ? String(mergedSettings.organization_id || '') || null
+            : String(settings.google_ads_customer_id || settings.search_console_site_url || '') || null,
       status: current?.credentials_encrypted ? current.status : 'not_connected',
       created_by: access.employee.id,
     };

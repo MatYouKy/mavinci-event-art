@@ -87,6 +87,8 @@ export interface MenuItem {
 
 /** Social media (Marketing) — te same klucze co w CRM; zakres marek i akcji sprawdza serwer. */
 export const SOCIAL_MEDIA_PERMISSIONS = ['marketing_social_view', 'marketing_social_create', 'marketing_social_approve', 'marketing_social_publish'];
+/** Realizacje (Marketing → portfolio strony) — jak w CRM: edycja strony (`website_edit` albo `page_manage`). */
+export const PORTFOLIO_PERMISSIONS = ['website_edit', 'page_manage'];
 
 export const MENU_ITEMS: MenuItem[] = [
   { icon: 'home', label: 'Dashboard', screen: 'Dashboard' },
@@ -104,6 +106,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { icon: 'truck', label: 'Flota', screen: 'Fleet', module: 'fleet' },
   { icon: 'package', label: 'Sprzęt', screen: 'Equipment', module: 'equipment' },
   { icon: 'image', label: 'Social media', screen: 'SocialMedia', anyPermissions: SOCIAL_MEDIA_PERMISSIONS },
+  { icon: 'award', label: 'Realizacje', screen: 'Portfolio', anyPermissions: PORTFOLIO_PERMISSIONS },
   { icon: 'user', label: 'Profil', screen: 'Profile' },
   { icon: 'settings', label: 'Ustawienia', screen: 'Settings' },
 ];

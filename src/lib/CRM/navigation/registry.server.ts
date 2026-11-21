@@ -135,6 +135,14 @@ export const allNavigation: NavigationItemDTO[] = [
         module: 'marketing_social',
         anyPermissions: ['marketing_social_view', 'marketing_social_create', 'marketing_social_approve', 'marketing_social_publish'],
       },
+      {
+        key: 'marketing-campaigns',
+        name: 'Realizacje',
+        href: '/crm/marketing/portfolio',
+        iconKey: 'portfolio',
+        module: 'marketing_portfolio',
+        anyPermissions: ['website_edit', 'page_manage'],
+      },
     ],
   },
   {

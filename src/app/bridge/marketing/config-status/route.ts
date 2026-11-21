@@ -18,6 +18,10 @@ export async function GET() {
     !process.env.GOOGLE_MARKETING_CLIENT_ID && 'GOOGLE_MARKETING_CLIENT_ID',
     !process.env.GOOGLE_MARKETING_CLIENT_SECRET && 'GOOGLE_MARKETING_CLIENT_SECRET',
   ].filter(Boolean) as string[];
+  const linkedinMissing = [
+    !process.env.LINKEDIN_CLIENT_ID && 'LINKEDIN_CLIENT_ID',
+    !process.env.LINKEDIN_CLIENT_SECRET && 'LINKEDIN_CLIENT_SECRET',
+  ].filter(Boolean) as string[];
 
   return NextResponse.json({
     security: {
@@ -39,6 +43,11 @@ export async function GET() {
       // Local configuration only; production API access is checked during sync.
       adsConfigured: googleMissing.length === 0,
       missing: googleMissing,
+    },
+    // Strona firmowa LinkedIn (publikacja postów social media) — konfiguracja aplikacji później, do tego czasu ręcznie.
+    linkedin: {
+      oauthConfigured: linkedinMissing.length === 0,
+      missing: linkedinMissing,
     },
   });
 }

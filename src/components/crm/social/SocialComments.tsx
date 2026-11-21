@@ -1,17 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CornerDownRight, ExternalLink, Facebook, Heart, Images, Instagram, MessagesSquare, RefreshCw, Reply } from 'lucide-react';
+import { CornerDownRight, ExternalLink, Facebook, Heart, Images, Instagram, Linkedin, MessagesSquare, RefreshCw, Reply } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
-import { SOCIAL_LIMITS } from '@/lib/social/socialShared';
+import { SOCIAL_COMMENT_PLATFORM_LABELS, SOCIAL_LIMITS, SOCIAL_REPLY_AUTHOR, SOCIAL_REPLY_SUCCESS } from '@/lib/social/socialShared';
 import { socialGet, socialPost, type SocialComment, type SocialComments as SocialCommentsData, type SocialCommentThread } from './socialApi';
 import { cardClass, dateTimeLabel, errorMessage, inputClass, primaryButton, secondaryButton } from './socialUi';
 
 /*
- * Komentarze Facebook i Instagram opublikowanych postów: skrzynka marki (najnowsze wątki, filtr „bez odpowiedzi”)
+ * Komentarze Facebook, Instagram i LinkedIn opublikowanych postów: skrzynka marki (najnowsze wątki, filtr „bez odpowiedzi”)
  * albo wątki jednego posta. Odpowiedź publikuje serwer jako strona / profil marki (twórca treści, uprawnienia Meta
- * do komentarzy). „Odśwież” pobiera komentarze z Meta; harmonogram robi to co 15 minut.
+ * albo LinkedIn do komentarzy). „Odśwież” pobiera komentarze z Meta i LinkedIn; harmonogram robi to co 15 minut.
  */
 
 type Props = { companyId?: string; postId?: string; onOpenPost?: (id: string) => void; onChanged?: () => void };
@@ -52,7 +52,7 @@ export default function SocialComments({ companyId, postId, onOpenPost, onChange
     }
   };
 
-  const refresh = () => run('Pobieram komentarze z Meta', () => socialPost<SocialCommentsData>('commentsRefresh',
+  const refresh = () => run('Pobieram komentarze', () => socialPost<SocialCommentsData>('commentsRefresh',
     postId ? { postId } : { companyId: data?.companyId || companyId, filter }), 'Komentarze są aktualne');
 
   const reply = async (thread: SocialCommentThread) => {
@@ -60,7 +60,7 @@ export default function SocialComments({ companyId, postId, onOpenPost, onChange
     if (!message) return;
     const ok = await run('Publikuję odpowiedź', () => socialPost<SocialCommentsData>('reply', {
       commentId: thread.id, message, scope: postId ? 'post' : 'company', filter,
-    }), thread.platform === 'facebook' ? 'Odpowiedź opublikowana na Facebooku' : 'Odpowiedź opublikowana na Instagramie');
+    }), SOCIAL_REPLY_SUCCESS[thread.platform] || SOCIAL_REPLY_SUCCESS.instagram);
     if (ok) {
       setDrafts((current) => ({ ...current, [thread.id]: '' }));
       setOpen(null);
@@ -93,7 +93,7 @@ export default function SocialComments({ companyId, postId, onOpenPost, onChange
       )}
       <div className={postId ? 'space-y-3' : 'grid gap-3 xl:grid-cols-2'}>
         {threads.map((thread) => {
-          const canReply = data?.canReply && (thread.platform === 'facebook' ? data.replyChannels.facebook : data.replyChannels.instagram);
+          const canReply = data?.canReply && Boolean(data.replyChannels[thread.platform]);
           return (
             <article key={thread.id} className="space-y-2 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119]/60 p-3">
               {!postId && thread.post && (
@@ -108,15 +108,15 @@ export default function SocialComments({ companyId, postId, onOpenPost, onChange
               ))}
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 {!thread.isOwn && !thread.answeredAt && <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-200">Bez odpowiedzi</span>}
-                {thread.permalink && <a href={thread.permalink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-[#d3bb73] hover:underline"><ExternalLink className="h-3 w-3" />{thread.platform === 'facebook' ? 'Facebook' : 'Instagram'}</a>}
+                {thread.permalink && <a href={thread.permalink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-[#d3bb73] hover:underline"><ExternalLink className="h-3 w-3" />{SOCIAL_COMMENT_PLATFORM_LABELS[thread.platform] || 'Post'}</a>}
                 <span className="flex-1" />
                 {canReply && open !== thread.id && <button type="button" className={secondaryButton} onClick={() => setOpen(thread.id)}><Reply className="h-4 w-4" />Odpowiedz</button>}
-                {!canReply && data?.canReply && <span className="text-[11px] text-[#e5e4e2]/40">Odpowiedzi wymagają uprawnień Meta do komentarzy (ustawienia marketingu marki).</span>}
+                {!canReply && data?.canReply && <span className="text-[11px] text-[#e5e4e2]/40">Odpowiedzi wymagają uprawnień {thread.platform === 'linkedin' ? 'LinkedIn' : 'Meta'} do komentarzy (ustawienia marketingu marki).</span>}
               </div>
               {open === thread.id && (
                 <div className="space-y-2">
                   <textarea autoFocus rows={3} maxLength={SOCIAL_LIMITS.reply} value={drafts[thread.id] || ''} className={inputClass}
-                    placeholder={`Odpowiedź jako ${thread.platform === 'facebook' ? 'strona marki' : 'profil marki'}…`}
+                    placeholder={`Odpowiedź jako ${SOCIAL_REPLY_AUTHOR[thread.platform] || 'marka'}…`}
                     onChange={(event) => setDrafts((current) => ({ ...current, [thread.id]: event.target.value }))} />
                   <div className="flex justify-end gap-2">
                     <button type="button" className={secondaryButton} onClick={() => setOpen(null)}>Anuluj</button>
@@ -133,7 +133,7 @@ export default function SocialComments({ companyId, postId, onOpenPost, onChange
 }
 
 function CommentLine({ comment }: { comment: SocialComment }) {
-  const Icon = comment.platform === 'facebook' ? Facebook : Instagram;
+  const Icon = comment.platform === 'facebook' ? Facebook : comment.platform === 'linkedin' ? Linkedin : Instagram;
   return (
     <div className="min-w-0 flex-1 text-sm">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">

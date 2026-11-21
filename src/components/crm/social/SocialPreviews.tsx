@@ -1,36 +1,45 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Bookmark, Globe2, Heart, Images, MessageCircle, MoreHorizontal, Send, Share2, ThumbsUp } from 'lucide-react';
+import { Bookmark, ChevronLeft, ChevronRight, Globe2, Heart, Images, MessageCircle, MoreHorizontal, Repeat2, Send, Share2, ThumbsUp } from 'lucide-react';
 import { buildSocialGraphicHtml } from '@/lib/social/socialGraphic';
-import { SOCIAL_FORMAT_INFO, type SocialCrop, type SocialFormat } from '@/lib/social/socialShared';
+import { SOCIAL_FORMAT_INFO, type SocialCrop, type SocialFormat, type SocialGraphicStyle } from '@/lib/social/socialShared';
+import type { SocialLayoutDefinition } from '@/lib/social/socialLayout';
 import type { SocialSpec } from './socialApi';
 
 /*
  * Podglądy posta w CRM: grafika (wyrenderowany plik albo podgląd na żywo z tym samym HTML co render na serwerze),
- * feed Instagrama, siatka profilu z poprzednimi postami, relacja ze strefami bezpiecznymi i post na Facebooku.
+ * feed Instagrama (karuzela ze strzałkami i kropkami), siatka profilu z poprzednimi postami, relacja ze strefami
+ * bezpiecznymi, post na Facebooku (kilka zdjęć — układ jak na Facebooku) i post strony firmowej LinkedIn.
  */
 
 export type GraphicSource = {
   format: SocialFormat;
   renderedUrl: string | null;
-  live: { spec: SocialSpec; photoUrl: string; crop: SocialCrop; headline: string; subline: string } | null;
+  /** Podgląd na żywo; bez zdjęcia (`photoUrl: null`) — tło w kolorze przyciemnienia (np. miniatura stylu przed wyborem zdjęcia). */
+  live: {
+    spec: SocialSpec; photoUrl: string | null; crop: SocialCrop | null; headline: string; subline: string; style: SocialGraphicStyle; kicker: string;
+    /** Układ jako dane (zamiast stylu) i zdjęcia kolażu (indeks = miejsce 1–3) z kadrami w proporcjach miejsc. */
+    layout?: SocialLayoutDefinition | null;
+    photos?: Array<{ src: string; crop: SocialCrop } | null>;
+  } | null;
 };
 
-/** Grafika w szerokości `width` px: plik z serwera albo ramka z podglądem na żywo (ten sam HTML co render). */
-export function GraphicView({ source, width, className = '' }: { source: GraphicSource | null; width: number; className?: string }) {
+/** Grafika w szerokości `width` px: plik z serwera albo ramka z podglądem na żywo (ten sam HTML co render, po `delay` ms bez zmian). */
+export function GraphicView({ source, width, className = '', delay = 120 }: { source: GraphicSource | null; width: number; className?: string; delay?: number }) {
   const [html, setHtml] = useState('');
   const live = source && !source.renderedUrl ? source.live : null;
   const info = source ? SOCIAL_FORMAT_INFO[source.format] : SOCIAL_FORMAT_INFO['4:5'];
   const height = Math.round((width * info.height) / info.width);
-  const liveKey = live ? JSON.stringify([source?.format, live.photoUrl, live.crop, live.headline, live.subline, live.spec.templateId, live.spec.colors]) : '';
+  const liveKey = live ? JSON.stringify([source?.format, live.photoUrl, live.crop, live.headline, live.subline, live.style, live.kicker, live.spec.templateId, live.spec.colors,
+    live.layout || null, live.photos || null]) : '';
 
   useEffect(() => {
     if (!live || !source) { setHtml(''); return; }
     const timer = window.setTimeout(() => {
       setHtml(buildSocialGraphicHtml({
         format: source.format,
-        photo: { src: live.photoUrl, crop: live.crop },
+        photo: live.photoUrl && live.crop ? { src: live.photoUrl, crop: live.crop } : null,
         logo: live.spec.logo ? { src: live.spec.logo.src } : null,
         titleFont: live.spec.titleFont,
         captionFont: live.spec.captionFont,
@@ -38,8 +47,12 @@ export function GraphicView({ source, width, className = '' }: { source: Graphic
         settings: live.spec.settings,
         headline: live.headline,
         subline: live.subline,
+        style: live.style,
+        kicker: live.kicker,
+        layout: live.layout || null,
+        photos: live.photos || [],
       }));
-    }, 120);
+    }, delay);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveKey]);
@@ -59,6 +72,29 @@ export function GraphicView({ source, width, className = '' }: { source: Graphic
   );
 }
 
+/** Karuzela w podglądzie: bieżące zdjęcie, strzałki, licznik i kropki (jak w aplikacji Instagram). */
+export function CarouselView({ sources, width, light = false }: { sources: Array<GraphicSource | null>; width: number; light?: boolean }) {
+  const [index, setIndex] = useState(0);
+  const count = sources.length;
+  const current = Math.min(index, Math.max(0, count - 1));
+  useEffect(() => { if (index > count - 1) setIndex(Math.max(0, count - 1)); }, [count, index]);
+  if (count <= 1) return <GraphicView source={sources[0] || null} width={width} />;
+  const arrow = 'absolute top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-black shadow';
+  return (
+    <div className="relative" style={{ width }}>
+      <GraphicView source={sources[current]} width={width} />
+      <span className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[11px] text-white">{current + 1}/{count}</span>
+      {current > 0 && <button type="button" aria-label="Poprzednie zdjęcie" className={`${arrow} left-2`} onClick={() => setIndex(current - 1)}><ChevronLeft className="h-4 w-4" /></button>}
+      {current < count - 1 && <button type="button" aria-label="Następne zdjęcie" className={`${arrow} right-2`} onClick={() => setIndex(current + 1)}><ChevronRight className="h-4 w-4" /></button>}
+      <div className="flex justify-center gap-1 py-1.5">
+        {sources.map((_, dot) => (
+          <span key={dot} className={`h-1.5 w-1.5 rounded-full ${dot === current ? 'bg-sky-500' : light ? 'bg-black/20' : 'bg-white/30'}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Avatar({ logoUrl }: { logoUrl: string | null }) {
   return (
     <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#1c1f33] ring-2 ring-pink-500/60">
@@ -67,13 +103,15 @@ function Avatar({ logoUrl }: { logoUrl: string | null }) {
   );
 }
 
-export function InstagramFeedPreview({ source, account, logoUrl, caption }: { source: GraphicSource | null; account: string; logoUrl: string | null; caption: string }) {
+export function InstagramFeedPreview({ source, slides = [], account, logoUrl, caption }: {
+  source: GraphicSource | null; slides?: Array<GraphicSource | null>; account: string; logoUrl: string | null; caption: string;
+}) {
   const width = 340;
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="mx-auto overflow-hidden rounded-xl border border-white/10 bg-black text-white" style={{ width }}>
       <div className="flex items-center gap-2 px-3 py-2"><Avatar logoUrl={logoUrl} /><span className="flex-1 text-sm font-semibold">{account}</span><MoreHorizontal className="h-4 w-4" /></div>
-      <GraphicView source={source} width={width} />
+      {slides.length ? <CarouselView sources={[source, ...slides]} width={width} /> : <GraphicView source={source} width={width} />}
       <div className="flex items-center gap-4 px-3 py-2"><Heart className="h-5 w-5" /><MessageCircle className="h-5 w-5" /><Send className="h-5 w-5" /><span className="flex-1" /><Bookmark className="h-5 w-5" /></div>
       <div className="px-3 pb-3 text-[13px] leading-snug">
         <span className="font-semibold">{account}</span>{' '}
@@ -125,7 +163,31 @@ export function StoryPreview({ source, account, logoUrl }: { source: GraphicSour
   );
 }
 
-export function FacebookPreview({ source, account, logoUrl, caption }: { source: GraphicSource | null; account: string; logoUrl: string | null; caption: string }) {
+/** Facebook z kilkoma zdjęciami: pierwsze duże, pod nim do trzech mniejszych (na ostatnim „+N”). */
+function FacebookPhotos({ sources, width }: { sources: Array<GraphicSource | null>; width: number }) {
+  const rest = sources.slice(1, 4);
+  const hidden = sources.length - 1 - rest.length;
+  const small = Math.floor((width - (rest.length - 1) * 2) / rest.length);
+  return (
+    <div style={{ width }}>
+      <GraphicView source={sources[0]} width={width} />
+      <div className="mt-0.5 flex gap-0.5">
+        {rest.map((item, index) => (
+          <div key={index} className="relative overflow-hidden" style={{ width: small, height: small }}>
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"><GraphicView source={item} width={small} /></div>
+            {index === rest.length - 1 && hidden > 0 && (
+              <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-2xl font-semibold text-white">+{hidden}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function FacebookPreview({ source, slides = [], account, logoUrl, caption }: {
+  source: GraphicSource | null; slides?: Array<GraphicSource | null>; account: string; logoUrl: string | null; caption: string;
+}) {
   const width = 360;
   return (
     <div className="mx-auto overflow-hidden rounded-xl border border-black/10 bg-white text-[#050505]" style={{ width }}>
@@ -135,11 +197,39 @@ export function FacebookPreview({ source, account, logoUrl, caption }: { source:
         <MoreHorizontal className="h-5 w-5 text-[#65676b]" />
       </div>
       <p className="whitespace-pre-wrap px-3 pb-2 text-[13px] leading-snug">{caption.length > 240 ? `${caption.slice(0, 240)}… Zobacz więcej` : caption}</p>
-      <GraphicView source={source} width={width} />
+      {slides.length ? <FacebookPhotos sources={[source, ...slides]} width={width} /> : <GraphicView source={source} width={width} />}
       <div className="flex items-center justify-around border-t border-black/10 py-2 text-[13px] text-[#65676b]">
         <span className="flex items-center gap-1"><ThumbsUp className="h-4 w-4" />Lubię to!</span>
         <span className="flex items-center gap-1"><MessageCircle className="h-4 w-4" />Komentarz</span>
         <span className="flex items-center gap-1"><Share2 className="h-4 w-4" />Udostępnij</span>
+      </div>
+    </div>
+  );
+}
+
+/** Post strony firmowej LinkedIn: nazwa strony, opis (po ~210 znakach „…więcej”), grafika albo kilka zdjęć, pasek akcji. */
+export function LinkedInPreview({ source, slides = [], account, logoUrl, caption }: {
+  source: GraphicSource | null; slides?: Array<GraphicSource | null>; account: string; logoUrl: string | null; caption: string;
+}) {
+  const width = 360;
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="mx-auto overflow-hidden rounded-xl border border-black/10 bg-white text-[#191919]" style={{ width }}>
+      <div className="flex items-start gap-2 p-3">
+        <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded bg-[#1c1f33]">{logoUrl && <img src={logoUrl} alt="" className="h-9 w-9 object-contain" />}</span>
+        <span className="flex-1"><span className="block text-sm font-semibold leading-tight">{account}</span><span className="block text-[11px] text-[#666666]">Obserwujący</span><span className="flex items-center gap-1 text-[11px] text-[#666666]">Teraz · <Globe2 className="h-3 w-3" /></span></span>
+        <MoreHorizontal className="h-5 w-5 text-[#666666]" />
+      </div>
+      <p className="whitespace-pre-wrap px-3 pb-2 text-[13px] leading-snug">
+        {expanded || caption.length <= 210 ? caption : `${caption.slice(0, 210)}…`}
+        {!expanded && caption.length > 210 && <button type="button" className="ml-1 text-[#666666]" onClick={() => setExpanded(true)}>więcej</button>}
+      </p>
+      {slides.length ? <FacebookPhotos sources={[source, ...slides]} width={width} /> : <GraphicView source={source} width={width} />}
+      <div className="flex items-center justify-around border-t border-black/10 py-2 text-[12px] font-semibold text-[#666666]">
+        <span className="flex items-center gap-1"><ThumbsUp className="h-4 w-4" />Lubię to</span>
+        <span className="flex items-center gap-1"><MessageCircle className="h-4 w-4" />Skomentuj</span>
+        <span className="flex items-center gap-1"><Repeat2 className="h-4 w-4" />Udostępnij</span>
+        <span className="flex items-center gap-1"><Send className="h-4 w-4" />Wyślij</span>
       </div>
     </div>
   );

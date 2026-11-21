@@ -6,12 +6,12 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import {
-  SOCIAL_CHANNEL_LABELS, socialConsentAllows, socialDateLabel, socialPostStatusLabel, type SocialPostStatus,
+  SOCIAL_CHANNEL_LABELS, socialConsentAllows, socialDateLabel, socialPostStatusLabel, type SocialChannel, type SocialPostStatus,
 } from '../lib/socialShared';
 import SocialCommentsList from '../components/Social/SocialCommentsList';
 import SocialStatsView from '../components/Social/SocialStatsView';
 import {
-  pickSocialPhoto, socialErrorMessage, socialGet, socialPost, uploadSocialPhoto, type SocialAssetItem, type SocialHome,
+  pickSocialPhoto, socialErrorMessage, socialGet, socialManualChannel, socialPost, uploadSocialPhoto, type SocialAssetItem, type SocialHome,
   type SocialLibrary, type SocialPostItem,
 } from '../lib/socialApi';
 
@@ -148,8 +148,11 @@ export default function SocialMediaScreen() {
 
   const review = home.posts.filter((post) => ['in_review', 'changes_requested', 'failed'].includes(post.status));
   const unanswered = home.counts.unansweredComments || 0;
-  const metaProblem = home.access.publish && home.meta
-    ? Object.values(home.meta.channels).map((channel) => channel.problem).find(Boolean) || null
+  // Ostrzeżenie tylko dla kanałów z automatyczną publikacją (LinkedIn bez połączenia — publikacja ręczna, bez ostrzeżenia).
+  const meta = home.meta;
+  const metaProblem = home.access.publish && meta
+    ? (Object.keys(meta.channels) as SocialChannel[]).filter((channel) => !socialManualChannel(meta, channel))
+      .map((channel) => meta.channels[channel]?.problem).find(Boolean) || null
     : null;
   const plan = [...home.posts]
     .filter((post) => post.status !== 'cancelled')
@@ -179,7 +182,7 @@ export default function SocialMediaScreen() {
           <Text style={styles.muted}>
             Do akceptacji: {home.counts.inReview} · do poprawy: {home.counts.changesRequested}{home.counts.failed ? ` · błędy publikacji: ${home.counts.failed}` : ''}
           </Text>
-          {metaProblem ? <Text style={[styles.muted, { color: colors.status.warning }]} numberOfLines={2}>Meta: {metaProblem}</Text> : null}
+          {metaProblem ? <Text style={[styles.muted, { color: colors.status.warning }]} numberOfLines={2}>Publikacja: {metaProblem}</Text> : null}
         </View>
         {home.access.create && (
           <TouchableOpacity style={styles.primary} onPress={() => navigation.navigate('SocialQuickPost', { companyId: home.company.id })}>

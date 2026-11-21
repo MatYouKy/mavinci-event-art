@@ -9,12 +9,17 @@ import {
 import {
   buildSocialGraphicHtml, parseHexColor, parseSocialTemplateSettings, socialLayoutGuides, type SocialTemplateSettings,
 } from './socialGraphic';
-import { SOCIAL_FORMATS, SOCIAL_FORMAT_INFO, formatSlug, type SocialCrop, type SocialFormat } from './socialShared';
+import {
+  SOCIAL_FORMATS, SOCIAL_FORMAT_INFO, SOCIAL_GRAPHIC_STYLE_LIST, formatSlug, isSocialGraphicStyle, type SocialCrop, type SocialFormat,
+  type SocialGraphicStyle,
+} from './socialShared';
+import type { SocialLayoutDefinition } from './socialLayout';
 
 /*
  * Szablon grafiki marki (`social_brand_templates`) — wyłącznie odwołania do księgi znaku (logo, fonty, kolory) i liczby
  * układu. Gotowość szablonu, dane do podglądu na żywo w CRM (publiczne adresy plików księgi znaku), skrót danych renderu
  * i render grafiki (Chromium na serwerze → JPEG w `social-media/<marka>/posts/<post>/`), wspólny dla web, Maca i telefonu.
+ * Domyślny styl grafik marki (`settings.defaultStyle`) dostają nowe posty; styl i napis nad tytułem są w wariancie posta.
  */
 
 /** Zmiana wyglądu grafik (np. nowy układ HTML) — podnieś, żeby istniejące grafiki uznać za nieaktualne. */
@@ -31,6 +36,8 @@ export type LoadedTemplate = {
   isDefault: boolean;
   updatedAt: string;
   settings: SocialTemplateSettings;
+  /** Styl nowych postów (ustawienia szablonu) — nie wpływa na grafiki istniejących postów. */
+  defaultStyle: SocialGraphicStyle;
   logo: BrandLogo | null;
   titleFont: BrandFont | null;
   captionFont: BrandFont | null;
@@ -86,6 +93,7 @@ export async function loadTemplates(ctx: NativeContext, companyId: string, onlyI
       isDefault: row.is_default === true,
       updatedAt: text(row.updated_at),
       settings: parseSocialTemplateSettings(row.settings),
+      defaultStyle: templateDefaultStyle(row.settings),
       logo: logoRow && logoUrl ? { id: String(logoRow.id), label: text(logoRow.label), variant: text(logoRow.variant), url: logoUrl } : null,
       titleFont: brandFont(fontRows.get(text(row.title_font_id))),
       captionFont: brandFont(fontRows.get(text(row.caption_font_id))),
@@ -97,6 +105,12 @@ export async function loadTemplates(ctx: NativeContext, companyId: string, onlyI
     template.problems = templateProblems(template);
     return template;
   });
+}
+
+/** Domyślny styl grafik z ustawień szablonu (`settings.defaultStyle`). */
+export function templateDefaultStyle(settings: unknown): SocialGraphicStyle {
+  const value = settings && typeof settings === 'object' && !Array.isArray(settings) ? (settings as Row).defaultStyle : null;
+  return isSocialGraphicStyle(value) ? value : 'classic';
 }
 
 function templateProblems(template: LoadedTemplate): string[] {
@@ -161,6 +175,7 @@ export type SocialTemplateDTO = {
   logoUrl: string | null;
   titleFontLabel: string;
   captionFontLabel: string;
+  defaultStyle: SocialGraphicStyle;
   updatedAt: string;
 };
 
@@ -181,6 +196,7 @@ export function templateDTO(template: LoadedTemplate): SocialTemplateDTO {
     logoUrl: template.logo?.url || null,
     titleFontLabel: template.titleFont ? template.titleFont.label || template.titleFont.family : '',
     captionFontLabel: template.captionFont ? template.captionFont.label || template.captionFont.family : '',
+    defaultStyle: template.defaultStyle,
     updatedAt: template.updatedAt,
   };
 }
@@ -194,7 +210,11 @@ export type SocialGraphicSpec = {
   captionFont: { family: string; src: string | null };
   colors: { overlay: string; accent: string; text: string };
   settings: SocialTemplateSettings;
+  /** Strefy stylu „Klasyczny” (starsze wersje aplikacji). */
   guides: Record<SocialFormat, ReturnType<typeof socialLayoutGuides>>;
+  /** Strefy każdego stylu grafiki — nakładka edytora kadru (Mac, CRM). */
+  styleGuides: Record<SocialGraphicStyle, Record<SocialFormat, ReturnType<typeof socialLayoutGuides>>>;
+  defaultStyle: SocialGraphicStyle;
 };
 
 export async function graphicSpec(template: LoadedTemplate): Promise<SocialGraphicSpec> {
@@ -212,6 +232,10 @@ export async function graphicSpec(template: LoadedTemplate): Promise<SocialGraph
     },
     settings: template.settings,
     guides: Object.fromEntries(SOCIAL_FORMATS.map((format) => [format, socialLayoutGuides(template.settings, format, aspect)])) as SocialGraphicSpec['guides'],
+    styleGuides: Object.fromEntries(SOCIAL_GRAPHIC_STYLE_LIST.map((style) => [style, Object.fromEntries(SOCIAL_FORMATS.map((format) => [
+      format, socialLayoutGuides(template.settings, format, aspect, style),
+    ]))])) as SocialGraphicSpec['styleGuides'],
+    defaultStyle: template.defaultStyle,
   };
 }
 
@@ -221,11 +245,19 @@ export type RenderSource = {
   crop: SocialCrop;
   headline: string;
   subline: string;
+  style: SocialGraphicStyle;
+  kicker: string;
+  /** Układ jako dane (zamiast stylu) i zdjęcia kolażu: indeks = numer miejsca 1–3 (miejsce 0 — `workPath`). */
+  layout?: SocialLayoutDefinition | null;
+  slots?: Array<{ workPath: string; crop: SocialCrop } | null>;
 };
 
 const roundCrop = (crop: SocialCrop) => [crop.x, crop.y, crop.w, crop.h].map((value) => Math.round(value * 10000) / 10000);
 
-/** Skrót danych renderu: zmiana szablonu, księgi znaku, zdjęcia, kadru albo tekstów → grafika nieaktualna. */
+/**
+ * Skrót danych renderu: zmiana szablonu, księgi znaku, zdjęcia, kadru, tekstów albo stylu → grafika nieaktualna.
+ * Styl „Klasyczny” bez napisu nad tytułem daje ten sam skrót co przed wprowadzeniem stylów (istniejące grafiki aktualne).
+ */
 export function renderHash(template: LoadedTemplate, source: RenderSource): string {
   const payload = JSON.stringify({
     v: RENDER_VERSION,
@@ -240,30 +272,56 @@ export function renderHash(template: LoadedTemplate, source: RenderSource): stri
     crop: roundCrop(source.crop),
     headline: source.headline.trim(),
     subline: source.subline.trim(),
+    ...(source.style !== 'classic' ? { style: source.style } : {}),
+    ...(source.kicker.trim() ? { kicker: source.kicker.trim() } : {}),
+    // Układ jako dane: definicja i zdjęcia kolażu (bez układu — skrót jak dotąd).
+    ...(source.layout ? {
+      layout: source.layout,
+      slots: (source.slots || []).map((slot) => (slot ? [slot.workPath, roundCrop(slot.crop)] : null)),
+    } : {}),
   });
   return createHash('sha256').update(payload).digest('hex').slice(0, 32);
 }
 
-/** Grafika w formacie (JPEG) — HTML z danymi osadzonymi jako `data:` (render bez sieci). */
-export async function renderGraphic(ctx: NativeContext, template: LoadedTemplate, source: RenderSource): Promise<Buffer> {
+/** Logo i fonty szablonu jako `data:` (render bez sieci) — wspólne dla grafiki i warstwy podglądu na żywo. */
+async function brandAssets(template: LoadedTemplate) {
   if (template.problems.length) fail(`Szablon „${template.name}” nie jest gotowy: ${template.problems.join(' ')}`, 422);
-  const [photo, logo, titleFont, captionFont] = await Promise.all([
-    downloadSocialFile(ctx.supabase, source.workPath),
+  const [logo, titleFont, captionFont] = await Promise.all([
     brandFile(template.logo!.url, 8_000_000),
     brandFile(template.titleFont!.url!, 6_000_000),
     brandFile(template.captionFont!.url!, 6_000_000),
   ]);
   const logoType = pngSize(logo.bytes) ? 'image/png' : logo.contentType.startsWith('image/') ? logo.contentType : 'image/png';
-  const html = buildSocialGraphicHtml({
-    format: source.format,
-    photo: { src: `data:image/jpeg;base64,${photo.toString('base64')}`, crop: source.crop },
+  return {
     logo: { src: `data:${logoType};base64,${logo.bytes.toString('base64')}` },
     titleFont: { family: template.titleFont!.family, src: `data:${fontMime(template.titleFont!.url!)};base64,${titleFont.bytes.toString('base64')}` },
     captionFont: { family: template.captionFont!.family, src: `data:${fontMime(template.captionFont!.url!)};base64,${captionFont.bytes.toString('base64')}` },
     colors: { overlay: template.overlay!.hex, accent: template.accent!.hex, text: template.textColor!.hex },
     settings: template.settings,
+  };
+}
+
+/** Grafika w formacie (JPEG) — HTML z danymi osadzonymi jako `data:` (render bez sieci). */
+export async function renderGraphic(ctx: NativeContext, template: LoadedTemplate, source: RenderSource): Promise<Buffer> {
+  const slotSources = source.layout ? source.slots || [] : [];
+  const [brand, photo, ...slotPhotos] = await Promise.all([
+    brandAssets(template),
+    downloadSocialFile(ctx.supabase, source.workPath),
+    ...slotSources.map((slot) => (slot ? downloadSocialFile(ctx.supabase, slot.workPath) : Promise.resolve(null))),
+  ]);
+  const html = buildSocialGraphicHtml({
+    format: source.format,
+    photo: { src: `data:image/jpeg;base64,${photo.toString('base64')}`, crop: source.crop },
+    ...brand,
     headline: source.headline,
     subline: source.subline,
+    style: source.style,
+    kicker: source.kicker,
+    layout: source.layout || null,
+    photos: slotSources.map((slot, index) => {
+      const bytes = slotPhotos[index];
+      return slot && bytes ? { src: `data:image/jpeg;base64,${bytes.toString('base64')}`, crop: slot.crop } : null;
+    }),
   });
   const { width, height } = SOCIAL_FORMAT_INFO[source.format];
   try {
@@ -272,6 +330,49 @@ export async function renderGraphic(ctx: NativeContext, template: LoadedTemplate
     console.error('[social-render]', error);
     fail('Nie udało się wygenerować grafiki. Spróbuj ponownie za chwilę.', 502);
   }
+}
+
+/**
+ * Warstwa grafiki bez zdjęcia (przyciemnienia, ramy, passe-partout, kinowe pasy, logo i teksty) — PNG z przezroczystym tłem w wymiarach
+ * formatu. Podgląd kadru na żywo na Macu: zdjęcie w bieżącym kadrze + ta warstwa (ten sam HTML i Chromium co render),
+ * więc podgląd wygląda jak grafika po zapisie. Zmiana kadru nie wymaga nowej warstwy — tylko zmiana tekstów, szablonu
+ * albo formatu. Ostatnie warstwy są w pamięci serwera (10 min).
+ */
+const overlayCache = new Map<string, { bytes: Buffer; at: number }>();
+const OVERLAY_TTL_MS = 10 * 60_000;
+
+export async function renderOverlay(
+  template: LoadedTemplate,
+  input: { format: SocialFormat; headline: string; subline: string; style: SocialGraphicStyle; kicker: string; layout?: SocialLayoutDefinition | null },
+): Promise<Buffer> {
+  const key = JSON.stringify([RENDER_VERSION, template.id, template.updatedAt, template.settings, template.logo?.url, template.titleFont?.url,
+    template.captionFont?.url, template.overlay?.hex, template.accent?.hex, template.textColor?.hex, input.format, input.headline, input.subline,
+    input.style, input.kicker, input.layout || null]);
+  const cached = overlayCache.get(key);
+  if (cached && Date.now() - cached.at < OVERLAY_TTL_MS) return cached.bytes;
+  const brand = await brandAssets(template);
+  const html = buildSocialGraphicHtml({
+    format: input.format,
+    photo: null,
+    ...brand,
+    headline: input.headline,
+    subline: input.subline,
+    style: input.style,
+    kicker: input.kicker,
+    layout: input.layout || null,
+    transparent: true,
+  });
+  const { width, height } = SOCIAL_FORMAT_INFO[input.format];
+  let bytes: Buffer;
+  try {
+    bytes = await renderHtmlToImage(html, { width, height, type: 'png', transparent: true });
+  } catch (error) {
+    console.error('[social-overlay]', error);
+    fail('Nie udało się przygotować podglądu grafiki. Spróbuj ponownie za chwilę.', 502);
+  }
+  overlayCache.set(key, { bytes, at: Date.now() });
+  if (overlayCache.size > 60) overlayCache.delete(overlayCache.keys().next().value as string);
+  return bytes;
 }
 
 /**
@@ -284,13 +385,16 @@ export async function renderVariant(
   template: LoadedTemplate,
   variant: { id: string; renderedPath: string | null; renderHash: string | null },
   source: RenderSource,
+  /** Zdjęcie karuzeli: wiersz `social_post_slides` i plik `slide-<n>-<format>-<skrót>.jpg` (okładka — warianty). */
+  slide?: { position: number },
 ): Promise<{ path: string; hash: string; rendered: boolean }> {
   const hash = renderHash(template, source);
   if (variant.renderHash === hash && variant.renderedPath) return { path: variant.renderedPath, hash, rendered: false };
   const bytes = await renderGraphic(ctx, template, source);
-  const path = `${post.companyId}/posts/${post.id}/${formatSlug(source.format)}-${hash.slice(0, 16)}.jpg`;
+  const prefix = slide ? `slide-${slide.position}-` : '';
+  const path = `${post.companyId}/posts/${post.id}/${prefix}${formatSlug(source.format)}-${hash.slice(0, 16)}.jpg`;
   await uploadSocialFile(ctx.supabase, path, bytes, 'image/jpeg');
-  const { error } = await ctx.supabase.from('social_post_variants')
+  const { error } = await ctx.supabase.from(slide ? 'social_post_slides' : 'social_post_variants')
     .update({ rendered_path: path, render_hash: hash, rendered_at: new Date().toISOString() })
     .eq('id', variant.id);
   check(error, 'Nie udało się zapisać grafiki posta.');

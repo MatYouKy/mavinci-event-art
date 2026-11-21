@@ -5,10 +5,13 @@ import {
 } from '@/lib/social/socialAssets.server';
 import { httpStatus, isUuid } from '@/lib/social/socialCommon.server';
 import {
-  brandbookOptions, createPost, deletePost, duplicatePost, postPackage, publishNow, refreshComments, renderPost, replyComment, savePost,
-  saveSettings, saveTemplate, schedulePost, schedulePublication, socialComments, socialHome, socialPost, suggestPost, transitionPost,
+  assistPost, brandbookOptions, createPost, deletePost, duplicatePost, graphicOverlay, postPackage, publishNow, refreshComments, renderPost,
+  replyComment,
+  savePost, saveSettings, saveTemplate, schedulePost, schedulePublication, socialComments, socialHome, socialPost, suggestPost,
+  transitionPost,
 } from '@/lib/social/socialPosts.server';
 import { generateReport, refreshCompanyMetrics, refreshPostMetrics, socialStats } from '@/lib/social/socialReport.server';
+import { archiveLayout, deleteLayout, saveLayout, socialLayouts } from '@/lib/social/socialLayouts.server';
 import { pdfContentDisposition } from '@/lib/print/pdfRenderer.server';
 import { SOCIAL_LIMITS } from '@/lib/social/socialShared';
 
@@ -24,12 +27,15 @@ export const maxDuration = 300;
  *   comments&post | comments&company&filter=unanswered (wątki komentarzy Facebook i Instagram) |
  *   stats&company&days=7|28|90&report (zakładka „Statystyki” i raport tygodniowy „Trendy i rekomendacje”).
  * POST ?op=upload&id=<zdjęcie> — bajty zdjęcia (po assetCreate; Mac i telefon).
- * POST JSON op=createPost {companyId, channels, scheduledAt, eventId, assetId, formats, headline, subline, title} |
- *   savePost {id, updatedAt, …pola, variants[{format, assetId, crop, headline, subline}], render} | renderPost {id} |
+ * POST JSON op=createPost {companyId, channels, scheduledAt, eventId, assetId, formats, headline, subline, title, graphicStyle, kicker} |
+ *   savePost {id, updatedAt, …pola, variants[{format, assetId, crop, headline, subline, style, kicker}], render} | renderPost {id} |
+ *   overlay {companyId, templateId, format, headline, subline, style, kicker} → PNG: warstwa grafiki bez zdjęcia (podgląd kadru
+ *   na żywo i miniatury stylów na Macu) |
  *   transition {id, action, revision, note, url} | schedule {id, updatedAt, scheduledAt} | duplicate {id} | deletePost {id} |
- *   suggest {id} | assetCreate {companyId, eventId, fileName, mimeType, bytes, source} | assetFinish {id} |
+ *   suggest {id} | assist {id, mode: write | rewrite | hashtags, topic, goal, tone, length, rewrite, instruction, usePhoto,
+ *   caption, hashtags, headline, subline, eventId, assetId, channels} (asystent AI — wynik bez zapisu w poście) | assetCreate {companyId, eventId, fileName, mimeType, bytes, source} | assetFinish {id} |
  *   assetImport {companyId, eventFileId | portfolioProjectId + imageUrl} | assetUpdate {id, updatedAt, …} | assetDelete {id} |
- *   consent {eventId | organizationId, status, channels, note} | settings {companyId, …} | template {companyId, id?, …} |
+ *   consent {eventId | organizationId, status, channels, note} | settings {companyId, …} | template {companyId, id?, …, defaultStyle} |
  *   schedulePublication {id, scheduledAt, revision} | publishNow {id, revision} (publikacja w Meta, wynik w `publishResult`) |
  *   commentsRefresh {postId | companyId, filter} | reply {commentId, message, scope: post | company, filter} |
  *   metricsRefresh {postId} → karta posta | metricsRefresh {companyId, days, report} → statystyki |
@@ -71,6 +77,8 @@ export async function GET(request: Request) {
         return nativeJson(await brandbookOptions(ctx, params.get('company') || ''));
       case 'comments':
         return nativeJson(await socialComments(ctx, params));
+      case 'layouts':
+        return nativeJson(await socialLayouts(ctx, params.get('company') || '', params.get('template')));
       case 'stats':
         return nativeJson(await socialStats(ctx, params));
       case 'package': {
@@ -125,6 +133,10 @@ export async function POST(request: Request) {
         return nativeJson(await savePost(ctx, body));
       case 'renderPost':
         return nativeJson(await renderPost(ctx, id));
+      case 'overlay':
+        return new Response(new Uint8Array(await graphicOverlay(ctx, body)), {
+          headers: { 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=600' },
+        });
       case 'transition':
         return nativeJson(await transitionPost(ctx, body));
       case 'schedule':
@@ -135,6 +147,8 @@ export async function POST(request: Request) {
         return nativeJson(await deletePost(ctx, id));
       case 'suggest':
         return nativeJson(await suggestPost(ctx, id));
+      case 'assist':
+        return nativeJson(await assistPost(ctx, body));
       case 'assetCreate':
         return nativeJson(await assetCreate(ctx, body));
       case 'assetFinish':
@@ -168,6 +182,12 @@ export async function POST(request: Request) {
         return nativeJson(await refreshCompanyMetrics(ctx, body));
       case 'reportGenerate':
         return nativeJson(await generateReport(ctx, body));
+      case 'saveLayout':
+        return nativeJson(await saveLayout(ctx, body));
+      case 'archiveLayout':
+        return nativeJson(await archiveLayout(ctx, body));
+      case 'deleteLayout':
+        return nativeJson(await deleteLayout(ctx, body));
       default:
         return failure('Nieznana operacja.');
     }

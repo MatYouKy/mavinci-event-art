@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, borderRadius, typography } from '../../theme';
-import { SOCIAL_LIMITS } from '../../lib/socialShared';
+import { SOCIAL_COMMENT_PLATFORM_LABELS, SOCIAL_LIMITS, SOCIAL_REPLY_AUTHOR, SOCIAL_REPLY_SUCCESS } from '../../lib/socialShared';
 import { socialErrorMessage, socialGet, socialPost, type SocialComment, type SocialComments, type SocialCommentThread } from '../../lib/socialApi';
 
 /*
- * Komentarze Facebook i Instagram w aplikacji (jak w CRM i na Macu): wątki posta albo skrzynka marki (filtr „Bez odpowiedzi”).
- * Odpowiedź publikuje serwer jako strona / profil marki — twórca treści z uprawnieniami Meta do komentarzy.
+ * Komentarze Facebook, Instagram i LinkedIn w aplikacji (jak w CRM i na Macu): wątki posta albo skrzynka marki (filtr
+ * „Bez odpowiedzi”). Odpowiedź publikuje serwer jako strona / profil marki — twórca treści z uprawnieniami Meta albo LinkedIn
+ * do komentarzy.
  */
 
 type Props = { companyId?: string; postId?: string; onOpenPost?: (id: string) => void; refreshKey?: number };
@@ -45,7 +46,7 @@ export default function SocialCommentsList({ companyId, postId, onOpenPost, refr
     }
   };
 
-  const refresh = () => run('Pobieram komentarze z Meta', () => socialPost<SocialComments>('commentsRefresh',
+  const refresh = () => run('Pobieram komentarze', () => socialPost<SocialComments>('commentsRefresh',
     postId ? { postId } : { companyId: data?.companyId || companyId, filter }));
 
   const send = async (thread: SocialCommentThread) => {
@@ -53,7 +54,7 @@ export default function SocialCommentsList({ companyId, postId, onOpenPost, refr
     if (!message) return;
     const ok = await run('Publikuję odpowiedź', () => socialPost<SocialComments>('reply', {
       commentId: thread.id, message, scope: postId ? 'post' : 'company', filter,
-    }), thread.platform === 'facebook' ? 'Odpowiedź opublikowana na Facebooku.' : 'Odpowiedź opublikowana na Instagramie.');
+    }), `${SOCIAL_REPLY_SUCCESS[thread.platform] || SOCIAL_REPLY_SUCCESS.instagram}.`);
     if (ok) { setDraft(''); setReplying(null); }
   };
 
@@ -61,7 +62,7 @@ export default function SocialCommentsList({ companyId, postId, onOpenPost, refr
     <View style={{ gap: spacing.sm }}>
       <View style={styles.header}>
         <Text style={styles.title}>Komentarze{data?.unanswered ? ` · ${data.unanswered} bez odpowiedzi` : ''}</Text>
-        <TouchableOpacity onPress={() => void refresh()} accessibilityRole="button" accessibilityLabel="Odśwież komentarze z Meta">
+        <TouchableOpacity onPress={() => void refresh()} accessibilityRole="button" accessibilityLabel="Odśwież komentarze">
           <Feather name="refresh-cw" size={18} color={colors.primary.gold} />
         </TouchableOpacity>
       </View>
@@ -82,7 +83,7 @@ export default function SocialCommentsList({ companyId, postId, onOpenPost, refr
         </Text>
       )}
       {data?.threads.map((thread) => {
-        const canReply = data.canReply && (thread.platform === 'facebook' ? data.replyChannels.facebook : data.replyChannels.instagram);
+        const canReply = data.canReply && Boolean(data.replyChannels[thread.platform]);
         return (
           <View key={thread.id} style={styles.thread}>
             {!postId && thread.post && (
@@ -98,18 +99,18 @@ export default function SocialCommentsList({ companyId, postId, onOpenPost, refr
             <View style={styles.actions}>
               {!thread.isOwn && !thread.answeredAt && <Text style={styles.unanswered}>Bez odpowiedzi</Text>}
               {thread.permalink && (
-                <TouchableOpacity onPress={() => void Linking.openURL(thread.permalink!)}><Text style={styles.link}>{thread.platform === 'facebook' ? 'Facebook' : 'Instagram'} ↗</Text></TouchableOpacity>
+                <TouchableOpacity onPress={() => void Linking.openURL(thread.permalink!)}><Text style={styles.link}>{SOCIAL_COMMENT_PLATFORM_LABELS[thread.platform] || 'Post'} ↗</Text></TouchableOpacity>
               )}
               <View style={{ flex: 1 }} />
               {canReply && replying !== thread.id && (
                 <TouchableOpacity onPress={() => { setReplying(thread.id); setDraft(''); }}><Text style={styles.link}>Odpowiedz</Text></TouchableOpacity>
               )}
             </View>
-            {!canReply && data.canReply && <Text style={styles.muted}>Odpowiedzi wymagają uprawnień Meta do komentarzy.</Text>}
+            {!canReply && data.canReply && <Text style={styles.muted}>Odpowiedzi wymagają uprawnień {thread.platform === 'linkedin' ? 'LinkedIn' : 'Meta'} do komentarzy.</Text>}
             {replying === thread.id && (
               <View style={{ gap: spacing.xs }}>
                 <TextInput style={styles.input} multiline autoFocus value={draft} maxLength={SOCIAL_LIMITS.reply} onChangeText={setDraft}
-                  placeholder={thread.platform === 'facebook' ? 'Odpowiedź jako strona marki…' : 'Odpowiedź jako profil marki…'} placeholderTextColor={colors.text.tertiary} />
+                  placeholder={`Odpowiedź jako ${SOCIAL_REPLY_AUTHOR[thread.platform] || 'marka'}…`} placeholderTextColor={colors.text.tertiary} />
                 <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                   <TouchableOpacity style={[styles.secondary, { flex: 1 }]} onPress={() => setReplying(null)}><Text style={styles.secondaryText}>Anuluj</Text></TouchableOpacity>
                   <TouchableOpacity style={[styles.primary, { flex: 1 }]} disabled={!draft.trim()} onPress={() => void send(thread)}><Text style={styles.primaryText}>Opublikuj</Text></TouchableOpacity>
@@ -132,7 +133,7 @@ function CommentLine({ comment }: { comment: SocialComment }) {
     <View style={{ flex: 1, gap: 2 }}>
       <Text style={styles.meta}>
         <Text style={[styles.author, comment.isOwn && { color: colors.primary.gold }]}>{comment.isOwn ? `${comment.authorName} (marka)` : comment.authorName}</Text>
-        {` · ${comment.platform === 'facebook' ? 'Facebook' : 'Instagram'} · ${Number.isNaN(date.getTime()) ? '' : date.toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`}
+        {` · ${SOCIAL_COMMENT_PLATFORM_LABELS[comment.platform] || 'Instagram'} · ${Number.isNaN(date.getTime()) ? '' : date.toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`}
         {comment.likeCount ? ` · ♥ ${comment.likeCount}` : ''}
         {comment.repliedByName ? ` · z CRM: ${comment.repliedByName}` : ''}
       </Text>

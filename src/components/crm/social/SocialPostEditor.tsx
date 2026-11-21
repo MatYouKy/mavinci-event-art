@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, CalendarClock, CalendarDays, Check, CheckCircle2, ClipboardCopy, Copy, Download, History, Images, Link2,
-  PauseCircle, RefreshCw, RotateCcw, Save, Send, Sparkles, Trash2, Undo2, X, XCircle, Zap,
+  AlertTriangle, ArrowLeft, CalendarClock, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCopy, Copy, Download, History,
+  Images, LayoutTemplate, Link2, PauseCircle, Plus, RefreshCw, RotateCcw, Save, Send, Trash2, Undo2, X, XCircle, Zap,
 } from 'lucide-react';
 import OverlayPortal from '@/components/UI/OverlayPortal';
 import { Modal } from '@/components/UI/Modal';
@@ -11,18 +11,26 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
 import { useDialog } from '@/contexts/DialogContext';
 import {
-  SOCIAL_CHANNELS, SOCIAL_CHANNEL_LABELS, SOCIAL_FORMATS, SOCIAL_FORMAT_INFO, SOCIAL_LIMITS, SOCIAL_POST_ACTION_LABELS,
-  SOCIAL_POST_ACTION_SUCCESS, channelFormat, effectiveCrop, isSocialCrop, normalizeHashtags, socialPostEditable,
-  socialPublicationText, type SocialChannel, type SocialCrop, type SocialFormat, type SocialPostAction,
+  SOCIAL_CHANNELS, SOCIAL_CHANNEL_LABELS, SOCIAL_FORMATS, SOCIAL_FORMAT_INFO, SOCIAL_KICKER_SUGGESTIONS, SOCIAL_LIMITS,
+  SOCIAL_POST_ACTION_LABELS, SOCIAL_POST_ACTION_SUCCESS, SOCIAL_SLIDE_FORMATS, channelFormat, effectiveCrop, isSocialCrop, isSocialSlideFormat, normalizeHashtags,
+  socialPostEditable, socialPublicationText, type SocialChannel, type SocialCrop, type SocialFormat, type SocialGraphicStyle,
+  type SocialPostAction,
 } from '@/lib/social/socialShared';
 import {
-  downloadSocialPackage, socialGet, socialPost, type SocialAiSuggestion, type SocialAsset, type SocialEventOption, type SocialPostDetail,
+  downloadSocialPackage, socialGet, socialPost, type SocialAsset, type SocialEventOption, type SocialPostDetail,
 } from './socialApi';
 import SocialCropEditor from './SocialCropEditor';
+import SocialStylePicker from './SocialStylePicker';
+import SocialLayoutPicker, { sameLayoutChoice, type SocialLayoutChoice } from './SocialLayoutPicker';
+import SocialLayoutEditor from './SocialLayoutEditor';
+import {
+  socialAspectCrop, socialCropFitsAspect, socialLayoutSlotAspect, socialLayoutSlots, type SocialLayoutDefinition,
+} from '@/lib/social/socialLayout';
+import SocialAssistant from './SocialAssistant';
 import SocialComments from './SocialComments';
 import { MetaPublishPanel } from './SocialMetaPanel';
 import SocialLibrary, { EventPicker } from './SocialLibrary';
-import { FacebookPreview, GraphicView, InstagramFeedPreview, ProfileGridPreview, StoryPreview, useAccountName, type GraphicSource } from './SocialPreviews';
+import { FacebookPreview, GraphicView, InstagramFeedPreview, LinkedInPreview, ProfileGridPreview, StoryPreview, useAccountName, type GraphicSource } from './SocialPreviews';
 import {
   ConsentBadge, PostStatusBadge, cardClass, dangerButton, dateTimeLabel, errorMessage, fromLocalInput, inputClass, primaryButton,
   secondaryButton, toLocalInput,
@@ -30,12 +38,17 @@ import {
 
 /*
  * Kreator posta (pełny ekran): kanały, termin, wydarzenie, formaty grafik 4:5 / 1:1 / 9:16 / 1,91:1 ze zdjęciem z biblioteki,
- * edytor kadru z polami szablonu, tytuł i podpis grafiki, opis i hashtagi, opisy AI, podglądy (feed, siatka profilu, relacja,
- * Facebook), braki przed akceptacją i publikacją, historia oraz akcje statusu. Zapis renderuje grafiki na serwerze
+ * styl grafiki (miniatury), edytor kadru z polami stylu i szablonu, napis nad tytułem, tytuł i podpis grafiki, opis i hashtagi,
+ * karuzela (Instagram do 10 zdjęć, Facebook — kilka zdjęć: kolejne zdjęcia z kadrem w każdym formacie feedu, kolejność
+ * przeciąganiem), asystent AI, podglądy (feed, siatka profilu, relacja, Facebook, LinkedIn), braki przed akceptacją i publikacją, historia oraz akcje statusu. Zapis renderuje grafiki na serwerze
  * (ten sam plik dla CRM, Maca i telefonu).
  */
 
 type VariantDraft = { enabled: boolean; asset: SocialAsset | null; crop: SocialCrop | null; touched: boolean };
+/** Kolejne zdjęcie karuzeli: kadr w formatach feedu (`null` — propozycja zdjęcia); `touched` — kadr zmieniony w kreatorze. */
+type SlideDraft = { asset: SocialAsset; crops: Partial<Record<SocialFormat, SocialCrop | null>>; touched: Partial<Record<SocialFormat, boolean>> };
+/** Zdjęcie kolażu w miejscu 1–3 układu (miejsce 0 — zdjęcie wariantu): kadr w każdym formacie w proporcjach miejsca. */
+type SlotDraft = { slot: number; asset: SocialAsset; crops: Partial<Record<SocialFormat, SocialCrop | null>>; touched: Partial<Record<SocialFormat, boolean>> };
 type Draft = {
   title: string;
   channels: SocialChannel[];
@@ -47,9 +60,18 @@ type Draft = {
   eventName: string | null;
   headline: string;
   subline: string;
+  /** Styl grafiki i napis nad tytułem — wspólne dla wszystkich formatów posta. */
+  style: SocialGraphicStyle;
+  kicker: string;
   variants: Record<SocialFormat, VariantDraft>;
+  slides: SlideDraft[];
+  /** Układ jako dane (`null` — styl grafiki) i zdjęcia kolażu. */
+  layout: SocialLayoutChoice;
+  /** Ten sam układ, ale w aktualnej wersji (zmieniony w edytorze układów po zapisaniu posta) — zapis z `refresh`. */
+  layoutRefresh: boolean;
+  slots: SlotDraft[];
 };
-type PreviewTab = 'feed' | 'grid' | 'story' | 'facebook';
+type PreviewTab = 'feed' | 'grid' | 'story' | 'facebook' | 'linkedin';
 
 const HISTORY_LABELS: Record<string, string> = {
   created: 'Utworzono', submitted: 'Wysłano do akceptacji', approved: 'Zatwierdzono', changes_requested: 'Do poprawy',
@@ -84,8 +106,30 @@ function draftFrom(detail: SocialPostDetail): Draft {
     eventName: detail.event?.name || null,
     headline: first?.headline || '',
     subline: first?.subline || '',
+    style: first?.style || detail.template?.defaultStyle || 'classic',
+    kicker: first?.kicker || '',
     variants,
+    slides: [...(detail.slides || [])].sort((a, b) => a.position - b.position).filter((slide) => slide.asset).map((slide) => ({
+      asset: slide.asset as SocialAsset,
+      crops: Object.fromEntries(slide.formats.map((item) => [item.format, item.crop])) as SlideDraft['crops'],
+      touched: {},
+    })),
+    layout: detail.layout ? { id: detail.layout.id, key: detail.layout.key } : null,
+    layoutRefresh: false,
+    slots: [...(detail.slots || [])].sort((a, b) => a.slot - b.slot).filter((item) => item.asset).map((item) => ({
+      slot: item.slot,
+      asset: item.asset as SocialAsset,
+      crops: Object.fromEntries(item.formats.map((entry) => [entry.format, entry.crop])) as SlotDraft['crops'],
+      touched: {},
+    })),
   };
+}
+
+/** Definicja wybranego układu: migawka zapisana w poście (ten sam wybór) albo aktualna z listy układów. */
+function layoutDefinitionOf(detail: SocialPostDetail | null, choice: SocialLayoutChoice, refresh = false): SocialLayoutDefinition | null {
+  if (!detail || !choice) return null;
+  if (!refresh && detail.layout && sameLayoutChoice(choice, { id: detail.layout.id, key: detail.layout.key })) return detail.layout.definition;
+  return (detail.layouts || []).find((option) => sameLayoutChoice(choice, { id: option.id, key: option.key }))?.definition || null;
 }
 
 export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPost, focusComments = false }: {
@@ -100,6 +144,14 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
   const [active, setActive] = useState<SocialFormat>('4:5');
   const [preview, setPreview] = useState<PreviewTab>('feed');
   const [picker, setPicker] = useState<SocialFormat | 'all' | null>(null);
+  /** Karuzela: wybrane zdjęcie (`null` — okładka), okno wyboru zdjęć („dodaj” albo wymiana zdjęcia na pozycji), przeciąganie. */
+  const [slideIndex, setSlideIndex] = useState<number | null>(null);
+  const [slidePicker, setSlidePicker] = useState<'add' | number | null>(null);
+  const [dragSlide, setDragSlide] = useState<number | null>(null);
+  /** Kolaż: edytowane miejsce (1–3; `null` — zdjęcie wariantu) i okno wyboru zdjęcia do miejsca. */
+  const [slotEdit, setSlotEdit] = useState<number | null>(null);
+  const [slotPicker, setSlotPicker] = useState<number | null>(null);
+  const [layoutsOpen, setLayoutsOpen] = useState(false);
   const [eventPicker, setEventPicker] = useState(false);
   const [noteAction, setNoteAction] = useState<SocialPostAction | null>(null);
   const [note, setNote] = useState('');
@@ -160,6 +212,17 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
     setDraft((current) => current ? { ...current, variants: { ...current.variants, [format]: { ...current.variants[format], ...patch } } } : current);
     setDirty(true);
   };
+  const changeSlides = (update: (slides: SlideDraft[]) => SlideDraft[]) => {
+    setDraft((current) => (current ? { ...current, slides: update(current.slides) } : current));
+    setDirty(true);
+  };
+  const moveSlide = (from: number, to: number) => changeSlides((slides) => {
+    if (from === to || to < 0 || to >= slides.length) return slides;
+    const next = [...slides];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    return next;
+  });
 
   const run = async <T,>(title: string, action: () => Promise<T>, success?: string, description = 'Proszę chwilę poczekać...'): Promise<T | null> => {
     showLoader(title, description);
@@ -193,6 +256,20 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
         crop: draft.variants[format].touched ? draft.variants[format].crop : (detail.variants.find((item) => item.format === format)?.crop || null),
         headline: draft.headline,
         subline: draft.subline,
+        style: draft.style,
+        kicker: draft.kicker,
+      })),
+      // Karuzela: kolejność = pozycje; kadr tylko w zmienionych formatach (pozostałe — zapisane kadry tego zdjęcia).
+      slides: draft.slides.map((slide) => ({
+        assetId: slide.asset.id,
+        crops: Object.fromEntries(SOCIAL_SLIDE_FORMATS.filter((format) => slide.touched[format]).map((format) => [format, slide.crops[format] ?? null])),
+      })),
+      // Układ (ten sam co w poście — serwer zostawia zapisaną migawkę) i zdjęcia kolażu z kadrami zmienionymi w kreatorze.
+      layout: draft.layout ? { id: draft.layout.id, key: draft.layout.key, ...(draft.layoutRefresh ? { refresh: true } : {}) } : null,
+      slots: draft.slots.map((item) => ({
+        slot: item.slot,
+        assetId: item.asset.id,
+        crops: Object.fromEntries(SOCIAL_FORMATS.filter((format) => item.touched[format]).map((format) => [format, item.crops[format] ?? null])),
       })),
     };
   };
@@ -221,25 +298,25 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
     if (result) { apply(result); onChanged(); }
   };
 
-  // „Opublikuj teraz” / „Ponów publikację” — publikacja w Meta od razu, wynik w odpowiedzi serwera.
+  // „Opublikuj teraz” / „Ponów publikację” — publikacja w Meta i na LinkedIn od razu, wynik w odpowiedzi serwera.
   const publishNow = async () => {
     if (!detail) return;
     const retry = detail.post.status === 'failed';
     const confirmed = await showConfirm({
       title: retry ? 'Ponowić publikację?' : 'Opublikować teraz?',
       message: retry
-        ? 'Kanały, które już się opublikowały, zostaną pominięte. Pozostałe trafią do Meta teraz.'
+        ? 'Kanały, które już się opublikowały, zostaną pominięte. Pozostałe zostaną opublikowane teraz.'
         : `Post trafi teraz na: ${detail.post.channels.map((channel) => SOCIAL_CHANNEL_LABELS[channel]).join(', ')}.`,
       confirmText: retry ? 'Ponów publikację' : 'Opublikuj teraz',
     });
     if (!confirmed) return;
-    const result = await run(retry ? 'Ponawiam publikację' : 'Publikuję w Meta', () => socialPost<SocialPostDetail>('publishNow', {
+    const result = await run(retry ? 'Ponawiam publikację' : 'Publikuję', () => socialPost<SocialPostDetail>('publishNow', {
       id: detail.post.id, revision: detail.post.revision,
     }), undefined, 'Wysyłam grafiki i opis do Facebooka i Instagrama…');
     if (!result) return;
     apply(result);
     onChanged();
-    if (result.publishResult?.status === 'published') showSnackbar('Post opublikowany w Meta', 'success');
+    if (result.publishResult?.status === 'published') showSnackbar('Post opublikowany', 'success');
     else if (result.publishResult?.status === 'failed') showSnackbar(result.publishResult.error || 'Publikacja nie powiodła się.', 'error');
     else showSnackbar('Publikacja trwa — karta odświeży się sama.', 'info');
   };
@@ -267,6 +344,32 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
     onClose();
   };
 
+  const layoutDefinition = useMemo(() => layoutDefinitionOf(detail, draft?.layout || null, draft?.layoutRefresh), [detail, draft?.layout, draft?.layoutRefresh]);
+  const layoutSlots = layoutDefinition ? socialLayoutSlots(layoutDefinition) : 1;
+
+  /** Kadr zdjęcia: własny (w proporcjach formatu albo miejsca układu), propozycja z biblioteki albo środek — jak na serwerze. */
+  const cropFor = useCallback((asset: SocialAsset, own: SocialCrop | null | undefined, format: SocialFormat, slot = 0): SocialCrop => {
+    const width = asset.width || 1;
+    const height = asset.height || 1;
+    if (!layoutDefinition) return own && isSocialCrop(own) ? own : effectiveCrop(null, asset.crops, width, height, format);
+    const aspect = socialLayoutSlotAspect(layoutDefinition, slot, format);
+    if (own && isSocialCrop(own) && socialCropFitsAspect(own, width, height, aspect)) return own;
+    const proposal = asset.crops?.[format];
+    if (proposal && isSocialCrop(proposal) && socialCropFitsAspect(proposal, width, height, aspect)) return proposal;
+    return socialAspectCrop(width, height, aspect);
+  }, [layoutDefinition]);
+
+  /** Zdjęcia kolażu w formacie (indeks = miejsce) do podglądu na żywo. */
+  const slotPhotos = useCallback((format: SocialFormat) => {
+    const photos: Array<{ src: string; crop: SocialCrop } | null> = [];
+    if (!draft || !layoutDefinition) return photos;
+    for (const item of draft.slots) {
+      if (item.slot >= layoutSlots || !item.asset.workUrl || !item.asset.width || !item.asset.height) continue;
+      photos[item.slot] = { src: item.asset.workUrl, crop: cropFor(item.asset, item.crops[format], format, item.slot) };
+    }
+    return photos;
+  }, [draft, layoutDefinition, layoutSlots, cropFor]);
+
   const variantSource = useCallback((format: SocialFormat): GraphicSource | null => {
     if (!detail || !draft) return null;
     const saved = detail.variants.find((item) => item.format === format);
@@ -278,13 +381,74 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
     if (!asset?.workUrl || !asset.width || !asset.height || !detail.spec?.ready) {
       return { format, renderedUrl: saved?.renderedUrl || null, live: null };
     }
-    const crop = local.crop && isSocialCrop(local.crop) ? local.crop : effectiveCrop(null, asset.crops, asset.width, asset.height, format);
-    return { format, renderedUrl: null, live: { spec: detail.spec, photoUrl: asset.workUrl, crop, headline: draft.headline, subline: draft.subline } };
+    const crop = cropFor(asset, local.crop, format);
+    return {
+      format, renderedUrl: null,
+      live: {
+        spec: detail.spec, photoUrl: asset.workUrl, crop, headline: draft.headline, subline: draft.subline, style: draft.style, kicker: draft.kicker,
+        layout: layoutDefinition, photos: slotPhotos(format),
+      },
+    };
+  }, [detail, draft, dirty, cropFor, layoutDefinition, slotPhotos]);
+
+  /**
+   * Zmiana układu (albo `refresh` — aktualna wersja tego samego układu): kadry niepasujące do nowych proporcji wracają do
+   * propozycji, zdjęcia kolażu ponad liczbę miejsc znikają.
+   */
+  const changeLayout = (choice: SocialLayoutChoice, refresh = false) => {
+    const definition = layoutDefinitionOf(detail, choice, refresh);
+    const count = definition ? socialLayoutSlots(definition) : 1;
+    setDraft((current) => {
+      if (!current) return current;
+      const variants = { ...current.variants };
+      for (const format of SOCIAL_FORMATS) {
+        const item = variants[format];
+        const asset = item.asset;
+        if (!item.crop || !asset?.width || !asset.height) continue;
+        if (!socialCropFitsAspect(item.crop, asset.width, asset.height, socialLayoutSlotAspect(definition, 0, format))) {
+          variants[format] = { ...item, crop: null, touched: true };
+        }
+      }
+      const slots = current.slots.filter((item) => item.slot < count).map((item) => ({
+        ...item, crops: {}, touched: Object.fromEntries(SOCIAL_FORMATS.map((format) => [format, true])) as SlotDraft['touched'],
+      }));
+      return { ...current, layout: choice, layoutRefresh: refresh, variants, slots };
+    });
+    setSlotEdit(null);
+    setDirty(true);
+  };
+  const changeSlot = (slot: number, update: (item: SlotDraft | null) => SlotDraft | null) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const existing = current.slots.find((item) => item.slot === slot) || null;
+      const next = update(existing);
+      const others = current.slots.filter((item) => item.slot !== slot);
+      return { ...current, slots: (next ? [...others, next] : others).sort((a, b) => a.slot - b.slot) };
+    });
+    setDirty(true);
+  };
+
+  /** Grafika zdjęcia karuzeli: plik z serwera (bez zmian) albo podgląd na żywo — styl okładki bez tekstów. */
+  const slideSource = useCallback((index: number, format: SocialFormat): GraphicSource | null => {
+    if (!detail || !draft) return null;
+    const slide = draft.slides[index];
+    if (!slide) return null;
+    const saved = (detail.slides || []).find((item) => item.position === index + 1);
+    const savedFormat = saved?.formats.find((item) => item.format === format);
+    if (!dirty && saved?.assetId === slide.asset.id && savedFormat?.upToDate && savedFormat.renderedUrl) {
+      return { format, renderedUrl: savedFormat.renderedUrl, live: null };
+    }
+    const asset = slide.asset;
+    if (!asset.workUrl || !asset.width || !asset.height || !detail.spec?.ready) return { format, renderedUrl: savedFormat?.renderedUrl || null, live: null };
+    const local = slide.crops[format];
+    const crop = local && isSocialCrop(local) ? local : effectiveCrop(null, asset.crops, asset.width, asset.height, format);
+    return { format, renderedUrl: null, live: { spec: detail.spec, photoUrl: asset.workUrl, crop, headline: '', subline: '', style: draft.style, kicker: '' } };
   }, [detail, draft, dirty]);
 
   const enabledFormats = useMemo(() => (draft ? SOCIAL_FORMATS.filter((format) => draft.variants[format].enabled && draft.variants[format].asset) : []), [draft]);
   const feedFormat = draft ? channelFormat('instagram_feed', enabledFormats) || enabledFormats[0] : null;
   const fbFormat = draft ? channelFormat('facebook_feed', enabledFormats) || enabledFormats[0] : null;
+  const linkedinFormat = draft ? channelFormat('linkedin_page', enabledFormats) || enabledFormats[0] : null;
   const storyFormat = draft ? channelFormat('instagram_story', enabledFormats) : null;
   const publicationText = draft ? socialPublicationText(draft.caption, normalizeHashtags(draft.hashtags)) : '';
   const hashtagCount = draft ? normalizeHashtags(draft.hashtags).length : 0;
@@ -299,10 +463,26 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
 
   const activeVariant = draft.variants[active];
   const activeAsset = activeVariant.asset;
-  const activeCrop = activeAsset?.width && activeAsset.height
-    ? (activeVariant.crop && isSocialCrop(activeVariant.crop) ? activeVariant.crop : effectiveCrop(null, activeAsset.crops, activeAsset.width, activeAsset.height, active))
+  const activeCrop = activeAsset?.width && activeAsset.height ? cropFor(activeAsset, activeVariant.crop, active) : null;
+  const consentAssets = Array.from(new Map([
+    ...SOCIAL_FORMATS.map((format) => draft.variants[format]).filter((item) => item.enabled && item.asset).map((item) => [item.asset!.id, item.asset!] as const),
+    ...draft.slides.map((slide) => [slide.asset.id, slide.asset] as const),
+    ...draft.slots.filter((item) => item.slot < layoutSlots).map((item) => [item.asset.id, item.asset] as const),
+  ]).values());
+  // Kolaż: edytowane miejsce w aktywnym formacie (kadr w proporcjach miejsca).
+  const collageOn = Boolean(layoutDefinition) && layoutSlots > 1 && activeVariant.enabled && Boolean(activeAsset);
+  const slotDraft = collageOn && slotEdit !== null && slotEdit < layoutSlots ? draft.slots.find((item) => item.slot === slotEdit) || null : null;
+  const slotAsset = slotDraft?.asset || null;
+  const slotCrop = slotDraft && slotAsset?.width && slotAsset.height ? cropFor(slotAsset, slotDraft.crops[active], active, slotDraft.slot) : null;
+  const carouselOn = isSocialSlideFormat(active) && activeVariant.enabled && Boolean(activeAsset);
+  const slide = carouselOn && slideIndex !== null ? draft.slides[slideIndex] || null : null;
+  const slideAsset = slide?.asset || null;
+  const slideCrop = slide && slideAsset?.width && slideAsset.height
+    ? (slide.crops[active] && isSocialCrop(slide.crops[active]) ? slide.crops[active] as SocialCrop : effectiveCrop(null, slideAsset.crops, slideAsset.width, slideAsset.height, active))
     : null;
-  const consentAssets = Array.from(new Map(SOCIAL_FORMATS.map((format) => draft.variants[format]).filter((item) => item.enabled && item.asset).map((item) => [item.asset!.id, item.asset!])).values());
+  const feedSlides = feedFormat && isSocialSlideFormat(feedFormat) ? draft.slides.map((_, index) => slideSource(index, feedFormat)) : [];
+  const fbSlides = fbFormat && isSocialSlideFormat(fbFormat) ? draft.slides.map((_, index) => slideSource(index, fbFormat)) : [];
+  const linkedinSlides = linkedinFormat && isSocialSlideFormat(linkedinFormat) ? draft.slides.map((_, index) => slideSource(index, linkedinFormat)) : [];
   const actions = detail.actions;
 
   return (
@@ -320,7 +500,7 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
           {actions.includes('approve') && <button type="button" className={primaryButton} disabled={dirty} title={dirty ? 'Najpierw zapisz zmiany' : ''} onClick={() => void transition('approve')}><CheckCircle2 className="h-4 w-4" />Zatwierdź</button>}
           {actions.includes('request_changes') && <button type="button" className={secondaryButton} onClick={() => { setNote(''); setNoteAction('request_changes'); }}><XCircle className="h-4 w-4" />Do poprawy</button>}
           {detail.canPublishNow && (
-            <button type="button" className={primaryButton} disabled={dirty} title={dirty ? 'Najpierw zapisz zmiany' : 'Publikacja w Meta teraz'} onClick={() => void publishNow()}>
+            <button type="button" className={primaryButton} disabled={dirty} title={dirty ? 'Najpierw zapisz zmiany' : 'Publikacja teraz (Meta, LinkedIn)'} onClick={() => void publishNow()}>
               <Zap className="h-4 w-4" />{detail.post.status === 'failed' ? 'Ponów publikację' : 'Opublikuj teraz'}
             </button>
           )}
@@ -387,7 +567,62 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
               </section>
 
               <section className={`${cardClass} space-y-3 p-4`}>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-medium">Układ grafiki</h3>
+                  {detail.access.approve && (
+                    <button type="button" className="flex items-center gap-1 text-xs text-[#d3bb73] hover:underline" onClick={() => setLayoutsOpen(true)}>
+                      <LayoutTemplate className="h-3.5 w-3.5" />Edytuj układy
+                    </button>
+                  )}
+                </div>
+                <SocialLayoutPicker options={detail.layouts || []} value={draft.layout} format={activeVariant.enabled ? active : (enabledFormats[0] || '4:5')}
+                  colors={detail.spec?.colors || null} disabled={!editable}
+                  onChange={(choice) => changeLayout(choice, sameLayoutChoice(choice, draft.layout) && draft.layoutRefresh)} />
+                {detail.layout?.outdated && sameLayoutChoice(draft.layout, { id: detail.layout.id, key: detail.layout.key }) && (
+                  draft.layoutRefresh ? (
+                    <p className="flex flex-wrap items-center gap-2 rounded-lg border border-[#d3bb73]/25 bg-[#d3bb73]/10 p-2 text-xs">
+                      Nowa wersja układu „{detail.layout.name}” — zapisz post, żeby ją zastosować.
+                      <button type="button" className="text-[#d3bb73] hover:underline" onClick={() => changeLayout(draft.layout, false)}>Zostaw dotychczasową</button>
+                    </p>
+                  ) : (
+                    <p className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 p-2 text-xs text-amber-100">
+                      Układ „{detail.layout.name}” zmieniono po zapisaniu tego posta — post ma dotychczasową wersję.
+                      {editable && <button type="button" className="text-[#d3bb73] hover:underline" onClick={() => changeLayout(draft.layout, true)}>Wczytaj nową wersję</button>}
+                    </p>
+                  )
+                )}
+                {layoutDefinition && layoutSlots > 1 && (
+                  <p className="text-[11px] text-[#e5e4e2]/45">Kolaż: {layoutSlots} zdjęcia — kolejne zdjęcia wybierasz w pasku „Kolaż” nad edytorem kadru.</p>
+                )}
+              </section>
+
+              <section className={`${cardClass} space-y-3 p-4`}>
+                <h3 className="text-sm font-medium">Styl grafiki</h3>
+                {layoutDefinition && <p className="text-[11px] text-[#e5e4e2]/45">Wybrany układ zastępuje styl na okładce — styl dotyczy kolejnych zdjęć karuzeli.</p>}
+                <SocialStylePicker spec={detail.spec} format={activeVariant.enabled ? active : (enabledFormats[0] || '4:5')}
+                  photoUrl={activeAsset?.workUrl || null} crop={activeCrop} headline={draft.headline} subline={draft.subline} kicker={draft.kicker}
+                  value={draft.style} defaultStyle={detail.template?.defaultStyle || null} disabled={!editable} onChange={(style) => change({ style })} />
+              </section>
+
+              <section className={`${cardClass} space-y-3 p-4`}>
                 <h3 className="text-sm font-medium">Tekst na grafice</h3>
+                <div className="text-sm">
+                  <label className="block">Napis nad tytułem <span className="text-xs text-[#e5e4e2]/40">(opcjonalnie, w kolorze akcentu)</span>
+                    <input disabled={!editable} value={draft.kicker} maxLength={SOCIAL_LIMITS.kicker} onChange={(e) => change({ kicker: e.target.value })}
+                      className={`${inputClass} mt-1`} placeholder="np. Realizacja" />
+                  </label>
+                  {editable && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {SOCIAL_KICKER_SUGGESTIONS.map((item) => (
+                        <button key={item} type="button" onClick={() => change({ kicker: draft.kicker === item ? '' : item })}
+                          className={`rounded-full border px-2 py-0.5 text-[11px] ${draft.kicker === item ? 'border-[#d3bb73]/70 bg-[#d3bb73]/20 text-[#d3bb73]' : 'border-[#d3bb73]/15 text-[#e5e4e2]/60 hover:text-[#e5e4e2]'}`}>
+                          {item}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {draft.kicker.length > SOCIAL_LIMITS.kickerRecommended && <p className="mt-1 text-xs text-amber-200">Krótki napis wygląda najlepiej (do {SOCIAL_LIMITS.kickerRecommended} znaków).</p>}
+                </div>
                 <label className="block text-sm">Tytuł <span className="text-xs text-[#e5e4e2]/40">({draft.headline.length}/{SOCIAL_LIMITS.headlineRecommended} zalecane)</span>
                   <input disabled={!editable} value={draft.headline} maxLength={SOCIAL_LIMITS.headline} onChange={(e) => change({ headline: e.target.value })} className={`${inputClass} mt-1`} placeholder="Od koncepcji po ostatni akord" />
                 </label>
@@ -459,7 +694,119 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
               </div>
               <p className="text-xs text-[#e5e4e2]/45">{SOCIAL_FORMAT_INFO[active].hint} · {SOCIAL_FORMAT_INFO[active].width}×{SOCIAL_FORMAT_INFO[active].height} px</p>
 
-              {!activeVariant.enabled ? (
+              {collageOn && (
+                <div className="space-y-2 rounded-lg border border-[#d3bb73]/10 p-2">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-medium">Kolaż</span>
+                    <span className="text-[#e5e4e2]/45">{layoutSlots} zdjęcia w układzie · kadr każdego zdjęcia ustawiasz osobno w każdym formacie, w proporcjach jego miejsca.</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={() => { setSlotEdit(null); setSlideIndex(null); }}
+                      className={`relative h-16 w-14 overflow-hidden rounded border ${slotEdit === null ? 'border-[#d3bb73]' : 'border-[#d3bb73]/15'}`} title="Zdjęcie 1 (zdjęcie formatu)">
+                      {activeAsset?.thumbnailUrl ? <img src={activeAsset.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : <Images className="m-auto h-5 w-5 text-[#d3bb73]/40" />}
+                      <span className="absolute left-0.5 top-0.5 rounded bg-black/70 px-1 text-[10px] text-white">1</span>
+                    </button>
+                    {Array.from({ length: layoutSlots - 1 }, (_, index) => index + 1).map((slot) => {
+                      const item = draft.slots.find((entry) => entry.slot === slot) || null;
+                      return item ? (
+                        <button key={slot} type="button" onClick={() => { setSlotEdit(slot); setSlideIndex(null); }}
+                          className={`relative h-16 w-14 overflow-hidden rounded border ${slotEdit === slot ? 'border-[#d3bb73]' : 'border-[#d3bb73]/15'}`} title={`Zdjęcie ${slot + 1} kolażu`}>
+                          {item.asset.thumbnailUrl ? <img src={item.asset.thumbnailUrl} alt="" className="h-full w-full object-cover" /> : <Images className="m-auto h-5 w-5 text-[#d3bb73]/40" />}
+                          <span className="absolute left-0.5 top-0.5 rounded bg-black/70 px-1 text-[10px] text-white">{slot + 1}</span>
+                        </button>
+                      ) : (
+                        <button key={slot} type="button" disabled={!editable} onClick={() => setSlotPicker(slot)}
+                          className="flex h-16 w-14 flex-col items-center justify-center gap-0.5 rounded border border-dashed border-amber-400/50 text-[10px] text-amber-100 disabled:opacity-50" title={`Wybierz zdjęcie ${slot + 1} kolażu`}>
+                          <Plus className="h-4 w-4" />Zdjęcie {slot + 1}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {carouselOn && (
+                <div className="space-y-2 rounded-lg border border-[#d3bb73]/10 p-2">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-medium">Karuzela</span>
+                    <span className="text-[#e5e4e2]/45">{1 + draft.slides.length}/{SOCIAL_LIMITS.slides + 1} zdjęć · Instagram — przesuwane zdjęcia, Facebook i LinkedIn — post z kilkoma zdjęciami, relacja — tylko okładka. Kolejne zdjęcia: ten sam styl, bez tekstów.</span>
+                    <span className="flex-1" />
+                    {editable && draft.slides.length < SOCIAL_LIMITS.slides && (
+                      <button type="button" className={secondaryButton} onClick={() => setSlidePicker('add')}><Plus className="h-4 w-4" />Dodaj zdjęcia</button>
+                    )}
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    <button type="button" onClick={() => { setSlideIndex(null); setSlotEdit(null); }}
+                      className={`relative shrink-0 overflow-hidden rounded-md border-2 ${slide === null ? 'border-[#d3bb73]' : 'border-transparent hover:border-[#d3bb73]/40'}`}>
+                      {activeAsset?.thumbnailUrl ? <img src={activeAsset.thumbnailUrl} alt="" className="h-16 w-14 object-cover" /> : <span className="flex h-16 w-14 items-center justify-center bg-[#0f1119]"><Images className="h-4 w-4" /></span>}
+                      <span className="absolute inset-x-0 bottom-0 bg-black/60 text-center text-[10px]">1 · okładka</span>
+                    </button>
+                    {draft.slides.map((item, index) => (
+                      <button key={`${item.asset.id}-${index}`} type="button" draggable={editable} title={editable ? 'Przeciągnij, żeby zmienić kolejność' : ''}
+                        onDragStart={() => setDragSlide(index)} onDragEnd={() => setDragSlide(null)} onDragOver={(event) => event.preventDefault()}
+                        onDrop={() => { if (dragSlide !== null) moveSlide(dragSlide, index); setDragSlide(null); setSlideIndex(index); setSlotEdit(null); }}
+                        onClick={() => { setSlideIndex(index); setSlotEdit(null); }}
+                        className={`relative shrink-0 overflow-hidden rounded-md border-2 ${slideIndex === index ? 'border-[#d3bb73]' : 'border-transparent hover:border-[#d3bb73]/40'} ${dragSlide === index ? 'opacity-50' : ''}`}>
+                        {item.asset.thumbnailUrl ? <img src={item.asset.thumbnailUrl} alt="" className="h-16 w-14 object-cover" /> : <span className="flex h-16 w-14 items-center justify-center bg-[#0f1119]"><Images className="h-4 w-4" /></span>}
+                        <span className="absolute inset-x-0 bottom-0 bg-black/60 text-center text-[10px]">{index + 2}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {slotDraft && slotEdit !== null ? (
+                <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_300px]">
+                  <div className="min-w-0">
+                    {slotAsset?.workUrl && slotAsset.width && slotAsset.height && slotCrop ? (
+                      <SocialCropEditor imageUrl={slotAsset.workUrl} imageWidth={slotAsset.width} imageHeight={slotAsset.height}
+                        format={active} crop={slotCrop} proposal={slotAsset.crops[active] || null} guides={null}
+                        aspect={socialLayoutSlotAspect(layoutDefinition, slotDraft.slot, active)} disabled={!editable}
+                        onChange={(crop) => changeSlot(slotDraft.slot, (item) => (item ? { ...item, crops: { ...item.crops, [active]: crop }, touched: { ...item.touched, [active]: true } } : item))} />
+                    ) : <p className="text-sm text-[#e5e4e2]/50">Zdjęcie nie ma jeszcze wersji roboczej.</p>}
+                    {editable && (
+                      <div className="mt-3 flex flex-wrap justify-center gap-2">
+                        <button type="button" className={secondaryButton} onClick={() => setSlotPicker(slotDraft.slot)}><Images className="h-4 w-4" />Inne zdjęcie</button>
+                        {slotDraft.crops[active] && <button type="button" className={secondaryButton} onClick={() => changeSlot(slotDraft.slot, (item) => (item
+                          ? { ...item, crops: { ...item.crops, [active]: null }, touched: { ...item.touched, [active]: true } } : item))}><RotateCcw className="h-4 w-4" />Kadr z propozycji</button>}
+                        <button type="button" className={dangerButton} onClick={() => { changeSlot(slotDraft.slot, () => null); setSlotEdit(null); }}><Trash2 className="h-4 w-4" />Usuń z kolażu</button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-xs text-[#e5e4e2]/50">Zdjęcie {slotDraft.slot + 1} kolażu — {SOCIAL_FORMAT_INFO[active].label}</div>
+                    <GraphicView source={variantSource(active)} width={300} className="rounded-lg" />
+                    <p className="text-[11px] text-[#e5e4e2]/40">Kadr ustawiasz osobno w każdym formacie — w proporcjach miejsca tego zdjęcia w układzie.</p>
+                  </div>
+                </div>
+              ) : slide && slideIndex !== null ? (
+                <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_300px]">
+                  <div className="min-w-0">
+                    {slideAsset?.workUrl && slideAsset.width && slideAsset.height && slideCrop ? (
+                      <SocialCropEditor imageUrl={slideAsset.workUrl} imageWidth={slideAsset.width} imageHeight={slideAsset.height}
+                        format={active} crop={slideCrop} proposal={slideAsset.crops[active] || null}
+                        guides={detail.spec?.styleGuides?.[draft.style]?.[active] || detail.spec?.guides[active] || null}
+                        disabled={!editable} onChange={(crop) => changeSlides((slides) => slides.map((item, position) => (position === slideIndex
+                          ? { ...item, crops: { ...item.crops, [active]: crop }, touched: { ...item.touched, [active]: true } } : item)))} />
+                    ) : <p className="text-sm text-[#e5e4e2]/50">Zdjęcie nie ma jeszcze wersji roboczej.</p>}
+                    {editable && (
+                      <div className="mt-3 flex flex-wrap justify-center gap-2">
+                        <button type="button" className={secondaryButton} disabled={slideIndex === 0} onClick={() => { moveSlide(slideIndex, slideIndex - 1); setSlideIndex(slideIndex - 1); }}><ChevronLeft className="h-4 w-4" />Wcześniej</button>
+                        <button type="button" className={secondaryButton} disabled={slideIndex >= draft.slides.length - 1} onClick={() => { moveSlide(slideIndex, slideIndex + 1); setSlideIndex(slideIndex + 1); }}>Dalej<ChevronRight className="h-4 w-4" /></button>
+                        <button type="button" className={secondaryButton} onClick={() => setSlidePicker(slideIndex)}><Images className="h-4 w-4" />Inne zdjęcie</button>
+                        {slide.crops[active] && <button type="button" className={secondaryButton} onClick={() => changeSlides((slides) => slides.map((item, position) => (position === slideIndex
+                          ? { ...item, crops: { ...item.crops, [active]: null }, touched: { ...item.touched, [active]: true } } : item)))}><RotateCcw className="h-4 w-4" />Kadr z propozycji</button>}
+                        <button type="button" className={dangerButton} onClick={() => { changeSlides((slides) => slides.filter((_, position) => position !== slideIndex)); setSlideIndex(null); }}><Trash2 className="h-4 w-4" />Usuń z karuzeli</button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-xs text-[#e5e4e2]/50">Zdjęcie {slideIndex + 2} karuzeli — {SOCIAL_FORMAT_INFO[active].label}</div>
+                    <GraphicView source={slideSource(slideIndex, active)} width={300} className="rounded-lg" />
+                    <p className="text-[11px] text-[#e5e4e2]/40">Kadr ustawiasz osobno w każdym formacie feedu (4:5, 1:1, 1,91:1).</p>
+                  </div>
+                </div>
+              ) : !activeVariant.enabled ? (
                 <p className="p-10 text-center text-sm text-[#e5e4e2]/45">Ten format jest wyłączony.</p>
               ) : !activeAsset ? (
                 <div className="flex flex-col items-center gap-3 p-10 text-center text-sm text-[#e5e4e2]/50">
@@ -471,7 +818,9 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                   <div className="min-w-0">
                     {activeAsset.workUrl && activeAsset.width && activeAsset.height && activeCrop ? (
                       <SocialCropEditor imageUrl={activeAsset.workUrl} imageWidth={activeAsset.width} imageHeight={activeAsset.height}
-                        format={active} crop={activeCrop} proposal={activeAsset.crops[active] || null} guides={detail.spec?.guides[active] || null}
+                        format={active} crop={activeCrop} proposal={activeAsset.crops[active] || null}
+                        guides={layoutDefinition ? null : detail.spec?.styleGuides?.[draft.style]?.[active] || detail.spec?.guides[active] || null}
+                        aspect={layoutDefinition ? socialLayoutSlotAspect(layoutDefinition, 0, active) : null}
                         disabled={!editable} onChange={(crop) => changeVariant(active, { crop, touched: true })} />
                     ) : <p className="text-sm text-[#e5e4e2]/50">Zdjęcie nie ma jeszcze wersji roboczej.</p>}
                     {editable && (
@@ -507,30 +856,38 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                 <label className="block text-sm">Hashtagi <span className={`text-xs ${hashtagCount > SOCIAL_LIMITS.hashtags ? 'text-red-300' : 'text-[#e5e4e2]/40'}`}>({hashtagCount}/{SOCIAL_LIMITS.hashtags})</span>
                   <input disabled={!editable} value={draft.hashtags} onChange={(e) => change({ hashtags: e.target.value })} className={`${inputClass} mt-1`} placeholder="#mavinci #eventy #gala" />
                 </label>
-                <AiPanel detail={detail} editable={editable} dirty={dirty}
-                  onGenerate={async () => {
-                    let current = detail;
-                    if (dirty) { const saved = await save(true); if (!saved) return; current = saved; }
-                    const result = await run('Przygotowuję propozycje opisu', () => socialPost<SocialPostDetail>('suggest', { id: current.post.id }), 'Gotowe propozycje opisu', 'AI pisze 2–3 wersje opisu na podstawie danych realizacji…');
-                    if (result) apply(result);
-                  }}
-                  onUse={(suggestion) => change({ caption: suggestion.caption, hashtags: suggestion.hashtags.join(' '), headline: suggestion.headline || draft.headline, subline: suggestion.subline || draft.subline })} />
+                {editable && (
+                  <SocialAssistant detail={detail} run={run}
+                    draft={{
+                      caption: draft.caption, hashtags: draft.hashtags, headline: draft.headline, subline: draft.subline, eventId: draft.eventId,
+                      assetId: draft.variants[active].asset?.id || SOCIAL_FORMATS.map((format) => draft.variants[format].asset?.id).find(Boolean) || null,
+                      channels: draft.channels,
+                    }}
+                    onUse={(suggestion, withGraphic) => change({
+                      caption: suggestion.caption,
+                      hashtags: suggestion.hashtags.length ? suggestion.hashtags.join(' ') : draft.hashtags,
+                      ...(withGraphic ? { headline: suggestion.headline || draft.headline, subline: suggestion.subline || draft.subline } : {}),
+                    })}
+                    onHashtags={(tags) => change({ hashtags: tags.join(' ') })}
+                    onSettings={(settings) => setDetail((current) => (current ? { ...current, settings } : current))} />
+                )}
               </div>
             </section>
 
             <aside className={`${cardClass} space-y-3 p-4`}>
               <div className="flex flex-wrap gap-1">
-                {([['feed', 'Feed Instagram'], ['grid', 'Siatka profilu'], ['story', 'Relacja'], ['facebook', 'Facebook']] as const).map(([key, label]) => (
+                {([['feed', 'Feed Instagram'], ['grid', 'Siatka profilu'], ['story', 'Relacja'], ['facebook', 'Facebook'], ['linkedin', 'LinkedIn']] as const).map(([key, label]) => (
                   <button key={key} type="button" onClick={() => setPreview(key)}
                     className={`rounded-lg px-3 py-1.5 text-xs ${preview === key ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'}`}>{label}</button>
                 ))}
               </div>
-              {preview === 'feed' && <InstagramFeedPreview source={feedFormat ? variantSource(feedFormat) : null} account={account} logoUrl={detail.template?.logoUrl || null} caption={publicationText} />}
+              {preview === 'feed' && <InstagramFeedPreview source={feedFormat ? variantSource(feedFormat) : null} slides={feedSlides} account={account} logoUrl={detail.template?.logoUrl || null} caption={publicationText} />}
               {preview === 'grid' && <ProfileGridPreview current={feedFormat ? variantSource(feedFormat) : null} grid={detail.grid} />}
               {preview === 'story' && (storyFormat
                 ? <StoryPreview source={variantSource(storyFormat)} account={account} logoUrl={detail.template?.logoUrl || null} />
                 : <p className="p-6 text-center text-sm text-[#e5e4e2]/45">Włącz format „Relacja 9:16” i kanał „Instagram — relacja”, żeby zobaczyć relację.</p>)}
-              {preview === 'facebook' && <FacebookPreview source={fbFormat ? variantSource(fbFormat) : null} account={account} logoUrl={detail.template?.logoUrl || null} caption={publicationText} />}
+              {preview === 'facebook' && <FacebookPreview source={fbFormat ? variantSource(fbFormat) : null} slides={fbSlides} account={account} logoUrl={detail.template?.logoUrl || null} caption={publicationText} />}
+              {preview === 'linkedin' && <LinkedInPreview source={linkedinFormat ? variantSource(linkedinFormat) : null} slides={linkedinSlides} account={detail.meta?.linkedin?.organizationName || detail.company.name} logoUrl={detail.template?.logoUrl || null} caption={publicationText} />}
               <p className="text-[11px] text-[#e5e4e2]/40">Podglądy pokazują grafiki w proporcjach platform. Ostateczny plik generuje serwer — identyczny w CRM, na Macu i w telefonie.</p>
               {detail.post.status === 'published' && detail.post.publishedUrl && (
                 <a href={detail.post.publishedUrl} target="_blank" rel="noreferrer" className={secondaryButton}><Link2 className="h-4 w-4" />Opublikowany post</a>
@@ -564,6 +921,49 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
             }} />
         </Modal>
       )}
+      {slidePicker !== null && (
+        <Modal open onClose={() => setSlidePicker(null)} scrollBody
+          title={slidePicker === 'add' ? `Dodaj zdjęcia do karuzeli (${1 + draft.slides.length}/${SOCIAL_LIMITS.slides + 1})` : `Zdjęcie ${slidePicker + 2} karuzeli`}>
+          <SocialLibrary companyId={detail.post.companyId} access={detail.access} onCreatePost={() => undefined} onChanged={() => undefined}
+            pickMode={{
+              onPick: (asset) => {
+                if (slidePicker === 'add') {
+                  if (draft.slides.length >= SOCIAL_LIMITS.slides) { showSnackbar(`Karuzela ma już ${SOCIAL_LIMITS.slides + 1} zdjęć.`, 'warning'); setSlidePicker(null); return; }
+                  changeSlides((slides) => (slides.length >= SOCIAL_LIMITS.slides ? slides : [...slides, { asset, crops: {}, touched: {} }]));
+                  showSnackbar('Dodano zdjęcie do karuzeli — wybierz kolejne albo zamknij okno', 'success');
+                  if (draft.slides.length + 1 >= SOCIAL_LIMITS.slides) setSlidePicker(null);
+                } else {
+                  const index = slidePicker;
+                  changeSlides((slides) => slides.map((item, position) => (position === index ? { asset, crops: {}, touched: Object.fromEntries(SOCIAL_SLIDE_FORMATS.map((format) => [format, true])) } : item)));
+                  setSlidePicker(null);
+                }
+              },
+            }} />
+        </Modal>
+      )}
+      {slotPicker !== null && (
+        <Modal open onClose={() => setSlotPicker(null)} scrollBody title={`Zdjęcie ${slotPicker + 1} kolażu`}>
+          <SocialLibrary companyId={detail.post.companyId} access={detail.access} onCreatePost={() => undefined} onChanged={() => undefined}
+            pickMode={{
+              onPick: (asset) => {
+                const slot = slotPicker;
+                changeSlot(slot, () => ({ slot, asset, crops: {}, touched: Object.fromEntries(SOCIAL_FORMATS.map((format) => [format, true])) as SlotDraft['touched'] }));
+                setSlotPicker(null);
+                setSlotEdit(slot);
+                setSlideIndex(null);
+              },
+            }} />
+        </Modal>
+      )}
+      {layoutsOpen && (
+        <SocialLayoutEditor companyId={detail.post.companyId} templateId={draft.templateId || detail.post.templateId} onClose={() => setLayoutsOpen(false)}
+          onChanged={() => {
+            // Nowa lista układów (i znacznik nowej wersji) bez naruszania niezapisanych zmian w poście.
+            void socialGet<SocialPostDetail>('post', { id: postId })
+              .then((fresh) => setDetail((current) => (current ? { ...current, layouts: fresh.layouts, layout: fresh.layout } : current)))
+              .catch(() => undefined);
+          }} />
+      )}
       {eventPicker && <EventPicker companyId={detail.post.companyId} onClose={() => setEventPicker(false)}
         onPick={(event: SocialEventOption) => { change({ eventId: event.id, eventName: event.name }); setEventPicker(false); }} />}
       {noteAction === 'request_changes' && (
@@ -577,7 +977,7 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
       {noteAction === 'publish' && (
         <Modal open onClose={() => setNoteAction(null)} title="Oznacz jako opublikowany">
           <div className="space-y-3 text-sm">
-            <p className="text-[#e5e4e2]/70">Użyj, gdy post opublikowano ręcznie (np. z paczki „Pobierz paczkę”, bez połączenia z Meta). Wklej link do posta. Publikację w Meta uruchamiają „Opublikuj teraz” i „Zaplanuj publikację”.</p>
+            <p className="text-[#e5e4e2]/70">Użyj, gdy post opublikowano ręcznie (np. z paczki „Pobierz paczkę”, bez połączenia z Meta lub LinkedIn). Wklej link do posta. Automatyczną publikację uruchamiają „Opublikuj teraz” i „Zaplanuj publikację”.</p>
             <input value={publishUrl} onChange={(e) => setPublishUrl(e.target.value)} className={inputClass} placeholder="https://www.instagram.com/p/… (opcjonalnie)" />
             <button type="button" className={primaryButton} onClick={() => { setNoteAction(null); void transition('publish', { url: publishUrl.trim() }); }}>Oznacz jako opublikowany</button>
           </div>
@@ -586,7 +986,7 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
       {scheduleOpen && (
         <Modal open onClose={() => setScheduleOpen(false)} title={detail.post.status === 'scheduled' ? 'Zmień termin publikacji' : 'Zaplanuj publikację'}>
           <div className="space-y-3 text-sm">
-            <p className="text-[#e5e4e2]/70">W tym terminie serwer opublikuje post w Meta: {detail.post.channels.map((channel) => SOCIAL_CHANNEL_LABELS[channel]).join(', ')}. Błąd publikacji zobaczysz na karcie posta (autor i osoba planująca dostaną powiadomienie).</p>
+            <p className="text-[#e5e4e2]/70">W tym terminie serwer opublikuje post: {detail.post.channels.map((channel) => SOCIAL_CHANNEL_LABELS[channel]).join(', ')}. Błąd publikacji zobaczysz na karcie posta (autor i osoba planująca dostaną powiadomienie).</p>
             <input type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)} className={inputClass} />
             {detail.problems.meta.length > 0 && (
               <ul className="list-disc space-y-0.5 rounded-lg border border-amber-400/30 bg-amber-400/10 p-2 pl-6 text-xs text-amber-100">
@@ -611,30 +1011,5 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
         </Modal>
       )}
     </OverlayPortal>
-  );
-}
-
-function AiPanel({ detail, editable, dirty, onGenerate, onUse }: { detail: SocialPostDetail; editable: boolean; dirty: boolean; onGenerate: () => void; onUse: (suggestion: SocialAiSuggestion) => void }) {
-  if (!editable) return null;
-  if (!detail.settings.aiCaptionsEnabled) {
-    return <p className="rounded-lg border border-[#d3bb73]/10 p-2 text-xs text-[#e5e4e2]/50"><Sparkles className="mr-1 inline h-3.5 w-3.5 text-[#d3bb73]" />Opisy AI włącza osoba akceptująca posty („Szablony i AI”).</p>;
-  }
-  const suggestions = (detail.post.aiSuggestions || []) as SocialAiSuggestion[];
-  return (
-    <div className="space-y-2 rounded-lg border border-[#d3bb73]/15 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm"><Sparkles className="mr-1 inline h-4 w-4 text-[#d3bb73]" />Opisy AI z danych realizacji</span>
-        <button type="button" className={secondaryButton} onClick={onGenerate}>{suggestions.length ? 'Nowe propozycje' : 'Zaproponuj opisy'}</button>
-      </div>
-      <p className="text-[11px] text-[#e5e4e2]/40">Do AI trafia rodzaj wydarzenia, miejsce, miesiąc i opis realizacji; nazwa wydarzenia i klient — tylko przy zgodzie klienta.{dirty ? ' Najpierw zapiszemy zmiany.' : ''}</p>
-      {suggestions.map((suggestion, index) => (
-        <div key={index} className="rounded-lg bg-[#0f1119]/70 p-2 text-xs">
-          {(suggestion.headline || suggestion.subline) && <div className="mb-1 text-[#d3bb73]">{suggestion.headline}{suggestion.subline ? ` · ${suggestion.subline}` : ''}</div>}
-          <p className="whitespace-pre-wrap text-[#e5e4e2]/80">{suggestion.caption}</p>
-          <p className="mt-1 text-[#e5e4e2]/45">{suggestion.hashtags.join(' ')}</p>
-          <button type="button" className={`${secondaryButton} mt-2`} onClick={() => onUse(suggestion)}>Użyj tej wersji</button>
-        </div>
-      ))}
-    </div>
   );
 }

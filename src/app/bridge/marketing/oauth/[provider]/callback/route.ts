@@ -13,6 +13,7 @@ import {
 import { getMarketingPublicUrl } from '@/lib/marketing/public-url.server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import type { MarketingProvider } from '@/lib/marketing/types';
+import { exchangeLinkedInCode, linkedInOrganizations } from '@/lib/social/socialLinkedIn.server';
 
 import {
   LEGACY_MARKETING_OAUTH_COOKIE,
@@ -59,7 +60,7 @@ export async function GET(
   let companyId = '';
 
   try {
-    if (provider !== 'google' && provider !== 'meta') throw new Error('Nieobsługiwany dostawca.');
+    if (provider !== 'google' && provider !== 'meta' && provider !== 'linkedin') throw new Error('Nieobsługiwany dostawca.');
     if (!state) throw new Error('Brak stanu logowania. Rozpocznij połączenie ponownie w CRM.');
     if (!cookieState) {
       throw new Error('Brak ciasteczka logowania. Otwórz CRM na domenie powrotu i połącz ponownie.');
@@ -302,6 +303,30 @@ export async function GET(
       displayName = profile.name || selectedPage?.name || 'Meta';
       externalAccountId = String(settings.page_id || settings.ad_account_id || '') || null;
       scopes = grantedScopes;
+    } else if (provider === 'linkedin') {
+      // Strona firmowa LinkedIn: token (zaszyfrowany), strony, którymi konto administruje, i wybrana strona marki.
+      const exchanged = await exchangeLinkedInCode(code, redirectUri);
+      let organizations: Array<{ id: string; name: string; vanityName: string | null }> = [];
+      let discoveryError: string | null = null;
+      try {
+        organizations = await linkedInOrganizations(exchanged.credentials.access_token);
+      } catch (error) {
+        discoveryError = String((error as Error)?.message || 'Nie udało się pobrać stron LinkedIn.').slice(0, 1000);
+      }
+      const currentId = String(currentSettings.organization_id || '');
+      const selected = organizations.find((item) => item.id === currentId) || (currentId ? null : organizations[0]) || null;
+      tokenExpiresAt = exchanged.expiresAt;
+      credentials = exchanged.credentials;
+      settings = {
+        ...currentSettings,
+        available_organizations: organizations,
+        linkedin_discovery_error: discoveryError,
+        organization_id: selected?.id || currentId,
+        organization_name: selected?.name || String(currentSettings.organization_name || ''),
+      };
+      displayName = String(settings.organization_name || '') || 'LinkedIn';
+      externalAccountId = String(settings.organization_id || '') || null;
+      scopes = exchanged.scopes;
     } else {
       throw new Error('Nieobsługiwany dostawca.');
     }

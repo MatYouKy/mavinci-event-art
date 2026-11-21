@@ -35,6 +35,7 @@ import {
   BookOpen,
   BadgePercent,
   Images,
+  Award,
 } from 'lucide-react';
 
 /**
@@ -55,6 +56,7 @@ export const NavigationIcons = {
   messages: Mail,
   campaigns: Megaphone,
   social: Images,
+  portfolio: Award,
   inquiries: Inbox,
   tasks: CheckSquare,
   employees: Users,

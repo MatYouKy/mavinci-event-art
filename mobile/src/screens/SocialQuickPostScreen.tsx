@@ -48,6 +48,9 @@ export default function SocialQuickPostScreen() {
   const [picker, setPicker] = useState<'date' | 'time' | null>(null);
   const [eventModal, setEventModal] = useState(false);
   const [libraryModal, setLibraryModal] = useState(false);
+  /** Karuzela (post 4:5): kolejne zdjęcia z biblioteki marki. */
+  const [extra, setExtra] = useState<Array<{ id: string; thumbnailUrl: string | null }>>([]);
+  const [extraModal, setExtraModal] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
   const choosePhoto = async (source: 'camera' | 'library') => {
@@ -85,6 +88,7 @@ export default function SocialQuickPostScreen() {
         headline: headline.trim(),
         subline: subline.trim(),
         scheduledAt: scheduledAt ? scheduledAt.toISOString() : null,
+        ...(kind !== 'story' && extra.length ? { slides: extra.map((item) => ({ assetId: item.id })) } : {}),
       });
       navigation.replace('SocialPost', { postId: detail.post.id });
     } catch (cause) {
@@ -108,6 +112,29 @@ export default function SocialQuickPostScreen() {
           <TouchableOpacity style={styles.secondary} onPress={() => void choosePhoto('library')}><Feather name="image" size={15} color={colors.primary.gold} /><Text style={styles.secondaryText}>Galeria</Text></TouchableOpacity>
           <TouchableOpacity style={styles.secondary} onPress={() => setLibraryModal(true)}><Feather name="grid" size={15} color={colors.primary.gold} /><Text style={styles.secondaryText}>Biblioteka</Text></TouchableOpacity>
         </View>
+
+        {kind !== 'story' && (
+          <>
+            <Text style={styles.label}>Karuzela — kolejne zdjęcia ({1 + extra.length}/{SOCIAL_LIMITS.slides + 1})</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+              {extra.map((item, index) => (
+                <TouchableOpacity key={`${item.id}-${index}`} onPress={() => setExtra((current) => current.filter((_, position) => position !== index))}>
+                  {item.thumbnailUrl ? <Image source={{ uri: item.thumbnailUrl }} style={{ width: 72, height: 90, borderRadius: borderRadius.sm }} />
+                    : <View style={[styles.placeholder, { width: 72, height: 90 }]} />}
+                  <View style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 10, padding: 2 }}>
+                    <Feather name="x" size={12} color={colors.white} />
+                  </View>
+                </TouchableOpacity>
+              ))}
+              {extra.length < SOCIAL_LIMITS.slides && (
+                <TouchableOpacity style={[styles.placeholder, { width: 72, height: 90, borderRadius: borderRadius.sm }]} onPress={() => setExtraModal(true)}>
+                  <Feather name="plus" size={20} color={colors.primary.gold} />
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+            <Text style={styles.muted}>Instagram — przesuwane zdjęcia, Facebook — post z kilkoma zdjęciami. Kolejne zdjęcia: ten sam styl, bez tekstów. Dotknij zdjęcia, żeby je usunąć.</Text>
+          </>
+        )}
 
         <Text style={styles.label}>Wydarzenie</Text>
         <TouchableOpacity style={styles.input} onPress={() => setEventModal(true)}>
@@ -171,6 +198,13 @@ export default function SocialQuickPostScreen() {
         if (!event && value.eventId) setEvent({ id: value.eventId, name: value.eventName || 'Wydarzenie' });
         setLibraryModal(false);
       }} />
+      <LibraryModal visible={extraModal} companyId={companyId} onClose={() => setExtraModal(false)} onPick={(value) => {
+        setExtraModal(false);
+        if (asset && value.id === asset.id) return;
+        setExtra((current) => (current.length >= SOCIAL_LIMITS.slides || current.some((item) => item.id === value.id) ? current
+          : [...current, { id: value.id, thumbnailUrl: value.thumbnailUrl }]));
+        if (!companyId) setCompanyId(value.companyId);
+      }} />
       <Modal visible={busy !== null} transparent animationType="fade">
         <View style={styles.backdrop}><View style={styles.modalCard}><ActivityIndicator color={colors.primary.gold} size="large" /><Text style={styles.body}>{busy}…</Text></View></View>
       </Modal>
@@ -222,7 +256,7 @@ function EventModal({ visible, companyId, onClose, onPick }: {
   );
 }
 
-function LibraryModal({ visible, companyId, onClose, onPick }: {
+export function LibraryModal({ visible, companyId, onClose, onPick }: {
   visible: boolean; companyId: string | null; onClose: () => void; onPick: (asset: SocialAssetItem) => void;
 }) {
   const [library, setLibrary] = useState<SocialLibrary | null>(null);

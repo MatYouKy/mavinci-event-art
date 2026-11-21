@@ -20,6 +20,8 @@ import SellerHelpScreen from '../screens/SellerHelpScreen';
 import SocialMediaScreen from '../screens/SocialMediaScreen';
 import SocialPostScreen from '../screens/SocialPostScreen';
 import SocialQuickPostScreen from '../screens/SocialQuickPostScreen';
+import PortfolioScreen from '../screens/PortfolioScreen';
+import PortfolioItemScreen from '../screens/PortfolioItemScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -41,6 +43,9 @@ export type RootStackParamList = {
   SocialQuickPost: {
     companyId?: string | null; assetId?: string; assetThumb?: string | null; eventId?: string | null; eventName?: string | null;
   } | undefined;
+  /** Marketing → Realizacje: portfolio strony (kopie robocze, SEO, publikacja). */
+  Portfolio: undefined;
+  PortfolioItem: { id: string };
   PdfViewer: { url: string };
   EventDetail: {
     eventId: string;
@@ -199,6 +204,26 @@ export default function RootNavigator() {
               options={{
                 headerShown: true,
                 title: 'Szybki post'.toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="Portfolio"
+              component={PortfolioScreen}
+              options={{
+                headerShown: true,
+                title: 'Realizacje'.toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="PortfolioItem"
+              component={PortfolioItemScreen}
+              options={{
+                headerShown: true,
+                title: 'Realizacja'.toLocaleUpperCase('pl-PL'),
                 headerStyle: { backgroundColor: colors.background.secondary },
                 headerTintColor: colors.text.primary,
               }}

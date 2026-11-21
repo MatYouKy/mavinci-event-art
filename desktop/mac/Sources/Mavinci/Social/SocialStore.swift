@@ -144,6 +144,8 @@ struct SocialLibraryFilter: Equatable {
     @Published var libraryFilter = SocialLibraryFilter()
     @Published var libraryError: String?
     @Published var settingsShown = false
+    /// Edytor układów grafik na całej szerokości (z nagłówka „Social media”).
+    @Published var layoutsShown = false
     /// Komentarze: `post:<id>` — wątki posta, `company:<marka>` — skrzynka marki (filtr `commentsFilter`).
     @Published private(set) var comments: [String: SocialCommentsReply] = [:]
     @Published var commentsFilter = "unanswered"
@@ -156,6 +158,13 @@ struct SocialLibraryFilter: Equatable {
     @Published var statsReportID: String?
     @Published var statsError: String?
     @Published private(set) var statsLoading = false
+    /// Warstwy grafiki bez zdjęcia (PNG z serwera: przyciemnienia, logo, tytuł, kreska i podpis) do podglądu kadru na żywo
+    /// w kreatorze i miniatury stylów — klucz `overlayKey` (marka, szablon, format, tytuł, podpis, styl, napis nad tytułem).
+    /// Zmiana kadru nie wymaga nowej warstwy.
+    @Published private(set) var overlays: [String: NSImage] = [:]
+    private var overlayOrder: [String] = []
+    private var overlayLoading: Set<String> = []
+    private var overlayFailedAt: [String: Date] = [:]
 
     private var namespace: String?
     private var homeFile: SealedFile<SocialHome>?
@@ -189,11 +198,12 @@ struct SocialLibraryFilter: Equatable {
         }
         if clearDisk {
             for id in details.keys { try? detailFile(id)?.clear() }
+            for company in Set((home?.companies.map(\.id) ?? []) + [companyID].compactMap { $0 }) { try? layoutsFile(company)?.clear() }
             SocialImageCache.shared.clear()
         }
         homeFile = nil; namespace = nil; home = nil; loadError = nil; loading = false; companyID = nil
         month = Self.firstOfMonth(Date()); tab = .calendar; openedPostID = nil; details = [:]; detailErrors = [:]
-        library = nil; libraryFilter = SocialLibraryFilter(); libraryError = nil; settingsShown = false
+        library = nil; libraryFilter = SocialLibraryFilter(); libraryError = nil; settingsShown = false; layoutsShown = false
         comments = [:]; commentsFilter = "unanswered"; commentsError = nil; focusComments = false
         stats = nil; statsDays = 28; statsReportID = nil; statsError = nil; statsLoading = false
     }
@@ -397,22 +407,22 @@ struct SocialLibraryFilter: Equatable {
         await runDetail(action.label, "transition", body, success: action.success)
     }
 
-    // MARK: Publikacja w Meta
+    // MARK: Publikacja (Meta, LinkedIn)
     /// „Opublikuj teraz” / „Ponów publikację” — serwer publikuje od razu i zwraca wynik (kanały już opublikowane pomija).
     @discardableResult func publishNow(_ detail: SocialPostDetail) async -> SocialPostDetail? {
         let retry = detail.post.status == .failed
-        guard let result = await runDetail(retry ? "Ponawiam publikację" : "Publikuję w Meta", "publishNow",
+        guard let result = await runDetail(retry ? "Ponawiam publikację" : "Publikuję", "publishNow",
                                            ["id": .string(detail.post.id), "revision": .number(Double(detail.post.revision))],
                                            success: nil, timeout: 300) else { return nil }
         switch result.publishResult?.status {
-        case "published": workspace?.succeed("Post opublikowany w Meta")
+        case "published": workspace?.succeed("Post opublikowany")
         case "failed": workspace?.error = result.publishResult?.error ?? "Publikacja nie powiodła się."
         default: workspace?.notice = "Publikacja trwa — karta odświeży się sama."
         }
         return result
     }
 
-    /// „Zaplanuj publikację” (albo zmiana terminu zaplanowanej) — publikacja w Meta w podanym terminie.
+    /// „Zaplanuj publikację” (albo zmiana terminu zaplanowanej) — publikacja w Meta i na LinkedIn w podanym terminie.
     @discardableResult func schedulePublication(_ detail: SocialPostDetail, at date: Date) async -> SocialPostDetail? {
         await runDetail("Planuję publikację", "schedulePublication", [
             "id": .string(detail.post.id), "revision": .number(Double(detail.post.revision)), "scheduledAt": .string(SocialDates.iso(date)),
@@ -517,7 +527,7 @@ struct SocialLibraryFilter: Equatable {
         }
     }
 
-    /// Komentarze prosto z Meta (przycisk „Odśwież”; harmonogram robi to co 15 minut).
+    /// Komentarze prosto z Meta i LinkedIn (przycisk „Odśwież”; harmonogram robi to co 15 minut).
     func refreshComments(postID: String?) async {
         guard let key = commentsKey(postID) else { return }
         var body: [String: JSONValue] = [:]
@@ -525,23 +535,101 @@ struct SocialLibraryFilter: Equatable {
             body["companyId"] = .string(companyID)
             body["filter"] = .string(commentsFilter)
         }
-        guard let data = await run("Pobieram komentarze z Meta", "commentsRefresh", body, success: "Komentarze są aktualne") else { return }
+        guard let data = await run("Pobieram komentarze", "commentsRefresh", body, success: "Komentarze są aktualne") else { return }
         if let reply = try? JSONDecoder().decode(SocialCommentsReply.self, from: data) { comments[key] = reply }
         await load(quiet: true)
     }
 
-    /// Odpowiedź marki (strona Facebook / profil Instagram) na komentarz.
+    /// Odpowiedź marki (strona Facebook / profil Instagram / strona LinkedIn) na komentarz.
     func reply(to thread: SocialCommentThread, message: String, postID: String?) async -> Bool {
         guard let key = commentsKey(postID) else { return false }
         let body: [String: JSONValue] = [
             "commentId": .string(thread.id), "message": .string(message),
             "scope": .string(postID == nil ? "company" : "post"), "filter": .string(commentsFilter),
         ]
-        let success = thread.platform == "facebook" ? "Odpowiedź opublikowana na Facebooku" : "Odpowiedź opublikowana na Instagramie"
+        let success = SocialCommentPlatform.replySuccess(thread.platform)
         guard let data = await run("Publikuję odpowiedź", "reply", body, success: success) else { return false }
         if let reply = try? JSONDecoder().decode(SocialCommentsReply.self, from: data) { comments[key] = reply }
         await load(quiet: true)
         return true
+    }
+
+    // MARK: Podgląd kadru na żywo
+
+    nonisolated static func overlayKey(company: String, template: String?, format: SocialFormat, headline: String, subline: String,
+                                       style: SocialGraphicStyle = .classic, kicker: String = "", layout: SocialLayoutDefinition? = nil) -> String {
+        let clean: (String) -> String = { $0.split(whereSeparator: \.isWhitespace).joined(separator: " ") }
+        // Układ jako dane: warstwa zależy od całej definicji (skrót w obrębie uruchomienia aplikacji).
+        let layoutKey = layout.map { "L\($0.hashValue)" } ?? "-"
+        return [company, template ?? "-", format.rawValue, clean(headline), clean(subline), style.rawValue, clean(kicker), layoutKey].joined(separator: "|")
+    }
+
+    /// Warstwa z serwera (`POST /social` `op=overlay`, ten sam HTML i Chromium co render grafiki; z układem — tło z otworami
+    /// w miejscach zdjęć) — raz na klucz;
+    /// po błędzie (np. szablon marki niegotowy) kolejna próba najwcześniej po 30 s.
+    func loadOverlay(company: String, template: String?, format: SocialFormat, headline: String, subline: String,
+                     style: SocialGraphicStyle = .classic, kicker: String = "", layout: SocialLayoutDefinition? = nil) async {
+        let key = Self.overlayKey(company: company, template: template, format: format, headline: headline, subline: subline, style: style,
+                                  kicker: kicker, layout: layout)
+        guard overlays[key] == nil, !overlayLoading.contains(key), let api else { return }
+        if let failed = overlayFailedAt[key], Date().timeIntervalSince(failed) < 30 { return }
+        overlayLoading.insert(key)
+        defer { overlayLoading.remove(key) }
+        do {
+            let data = try await api.post("/social", [
+                "op": .string("overlay"), "companyId": .string(company), "templateId": template.map(JSONValue.string) ?? .null,
+                "format": .string(format.rawValue), "headline": .string(headline), "subline": .string(subline),
+                "style": .string(style.rawValue), "kicker": .string(kicker),
+                // Układ: warstwa z otworami w miejscach zdjęć (Mac wkłada pod nią zdjęcia w prostokątach miejsc).
+                "layout": layout?.json ?? .null,
+            ])
+            guard let image = NSImage(data: data) else { overlayFailedAt[key] = Date(); return }
+            overlays[key] = image
+            overlayFailedAt[key] = nil
+            overlayOrder.append(key)
+            if overlayOrder.count > 48 { overlays[overlayOrder.removeFirst()] = nil }
+        } catch {
+            overlayFailedAt[key] = Date()
+        }
+    }
+
+    // MARK: Edytor układów grafik
+
+    private func layoutsFile(_ company: String) -> SealedFile<SocialLayoutsReply>? {
+        guard let namespace else { return nil }
+        return SealedFile<SocialLayoutsReply>(namespace: "social-layouts-\(namespace)-\(company)")
+    }
+
+    /// Kopia układów marki z dysku (edytor otwiera się od razu, także bez połączenia).
+    func cachedLayouts(company: String) async -> SocialLayoutsReply? {
+        guard let file = layoutsFile(company) else { return nil }
+        return await Task.detached(priority: .userInitiated, operation: { try? file.load() }).value
+    }
+
+    /// Układy marki z serwera (`op=layouts`) z szablonem do podglądu; kopia na dysku.
+    func fetchLayouts(company: String, template: String?) async throws -> SocialLayoutsReply {
+        guard let api else { throw AppError.configuration }
+        var query = ["op": "layouts", "company": company]
+        if let template { query["template"] = template }
+        let reply = try JSONDecoder().decode(SocialLayoutsReply.self, from: try await api.get("/social", query: query))
+        keepLayouts(reply)
+        return reply
+    }
+
+    private func keepLayouts(_ reply: SocialLayoutsReply) {
+        if let file = layoutsFile(reply.companyId) { let copy = reply; Task.detached(priority: .utility) { try? file.save(copy) } }
+    }
+
+    /// Zapis, archiwum albo usunięcie układu (modal i komunikat) — odpowiedź z aktualną listą (zapis — `savedId`).
+    func layoutAction(_ pending: String, _ op: String, _ body: [String: JSONValue], success: String) async -> SocialLayoutsReply? {
+        guard let data = await run(pending, op, body, success: nil) else { return nil }
+        guard let reply = try? JSONDecoder().decode(SocialLayoutsReply.self, from: data) else {
+            workspace?.error = "Nieoczekiwana odpowiedź serwera CRM."
+            return nil
+        }
+        keepLayouts(reply)
+        workspace?.succeed(success)
+        return reply
     }
 
     /// Paczka posta (grafiki JPEG i opis) — zapis w wybranym miejscu (domyślnie Pobrane).
@@ -769,6 +857,31 @@ struct SocialLibraryFilter: Equatable {
             "defaultHashtags": .array(hashtags.map(JSONValue.string)), "captionStyle": .string(style),
         ]
         if await run("Zapisuję ustawienia", "settings", body, success: "Zapisano ustawienia social media") != nil { await load(quiet: true) }
+    }
+
+    /// Asystent AI włączony z kreatora (akceptujący, zgoda z datą i osobą) — ustawienia marki w pamięci bez przeładowania
+    /// posta, więc niezapisane zmiany w kreatorze zostają.
+    func enableAssistant(companyID: String) async {
+        let body: [String: JSONValue] = ["companyId": .string(companyID), "aiCaptionsEnabled": .bool(true)]
+        guard let data = await run("Włączam asystenta AI", "settings", body, success: "Asystent AI włączony") else { return }
+        struct Reply: Decodable { let settings: SocialSettings }
+        guard let settings = (try? JSONDecoder().decode(Reply.self, from: data))?.settings else { return }
+        for (id, cached) in details where cached.post.companyId == companyID {
+            var next = cached
+            next.settings = settings
+            details[id] = next
+        }
+        if home?.company.id == companyID { home?.settings = settings }
+    }
+
+    /// Asystent AI (`op=assist`): opisy, poprawka opisu albo hashtagi — wynik tylko do wyboru w kreatorze (post bez zmian).
+    func assist(_ body: [String: JSONValue], pending: String) async -> SocialAssistReply? {
+        guard let data = await run(pending, "assist", body, success: nil) else { return nil }
+        guard let reply = try? JSONDecoder().decode(SocialAssistReply.self, from: data) else {
+            workspace?.error = "Asystent AI zwrócił nieczytelną odpowiedź. Spróbuj ponownie."
+            return nil
+        }
+        return reply
     }
 
     func saveTemplate(_ body: [String: JSONValue]) async -> [SocialTemplate]? {

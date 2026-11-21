@@ -1,8 +1,8 @@
 import SwiftUI
 
-// MARK: Komentarze Facebook i Instagram — 1:1 z `SocialComments` w CRM: skrzynka marki (zakładka „Komentarze”, filtr
-// „Bez odpowiedzi” / „Wszystkie”) albo wątki jednego posta w kreatorze. Odpowiedź publikuje serwer jako strona / profil
-// marki (twórca treści, uprawnienia Meta do komentarzy). „Odśwież” pobiera komentarze z Meta.
+// MARK: Komentarze Facebook, Instagram i LinkedIn — 1:1 z `SocialComments` w CRM: skrzynka marki (zakładka „Komentarze”,
+// filtr „Bez odpowiedzi” / „Wszystkie”) albo wątki jednego posta w kreatorze. Odpowiedź publikuje serwer jako strona / profil
+// marki (twórca treści, uprawnienia Meta albo LinkedIn do komentarzy). „Odśwież” pobiera komentarze z Meta i LinkedIn.
 
 @MainActor struct SocialCommentsView: View {
     @ObservedObject var store: SocialStore
@@ -85,7 +85,7 @@ import SwiftUI
                         .background(Capsule().fill(Color.orange.opacity(0.15))).foregroundStyle(.orange)
                 }
                 if let link = thread.permalink, let url = URL(string: link) {
-                    Link(destination: url) { Label(thread.platform == "facebook" ? "Facebook" : "Instagram", systemImage: "arrow.up.right.square") }.font(.caption)
+                    Link(destination: url) { Label(SocialCommentPlatform.label(thread.platform), systemImage: "arrow.up.right.square") }.font(.caption)
                 }
                 Spacer()
                 if reply.canReply(to: thread) {
@@ -93,11 +93,12 @@ import SwiftUI
                         Button { replyingTo = thread.id } label: { Label("Odpowiedz", systemImage: "arrowshape.turn.up.left") }
                     }
                 } else if reply.canReply {
-                    Text("Odpowiedzi wymagają uprawnień Meta do komentarzy (ustawienia marketingu marki).").font(.caption2).foregroundStyle(.secondary)
+                    let provider: String = thread.platform == "linkedin" ? "LinkedIn" : "Meta"
+                    Text("Odpowiedzi wymagają uprawnień \(provider) do komentarzy (ustawienia marketingu marki).").font(.caption2).foregroundStyle(.secondary)
                 }
             }
             if replyingTo == thread.id {
-                let placeholder: String = thread.platform == "facebook" ? "Odpowiedź jako strona marki…" : "Odpowiedź jako profil marki…"
+                let placeholder: String = "Odpowiedź jako \(SocialCommentPlatform.replyAuthor(thread.platform))…"
                 TextField(placeholder, text: Binding(get: { drafts[thread.id] ?? "" }, set: { drafts[thread.id] = String($0.prefix(1000)) }), axis: .vertical)
                     .lineLimit(2...6).textFieldStyle(.roundedBorder)
                 HStack {
@@ -126,7 +127,7 @@ import SwiftUI
     private func commentLine(_ comment: SocialComment) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
-                Image(systemName: comment.platform == "facebook" ? "f.square" : "camera").font(.caption).foregroundStyle(theme.accent)
+                Image(systemName: SocialCommentPlatform.symbol(comment.platform)).font(.caption).foregroundStyle(theme.accent)
                 let author: String = comment.isOwn ? "\(comment.authorName) (marka)" : comment.authorName
                 Text(author).font(.caption.weight(.semibold)).foregroundStyle(comment.isOwn ? theme.accent : Color.primary)
                 Text(SocialDates.dateTime(comment.commentedAt)).font(.caption2).foregroundStyle(.secondary)

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  BarChart3, CalendarDays, ChevronLeft, ChevronRight, Images, ListChecks, MessagesSquare, Plus, RefreshCw, Settings2, Sparkles,
+  BarChart3, CalendarDays, ChevronLeft, ChevronRight, Images, LayoutTemplate, ListChecks, MessagesSquare, Plus, RefreshCw, Settings2, Sparkles,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
@@ -14,6 +14,7 @@ import { PostStatusBadge, cardClass, dayKey, errorMessage, primaryButton, second
 import SocialLibrary from './SocialLibrary';
 import SocialPostEditor from './SocialPostEditor';
 import SocialSettingsModal from './SocialSettingsModal';
+import SocialLayoutEditor from './SocialLayoutEditor';
 import SocialComments from './SocialComments';
 import SocialStats from './SocialStats';
 import { MetaStatusBanner } from './SocialMetaPanel';
@@ -61,6 +62,7 @@ export default function SocialMediaWorkspace() {
   const [error, setError] = useState('');
   const [openPostId, setOpenPostId] = useState<string | null>(searchParams?.get('post') || null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [layoutsOpen, setLayoutsOpen] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [libraryVersion, setLibraryVersion] = useState(0);
   const grid = useMemo(() => monthGrid(month), [month]);
@@ -191,6 +193,7 @@ export default function SocialMediaWorkspace() {
             )}
             <button type="button" className={secondaryButton} onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Odśwież</button>
             {access?.approve && <button type="button" className={secondaryButton} onClick={() => setSettingsOpen(true)}><Settings2 className="h-4 w-4" />Szablony i AI</button>}
+            {access?.approve && <button type="button" className={secondaryButton} onClick={() => setLayoutsOpen(true)}><LayoutTemplate className="h-4 w-4" />Układy grafik</button>}
             {access?.create && <button type="button" className={primaryButton} onClick={() => void createPost()}><Plus className="h-4 w-4" />Nowy post</button>}
           </div>
         </header>
@@ -314,6 +317,7 @@ export default function SocialMediaWorkspace() {
         <SocialSettingsModal companyId={home.company.id} settings={home.settings} templates={home.templates}
           onClose={() => setSettingsOpen(false)} onSaved={() => void load(true)} />
       )}
+      {layoutsOpen && home && <SocialLayoutEditor companyId={home.company.id} onClose={() => setLayoutsOpen(false)} />}
     </main>
   );
 }

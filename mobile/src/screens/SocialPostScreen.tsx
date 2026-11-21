@@ -9,22 +9,27 @@ import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import {
-  SOCIAL_CHANNEL_LABELS, SOCIAL_FORMAT_INFO, SOCIAL_LIMITS, SOCIAL_POST_ACTION_LABELS, SOCIAL_POST_ACTION_SUCCESS,
+  SOCIAL_CHANNEL_LABELS, SOCIAL_FORMAT_INFO, SOCIAL_GRAPHIC_STYLES, SOCIAL_GRAPHIC_STYLE_HINTS, SOCIAL_GRAPHIC_STYLE_LIST, SOCIAL_KICKER_SUGGESTIONS,
+  SOCIAL_LIMITS, SOCIAL_POST_ACTION_LABELS, SOCIAL_POST_ACTION_SUCCESS, SOCIAL_SLIDE_FORMATS,
   SOCIAL_METRICS, SOCIAL_METRIC_LABELS, SOCIAL_PUBLICATION_STATUS_LABELS, formatSocialNumber, formatSocialPercent, normalizeHashtags, socialConsentAllows, socialDateLabel, socialPostEditable, socialPublicationText,
-  type SocialPostAction,
+  type SocialGraphicStyle, type SocialPostAction,
 } from '../lib/socialShared';
+import SocialAssistantCard from '../components/Social/SocialAssistantCard';
 import SocialCommentsList from '../components/Social/SocialCommentsList';
-import { socialErrorMessage, socialGet, socialPost, type SocialAiSuggestion, type SocialPostDetail } from '../lib/socialApi';
+import { socialErrorMessage, socialGet, socialManualChannel, socialPost, type SocialPostDetail } from '../lib/socialApi';
+import { LibraryModal } from './SocialQuickPostScreen';
 import { PhotoPermissionError, saveChatPhoto } from '../services/saveChatPhoto';
 import { SocialStatusBadge } from './SocialMediaScreen';
 
 /*
  * Karta posta social media w aplikacji: grafiki wygenerowane na serwerze (te same pliki co w CRM i na Macu), opis
- * i hashtagi, braki (grafiki, zgoda klienta), uwagi akceptującego. Twórca: tytuł i podpis grafiki, opis, hashtagi,
- * opisy AI, „Wyślij do akceptacji”. Akceptujący: „Zatwierdź” (nie własny post) i „Do poprawy”. Publikujący: „Opublikuj teraz”,
- * „Zaplanuj publikację”, „Wstrzymaj publikację”, „Ponów publikację” (Meta) i „Oznacz jako opublikowany”. Wyniki kanałów
- * (link albo błąd) i komentarze Facebook / Instagram z odpowiedzią marki. Do ręcznej publikacji: zapis grafiki w Zdjęciach
- * i kopiowanie opisu. Bez edycji kadru (kadr z propozycji).
+ * i hashtagi, braki (grafiki, zgoda klienta), uwagi akceptującego. Twórca: styl grafiki, napis nad tytułem, tytuł i podpis
+ * grafiki (nowa grafika po zapisie), opis, hashtagi,
+ * asystent AI (opisy, poprawki, hashtagi), „Wyślij do akceptacji”. Akceptujący: „Zatwierdź” (nie własny post) i „Do poprawy”. Publikujący: „Opublikuj teraz”,
+ * „Zaplanuj publikację”, „Wstrzymaj publikację”, „Ponów publikację” (Meta, LinkedIn) i „Oznacz jako opublikowany”. Wyniki kanałów
+ * (link albo błąd) i komentarze Facebook / Instagram / LinkedIn z odpowiedzią marki. Do ręcznej publikacji: zapis grafiki w Zdjęciach
+ * i kopiowanie opisu. Karuzela: kolejne zdjęcia z biblioteki, kolejność i usuwanie (kadr — propozycja albo z CRM / Maca).
+ * Bez edycji kadru (kadr z propozycji).
  */
 
 /** Domyślny termin planowania: zapisany termin w przyszłości albo jutro 18:00. */
@@ -50,6 +55,8 @@ export default function SocialPostScreen() {
   const [hashtags, setHashtags] = useState('');
   const [headline, setHeadline] = useState('');
   const [subline, setSubline] = useState('');
+  const [style, setStyle] = useState<SocialGraphicStyle>('classic');
+  const [kicker, setKicker] = useState('');
   const [dirty, setDirty] = useState(false);
   const [noteModal, setNoteModal] = useState<'request_changes' | 'publish' | null>(null);
   const [note, setNote] = useState('');
@@ -59,6 +66,18 @@ export default function SocialPostScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [commentsY, setCommentsY] = useState<number | null>(null);
   const scrolledToComments = useRef(false);
+  /** Karuzela: kolejne zdjęcia (grafika w formacie feedu albo miniatura zdjęcia); `slidesChanged` — do zapisu. */
+  const [slides, setSlides] = useState<Array<{ assetId: string; image: string | null }>>([]);
+  const [slidesChanged, setSlidesChanged] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  /** Układ grafiki (`null` — styl) i zdjęcia kolażu w miejscach 1–3; wybór zdjęcia z biblioteki: karuzela albo miejsce kolażu. */
+  const [layoutChoice, setLayoutChoice] = useState<{ id: string | null; key: string | null } | null>(null);
+  const [layoutChanged, setLayoutChanged] = useState(false);
+  /** Ten sam układ w aktualnej wersji (zmieniony w edytorze układów po zapisaniu posta) — zapis z `refresh`. */
+  const [layoutRefresh, setLayoutRefresh] = useState(false);
+  const [collage, setCollage] = useState<Array<{ slot: number; assetId: string; image: string | null }>>([]);
+  const [collageChanged, setCollageChanged] = useState(false);
+  const [libraryTarget, setLibraryTarget] = useState<'slide' | number>('slide');
 
   const apply = (value: SocialPostDetail) => {
     setDetail(value);
@@ -66,6 +85,22 @@ export default function SocialPostScreen() {
     setHashtags(value.post.hashtags.join(' '));
     setHeadline(value.variants[0]?.headline || '');
     setSubline(value.variants[0]?.subline || '');
+    setStyle(value.variants[0] ? value.variants[0].style || 'classic' : value.template?.defaultStyle || 'classic');
+    setKicker(value.variants[0]?.kicker || '');
+    const feed = value.channelFormats?.instagram_feed || value.channelFormats?.facebook_feed
+      || value.variants.map((variant) => variant.format).find((format) => SOCIAL_SLIDE_FORMATS.includes(format)) || null;
+    setSlides([...(value.slides || [])].sort((a, b) => a.position - b.position).map((slide) => ({
+      assetId: slide.assetId,
+      image: (feed ? slide.formats.find((item) => item.format === feed)?.renderedUrl : null) || slide.asset?.thumbnailUrl || null,
+    })));
+    setSlidesChanged(false);
+    setLayoutChoice(value.layout ? { id: value.layout.id, key: value.layout.key } : null);
+    setLayoutChanged(false);
+    setLayoutRefresh(false);
+    setCollage([...(value.slots || [])].sort((a, b) => a.slot - b.slot).map((item) => ({
+      slot: item.slot, assetId: item.assetId, image: item.asset?.thumbnailUrl || null,
+    })));
+    setCollageChanged(false);
     setDirty(false);
   };
 
@@ -113,16 +148,22 @@ export default function SocialPostScreen() {
 
   const save = async (quiet = false): Promise<SocialPostDetail | null> => {
     if (!detail) return null;
-    // Grafiki zmieniamy tylko przy innym tytule lub podpisie — kadry ustawione w CRM albo na Macu zostają.
-    const textChanged = detail.variants.some((variant) => variant.headline !== headline.trim() || variant.subline !== subline.trim());
+    // Grafiki zmieniamy tylko przy innym tytule, podpisie, napisie albo stylu — kadry ustawione w CRM albo na Macu zostają.
+    const textChanged = detail.variants.some((variant) => variant.headline !== headline.trim() || variant.subline !== subline.trim()
+      || (variant.style || 'classic') !== style || (variant.kicker || '') !== kicker.trim());
     const result = await socialPost<SocialPostDetail>('savePost', {
       id: detail.post.id,
       updatedAt: detail.post.updatedAt,
       caption,
       hashtags: normalizeHashtags(hashtags),
       ...(textChanged ? {
-        variants: detail.variants.map((variant) => ({ format: variant.format, assetId: variant.assetId, crop: variant.crop, headline, subline })),
+        variants: detail.variants.map((variant) => ({ format: variant.format, assetId: variant.assetId, crop: variant.crop, headline, subline, style, kicker })),
       } : {}),
+      // Karuzela: kolejność zdjęć (kadry zapisane w CRM albo na Macu zostają; nowe zdjęcia — propozycja kadru).
+      ...(slidesChanged ? { slides: slides.map((slide) => ({ assetId: slide.assetId })) } : {}),
+      // Układ i kolaż (kadry zapisane w CRM albo na Macu zostają; nowe zdjęcia — propozycja kadru w proporcjach miejsca).
+      ...(layoutChanged ? { layout: layoutChoice ? { ...layoutChoice, ...(layoutRefresh ? { refresh: true } : {}) } : null } : {}),
+      ...(layoutChanged || collageChanged ? { slots: collage.map((item) => ({ slot: item.slot, assetId: item.assetId })) } : {}),
     });
     if (!quiet) Alert.alert('Social media', 'Zapisano post i wygenerowano grafiki.');
     return result;
@@ -146,11 +187,11 @@ export default function SocialPostScreen() {
       {
         text: retry ? 'Ponów' : 'Opublikuj',
         onPress: async () => {
-          setBusy(retry ? 'Ponawiam publikację' : 'Publikuję w Meta');
+          setBusy(retry ? 'Ponawiam publikację' : 'Publikuję');
           try {
             const result = await socialPost<SocialPostDetail>('publishNow', { id: detail.post.id, revision: detail.post.revision });
             apply(result);
-            if (result.publishResult?.status === 'published') Alert.alert('Social media', 'Post opublikowany w Meta.');
+            if (result.publishResult?.status === 'published') Alert.alert('Social media', 'Post opublikowany.');
             else if (result.publishResult?.status === 'failed') Alert.alert('Publikacja', result.publishResult.error || 'Publikacja nie powiodła się.');
             else Alert.alert('Social media', 'Publikacja trwa — karta odświeży się sama.');
           } catch (cause) {
@@ -170,12 +211,6 @@ export default function SocialPostScreen() {
       id: detail.post.id, revision: detail.post.revision, scheduledAt: scheduleDate.toISOString(),
     }), detail.post.status === 'scheduled' ? 'Zmieniono termin publikacji.' : SOCIAL_POST_ACTION_SUCCESS.schedule);
   };
-
-  const suggest = () => run('Opisy AI', async () => {
-    let current = detail!;
-    if (dirty) current = await save(true) || current;
-    return socialPost<SocialPostDetail>('suggest', { id: current.post.id });
-  });
 
   const saveImage = async (url: string | null) => {
     if (!url) return;
@@ -200,7 +235,28 @@ export default function SocialPostScreen() {
 
   const editable = detail.access.create && socialPostEditable(detail.post.status);
   const problems = Array.from(new Set([...detail.problems.submit, ...detail.problems.publish]));
-  const assets = Array.from(new Map(detail.variants.filter((variant) => variant.asset).map((variant) => [variant.asset!.id, variant.asset!])).values());
+  const assets = Array.from(new Map([
+    ...detail.variants.filter((variant) => variant.asset).map((variant) => [variant.asset!.id, variant.asset!] as const),
+    ...(detail.slides || []).filter((slide) => slide.asset).map((slide) => [slide.asset!.id, slide.asset!] as const),
+    ...(detail.slots || []).filter((item) => item.asset).map((item) => [item.asset!.id, item.asset!] as const),
+  ]).values());
+  const layoutOptions = detail.layouts || [];
+  const sameChoice = (a: { id: string | null; key: string | null } | null, b: { id: string | null; key: string | null } | null) =>
+    Boolean(a) === Boolean(b) && (a?.id || null) === (b?.id || null) && (a?.key || null) === (b?.key || null);
+  const savedLayout = detail.layout ? { id: detail.layout.id, key: detail.layout.key } : null;
+  const chosenLayout = layoutChoice ? layoutOptions.find((option) => sameChoice(option, layoutChoice)) || null : null;
+  // Ten sam układ co w poście (bez „nowej wersji”) — liczba zdjęć z zapisanej migawki; inny — z aktualnej wersji układu.
+  const layoutSlots = !layoutChoice ? 1
+    : detail.layout && sameChoice(layoutChoice, savedLayout) && !layoutRefresh ? detail.layout.slots : chosenLayout?.slots || detail.layout?.slots || 1;
+  const pickLayout = (choice: { id: string | null; key: string | null } | null, refresh = false) => {
+    const option = choice ? layoutOptions.find((item) => sameChoice(item, choice)) : null;
+    const count = !choice ? 1 : detail.layout && sameChoice(choice, savedLayout) && !refresh ? detail.layout.slots : option?.slots || 1;
+    setLayoutChoice(choice);
+    setLayoutRefresh(refresh);
+    setLayoutChanged(true);
+    setCollage((current) => current.filter((item) => item.slot < count));
+    setDirty(true);
+  };
   const text = socialPublicationText(caption, normalizeHashtags(hashtags));
 
   return (
@@ -246,7 +302,7 @@ export default function SocialPostScreen() {
         {(detail.meta || (detail.publications || []).length > 0 || ['scheduled', 'publishing', 'failed'].includes(detail.post.status)) && (
           <View style={styles.section}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={styles.label}>Publikacja w Meta</Text>
+              <Text style={styles.label}>Publikacja</Text>
               {(detail.publications || []).some((item) => item.status === 'published') && (
                 <TouchableOpacity onPress={() => void run('Pobieram wyniki z Meta', () => socialPost<SocialPostDetail>('metricsRefresh', { postId: detail.post.id }), 'Odświeżono wyniki posta.')}
                   accessibilityRole="button" accessibilityLabel="Odśwież wyniki z Meta">
@@ -257,22 +313,25 @@ export default function SocialPostScreen() {
             {detail.post.status === 'scheduled' && (
               <Text style={[styles.body, { color: colors.status.info }]}>Zaplanowano na {socialDateLabel(detail.post.scheduledAt)}{detail.post.scheduledByName ? ` — ${detail.post.scheduledByName}` : ''}. Post opublikuje się automatycznie.</Text>
             )}
-            {detail.post.status === 'publishing' && <Text style={[styles.body, { color: colors.status.info }]}>Trwa publikacja w Meta…</Text>}
+            {detail.post.status === 'publishing' && <Text style={[styles.body, { color: colors.status.info }]}>Trwa publikacja…</Text>}
             {detail.post.status === 'failed' && detail.post.publishError ? <Text style={[styles.body, { color: colors.status.error }]}>{detail.post.publishError}</Text> : null}
             {detail.post.channels.map((channel) => {
               const publication = (detail.publications || []).find((item) => item.channel === channel);
               const problem = detail.meta?.channels[channel]?.problem;
+              const manual = socialManualChannel(detail.meta, channel);
               return (
                 <View key={channel} style={{ gap: 2 }}>
                   <Text style={styles.body}>
-                    {publication?.status === 'published' ? '✓' : publication?.status === 'failed' ? '✗' : problem ? '!' : '•'} {SOCIAL_CHANNEL_LABELS[channel]} — {publication ? SOCIAL_PUBLICATION_STATUS_LABELS[publication.status] || publication.status : problem ? 'niegotowy' : 'gotowy'}
+                    {publication?.status === 'published' ? '✓' : publication?.status === 'failed' ? '✗' : manual ? '○' : problem ? '!' : '•'} {SOCIAL_CHANNEL_LABELS[channel]} — {publication ? SOCIAL_PUBLICATION_STATUS_LABELS[publication.status] || publication.status : manual ? 'publikacja ręczna' : problem ? 'niegotowy' : 'gotowy'}
                   </Text>
                   {publication?.permalink ? (
                     <TouchableOpacity onPress={() => void Linking.openURL(publication.permalink!)}><Text style={styles.linkText}>Otwórz post ↗</Text></TouchableOpacity>
                   ) : null}
                   {publication?.error && publication.status !== 'published' ? <Text style={[styles.muted, { color: colors.status.error }]}>{publication.error}</Text> : null}
-                  {!publication && problem ? <Text style={[styles.muted, { color: colors.status.warning }]}>{problem}</Text> : null}
-                  {publication?.status === 'published' ? (
+                  {!publication && problem ? <Text style={[styles.muted, manual ? null : { color: colors.status.warning }]}>{problem}</Text> : null}
+                  {publication?.status === 'published' && channel === 'linkedin_page' ? (
+                    <Text style={styles.muted}>Wyniki postów LinkedIn nie są jeszcze pobierane do CRM.</Text>
+                  ) : publication?.status === 'published' ? (
                     SOCIAL_METRICS.some((key) => publication.metrics?.[key] != null) ? (
                       <View style={{ gap: 2 }}>
                         <Text style={styles.muted}>
@@ -295,6 +354,116 @@ export default function SocialPostScreen() {
           </View>
         )}
 
+        {(slides.length > 0 || (editable && detail.variants.some((variant) => variant.assetId && SOCIAL_SLIDE_FORMATS.includes(variant.format)))) && (
+          <View style={styles.section}>
+            <Text style={styles.label}>Karuzela — {1 + slides.length}/{SOCIAL_LIMITS.slides + 1} zdjęć (Instagram — przesuwane zdjęcia, Facebook i LinkedIn — post z kilkoma zdjęciami)</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+              {slides.map((slide, index) => (
+                <View key={`${slide.assetId}-${index}`} style={{ width: 112, gap: 4 }}>
+                  {slide.image
+                    ? <Image source={{ uri: slide.image }} style={{ width: 112, height: 140, borderRadius: borderRadius.md }} />
+                    : <View style={[styles.placeholder, { width: 112, height: 140 }]}><Feather name="image" size={20} color={colors.text.tertiary} /></View>}
+                  <Text style={styles.muted}>Zdjęcie {index + 2}</Text>
+                  {editable && (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <TouchableOpacity disabled={index === 0} hitSlop={8}
+                        onPress={() => { setSlides((current) => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; }); setSlidesChanged(true); setDirty(true); }}>
+                        <Feather name="chevron-left" size={20} color={index === 0 ? colors.text.disabled : colors.primary.gold} />
+                      </TouchableOpacity>
+                      <TouchableOpacity disabled={index === slides.length - 1} hitSlop={8}
+                        onPress={() => { setSlides((current) => { const next = [...current]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; return next; }); setSlidesChanged(true); setDirty(true); }}>
+                        <Feather name="chevron-right" size={20} color={index === slides.length - 1 ? colors.text.disabled : colors.primary.gold} />
+                      </TouchableOpacity>
+                      <TouchableOpacity hitSlop={8} onPress={() => { setSlides((current) => current.filter((_, position) => position !== index)); setSlidesChanged(true); setDirty(true); }}>
+                        <Feather name="trash-2" size={18} color={colors.status.error} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              ))}
+              {editable && slides.length < SOCIAL_LIMITS.slides && (
+                <TouchableOpacity style={[styles.placeholder, { width: 112, height: 140, gap: 6 }]} onPress={() => { setLibraryTarget('slide'); setLibraryOpen(true); }}>
+                  <Feather name="plus" size={22} color={colors.primary.gold} />
+                  <Text style={[styles.muted, { textAlign: 'center' }]}>Dodaj z biblioteki</Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+            {slidesChanged && <Text style={styles.muted}>Zapisz post — serwer wygeneruje grafiki karuzeli (ten sam styl co okładka, bez tekstów).</Text>}
+          </View>
+        )}
+
+        {(layoutOptions.length > 0 || detail.layout) && (
+          <View style={styles.section}>
+            <Text style={styles.label}>Układ grafiki</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+              {[null, ...layoutOptions].map((option) => {
+                const choice = option ? { id: option.id, key: option.key } : null;
+                const active = sameChoice(choice, layoutChoice);
+                return (
+                  <TouchableOpacity key={option ? option.id || option.key || option.name : 'style'} disabled={!editable}
+                    style={[styles.chip, active && styles.chipActive]} onPress={() => pickLayout(choice, active && layoutRefresh)}>
+                    <Text style={[styles.chipText, active && { color: colors.primary.gold }]}>
+                      {option ? `${option.name}${option.slots > 1 ? ` · ${option.slots} zdjęcia` : ''}` : 'Styl grafiki'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            {detail.layout?.outdated && sameChoice(layoutChoice, savedLayout) && (
+              <View style={[styles.note, { marginHorizontal: 0, borderColor: layoutRefresh ? colors.primary.gold : colors.status.warning }]}>
+                <Text style={styles.body}>
+                  {layoutRefresh
+                    ? `Nowa wersja układu „${detail.layout.name}” — zapisz post, żeby ją zastosować.`
+                    : `Układ „${detail.layout.name}” zmieniono po zapisaniu tego posta — post ma dotychczasową wersję.`}
+                </Text>
+                {(layoutRefresh || editable) && (
+                  <TouchableOpacity style={styles.link} onPress={() => pickLayout(layoutChoice, !layoutRefresh)}>
+                    <Text style={styles.linkText}>{layoutRefresh ? 'Zostaw dotychczasową' : 'Wczytaj nową wersję'}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            {layoutChoice && <Text style={styles.muted}>Układ zastępuje styl na okładce (styl dotyczy kolejnych zdjęć karuzeli). Kadry ustawisz w CRM albo na Macu — tu propozycja.</Text>}
+            {layoutSlots > 1 && (
+              <>
+                <Text style={styles.label}>Kolaż — {layoutSlots} zdjęcia</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+                  {Array.from({ length: layoutSlots - 1 }, (_, index) => index + 1).map((slot) => {
+                    const item = collage.find((entry) => entry.slot === slot);
+                    return (
+                      <View key={slot} style={{ width: 96, gap: 4 }}>
+                        {item ? (
+                          item.image
+                            ? <Image source={{ uri: item.image }} style={{ width: 96, height: 120, borderRadius: borderRadius.md }} />
+                            : <View style={[styles.placeholder, { width: 96, height: 120 }]}><Feather name="image" size={20} color={colors.text.tertiary} /></View>
+                        ) : (
+                          <TouchableOpacity disabled={!editable} style={[styles.placeholder, { width: 96, height: 120, gap: 6 }]}
+                            onPress={() => { setLibraryTarget(slot); setLibraryOpen(true); }}>
+                            <Feather name="plus" size={22} color={colors.primary.gold} />
+                            <Text style={[styles.muted, { textAlign: 'center' }]}>Zdjęcie {slot + 1}</Text>
+                          </TouchableOpacity>
+                        )}
+                        <Text style={styles.muted}>Zdjęcie {slot + 1}</Text>
+                        {editable && item && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <TouchableOpacity hitSlop={8} onPress={() => { setLibraryTarget(slot); setLibraryOpen(true); }}>
+                              <Feather name="refresh-cw" size={18} color={colors.primary.gold} />
+                            </TouchableOpacity>
+                            <TouchableOpacity hitSlop={8} onPress={() => { setCollage((current) => current.filter((entry) => entry.slot !== slot)); setCollageChanged(true); setDirty(true); }}>
+                              <Feather name="trash-2" size={18} color={colors.status.error} />
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+            {(layoutChanged || collageChanged) && <Text style={styles.muted}>Zapisz post — serwer wygeneruje grafiki w wybranym układzie.</Text>}
+          </View>
+        )}
+
         {problems.length > 0 && (
           <View style={[styles.note, { borderColor: colors.status.warning }]}>
             <Text style={styles.noteTitle}>Do uzupełnienia</Text>
@@ -313,6 +482,32 @@ export default function SocialPostScreen() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.label}>Styl grafiki</Text>
+          <View style={styles.chips}>
+            {SOCIAL_GRAPHIC_STYLE_LIST.map((item) => (
+              <TouchableOpacity key={item} style={[styles.chip, style === item && styles.chipActive]} disabled={!editable}
+                accessibilityRole="button" accessibilityState={{ selected: style === item, disabled: !editable }}
+                onPress={() => { setStyle(item); setDirty(true); }}>
+                <Text style={[styles.chipText, style === item && styles.chipTextActive]}>
+                  {style === item ? '✓ ' : ''}{SOCIAL_GRAPHIC_STYLES[item]}{detail.template?.defaultStyle === item ? ' ★' : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.muted}>{SOCIAL_GRAPHIC_STYLE_HINTS[style]}{editable ? ' Nową grafikę zobaczysz po zapisie.' : ''}</Text>
+          <Text style={styles.label}>Napis nad tytułem (opcjonalnie)</Text>
+          <TextInput style={styles.input} value={kicker} editable={editable} maxLength={SOCIAL_LIMITS.kicker} placeholder="np. Realizacja" placeholderTextColor={colors.text.tertiary}
+            onChangeText={(value) => { setKicker(value); setDirty(true); }} />
+          {editable && (
+            <View style={styles.chips}>
+              {SOCIAL_KICKER_SUGGESTIONS.map((item) => (
+                <TouchableOpacity key={item} style={[styles.chip, kicker === item && styles.chipActive]} accessibilityRole="button"
+                  onPress={() => { setKicker(kicker === item ? '' : item); setDirty(true); }}>
+                  <Text style={[styles.chipText, kicker === item && styles.chipTextActive]}>{item}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
           <Text style={styles.label}>Tytuł na grafice ({headline.length}/{SOCIAL_LIMITS.headlineRecommended} zalecane)</Text>
           <TextInput style={styles.input} value={headline} editable={editable} maxLength={SOCIAL_LIMITS.headline} placeholder="Od koncepcji po ostatni akord" placeholderTextColor={colors.text.tertiary}
             onChangeText={(value) => { setHeadline(value); setDirty(true); }} />
@@ -330,26 +525,25 @@ export default function SocialPostScreen() {
           </TouchableOpacity>
         </View>
 
-        {editable && detail.settings.aiCaptionsEnabled && (
+        {editable && (
           <View style={styles.section}>
-            <TouchableOpacity style={styles.secondary} onPress={() => void suggest()}>
-              <Feather name="zap" size={16} color={colors.primary.gold} /><Text style={styles.secondaryText}>{detail.post.aiSuggestions.length ? 'Nowe propozycje opisu (AI)' : 'Zaproponuj opis (AI)'}</Text>
-            </TouchableOpacity>
-            {detail.post.aiSuggestions.map((suggestion: SocialAiSuggestion, index) => (
-              <View key={index} style={styles.suggestion}>
-                {(suggestion.headline || suggestion.subline) ? <Text style={[styles.body, { color: colors.primary.gold }]}>{suggestion.headline}{suggestion.subline ? ` · ${suggestion.subline}` : ''}</Text> : null}
-                <Text style={styles.body}>{suggestion.caption}</Text>
-                <Text style={styles.muted}>{suggestion.hashtags.join(' ')}</Text>
-                <TouchableOpacity onPress={() => {
-                  setCaption(suggestion.caption); setHashtags(suggestion.hashtags.join(' '));
+            <SocialAssistantCard detail={detail}
+              draft={{
+                caption, hashtags, headline, subline, eventId: detail.post.eventId,
+                assetId: detail.variants.find((variant) => variant.assetId)?.assetId || null, channels: detail.post.channels,
+              }}
+              onBusy={setBusy}
+              onUse={(suggestion, withGraphic) => {
+                setCaption(suggestion.caption);
+                if (suggestion.hashtags.length) setHashtags(suggestion.hashtags.join(' '));
+                if (withGraphic) {
                   if (suggestion.headline) setHeadline(suggestion.headline);
                   if (suggestion.subline) setSubline(suggestion.subline);
-                  setDirty(true);
-                }}>
-                  <Text style={styles.linkText}>Użyj tej wersji</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+                }
+                setDirty(true);
+              }}
+              onHashtags={(tags) => { setHashtags(tags.join(' ')); setDirty(true); }}
+              onEnabled={() => setDetail((current) => (current ? { ...current, settings: { ...current.settings, aiCaptionsEnabled: true } } : current))} />
           </View>
         )}
 
@@ -401,7 +595,7 @@ export default function SocialPostScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modal}>
             <Text style={styles.title}>{detail.post.status === 'scheduled' ? 'Zmień termin publikacji' : 'Zaplanuj publikację'}</Text>
-            <Text style={styles.muted}>W tym terminie serwer opublikuje post w Meta: {detail.post.channels.map((channel) => SOCIAL_CHANNEL_LABELS[channel]).join(', ')}.</Text>
+            <Text style={styles.muted}>W tym terminie serwer opublikuje post: {detail.post.channels.map((channel) => SOCIAL_CHANNEL_LABELS[channel]).join(', ')}.</Text>
             {Platform.OS === 'ios' ? (
               <DateTimePicker value={scheduleDate} mode="datetime" display="spinner" locale="pl-PL" minuteInterval={5} themeVariant="dark"
                 minimumDate={new Date(Date.now() + 60_000)} onChange={(_event, selected) => { if (selected) setScheduleDate(selected); }} />
@@ -430,7 +624,7 @@ export default function SocialPostScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modal}>
             <Text style={styles.title}>{noteModal === 'publish' ? 'Oznacz jako opublikowany' : 'Do poprawy'}</Text>
-            <Text style={styles.muted}>{noteModal === 'publish' ? 'Gdy post opublikowano ręcznie (bez Meta) — wklej link do posta (opcjonalnie).' : 'Co poprawić? Autor dostanie powiadomienie.'}</Text>
+            <Text style={styles.muted}>{noteModal === 'publish' ? 'Gdy post opublikowano ręcznie (bez Meta lub LinkedIn) — wklej link do posta (opcjonalnie).' : 'Co poprawić? Autor dostanie powiadomienie.'}</Text>
             <TextInput style={[styles.input, noteModal === 'request_changes' && { minHeight: 90, textAlignVertical: 'top' }]} value={note} onChangeText={setNote}
               multiline={noteModal === 'request_changes'} autoCapitalize="none" placeholder={noteModal === 'publish' ? 'https://www.instagram.com/p/…' : 'Uwagi'} placeholderTextColor={colors.text.tertiary} />
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
@@ -448,6 +642,22 @@ export default function SocialPostScreen() {
           </View>
         </View>
       </Modal>
+
+      <LibraryModal visible={libraryOpen} companyId={detail.post.companyId} onClose={() => { setLibraryOpen(false); setLibraryTarget('slide'); }} onPick={(asset) => {
+        setLibraryOpen(false);
+        if (libraryTarget !== 'slide') {
+          const slot = libraryTarget;
+          setCollage((current) => [...current.filter((entry) => entry.slot !== slot), { slot, assetId: asset.id, image: asset.thumbnailUrl }].sort((a, b) => a.slot - b.slot));
+          setCollageChanged(true);
+          setDirty(true);
+          setLibraryTarget('slide');
+          return;
+        }
+        if (slides.length >= SOCIAL_LIMITS.slides) return;
+        setSlides((current) => [...current, { assetId: asset.id, image: asset.thumbnailUrl }]);
+        setSlidesChanged(true);
+        setDirty(true);
+      }} />
 
       <Modal visible={busy !== null} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
@@ -479,7 +689,11 @@ const styles = StyleSheet.create({
   primaryText: { color: colors.background.primary, fontWeight: typography.fontWeights.semibold, fontSize: typography.fontSizes.sm },
   secondary: { flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border.hover, paddingVertical: spacing.md, borderRadius: borderRadius.md },
   secondaryText: { color: colors.primary.gold, fontSize: typography.fontSizes.sm },
-  suggestion: { borderRadius: borderRadius.md, backgroundColor: colors.background.secondary, padding: spacing.sm, gap: 4 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  chip: { borderWidth: 1, borderColor: colors.border.hover, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  chipActive: { borderColor: colors.primary.gold, backgroundColor: `${colors.primary.gold}33` },
+  chipText: { color: colors.text.secondary, fontSize: typography.fontSizes.xs },
+  chipTextActive: { color: colors.primary.gold },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   modal: { width: '100%', backgroundColor: colors.background.elevated, borderRadius: borderRadius.xl, padding: spacing.lg, gap: spacing.sm },
 });

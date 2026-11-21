@@ -4,6 +4,7 @@ import { canAccessMarketingCompany, getMarketingAccess } from '@/lib/marketing/a
 import { GOOGLE_SCOPES, getMetaGraphVersion } from '@/lib/marketing/providers.server';
 import { getMarketingPublicUrl } from '@/lib/marketing/public-url.server';
 import type { MarketingProvider } from '@/lib/marketing/types';
+import { LINKEDIN_SCOPES, linkedInConfigured } from '@/lib/social/socialLinkedIn.server';
 
 import {
   isMarketingPublicOrigin,
@@ -19,7 +20,7 @@ export async function GET(
 ) {
   const provider = params.provider as MarketingProvider;
   const companyId = request.nextUrl.searchParams.get('companyId') || '';
-  if (provider !== 'google' && provider !== 'meta') {
+  if (provider !== 'google' && provider !== 'meta' && provider !== 'linkedin') {
     return NextResponse.json({ error: 'Nieobsługiwany dostawca.' }, { status: 404 });
   }
 
@@ -102,6 +103,22 @@ export async function GET(
     authorizationUrl.searchParams.set('access_type', 'offline');
     authorizationUrl.searchParams.set('prompt', 'consent select_account');
     authorizationUrl.searchParams.set('include_granted_scopes', 'true');
+  } else if (provider === 'linkedin') {
+    // Strona firmowa LinkedIn (Community Management API): publikacja postów i komentarze jako strona.
+    if (!linkedInConfigured()) {
+      return NextResponse.redirect(
+        getMarketingPublicUrl(
+          request,
+          `/crm/settings/my-companies/${companyId}/marketing?oauth=linkedin_not_configured`,
+        ),
+      );
+    }
+    authorizationUrl = new URL('https://www.linkedin.com/oauth/v2/authorization');
+    authorizationUrl.searchParams.set('response_type', 'code');
+    authorizationUrl.searchParams.set('client_id', String(process.env.LINKEDIN_CLIENT_ID));
+    authorizationUrl.searchParams.set('redirect_uri', redirectUri);
+    authorizationUrl.searchParams.set('state', state);
+    authorizationUrl.searchParams.set('scope', LINKEDIN_SCOPES.join(' '));
   } else {
     return NextResponse.json({ error: 'Nieobsługiwany dostawca.' }, { status: 404 });
   }

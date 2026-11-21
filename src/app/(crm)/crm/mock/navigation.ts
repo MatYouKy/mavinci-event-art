@@ -22,6 +22,7 @@ export const allNavigation: NavigationItem[] = [
       { key: 'marketing-campaigns', name: 'Panel marketingowy', href: '/crm/page', iconKey: 'campaigns', module: 'marketing_campaigns' },
       { key: 'marketing-campaigns', name: 'Kampanie e-mail', href: '/crm/campaigns', iconKey: 'messages', module: 'marketing_campaigns' },
       { key: 'marketing-campaigns', name: 'Social media', href: '/crm/marketing/social', iconKey: 'social', module: 'marketing_social' },
+      { key: 'marketing-campaigns', name: 'Realizacje', href: '/crm/marketing/portfolio', iconKey: 'portfolio', module: 'marketing_portfolio' },
     ],
   },
   { key: 'contacts', name: 'Kontakty', href: '/crm/contacts', iconKey: 'contacts', module: 'clients' },

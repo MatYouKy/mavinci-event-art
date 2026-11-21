@@ -22,6 +22,7 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "messages": return "envelope"
         case "campaigns": return "megaphone"
         case "social": return "photo.on.rectangle.angled"
+        case "portfolio": return "rosette"
         case "inquiries": return "tray"
         case "tasks": return "checklist"
         case "employees": return "person.3"
@@ -97,6 +98,8 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "/crm/campaigns": return .campaigns
         // Marketing → Social media: kalendarz, kreator grafik, biblioteka (`Social/`).
         case "/crm/marketing/social": return .socialMedia
+        // Marketing → Realizacje: portfolio strony — kopie robocze, zdjęcia, SEO, publikacja (`Portfolio/`).
+        case "/crm/marketing/portfolio": return .portfolio
         // Finanse: Centrum finansów, Terminy i monity, Zamknięcie miesięcy (`Finance/`); faktury i KSeF — w CRM.
         case "/crm/invoices": return .finance
         default: return nil
@@ -108,7 +111,7 @@ struct NavItem: Codable, Identifiable, Hashable {
 /// Ekrany natywne, które nie są zbiorami danych obszaru roboczego (`Module`).
 enum CrmScreen: String {
     case messages, meetings, companyTasks, myTasks, team, warehouse, kits, cables, rental, connectors, warehouseCategories, contracts, contractTemplates
-    case products, offerTemplates, brochures, sellers, fleet, timeTracking, databases, locations, website, campaigns, finance, socialMedia
+    case products, offerTemplates, brochures, sellers, fleet, timeTracking, databases, locations, website, campaigns, finance, socialMedia, portfolio
     /// Ekrany Magazynu (wspólna kopia danych `WarehouseStore`).
     var isWarehouse: Bool { [.warehouse, .kits, .cables, .rental, .connectors, .warehouseCategories].contains(self) }
 }
