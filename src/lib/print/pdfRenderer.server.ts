@@ -252,7 +252,11 @@ export async function renderPrintJob(job: PrintJob): Promise<RenderedPdf> {
  */
 export async function renderHtmlToImage(
   html: string,
-  options: { width: number; height: number; type?: 'jpeg' | 'png'; quality?: number; timeoutMs?: number; transparent?: boolean },
+  options: {
+    width: number; height: number; type?: 'jpeg' | 'png'; quality?: number; timeoutMs?: number; transparent?: boolean;
+    /** Skala pikseli obrazu względem strony (np. 0,5 — podgląd dużej grafiki w połowie rozdzielczości). */
+    scale?: number;
+  },
 ): Promise<Buffer> {
   activeRenders += 1;
   if (idleTimer) clearTimeout(idleTimer);
@@ -261,7 +265,7 @@ export async function renderHtmlToImage(
     const context = await browser.newContext({
       javaScriptEnabled: true,
       viewport: { width: options.width, height: options.height },
-      deviceScaleFactor: 1,
+      deviceScaleFactor: options.scale && options.scale > 0 && options.scale <= 2 ? options.scale : 1,
     });
     try {
       const page = await context.newPage();
@@ -281,6 +285,46 @@ export async function renderHtmlToImage(
         clip: { x: 0, y: 0, width: options.width, height: options.height },
         animations: 'disabled',
       }));
+    } finally {
+      await context.close().catch(() => undefined);
+    }
+  } finally {
+    activeRenders -= 1;
+    scheduleIdleClose();
+  }
+}
+
+/**
+ * Jedna strona, kilka wycinków (np. duża grafika social media pocięta na kafelki siatki profilu albo slajdy panoramy):
+ * strona renderuje się raz, wycinki to zrzuty jej prostokątów — kafelki są idealnie zgodne ze sobą.
+ */
+export async function renderHtmlToImages(
+  html: string,
+  options: { width: number; height: number; clips: Array<{ x: number; y: number; width: number; height: number }>; quality?: number; timeoutMs?: number },
+): Promise<Buffer[]> {
+  activeRenders += 1;
+  if (idleTimer) clearTimeout(idleTimer);
+  try {
+    const browser = await getBrowser();
+    const context = await browser.newContext({
+      javaScriptEnabled: true,
+      viewport: { width: options.width, height: options.height },
+      deviceScaleFactor: 1,
+    });
+    try {
+      const page = await context.newPage();
+      await page.route('**/*', (route) => {
+        const url = route.request().url();
+        return url.startsWith('data:') || url === 'about:blank' ? route.continue() : route.abort();
+      });
+      const timeout = options.timeoutMs ?? 40_000;
+      await page.setContent(html, { waitUntil: 'load', timeout });
+      await page.waitForFunction(() => document.documentElement.getAttribute('data-ready') === '1', null, { timeout });
+      const images: Buffer[] = [];
+      for (const clip of options.clips) {
+        images.push(Buffer.from(await page.screenshot({ type: 'jpeg', quality: options.quality ?? 92, clip, animations: 'disabled' })));
+      }
+      return images;
     } finally {
       await context.close().catch(() => undefined);
     }

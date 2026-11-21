@@ -27,6 +27,7 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "tasks": return "checklist"
         case "employees": return "person.3"
         case "salespeople": return "person.crop.circle.badge.checkmark"
+        case "presentations": return "ipad.landscape"
         case "offers": return "doc.text"
         case "fileText": return "doc.plaintext"
         case "fileType": return "doc.richtext"
@@ -84,6 +85,8 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "/crm/brochures": return .brochures
         // Sprzedawcy zewnętrzni: kokpit opiekuna i karty sprzedawców (`Sellers/`).
         case "/crm/salespeople": return .sellers
+        // Strefa sprzedawcy → Prezentacje: działy, karty, podgląd jak na iPadzie (`Showcase/`).
+        case "/crm/presentations": return .presentations
         // Flota: lista, karty pojazdów, oś czasu (`Fleet/`).
         case "/crm/fleet": return .fleet
         // Czas pracy: licznik, wpisy, raport zespołu, strony pracowników, rozliczenia (`Time/`).
@@ -112,6 +115,7 @@ struct NavItem: Codable, Identifiable, Hashable {
 enum CrmScreen: String {
     case messages, meetings, companyTasks, myTasks, team, warehouse, kits, cables, rental, connectors, warehouseCategories, contracts, contractTemplates
     case products, offerTemplates, brochures, sellers, fleet, timeTracking, databases, locations, website, campaigns, finance, socialMedia, portfolio
+    case presentations
     /// Ekrany Magazynu (wspólna kopia danych `WarehouseStore`).
     var isWarehouse: Bool { [.warehouse, .kits, .cables, .rental, .connectors, .warehouseCategories].contains(self) }
 }

@@ -25,6 +25,8 @@ export type SocialTemplate = {
 export type SocialPostItem = {
   id: string; companyId: string; title: string; status: SocialPostStatus; channels: SocialChannel[]; scheduledAt: string | null;
   captionPreview: string; thumbnailUrl: string | null; formats: SocialFormat[]; photos?: number; authorId: string | null; authorName: string | null;
+  /** Siatka profilu / panorama (duża grafika pocięta na kafelki). */
+  canvas?: { mode: 'grid' | 'panorama'; tiles: number } | null;
   revision: number; approvedRevision: number | null; eventId: string | null; publishedAt: string | null; publishedUrl: string | null;
   publishError: string | null; updatedAt: string;
 };
@@ -46,7 +48,10 @@ export type SocialHome = {
   meta: SocialMetaStatus | null;
 };
 export type SocialPublication = {
-  channel: SocialChannel; status: string; format: SocialFormat | null; permalink: string | null; error: string | null; attempts: number;
+  channel: SocialChannel;
+  /** Kafelek siatki profilu (osobny post Instagram); 0 — cały post. */
+  tile?: number;
+  status: string; format: SocialFormat | null; permalink: string | null; error: string | null; attempts: number;
   publishedAt: string | null; attemptedAt: string | null;
   /** Wyniki z Meta (Etap 3) — stan narastająco od publikacji. */
   metrics?: SocialMetricValues; rate?: number | null; metricsSyncedAt?: string | null; metricsError?: string | null;
@@ -131,6 +136,12 @@ export type SocialPostLayout = {
   /** Układ zmieniono po zapisaniu posta (post ma migawkę) — nowa wersja po „Wczytaj nową wersję” (`refresh`). */
   outdated?: boolean;
 };
+/** Duża grafika posta (siatka profilu, panorama): kształt, wymiary w px i opis. */
+export type SocialCanvasInfo = {
+  mode: 'grid' | 'panorama'; rows: number | null; slides: number | null; tiles: number; width: number; height: number; label: string;
+};
+/** Kafelek / slajd (1 — lewy górny); siatka publikuje się od ostatniego. */
+export type SocialTile = { position: number; renderedUrl: string | null; upToDate: boolean };
 /** Zdjęcie kolażu w miejscu 1–3 (miejsce 0 — zdjęcie wariantu) z kadrami w formatach posta. */
 export type SocialSlot = {
   slot: number; assetId: string; asset: SocialAsset | null;
@@ -156,6 +167,10 @@ export type SocialPostDetail = {
   layout?: SocialPostLayout | null;
   layouts?: SocialLayoutOption[];
   slots?: SocialSlot[];
+  /** Siatka profilu / panorama: kształt, kafelki (po zapisie) i gotowe układy dużej grafiki. */
+  canvas?: SocialCanvasInfo | null;
+  tiles?: SocialTile[];
+  canvasLayouts?: SocialLayoutOption[];
   channelFormats: Partial<Record<SocialChannel, SocialFormat | null>>;
   problems: { submit: string[]; publish: string[]; meta: string[] };
   publications: SocialPublication[]; meta: SocialMetaStatus | null; comments: { total: number; unanswered: number };

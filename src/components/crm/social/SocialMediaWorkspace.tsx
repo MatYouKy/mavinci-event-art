@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  BarChart3, CalendarDays, ChevronLeft, ChevronRight, Images, LayoutTemplate, ListChecks, MessagesSquare, Plus, RefreshCw, Settings2, Sparkles,
+  BarChart3, CalendarDays, ChevronLeft, ChevronRight, Grid3x3, Images, LayoutTemplate, ListChecks, MessagesSquare, Plus, RefreshCw, Settings2, Sparkles,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
@@ -125,6 +125,18 @@ export default function SocialMediaWorkspace() {
     }
   };
 
+  /** Siatka profilu (domyślnie baner z 3 kafelków; kształt i układ zmienisz w kreatorze) albo panorama. */
+  const createCanvas = async () => {
+    if (!home) return;
+    const detail = await run('Tworzę siatkę profilu', () => socialPost<SocialPostDetail>('createPost', {
+      companyId: home.company.id, channels: ['instagram_feed'], layout: { id: null, key: 'preset-grid-1-photo' }, title: 'Siatka profilu',
+    }), 'Utworzono szkic siatki — wybierz zdjęcie i układ');
+    if (detail) {
+      openPost(detail.post.id);
+      void load(true);
+    }
+  };
+
   const reschedule = async (post: SocialPostItem, day: Date) => {
     const base = post.scheduledAt ? new Date(post.scheduledAt) : null;
     const target = new Date(day);
@@ -159,6 +171,7 @@ export default function SocialMediaWorkspace() {
         : <span className="flex h-9 w-7 shrink-0 items-center justify-center rounded bg-[#1c1f33] text-[#d3bb73]/50"><Images className="h-3.5 w-3.5" /></span>}
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[11px] text-[#e5e4e2]">{timeLabel(post.scheduledAt)} {post.title || post.captionPreview || 'Post bez tytułu'}</span>
+        {post.canvas && <span className="block text-[10px] text-[#d3bb73]/80">{post.canvas.mode === 'grid' ? `Siatka · ${post.canvas.tiles} ${post.canvas.tiles === 3 ? 'kafelki' : 'kafelków'}` : `Panorama · ${post.canvas.tiles} ${post.canvas.tiles === 5 ? 'slajdów' : 'slajdy'}`}</span>}
         <span className="mt-0.5 block"><PostStatusBadge status={post.status} title={post.publishError} /></span>
       </span>
     </button>
@@ -194,6 +207,7 @@ export default function SocialMediaWorkspace() {
             <button type="button" className={secondaryButton} onClick={() => void load()} disabled={loading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Odśwież</button>
             {access?.approve && <button type="button" className={secondaryButton} onClick={() => setSettingsOpen(true)}><Settings2 className="h-4 w-4" />Szablony i AI</button>}
             {access?.approve && <button type="button" className={secondaryButton} onClick={() => setLayoutsOpen(true)}><LayoutTemplate className="h-4 w-4" />Układy grafik</button>}
+            {access?.create && <button type="button" className={secondaryButton} onClick={() => void createCanvas()} title="Jedna duża grafika pocięta na kafelki siatki profilu albo slajdy panoramy"><Grid3x3 className="h-4 w-4" />Siatka / panorama</button>}
             {access?.create && <button type="button" className={primaryButton} onClick={() => void createPost()}><Plus className="h-4 w-4" />Nowy post</button>}
           </div>
         </header>

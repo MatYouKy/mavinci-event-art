@@ -60,7 +60,7 @@ export async function socialLayouts(ctx: NativeContext, companyId: string, templ
   const template = pickTemplate(templates, templateId);
   const layouts = ((data || []) as Row[]).map((row): SocialLayoutDTO | null => {
     const definition = parseSocialLayout(row.definition);
-    if (!definition) return null;
+    if (!definition || definition.canvas) return null;
     return {
       id: String(row.id), name: text(row.name), definition, slots: socialLayoutSlots(definition), archived: row.is_archived === true,
       usedBy: posts.get(String(row.id))?.size || 0, updatedAt: text(row.updated_at),
@@ -96,6 +96,7 @@ export async function saveLayout(ctx: NativeContext, body: Row) {
   const problem = socialLayoutProblem(body.definition);
   if (problem) fail(problem);
   const definition = parseSocialLayout(body.definition) as SocialLayoutDefinition;
+  if (definition.canvas) fail('Siatkę profilu i panoramę wybierasz z gotowych układów w kreatorze posta — edytor układów jest dla zwykłych postów.');
   const id = uuidOrNull(body.id);
   let companyId: string;
   if (id) {

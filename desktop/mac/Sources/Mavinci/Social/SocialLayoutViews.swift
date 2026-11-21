@@ -20,9 +20,11 @@ struct SocialLayoutThumb: View {
     }
 
     var body: some View {
-        let height = width / format.aspect
+        // Format posta albo duża grafika (siatka profilu, panorama) — schemat w proporcjach całej grafiki.
+        let height = width / definition.aspect(format)
         Canvas { context, size in
-            let scale = size.width / 1080
+            // Skala px renderu (jak `scale` w HTML): format — szerokość / 1080, duża grafika — px kafelka na całej szerokości.
+            let scale = size.width / (definition.canvas?.size.width ?? 1080)
             func box(_ element: SocialLayoutElement) -> CGRect {
                 let rect = element.rect(format)
                 return CGRect(x: rect.x * size.width, y: rect.y * size.height, width: rect.w * size.width, height: rect.h * size.height)
@@ -129,6 +131,73 @@ struct SocialLayoutPickerGrid: View {
             if !options.contains(where: { $0.id != nil }) {
                 Label("Gotowe układy i kolaże; własne układy marki dodasz w edytorze układów.", systemImage: "rectangle.3.group")
                     .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// Siatka profilu / panorama: kształt (siatka 3, 6, 9 kafelków; panorama 2–5 slajdów) i gotowy układ w tym kształcie —
+/// 1:1 z `CanvasPicker` w CRM. Zmiana kształtu wybiera układ tego samego rodzaju w nowym kształcie (albo pierwszy).
+struct SocialCanvasPicker: View {
+    let options: [SocialLayoutOption]
+    let selection: SocialLayoutChoice?
+    let canvas: SocialLayoutCanvas?
+    var colors: SocialTemplateColors?
+    let disabled: Bool
+    let onChange: (SocialLayoutChoice) -> Void
+    @Environment(\.crmTheme) private var theme
+
+    private var shapes: [SocialLayoutCanvas] {
+        var list: [SocialLayoutCanvas] = []
+        for option in options { if let shape = option.definition.canvas, !list.contains(shape) { list.append(shape) } }
+        return list
+    }
+
+    /// Rodzaj układu bez liczby (np. `preset-grid-photo` dla `preset-grid-2-photo`).
+    private func kind(_ key: String?) -> String {
+        guard let key else { return "" }
+        return key.replacingOccurrences(of: #"-\d+(-|$)"#, with: "$1", options: .regularExpression)
+    }
+
+    private func pick(_ shape: SocialLayoutCanvas) {
+        let list = options.filter { $0.definition.canvas == shape }
+        if let same = list.first(where: { kind($0.key) == kind(selection?.key) }) ?? list.first { onChange(same.choice) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            WrapLayout(spacing: 6) {
+                ForEach(shapes, id: \.self) { shape in
+                    let active = shape == canvas
+                    Button { pick(shape) } label: {
+                        Text(shape.shortLabel).font(.caption)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Capsule().fill(active ? theme.accent.opacity(0.18) : Color.clear))
+                            .overlay(Capsule().stroke(active ? theme.accent : Color.primary.opacity(0.15)))
+                            .foregroundStyle(active ? theme.accent : Color.primary)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain).disabled(disabled).help(shape.label)
+                }
+            }
+            // Szerokie schematy (baner, panorama) — jedna kolumna w wąskim panelu kreatora, żeby miniatura się mieściła.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 6)], spacing: 6) {
+                ForEach(options.filter { $0.definition.canvas == canvas }, id: \.identity) { option in
+                    let selected = selection == option.choice
+                    let thumbWidth: Double = min(200, 64 * option.definition.aspect(.portrait))
+                    Button { onChange(option.choice) } label: {
+                        VStack(spacing: 3) {
+                            SocialLayoutThumb(definition: option.definition, format: .portrait, width: thumbWidth, colors: colors)
+                            Text(option.name).font(.caption2).lineLimit(2).multilineTextAlignment(.center)
+                        }
+                        .padding(5)
+                        .frame(maxWidth: .infinity)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(selected ? theme.accent.opacity(0.12) : Color.clear))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(selected ? theme.accent : Color.primary.opacity(0.15)))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).disabled(disabled).help(option.description)
+                }
             }
         }
     }

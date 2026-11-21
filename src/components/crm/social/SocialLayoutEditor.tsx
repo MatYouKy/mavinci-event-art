@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
-  Archive, ArrowDown, ArrowUp, Copy, Image as ImageIcon, LayoutTemplate, Plus, RotateCcw, Save, Square, SunDim, Trash2, Type, X,
+  Archive, ArrowDown, ArrowUp, Copy, GripVertical, Image as ImageIcon, LayoutTemplate, Plus, RotateCcw, Save, Square, SunDim, Trash2, Type, X,
 } from 'lucide-react';
 import OverlayPortal from '@/components/UI/OverlayPortal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -90,6 +90,9 @@ export default function SocialLayoutEditor({ companyId, templateId, onClose, onC
   const [selected, setSelected] = useState<string | null>(null);
   const [texts, setTexts] = useState({ headline: 'Gala firmowa w Operze', subline: 'Realizacja · Warszawa 2026', kicker: 'Realizacja' });
   const [drag, setDrag] = useState<Drag | null>(null);
+  /** Przeciąganie wiersza listy elementów (zmiana kolejności rysowania) i miejsce upuszczenia. */
+  const [rowDrag, setRowDrag] = useState<string | null>(null);
+  const [rowTarget, setRowTarget] = useState<number | null>(null);
   const canvas = useRef<HTMLDivElement>(null);
   const [canvasWidth, setCanvasWidth] = useState(480);
 
@@ -237,6 +240,18 @@ export default function SocialLayoutEditor({ companyId, templateId, onClose, onC
     [list[index], list[target]] = [list[target], list[index]];
     return { ...definition, elements: list };
   });
+  /** Przeciągnięcie elementu na miejsce `target` listy (przed elementem o tym indeksie; długość listy — na koniec). */
+  const moveElementTo = (id: string, target: number) => changeDefinition((definition) => {
+    const list = [...definition.elements];
+    const index = list.findIndex((item) => item.id === id);
+    if (index < 0) return definition;
+    const [moved] = list.splice(index, 1);
+    const position = Math.max(0, Math.min(list.length, target > index ? target - 1 : target));
+    if (position === index) return definition;
+    list.splice(position, 0, moved);
+    return { ...definition, elements: list };
+  });
+  const endRowDrag = () => { setRowDrag(null); setRowTarget(null); };
 
   const startNew = async (definition: SocialLayoutDefinition, name: string) => {
     if (!(await confirmDiscard())) return;
@@ -436,10 +451,27 @@ export default function SocialLayoutEditor({ companyId, templateId, onClose, onC
                 )}
                 <div className="space-y-1">
                   <div className="text-xs font-medium">Elementy (kolejność rysowania; zdjęcia zawsze pod resztą)</div>
+                  {editable && <div className="text-[10px] text-[#e5e4e2]/40">Przeciągnij wiersz za uchwyt, żeby zmienić kolejność (albo strzałki).</div>}
                   {draft.definition.elements.map((item, index) => {
                     const Icon = elementIcon(item.type);
+                    const dropBefore = rowDrag !== null && rowTarget === index;
+                    const dropAfter = rowDrag !== null && rowTarget === draft.definition.elements.length && index === draft.definition.elements.length - 1;
                     return (
-                      <div key={item.id} className={`flex items-center gap-1.5 rounded border px-1.5 py-1 text-xs ${item.id === selected ? 'border-[#d3bb73] bg-[#d3bb73]/10' : 'border-[#d3bb73]/10'}`}>
+                      <div key={item.id} draggable={editable}
+                        onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', item.id); setRowDrag(item.id); }}
+                        onDragOver={(event) => {
+                          if (!rowDrag) return;
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = 'move';
+                          const box = event.currentTarget.getBoundingClientRect();
+                          setRowTarget(event.clientY > box.top + box.height / 2 ? index + 1 : index);
+                        }}
+                        onDrop={(event) => { event.preventDefault(); if (rowDrag && rowTarget !== null) moveElementTo(rowDrag, rowTarget); endRowDrag(); }}
+                        onDragEnd={endRowDrag}
+                        className={`relative flex items-center gap-1.5 rounded border px-1.5 py-1 text-xs ${item.id === selected ? 'border-[#d3bb73] bg-[#d3bb73]/10' : 'border-[#d3bb73]/10'} ${rowDrag === item.id ? 'opacity-40' : ''}`}>
+                        {dropBefore && <span className="pointer-events-none absolute -top-[3px] left-0 right-0 h-[2px] rounded bg-[#d3bb73]" />}
+                        {dropAfter && <span className="pointer-events-none absolute -bottom-[3px] left-0 right-0 h-[2px] rounded bg-[#d3bb73]" />}
+                        {editable && <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-[#e5e4e2]/40" aria-label="Przeciągnij, żeby zmienić kolejność" />}
                         <button type="button" className="flex min-w-0 flex-1 items-center gap-1.5 text-left" onClick={() => setSelected(item.id)}>
                           <Icon className="h-3.5 w-3.5 shrink-0 text-[#d3bb73]" />
                           <span className="truncate">{SOCIAL_LAYOUT_ELEMENT_LABELS[item.type]}{item.type === 'photo' ? ` ${item.slot + 1}` : item.type === 'text' ? ` — ${SOCIAL_LAYOUT_BIND_LABELS[item.bind]}` : ''}</span>

@@ -11,15 +11,17 @@ import {
 import SocialCommentsList from '../components/Social/SocialCommentsList';
 import SocialStatsView from '../components/Social/SocialStatsView';
 import {
-  pickSocialPhoto, socialErrorMessage, socialGet, socialManualChannel, socialPost, uploadSocialPhoto, type SocialAssetItem, type SocialHome,
-  type SocialLibrary, type SocialPostItem,
+  pickSocialPhoto, socialCanvasLabel, socialErrorMessage, socialGet, socialManualChannel, socialPost, uploadSocialPhoto, type SocialAssetItem, type SocialHome,
+  type SocialLibrary, type SocialPostDetail, type SocialPostItem,
 } from '../lib/socialApi';
+import { LibraryModal } from './SocialQuickPostScreen';
 
 /*
  * Marketing → „Social media” w aplikacji: „Do akceptacji” (posty czekające na akceptującego, do poprawy u autora i z błędem
  * publikacji), „Plan” (posty z terminem i szkice), „Biblioteka” (zdjęcia marki i propozycje z wydarzeń) i „Komentarze”
  * (Facebook i Instagram, odpowiedzi jako marka) i „Statystyki” (wyniki z Meta, najlepsze pory, raport tygodniowy „Trendy
- * i rekomendacje”). Szybki post lub relacja z szablonu marki — ekran „Szybki post”; post — karta
+ * i rekomendacje”). Szybki post lub relacja z szablonu marki — ekran „Szybki post”; siatka profilu / panorama z wybranego zdjęcia
+ * (przycisk siatki w nagłówku albo zdjęcie w bibliotece; kształt i układ — na karcie posta); post — karta
  * z grafikami z serwera (te same pliki co w CRM i na Macu). Dane i zapis przez `/bridge/native/v1/social` (uprawnienia jak w CRM).
  */
 
@@ -65,6 +67,8 @@ export default function SocialMediaScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  /** Wybór zdjęcia do nowej siatki profilu / panoramy. */
+  const [canvasPicking, setCanvasPicking] = useState(false);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -109,11 +113,31 @@ export default function SocialMediaScreen() {
     }
   };
 
+  /** Siatka profilu (domyślnie baner z 3 kafelków; kształt i układ zmienisz na karcie posta) z wybranego zdjęcia — jak w CRM i na Macu. */
+  const createCanvas = async (asset: SocialAssetItem) => {
+    if (!home) return;
+    try {
+      setBusy(true);
+      const detail = await socialPost<SocialPostDetail>('createPost', {
+        companyId: asset.companyId || home.company.id, channels: ['instagram_feed'], layout: { id: null, key: 'preset-grid-1-photo' },
+        title: 'Siatka profilu', assetId: asset.id,
+      });
+      navigation.navigate('SocialPost', { postId: detail.post.id });
+      Alert.alert('Social media', 'Utworzono szkic siatki — wybierz kształt i układ, potem zapisz post.');
+      void load();
+    } catch (cause) {
+      Alert.alert('Social media', socialErrorMessage(cause, 'Nie udało się utworzyć siatki.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const openAsset = (asset: SocialAssetItem) => {
     if (!home?.access.create) return;
     const actions: Array<{ text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }> = [
       { text: 'Szybki post z tego zdjęcia', onPress: () => navigation.navigate('SocialQuickPost', { companyId: asset.companyId, assetId: asset.id, assetThumb: asset.thumbnailUrl, eventId: asset.eventId, eventName: asset.eventName }) },
     ];
+    if (asset.status === 'ready') actions.push({ text: 'Siatka profilu / panorama z tego zdjęcia', onPress: () => void createCanvas(asset) });
     if (asset.status === 'proposed') {
       actions.push({
         text: 'Przyjmij do biblioteki',
@@ -166,6 +190,7 @@ export default function SocialMediaScreen() {
       <View style={{ flex: 1, gap: 4 }}>
         <SocialStatusBadge status={item.status} />
         <Text style={styles.rowTitle} numberOfLines={1}>{item.title || item.captionPreview || 'Post bez tytułu'}</Text>
+        {item.canvas ? <Text style={[styles.muted, { color: colors.primary.gold }]} numberOfLines={1}>{socialCanvasLabel(item.canvas.mode, item.canvas.tiles)}</Text> : null}
         <Text style={styles.muted} numberOfLines={1}>{item.channels.map((channel) => SOCIAL_CHANNEL_LABELS[channel]).join(' · ')}</Text>
         <Text style={styles.muted} numberOfLines={1}>{socialDateLabel(item.scheduledAt)}{item.authorName ? ` · ${item.authorName}` : ''}</Text>
         {item.status === 'failed' && item.publishError ? <Text style={[styles.muted, { color: colors.status.error }]} numberOfLines={2}>{item.publishError}</Text> : null}
@@ -184,6 +209,12 @@ export default function SocialMediaScreen() {
           </Text>
           {metaProblem ? <Text style={[styles.muted, { color: colors.status.warning }]} numberOfLines={2}>Publikacja: {metaProblem}</Text> : null}
         </View>
+        {home.access.create && (
+          <TouchableOpacity style={styles.iconButton} onPress={() => setCanvasPicking(true)}
+            accessibilityRole="button" accessibilityLabel="Siatka profilu / panorama — wybierz zdjęcie">
+            <Feather name="grid" size={18} color={colors.primary.gold} />
+          </TouchableOpacity>
+        )}
         {home.access.create && (
           <TouchableOpacity style={styles.primary} onPress={() => navigation.navigate('SocialQuickPost', { companyId: home.company.id })}>
             <Feather name="plus" size={16} color={colors.background.primary} />
@@ -204,6 +235,8 @@ export default function SocialMediaScreen() {
           </TouchableOpacity>
         ))}
       </ScrollView>
+      <LibraryModal visible={canvasPicking} companyId={home.company.id} onClose={() => setCanvasPicking(false)}
+        onPick={(asset) => { setCanvasPicking(false); void createCanvas(asset); }} />
       {busy && <View style={styles.busy}><ActivityIndicator color={colors.primary.gold} /><Text style={styles.muted}>Proszę chwilę poczekać…</Text></View>}
 
       {segment === 'stats' ? (
@@ -271,6 +304,7 @@ const styles = StyleSheet.create({
   muted: { color: colors.text.tertiary, fontSize: typography.fontSizes.xs },
   primary: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary.gold, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: borderRadius.md },
   primaryText: { color: colors.background.primary, fontWeight: typography.fontWeights.semibold, fontSize: typography.fontSizes.sm },
+  iconButton: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border.hover, padding: spacing.sm, borderRadius: borderRadius.md },
   secondary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: colors.border.hover, paddingVertical: spacing.sm, borderRadius: borderRadius.md },
   secondaryText: { color: colors.primary.gold, fontSize: typography.fontSizes.sm },
   segments: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.md },

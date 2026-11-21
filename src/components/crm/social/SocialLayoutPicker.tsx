@@ -1,8 +1,10 @@
 'use client';
 
 import { LayoutTemplate, Paintbrush } from 'lucide-react';
-import { SOCIAL_FORMAT_INFO, type SocialFormat } from '@/lib/social/socialShared';
-import { socialLayoutRect, type SocialLayoutColor, type SocialLayoutDefinition } from '@/lib/social/socialLayout';
+import type { SocialFormat } from '@/lib/social/socialShared';
+import {
+  sameSocialCanvas, socialCanvasLabel, socialLayoutFrame, socialLayoutRect, type SocialCanvas, type SocialLayoutColor, type SocialLayoutDefinition,
+} from '@/lib/social/socialLayout';
 import type { SocialLayoutOption } from './socialApi';
 
 /*
@@ -22,8 +24,11 @@ const fallbackColors: Record<SocialLayoutColor, string> = { overlay: '#1c1f33', 
 export function LayoutThumb({ definition, format, width, colors }: {
   definition: SocialLayoutDefinition; format: SocialFormat; width: number; colors?: Partial<Record<SocialLayoutColor, string | null>> | null;
 }) {
-  const info = SOCIAL_FORMAT_INFO[format];
+  // Format posta albo duża grafika (siatka profilu, panorama) — schemat w proporcjach całej grafiki.
+  const info = socialLayoutFrame(definition, format);
   const height = Math.round((width * info.height) / info.width);
+  // Skala px renderu (jak `scale` w HTML): format — szerokość / 1080, duża grafika — px kafelka na całej szerokości.
+  const px = (width * info.scale) / info.width;
   const color = (role: SocialLayoutColor) => colors?.[role] || fallbackColors[role];
   const photos = definition.elements.filter((item) => item.type === 'photo');
   return (
@@ -60,14 +65,14 @@ export function LayoutThumb({ definition, format, width, colors }: {
           );
         }
         if (element.type === 'box') {
-          return <rect key={element.id} x={x} y={y} width={w} height={Math.max(h, 0.6)} rx={element.radius * (width / 1080)}
+          return <rect key={element.id} x={x} y={y} width={w} height={Math.max(h, 0.6)} rx={element.radius * px}
             fill={element.fill ? color(element.fill.color) : 'none'} fillOpacity={element.fill?.opacity ?? 0}
-            stroke={element.stroke ? color(element.stroke.color) : 'none'} strokeOpacity={element.stroke?.opacity ?? 0} strokeWidth={element.stroke ? Math.max(0.6, element.stroke.width * (width / 1080)) : 0} />;
+            stroke={element.stroke ? color(element.stroke.color) : 'none'} strokeOpacity={element.stroke?.opacity ?? 0} strokeWidth={element.stroke ? Math.max(0.6, element.stroke.width * px) : 0} />;
         }
         if (element.type === 'logo') {
           return <rect key={element.id} x={x + w * 0.2} y={y + h * 0.2} width={w * 0.6} height={h * 0.6} rx={2} fill="none" stroke={color('accent')} strokeDasharray="2 2" strokeWidth={0.8} />;
         }
-        const line = Math.max(1, Math.min(h * 0.5, (element.size * width) / 1080));
+        const line = Math.max(1, Math.min(h * 0.5, element.size * px));
         const length = w * (element.bind === 'headline' ? 0.8 : element.bind === 'kicker' ? 0.3 : 0.6);
         const left = element.align === 'left' ? x : element.align === 'right' ? x + w - length : x + (w - length) / 2;
         return <rect key={element.id} x={left} y={y + (h - line) / 2} width={length} height={line} rx={line / 2} fill={color(element.color)} opacity={0.9} />;
@@ -113,6 +118,63 @@ export default function SocialLayoutPicker({ options, value, format, colors, dis
       {!brand.length && (
         <p className="flex items-center gap-1.5 text-[11px] text-[#e5e4e2]/40"><LayoutTemplate className="h-3.5 w-3.5" />Gotowe układy i kolaże; własne układy marki dodasz w edytorze układów.</p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Siatka profilu / panorama: kształt (siatka 3, 6, 9 kafelków; panorama 2–5 slajdów) i gotowy układ w tym kształcie.
+ * Zmiana kształtu wybiera pierwszy układ nowego kształtu (z tą samą nazwą rodzaju, jeśli jest).
+ */
+export function CanvasPicker({ options, value, canvas, colors, disabled, onChange }: {
+  options: SocialLayoutOption[];
+  value: SocialLayoutChoice;
+  canvas: SocialCanvas | null;
+  colors?: Partial<Record<SocialLayoutColor, string | null>> | null;
+  disabled?: boolean;
+  onChange: (choice: SocialLayoutChoice) => void;
+}) {
+  const shapes: SocialCanvas[] = [];
+  for (const option of options) {
+    const shape = option.definition.canvas;
+    if (shape && !shapes.some((item) => sameSocialCanvas(item, shape))) shapes.push(shape);
+  }
+  const inShape = options.filter((option) => sameSocialCanvas(option.definition.canvas, canvas));
+  const kind = (key: string | null) => (key || '').replace(/-\d+(-|$)/, '$1');
+  const pickShape = (shape: SocialCanvas) => {
+    const list = options.filter((option) => sameSocialCanvas(option.definition.canvas, shape));
+    const same = list.find((option) => kind(option.key) === kind(value?.key || null)) || list[0];
+    if (same) onChange({ id: same.id, key: same.key });
+  };
+  const shortLabel = (shape: SocialCanvas) => (shape.mode === 'grid' ? `Siatka ${shape.rows * 3}` : `Panorama ${shape.slides}`);
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {shapes.map((shape) => {
+          const active = sameSocialCanvas(shape, canvas);
+          return (
+            <button key={shortLabel(shape)} type="button" disabled={disabled} title={socialCanvasLabel(shape)} onClick={() => pickShape(shape)}
+              className={`rounded-full border px-2.5 py-1 text-xs ${active ? 'border-[#d3bb73] bg-[#d3bb73]/15 text-[#d3bb73]' : 'border-[#d3bb73]/15 text-[#e5e4e2]/70 hover:border-[#d3bb73]/40'} disabled:opacity-50`}>
+              {shortLabel(shape)}
+            </button>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2">
+        {inShape.map((option) => {
+          const choice = { id: option.id, key: option.key };
+          const selected = sameLayoutChoice(value, choice);
+          const frame = socialLayoutFrame(option.definition, '4:5');
+          const width = Math.min(200, Math.round(70 * (frame.width / frame.height)));
+          return (
+            <button key={option.key || option.id} type="button" disabled={disabled} title={option.description} onClick={() => onChange(choice)}
+              className={`flex flex-col items-center gap-1 rounded-lg border p-1.5 text-center text-[11px] ${selected ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]' : 'border-[#d3bb73]/15 text-[#e5e4e2]/70 hover:border-[#d3bb73]/40'} disabled:opacity-50`}>
+              <LayoutThumb definition={option.definition} format="4:5" width={width} colors={colors} />
+              <span className="line-clamp-2 leading-tight">{option.name}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

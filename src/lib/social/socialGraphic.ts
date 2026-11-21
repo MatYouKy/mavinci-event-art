@@ -1,7 +1,9 @@
 import {
   SOCIAL_FORMAT_INFO, SOCIAL_FORMATS, socialGraphicText, type SocialCrop, type SocialFormat, type SocialGraphicStyle,
 } from './socialShared';
-import { socialLayoutRect, type SocialLayoutColor, type SocialLayoutDefinition, type SocialLayoutElement, type SocialLayoutPhoto } from './socialLayout';
+import {
+  socialLayoutFrame, socialLayoutRect, type SocialLayoutColor, type SocialLayoutDefinition, type SocialLayoutElement, type SocialLayoutPhoto,
+} from './socialLayout';
 
 /*
  * Grafika social media z szablonu marki — jeden HTML dla renderu na serwerze Next (Chromium → JPEG, plik wspólny dla web,
@@ -522,8 +524,8 @@ function directedGradient(direction: string, rgb: [number, number, number], from
 
 /** Grafika z układu: tło, zdjęcia miejsc, potem elementy w kolejności listy; teksty dopasowane do szerokości prostokątów. */
 function buildLayoutHtml(input: SocialGraphicInput, layout: SocialLayoutDefinition): string {
-  const { width: W, height: H } = SOCIAL_FORMAT_INFO[input.format];
-  const s = W / 1080;
+  // Format posta albo duża grafika (siatka profilu, panorama — rozmiary w px kafelka 1080).
+  const { width: W, height: H, scale: s } = socialLayoutFrame(layout, input.format);
   const overlay = parseHexColor(input.colors.overlay) || [0, 0, 0];
   const accent = parseHexColor(input.colors.accent) || overlay;
   const textColor = parseHexColor(input.colors.text) || accent;

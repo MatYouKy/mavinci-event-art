@@ -21,6 +21,7 @@ export type NavKey =
   | 'collaborators'
   | 'personnel-contracts'
   | 'salespeople'
+  | 'presentations'
   | 'offers'
   | 'contacts'
   | 'contracts'
@@ -175,14 +176,34 @@ export const allNavigation: NavigationItemDTO[] = [
     ],
   },
   {
+    // Strefa sprzedawcy: sprzedawcy zewnętrzni (agencje, hotele) i Prezentacje — materiały na spotkania z klientami.
+    // Klucz grupy zostaje `salespeople` (zapisana kolejność menu pracowników).
     key: 'salespeople',
-    name: 'Sprzedawcy',
+    name: 'Strefa sprzedawcy',
     href: '/crm/salespeople',
     iconKey: 'salespeople',
-    module: 'clients',
-    // Opiekun sprzedawców zewnętrznych to pracownik sprzedaży (offers_manage), nie tylko osoba z dostępem do kontaktów.
-    // Zakres danych (tylko moi sprzedawcy) wymusza baza: get_my_seller_cockpit / get_crm_seller_directory.
-    anyPermissions: ['contacts_view', 'offers_manage', 'finances_manage'],
+    children: [
+      {
+        key: 'salespeople',
+        name: 'Sprzedawcy',
+        href: '/crm/salespeople',
+        iconKey: 'salespeople',
+        module: 'clients',
+        // Opiekun sprzedawców zewnętrznych to pracownik sprzedaży (offers_manage), nie tylko osoba z dostępem do kontaktów.
+        // Zakres danych (tylko moi sprzedawcy) wymusza baza: get_my_seller_cockpit / get_crm_seller_directory.
+        anyPermissions: ['contacts_view', 'offers_manage', 'finances_manage'],
+      },
+      {
+        // Prezentacje: podgląd — dostęp do ofert albo `presentations_view`; przygotowanie — `presentations_manage` / `offers_manage`
+        // (te same reguły co RLS: `sales_showcase_can`).
+        key: 'presentations',
+        name: 'Prezentacje',
+        href: '/crm/presentations',
+        iconKey: 'presentations',
+        module: 'presentations',
+        anyPermissions: ['presentations_view', 'presentations_manage', 'offers_view', 'offers_create', 'offers_manage'],
+      },
+    ],
   },
   {
     key: 'offers',

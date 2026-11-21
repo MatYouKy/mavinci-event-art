@@ -27,6 +27,8 @@ export type SocialPostItem = {
   id: string; companyId: string; title: string; status: SocialPostStatus; channels: SocialChannel[]; scheduledAt: string | null;
   captionPreview: string; thumbnailUrl: string | null; formats: SocialFormat[]; photos?: number; authorId: string | null; authorName: string | null;
   revision: number; approvedRevision: number | null; publishError?: string | null; updatedAt: string;
+  /** Siatka profilu / panorama — rodzaj i liczba kafelków (zwykły post — brak). */
+  canvas?: { mode: 'grid' | 'panorama'; tiles: number } | null;
 };
 /** Konto Meta marki (bez tokenów) — gotowość kanałów do publikacji i komentarze. */
 export type SocialMetaStatus = {
@@ -42,7 +44,10 @@ export type SocialMetaStatus = {
 export const socialManualChannel = (meta: SocialMetaStatus | null | undefined, channel: SocialChannel) =>
   channel === 'linkedin_page' && !meta?.linkedin?.connected;
 export type SocialPublication = {
-  channel: SocialChannel; status: string; format: SocialFormat | null; permalink: string | null; error: string | null;
+  channel: SocialChannel;
+  /** Kafelek siatki profilu (osobny post Instagram); 0 albo brak — cały post. */
+  tile?: number;
+  status: string; format: SocialFormat | null; permalink: string | null; error: string | null;
   attempts: number; publishedAt: string | null;
   /** Wyniki z Meta (stan narastająco od publikacji). */
   metrics?: SocialMetricValues; rate?: number | null; metricsSyncedAt?: string | null; metricsError?: string | null;
@@ -120,6 +125,26 @@ export type SocialSlot = {
   slot: number; assetId: string; asset: SocialAssetItem | null;
   formats: Array<{ format: SocialFormat; crop: SocialCrop | null; effectiveCrop: SocialCrop | null; aspect: number }>;
 };
+/** Duża grafika (siatka profilu — rzędy po 3 kafelki, panorama — slajdy) z karty posta. */
+export type SocialCanvasInfo = {
+  mode: 'grid' | 'panorama'; rows: number | null; slides: number | null; tiles: number; width: number; height: number; label: string;
+};
+/** Kafelek / slajd po zapisie (1 — lewy górny); siatka publikuje się od ostatniego. */
+export type SocialTile = { position: number; renderedUrl: string | null; upToDate: boolean };
+/** Kształt dużej grafiki z definicji układu (`definition.canvas`). */
+export type SocialCanvasShape = { mode: 'grid'; rows: number } | { mode: 'panorama'; slides: number };
+export function socialCanvasOf(definition: Record<string, unknown> | null | undefined): SocialCanvasShape | null {
+  const value = definition?.canvas as { mode?: unknown; rows?: unknown; slides?: unknown } | undefined;
+  if (value?.mode === 'grid') return { mode: 'grid', rows: Math.min(3, Math.max(1, Number(value.rows) || 1)) };
+  if (value?.mode === 'panorama') return { mode: 'panorama', slides: Math.min(5, Math.max(2, Number(value.slides) || 2)) };
+  return null;
+}
+export const sameSocialCanvas = (a: SocialCanvasShape | null, b: SocialCanvasShape | null) =>
+  Boolean(a && b) && a!.mode === b!.mode && (a!.mode === 'grid' ? a!.rows === (b as { rows: number }).rows : a!.slides === (b as { slides: number }).slides);
+export const socialCanvasTiles = (shape: SocialCanvasShape) => (shape.mode === 'grid' ? shape.rows * 3 : shape.slides);
+/** „Siatka · 6 kafelków”, „Panorama · 3 slajdy” — jak w CRM i na Macu. */
+export const socialCanvasLabel = (mode: 'grid' | 'panorama', tiles: number) => (mode === 'grid'
+  ? `Siatka · ${tiles} ${tiles === 3 ? 'kafelki' : 'kafelków'}` : `Panorama · ${tiles} ${tiles === 5 ? 'slajdów' : 'slajdy'}`);
 export type SocialAiSuggestion = { caption: string; hashtags: string[]; headline: string; subline: string };
 export type SocialPostDetail = {
   company: { id: string; name: string };
@@ -138,6 +163,10 @@ export type SocialPostDetail = {
   layout?: SocialPostLayout | null;
   layouts?: SocialLayoutOption[];
   slots?: SocialSlot[];
+  /** Siatka profilu / panorama: kształt, kafelki po zapisie i gotowe układy dużej grafiki (starszy serwer — brak). */
+  canvas?: SocialCanvasInfo | null;
+  tiles?: SocialTile[];
+  canvasLayouts?: SocialLayoutOption[];
   channelFormats?: Partial<Record<SocialChannel, SocialFormat | null>>;
   problems: { submit: string[]; publish: string[]; meta?: string[] };
   publications?: SocialPublication[];

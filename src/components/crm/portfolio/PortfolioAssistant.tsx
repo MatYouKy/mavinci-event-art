@@ -3,14 +3,14 @@
 import { useState } from 'react';
 import { Check, Sparkles } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import type { PortfolioContent } from '@/lib/portfolio/portfolioShared';
+import { portfolioWithAlts, portfolioWithTitle, type PortfolioContent } from '@/lib/portfolio/portfolioShared';
 import { cardClass, inputClass, secondaryButton } from '../social/socialUi';
 import { portfolioPost, type PortfolioAiResult } from './portfolioApi';
 
 /*
- * Asystent AI realizacji (CRM; to samo na Macu i w telefonie): z krótkiego opisu i danych realizacji przygotowuje tytuł,
- * opisy, opis w Google, słowa kluczowe, elementy realizacji i opisy zdjęć. Propozycje nie zmieniają realizacji, dopóki
- * ich nie użyjesz.
+ * Asystent AI realizacji (CRM; to samo na Macu i w telefonie): z notatki (wspólnej z przyciskami AI przy sekcjach) i danych
+ * realizacji przygotowuje naraz kilka pól — tytuł, opisy, opis w Google, słowa kluczowe, elementy realizacji i opisy zdjęć.
+ * Propozycje nie zmieniają realizacji, dopóki ich nie użyjesz.
  */
 
 type Field = 'title' | 'description' | 'detailedDescription' | 'metaDescription' | 'keywords' | 'features' | 'alts';
@@ -20,15 +20,18 @@ const FIELDS: Array<[Field, string]> = [
 ];
 type Run = <T>(title: string, action: () => Promise<T>, success?: string, description?: string) => Promise<T | null>;
 
-export default function PortfolioAssistant({ itemId, content, eventId, run, onApply }: {
+export default function PortfolioAssistant({ itemId, content, eventId, onSite, brief, onBrief, run, onApply }: {
   itemId: string;
   content: PortfolioContent;
   eventId: string | null;
+  /** Realizacja na stronie — adres strony nie idzie za nowym tytułem. */
+  onSite: boolean;
+  brief: string;
+  onBrief: (value: string) => void;
   run: Run;
   onApply: (patch: Partial<PortfolioContent>) => void;
 }) {
   const { showSnackbar } = useSnackbar();
-  const [brief, setBrief] = useState('');
   const [fields, setFields] = useState<Field[]>(['description', 'detailedDescription', 'metaDescription', 'keywords']);
   const [usePhotos, setUsePhotos] = useState(false);
   const [result, setResult] = useState<PortfolioAiResult | null>(null);
@@ -43,20 +46,13 @@ export default function PortfolioAssistant({ itemId, content, eventId, run, onAp
 
   const patchFor = (field: Field, value: PortfolioAiResult): Partial<PortfolioContent> | null => {
     switch (field) {
-      case 'title': return value.title ? { title: value.title } : null;
+      case 'title': return value.title ? portfolioWithTitle(content, value.title, onSite) : null;
       case 'description': return value.description ? { description: value.description } : null;
       case 'detailedDescription': return value.detailedDescription ? { detailedDescription: value.detailedDescription } : null;
       case 'metaDescription': return value.metaDescription ? { metaDescription: value.metaDescription } : null;
       case 'keywords': return value.keywords?.length ? { keywords: value.keywords } : null;
       case 'features': return value.features?.length ? { features: value.features } : null;
-      case 'alts': {
-        if (!value.alts?.length) return null;
-        const alts = new Map(value.alts.map((item) => [item.src, item.alt]));
-        return {
-          image: content.image ? { ...content.image, alt: alts.get(content.image.src) || content.image.alt } : null,
-          gallery: content.gallery.map((photo) => ({ ...photo, alt: alts.get(photo.src) || photo.alt })),
-        };
-      }
+      case 'alts': return value.alts?.length ? portfolioWithAlts(content, value.alts, true).patch : null;
       default: return null;
     }
   };
@@ -87,8 +83,9 @@ export default function PortfolioAssistant({ itemId, content, eventId, run, onAp
   return (
     <section className={`${cardClass} space-y-3 p-4`}>
       <h3 className="flex items-center gap-2 text-sm font-medium"><Sparkles className="h-4 w-4 text-[#d3bb73]" />Asystent AI</h3>
-      <textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={3} maxLength={1500} className={inputClass}
-        placeholder="Kilka zdań o realizacji: dla kogo, co przygotowaliśmy (scena, technika, program), co było wyjątkowe." />
+      <p className="text-[11px] text-[#e5e4e2]/45">Kilka pól naraz. Pojedyncze sekcje — przyciski AI przy tytule, opisach, elementach, SEO i zdjęciach.</p>
+      <textarea value={brief} onChange={(event) => onBrief(event.target.value)} rows={3} maxLength={1500} className={inputClass}
+        placeholder="Notatka dla asystenta (ta sama co w „Podstawach”): dla kogo, co przygotowaliśmy (scena, technika, program), co było wyjątkowe." />
       <div className="flex flex-wrap gap-1.5">
         {FIELDS.map(([field, label]) => {
           const active = fields.includes(field);

@@ -30,6 +30,7 @@ const PAIRS = [
   ['src/lib/CRM/meetings/meetingStatus.ts', 'mobile/src/lib/meetingStatus.ts'],
   ['src/lib/social/socialShared.ts', 'mobile/src/lib/socialShared.ts'],
   ['src/lib/portfolio/portfolioShared.ts', 'mobile/src/lib/portfolioShared.ts'],
+  ['src/lib/showcase/showcaseShared.ts', 'mobile/src/lib/showcaseShared.ts'],
 ];
 
 let failed = false;

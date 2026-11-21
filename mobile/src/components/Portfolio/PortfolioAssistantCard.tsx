@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { Alert, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, borderRadius, typography } from '../../theme';
-import type { PortfolioContent } from '../../lib/portfolioShared';
+import { portfolioWithAlts, portfolioWithTitle, type PortfolioContent } from '../../lib/portfolioShared';
 import { portfolioErrorMessage, portfolioPost, type PortfolioAiResult } from '../../lib/portfolioApi';
 
 /*
- * Asystent AI realizacji (jak w CRM i na Macu): z kilku zdań i danych realizacji przygotowuje tytuł, opisy, opis w Google,
- * słowa kluczowe, elementy realizacji i opisy zdjęć. Propozycje nie zmieniają realizacji, dopóki ich nie użyjesz.
+ * Asystent AI realizacji (jak w CRM i na Macu): z notatki (wspólnej z przyciskami AI przy sekcjach) i danych realizacji
+ * przygotowuje naraz kilka pól — tytuł, opisy, opis w Google, słowa kluczowe, elementy realizacji i opisy zdjęć. Propozycje nie
+ * zmieniają realizacji, dopóki ich nie użyjesz.
  */
 
 type Field = 'title' | 'description' | 'detailedDescription' | 'metaDescription' | 'keywords' | 'features' | 'alts';
@@ -16,34 +17,30 @@ const FIELDS: Array<[Field, string]> = [
   ['keywords', 'Słowa kluczowe'], ['features', 'Elementy realizacji'], ['alts', 'Opisy zdjęć (alt)'],
 ];
 
-export function portfolioAiPatch(field: Field, value: PortfolioAiResult, content: PortfolioContent): Partial<PortfolioContent> | null {
+export function portfolioAiPatch(field: Field, value: PortfolioAiResult, content: PortfolioContent, onSite = true): Partial<PortfolioContent> | null {
   switch (field) {
-    case 'title': return value.title ? { title: value.title } : null;
+    case 'title': return value.title ? portfolioWithTitle(content, value.title, onSite) : null;
     case 'description': return value.description ? { description: value.description } : null;
     case 'detailedDescription': return value.detailedDescription ? { detailedDescription: value.detailedDescription } : null;
     case 'metaDescription': return value.metaDescription ? { metaDescription: value.metaDescription } : null;
     case 'keywords': return value.keywords?.length ? { keywords: value.keywords } : null;
     case 'features': return value.features?.length ? { features: value.features } : null;
-    case 'alts': {
-      if (!value.alts?.length) return null;
-      const alts = new Map(value.alts.map((item) => [item.src, item.alt]));
-      return {
-        image: content.image ? { ...content.image, alt: alts.get(content.image.src) || content.image.alt } : null,
-        gallery: content.gallery.map((photo) => ({ ...photo, alt: alts.get(photo.src) || photo.alt })),
-      };
-    }
+    case 'alts': return value.alts?.length ? portfolioWithAlts(content, value.alts, true).patch : null;
     default: return null;
   }
 }
 
-export default function PortfolioAssistantCard({ itemId, content, eventId, onBusy, onApply }: {
+export default function PortfolioAssistantCard({ itemId, content, eventId, onSite, brief, onBrief, onBusy, onApply }: {
   itemId: string;
   content: PortfolioContent;
   eventId: string | null;
+  /** Realizacja na stronie — adres strony nie idzie za nowym tytułem. */
+  onSite: boolean;
+  brief: string;
+  onBrief: (value: string) => void;
   onBusy: (label: string | null) => void;
   onApply: (patch: Partial<PortfolioContent>) => void;
 }) {
-  const [brief, setBrief] = useState('');
   const [fields, setFields] = useState<Field[]>(['description', 'detailedDescription', 'metaDescription', 'keywords']);
   const [usePhotos, setUsePhotos] = useState(false);
   const [result, setResult] = useState<PortfolioAiResult | null>(null);
@@ -73,13 +70,13 @@ export default function PortfolioAssistantCard({ itemId, content, eventId, onBus
 
   const use = (field: Field) => {
     if (!result) return;
-    const patch = portfolioAiPatch(field, result, content);
+    const patch = portfolioAiPatch(field, result, content, onSite);
     if (patch) { onApply(patch); Alert.alert('Asystent AI', 'Wstawiono propozycję — zapisz realizację.'); }
   };
 
   const useAll = () => {
     if (!result) return;
-    const patch = FIELDS.reduce<Partial<PortfolioContent>>((all, [field]) => ({ ...all, ...(portfolioAiPatch(field, result, content) || {}) }), {});
+    const patch = FIELDS.reduce<Partial<PortfolioContent>>((all, [field]) => ({ ...all, ...(portfolioAiPatch(field, result, content, onSite) || {}) }), {});
     onApply(patch);
     Alert.alert('Asystent AI', 'Wstawiono wszystkie propozycje — zapisz realizację.');
   };
@@ -90,8 +87,9 @@ export default function PortfolioAssistantCard({ itemId, content, eventId, onBus
         <Feather name="star" size={16} color={colors.primary.gold} />
         <Text style={styles.title}>Asystent AI</Text>
       </View>
-      <TextInput style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]} value={brief} onChangeText={(value) => setBrief(value.slice(0, 1500))} multiline
-        placeholder="Kilka zdań o realizacji: dla kogo, co przygotowaliśmy (scena, technika, program), co było wyjątkowe." placeholderTextColor={colors.text.tertiary} />
+      <Text style={styles.muted}>Kilka pól naraz. Pojedyncze sekcje — przyciski AI przy tytule, opisach, elementach, SEO i zdjęciach.</Text>
+      <TextInput style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]} value={brief} onChangeText={(value) => onBrief(value.slice(0, 1500))} multiline
+        placeholder="Notatka dla asystenta (ta sama co w „Podstawach”): dla kogo, co przygotowaliśmy, co było wyjątkowe." placeholderTextColor={colors.text.tertiary} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
         {FIELDS.map(([field, label]) => {
           const active = fields.includes(field);

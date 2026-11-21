@@ -313,6 +313,8 @@ struct SocialPostItem: Codable, Identifiable, Hashable {
     var formats: [SocialFormat]
     /// Liczba zdjęć w poście (okładka + karuzela; starszy serwer — brak).
     var photos: Int?
+    /// Siatka profilu / panorama (duża grafika pocięta na kafelki; starszy serwer — brak).
+    var canvas: SocialCanvasBrief?
     var authorId: String?
     var authorName: String?
     var revision: Int
@@ -635,11 +637,125 @@ struct SocialLayoutElement: Codable, Hashable, Identifiable {
     }
 }
 
-/// Definicja układu: tło (rola koloru szablonu), elementy w kolejności rysowania (zdjęcia zawsze pod resztą).
+// MARK: Duża grafika — siatka profilu i panorama (`socialLayout.ts`, Etap G)
+
+/// Kafelek / slajd 4:5 i widoczna szerokość kafelka w siatce profilu (środek 3:4 kafelka 1080 × 1350).
+let socialTileSize = (width: 1080.0, height: 1350.0)
+let socialGridStep = 1012.5
+let socialGridHidden = (1080.0 - 1012.5) / 2
+
+/// Duża grafika: siatka profilu (rzędy po 3 kafelki) albo panorama (slajdy obok siebie).
+struct SocialLayoutCanvas: Codable, Hashable {
+    var mode: String
+    var rows: Int?
+    var slides: Int?
+
+    var isGrid: Bool { mode == "grid" }
+    var tileCount: Int { isGrid ? (rows ?? 1) * 3 : (slides ?? 2) }
+    /// Wymiary w px: siatka 2 × 1012,5 + 1080 = 3105 szerokości, panorama — slajdy po 1080.
+    var size: CGSize {
+        isGrid ? CGSize(width: socialGridStep * 2 + socialTileSize.width, height: socialTileSize.height * Double(rows ?? 1))
+            : CGSize(width: socialTileSize.width * Double(slides ?? 2), height: socialTileSize.height)
+    }
+    var label: String {
+        isGrid ? "Siatka profilu — \(tileCount) \(tileCount == 3 ? "kafelki" : "kafelków")" : "Panorama — \(tileCount) \(tileCount == 5 ? "slajdów" : "slajdy")"
+    }
+    var shortLabel: String { isGrid ? "Siatka \(tileCount)" : "Panorama \(tileCount)" }
+
+    /// Kafelki w kolejności czytania (1 — lewy górny): wycinek z dużej grafiki i widoczna część w siatce profilu (px).
+    var tiles: [SocialCanvasTile] {
+        if isGrid {
+            return (0..<(rows ?? 1)).flatMap { row in
+                (0..<3).map { col -> SocialCanvasTile in
+                    let left = Double(col) * socialGridStep
+                    return SocialCanvasTile(position: row * 3 + col + 1,
+                                            frame: CGRect(x: left.rounded(), y: Double(row) * socialTileSize.height, width: socialTileSize.width, height: socialTileSize.height),
+                                            visible: CGRect(x: left + socialGridHidden, y: Double(row) * socialTileSize.height, width: socialGridStep, height: socialTileSize.height))
+                }
+            }
+        }
+        return (0..<(slides ?? 2)).map { col in
+            let rect = CGRect(x: Double(col) * socialTileSize.width, y: 0, width: socialTileSize.width, height: socialTileSize.height)
+            return SocialCanvasTile(position: col + 1, frame: rect, visible: rect)
+        }
+    }
+
+    /// Styki po złożeniu (px) i pasy obcinane w siatce profilu (po bokach całej grafiki).
+    var seamsX: [Double] { isGrid ? [1.0, 2.0].map { socialGridHidden + $0 * socialGridStep } : (1..<max(2, slides ?? 2)).map { Double($0) * socialTileSize.width } }
+    var seamsY: [Double] { isGrid && (rows ?? 1) > 1 ? (1..<(rows ?? 1)).map { Double($0) * socialTileSize.height } : [] }
+    var hiddenStrips: [(x: Double, w: Double)] { isGrid ? [(x: 0, w: socialGridHidden), (x: size.width - socialGridHidden, w: socialGridHidden)] : [] }
+
+    var json: JSONValue {
+        var object: [String: JSONValue] = ["mode": .string(mode)]
+        if let rows { object["rows"] = .number(Double(rows)) }
+        if let slides { object["slides"] = .number(Double(slides)) }
+        return .object(object)
+    }
+}
+
+/// Elementy przechodzące przez styk kafelków (logo, teksty, prostokąty) albo wchodzące w pas obcinany w siatce — w feedzie
+/// byłyby przecięte (`socialCanvasCrossings` w `socialLayout.ts`; ostrzeżenie, bez blokady).
+func socialCanvasCrossings(_ definition: SocialLayoutDefinition) -> [String] {
+    guard let canvas = definition.canvas else { return [] }
+    let size = canvas.size
+    return definition.elements.compactMap { element in
+        if element.type == "photo" || element.type == "shade" { return nil }
+        let left = element.rect.x * size.width
+        let right = (element.rect.x + element.rect.w) * size.width
+        let top = element.rect.y * size.height
+        let bottom = (element.rect.y + element.rect.h) * size.height
+        let crosses = canvas.seamsX.contains { left < $0 - 1 && right > $0 + 1 } || canvas.seamsY.contains { top < $0 - 1 && bottom > $0 + 1 }
+            || canvas.hiddenStrips.contains { left < $0.x + $0.w - 1 && right > $0.x + 1 }
+        return crosses ? element.id : nil
+    }
+}
+
+struct SocialCanvasTile: Hashable {
+    let position: Int
+    let frame: CGRect
+    let visible: CGRect
+}
+
+/// Siatka / panorama w kalendarzu (rodzaj i liczba kafelków).
+struct SocialCanvasBrief: Codable, Hashable {
+    var mode: String
+    var tiles: Int
+    var label: String { mode == "grid" ? "Siatka · \(tiles) \(tiles == 3 ? "kafelki" : "kafelków")" : "Panorama · \(tiles) \(tiles == 5 ? "slajdów" : "slajdy")" }
+}
+
+/// Duża grafika w karcie posta (z serwera).
+struct SocialCanvasInfo: Codable, Hashable {
+    var mode: String
+    var rows: Int?
+    var slides: Int?
+    var tiles: Int
+    var width: Double
+    var height: Double
+    var label: String
+}
+
+/// Kafelek po zapisie (plik z serwera; 1 — lewy górny).
+struct SocialTile: Codable, Hashable {
+    var position: Int
+    var renderedUrl: String?
+    var upToDate: Bool
+}
+
+/// Definicja układu: tło (rola koloru szablonu), elementy w kolejności rysowania (zdjęcia zawsze pod resztą); `canvas` —
+/// duża grafika (siatka profilu, panorama): prostokąty względem całej grafiki, rozmiary w px kafelka 1080.
 struct SocialLayoutDefinition: Codable, Hashable {
     var v: Int
     var background: String
     var elements: [SocialLayoutElement]
+    var canvas: SocialLayoutCanvas?
+
+    /// Wymiary rysowania: duża grafika albo format posta.
+    func frameSize(_ format: SocialFormat) -> CGSize { canvas?.size ?? CGSize(width: format.width, height: format.height) }
+    /// Proporcje całej grafiki (szerokość / wysokość).
+    func aspect(_ format: SocialFormat) -> Double {
+        let size = frameSize(format)
+        return size.width / max(1, size.height)
+    }
 
     /// Liczba miejsc na zdjęcia (miejsce 0 — zdjęcie wariantu, kolejne — kolaż).
     var slots: Int { max(1, elements.compactMap { $0.type == "photo" ? ($0.slot ?? 0) + 1 : nil }.max() ?? 1) }
@@ -650,14 +766,25 @@ struct SocialLayoutDefinition: Codable, Hashable {
 
     /// Proporcje miejsca w px formatu (szerokość / wysokość) — kadr zdjęcia w układzie ma te proporcje.
     func slotAspect(_ slot: Int, _ format: SocialFormat) -> Double {
-        guard let rect = slotRect(slot, format) else { return format.aspect }
-        return max(0.05, (rect.w * format.width) / max(1, rect.h * format.height))
+        let size = frameSize(format)
+        guard let rect = slotRect(slot, format) else { return size.width / max(1, size.height) }
+        return max(0.05, (rect.w * size.width) / max(1, rect.h * size.height))
     }
 
     /// Zaokrąglenie rogów miejsca (px dla szerokości 1080).
     func slotRadius(_ slot: Int) -> Double { elements.first { $0.type == "photo" && ($0.slot ?? 0) == slot }?.radius ?? 0 }
+    /// Zaokrąglenie do podglądu rysowanego w skali „szerokość / 1080”: duża grafika ma promienie w px kafelka na całej
+    /// szerokości (3105 / 1080·n), więc przeliczamy je na tę skalę (jak `radius * scale` w HTML renderu).
+    func previewRadius(_ slot: Int) -> Double {
+        guard let canvas else { return slotRadius(slot) }
+        return slotRadius(slot) * 1080 / max(1, canvas.size.width)
+    }
 
-    var json: JSONValue { .object(["v": .number(Double(v)), "background": .string(background), "elements": .array(elements.map(\.json))]) }
+    var json: JSONValue {
+        var object: [String: JSONValue] = ["v": .number(Double(v)), "background": .string(background), "elements": .array(elements.map(\.json))]
+        if let canvas { object["canvas"] = canvas.json }
+        return .object(object)
+    }
 }
 
 /// Układ do wyboru w kreatorze: układ marki (`id`) albo gotowy (`key`).
@@ -903,6 +1030,8 @@ struct SocialPostFull: Codable, Hashable {
     var formats: [SocialFormat]
     /// Liczba zdjęć w poście (okładka + karuzela; starszy serwer — brak).
     var photos: Int?
+    /// Siatka profilu / panorama (duża grafika pocięta na kafelki; starszy serwer — brak).
+    var canvas: SocialCanvasBrief?
     var authorId: String?
     var authorName: String?
     var revision: Int
@@ -937,6 +1066,8 @@ struct SocialProblems: Codable, Hashable {
 /// Stan publikacji kanału w Meta (link albo błąd).
 struct SocialPublication: Codable, Hashable {
     var channel: SocialChannel
+    /// Kafelek siatki profilu (osobny post Instagram); 0 albo brak — cały post.
+    var tile: Int?
     var status: String
     var format: SocialFormat?
     var permalink: String?
@@ -1117,6 +1248,10 @@ struct SocialPostDetail: Codable {
     var layout: SocialPostLayout?
     var layouts: [SocialLayoutOption]?
     var slots: [SocialSlot]?
+    /// Siatka profilu / panorama: kształt, kafelki po zapisie i gotowe układy dużej grafiki (starszy serwer — brak).
+    var canvas: SocialCanvasInfo?
+    var tiles: [SocialTile]?
+    var canvasLayouts: [SocialLayoutOption]?
     var problems: SocialProblems
     var publications: [SocialPublication]?
     var meta: SocialMetaStatus?

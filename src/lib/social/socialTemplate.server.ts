@@ -1,7 +1,7 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import type { NativeContext } from '@/lib/native/auth';
-import { renderHtmlToImage } from '@/lib/print/pdfRenderer.server';
+import { renderHtmlToImage, renderHtmlToImages } from '@/lib/print/pdfRenderer.server';
 import {
   brandbookPublicUrl, check, downloadSocialFile, fail, fetchPublicStorageFile, isUuid, pngSize, removeSocialFiles, text,
   uploadSocialFile, type Row,
@@ -10,10 +10,10 @@ import {
   buildSocialGraphicHtml, parseHexColor, parseSocialTemplateSettings, socialLayoutGuides, type SocialTemplateSettings,
 } from './socialGraphic';
 import {
-  SOCIAL_FORMATS, SOCIAL_FORMAT_INFO, SOCIAL_GRAPHIC_STYLE_LIST, formatSlug, isSocialGraphicStyle, type SocialCrop, type SocialFormat,
+  SOCIAL_FORMATS, SOCIAL_GRAPHIC_STYLE_LIST, formatSlug, isSocialGraphicStyle, type SocialCrop, type SocialFormat,
   type SocialGraphicStyle,
 } from './socialShared';
-import type { SocialLayoutDefinition } from './socialLayout';
+import { socialCanvasTiles, socialLayoutFrame, type SocialLayoutDefinition } from './socialLayout';
 
 /*
  * Szablon grafiki marki (`social_brand_templates`) — wyłącznie odwołania do księgi znaku (logo, fonty, kolory) i liczby
@@ -301,8 +301,8 @@ async function brandAssets(template: LoadedTemplate) {
   };
 }
 
-/** Grafika w formacie (JPEG) — HTML z danymi osadzonymi jako `data:` (render bez sieci). */
-export async function renderGraphic(ctx: NativeContext, template: LoadedTemplate, source: RenderSource): Promise<Buffer> {
+/** HTML grafiki z danymi osadzonymi jako `data:` (render bez sieci): szablon marki, zdjęcia (z kolażem), teksty, układ. */
+async function graphicHtml(ctx: NativeContext, template: LoadedTemplate, source: RenderSource): Promise<string> {
   const slotSources = source.layout ? source.slots || [] : [];
   const [brand, photo, ...slotPhotos] = await Promise.all([
     brandAssets(template),
@@ -323,7 +323,13 @@ export async function renderGraphic(ctx: NativeContext, template: LoadedTemplate
       return slot && bytes ? { src: `data:image/jpeg;base64,${bytes.toString('base64')}`, crop: slot.crop } : null;
     }),
   });
-  const { width, height } = SOCIAL_FORMAT_INFO[source.format];
+  return html;
+}
+
+/** Grafika w formacie (JPEG). */
+export async function renderGraphic(ctx: NativeContext, template: LoadedTemplate, source: RenderSource): Promise<Buffer> {
+  const html = await graphicHtml(ctx, template, source);
+  const { width, height } = socialLayoutFrame(source.layout || null, source.format);
   try {
     return await renderHtmlToImage(html, { width, height, type: 'jpeg', quality: 92 });
   } catch (error) {
@@ -362,10 +368,11 @@ export async function renderOverlay(
     layout: input.layout || null,
     transparent: true,
   });
-  const { width, height } = SOCIAL_FORMAT_INFO[input.format];
+  // Duża grafika (siatka, panorama) — warstwa w połowie rozdzielczości (podgląd na Macu, mniej danych).
+  const { width, height } = socialLayoutFrame(input.layout || null, input.format);
   let bytes: Buffer;
   try {
-    bytes = await renderHtmlToImage(html, { width, height, type: 'png', transparent: true });
+    bytes = await renderHtmlToImage(html, { width, height, type: 'png', transparent: true, scale: input.layout?.canvas ? 0.5 : 1 });
   } catch (error) {
     console.error('[social-overlay]', error);
     fail('Nie udało się przygotować podglądu grafiki. Spróbuj ponownie za chwilę.', 502);
@@ -400,6 +407,59 @@ export async function renderVariant(
   check(error, 'Nie udało się zapisać grafiki posta.');
   if (variant.renderedPath && variant.renderedPath !== path) await removeSocialFiles(ctx.supabase, [variant.renderedPath]);
   return { path, hash, rendered: true };
+}
+
+/** Kafelek dużej grafiki zapisany w `social_post_tiles`. */
+export type RenderedTile = { id: string; position: number; renderedPath: string | null; renderHash: string | null };
+
+/**
+ * Duża grafika posta (siatka profilu, panorama): jeden render strony i wycinki kafelków 4:5 —
+ * `<marka>/posts/<post>/tile-<nn>-<skrót>.jpg`, wiersze `social_post_tiles`, w wariancie 4:5 ścieżka pierwszego kafelka
+ * (miniatury w kalendarzu i listach). Aktualne kafelki (ten sam skrót) — bez renderu. Stare pliki są usuwane.
+ */
+export async function renderCanvas(
+  ctx: NativeContext,
+  post: { id: string; companyId: string },
+  template: LoadedTemplate,
+  variant: { id: string; renderedPath: string | null; renderHash: string | null },
+  source: RenderSource,
+  current: RenderedTile[],
+): Promise<{ hash: string; rendered: boolean }> {
+  const canvas = source.layout?.canvas;
+  if (!canvas) fail('To nie jest siatka ani panorama.', 400);
+  const hash = renderHash(template, source);
+  const tiles = socialCanvasTiles(canvas);
+  const complete = variant.renderHash === hash && Boolean(variant.renderedPath) && current.length === tiles.length
+    && tiles.every((tile) => current.some((item) => item.position === tile.position && item.renderHash === hash && item.renderedPath));
+  if (complete) return { hash, rendered: false };
+  const html = await graphicHtml(ctx, template, source);
+  const { width, height } = socialLayoutFrame(source.layout || null, source.format);
+  let images: Buffer[];
+  try {
+    images = await renderHtmlToImages(html, { width, height, clips: tiles.map((tile) => ({ x: tile.x, y: tile.y, width: tile.width, height: tile.height })), quality: 92 });
+  } catch (error) {
+    console.error('[social-render-canvas]', error);
+    fail('Nie udało się wygenerować kafelków. Spróbuj ponownie za chwilę.', 502);
+  }
+  const paths = tiles.map((tile) => `${post.companyId}/posts/${post.id}/tile-${String(tile.position).padStart(2, '0')}-${hash.slice(0, 16)}.jpg`);
+  for (const [index, bytes] of images.entries()) await uploadSocialFile(ctx.supabase, paths[index], bytes, 'image/jpeg');
+  const now = new Date().toISOString();
+  const { error: tileError } = await ctx.supabase.from('social_post_tiles').upsert(
+    tiles.map((tile, index) => ({ post_id: post.id, position: tile.position, rendered_path: paths[index], render_hash: hash, rendered_at: now })),
+    { onConflict: 'post_id,position' },
+  );
+  check(tileError, 'Nie udało się zapisać kafelków.');
+  const extra = current.filter((item) => item.position > tiles.length);
+  if (extra.length) {
+    const { error } = await ctx.supabase.from('social_post_tiles').delete().in('id', extra.map((item) => item.id));
+    check(error, 'Nie udało się usunąć starych kafelków.');
+  }
+  const { error } = await ctx.supabase.from('social_post_variants')
+    .update({ rendered_path: paths[0], render_hash: hash, rendered_at: now }).eq('id', variant.id);
+  check(error, 'Nie udało się zapisać grafiki posta.');
+  const stale = [...current.map((item) => item.renderedPath), variant.renderedPath].filter((path): path is string => Boolean(path) && !paths.includes(path as string));
+  if (stale.length) await removeSocialFiles(ctx.supabase, Array.from(new Set(stale)));
+  return { hash, rendered: true };
 }
 
 /** Szablon posta: wybrany (jeśli istnieje w marce) albo domyślny marki. */

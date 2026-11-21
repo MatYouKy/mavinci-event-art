@@ -21,16 +21,20 @@ import {
 } from './socialApi';
 import SocialCropEditor from './SocialCropEditor';
 import SocialStylePicker from './SocialStylePicker';
-import SocialLayoutPicker, { sameLayoutChoice, type SocialLayoutChoice } from './SocialLayoutPicker';
+import SocialLayoutPicker, { CanvasPicker, sameLayoutChoice, type SocialLayoutChoice } from './SocialLayoutPicker';
 import SocialLayoutEditor from './SocialLayoutEditor';
 import {
-  socialAspectCrop, socialCropFitsAspect, socialLayoutSlotAspect, socialLayoutSlots, type SocialLayoutDefinition,
+  socialAspectCrop, socialCanvasCrossings, socialCanvasTiles, socialCropFitsAspect, socialLayoutSlotAspect, socialLayoutSlots,
+  type SocialCanvas, type SocialLayoutDefinition,
 } from '@/lib/social/socialLayout';
 import SocialAssistant from './SocialAssistant';
 import SocialComments from './SocialComments';
 import { MetaPublishPanel } from './SocialMetaPanel';
 import SocialLibrary, { EventPicker } from './SocialLibrary';
-import { FacebookPreview, GraphicView, InstagramFeedPreview, LinkedInPreview, ProfileGridPreview, StoryPreview, useAccountName, type GraphicSource } from './SocialPreviews';
+import {
+  CanvasGridPreview, CanvasPreview, FacebookPreview, GraphicView, InstagramFeedPreview, LinkedInPreview, ProfileGridPreview, StoryPreview, useAccountName,
+  type GraphicSource,
+} from './SocialPreviews';
 import {
   ConsentBadge, PostStatusBadge, cardClass, dangerButton, dateTimeLabel, errorMessage, fromLocalInput, inputClass, primaryButton,
   secondaryButton, toLocalInput,
@@ -152,6 +156,17 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
   const [slotEdit, setSlotEdit] = useState<number | null>(null);
   const [slotPicker, setSlotPicker] = useState<number | null>(null);
   const [layoutsOpen, setLayoutsOpen] = useState(false);
+  /** Szerokość kolumny na podgląd całej dużej grafiki (siatka, panorama). */
+  const [canvasBox, setCanvasBox] = useState<HTMLDivElement | null>(null);
+  const [canvasWidth, setCanvasWidth] = useState(640);
+  useEffect(() => {
+    if (!canvasBox) return;
+    const measure = () => setCanvasWidth(Math.max(280, Math.floor(canvasBox.clientWidth)));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(canvasBox);
+    return () => observer.disconnect();
+  }, [canvasBox]);
   const [eventPicker, setEventPicker] = useState(false);
   const [noteAction, setNoteAction] = useState<SocialPostAction | null>(null);
   const [note, setNote] = useState('');
@@ -377,7 +392,8 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
     if (!local.enabled) return null;
     const asset = local.asset;
     const unchanged = !dirty && saved?.upToDate;
-    if (unchanged && saved?.renderedUrl) return { format, renderedUrl: saved.renderedUrl, live: null };
+    // Duża grafika: plik wariantu to tylko kafelek 1 — podgląd całości zawsze na żywo (ten sam HTML co render).
+    if (unchanged && saved?.renderedUrl && !layoutDefinition?.canvas) return { format, renderedUrl: saved.renderedUrl, live: null };
     if (!asset?.workUrl || !asset.width || !asset.height || !detail.spec?.ready) {
       return { format, renderedUrl: saved?.renderedUrl || null, live: null };
     }
@@ -390,6 +406,33 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
       },
     };
   }, [detail, draft, dirty, cropFor, layoutDefinition, slotPhotos]);
+
+  /** Siatka profilu / panorama: duża grafika z migawki albo wybranego układu. */
+  const canvas: SocialCanvas | null = layoutDefinition?.canvas || null;
+  /** Kafelki do podglądów: pliki z serwera (bez zmian, aktualne) albo wycinki podglądu na żywo całej grafiki. */
+  const tileSources = useMemo((): GraphicSource[] => {
+    if (!canvas || !detail || !draft) return [];
+    const tiles = socialCanvasTiles(canvas);
+    const saved = detail.tiles || [];
+    if (!dirty && saved.length === tiles.length && saved.every((tile) => tile.upToDate && tile.renderedUrl)) {
+      return tiles.map((tile) => ({ format: '4:5' as SocialFormat, renderedUrl: saved.find((item) => item.position === tile.position)?.renderedUrl || null, live: null }));
+    }
+    const whole = variantSource('4:5');
+    return tiles.map((tile) => (whole?.live
+      ? { ...whole, viewport: { x: tile.x, y: tile.y, width: tile.width, height: tile.height } }
+      : { format: '4:5' as SocialFormat, renderedUrl: null, live: null }));
+  }, [canvas, detail, draft, dirty, variantSource]);
+
+  /** Wybór układu dużej grafiki; siatka — tylko feed Instagram, panorama — bez relacji. */
+  const changeCanvasLayout = (choice: SocialLayoutChoice) => {
+    const definition = layoutDefinitionOf(detail, choice);
+    changeLayout(choice);
+    const next = definition?.canvas;
+    if (!next || !draft) return;
+    const channels: SocialChannel[] = next.mode === 'grid' ? ['instagram_feed']
+      : draft.channels.filter((channel) => channel !== 'instagram_story');
+    change({ channels: channels.length ? channels : ['instagram_feed', 'facebook_feed'] });
+  };
 
   /**
    * Zmiana układu (albo `refresh` — aktualna wersja tego samego układu): kadry niepasujące do nowych proporcji wracają do
@@ -474,7 +517,13 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
   const slotDraft = collageOn && slotEdit !== null && slotEdit < layoutSlots ? draft.slots.find((item) => item.slot === slotEdit) || null : null;
   const slotAsset = slotDraft?.asset || null;
   const slotCrop = slotDraft && slotAsset?.width && slotAsset.height ? cropFor(slotAsset, slotDraft.crops[active], active, slotDraft.slot) : null;
-  const carouselOn = isSocialSlideFormat(active) && activeVariant.enabled && Boolean(activeAsset);
+  const carouselOn = !canvas && isSocialSlideFormat(active) && activeVariant.enabled && Boolean(activeAsset);
+  const canvasWarnings = canvas && layoutDefinition && socialCanvasCrossings(layoutDefinition).length
+    ? ['Część logo albo tekstów wypada na styku kafelków — w feedzie będzie przecięta.'] : [];
+  const previewTabs: Array<[PreviewTab, string]> = canvas
+    ? canvas.mode === 'grid' ? [['grid', 'Siatka profilu'], ['feed', 'Feed Instagram']] : [['feed', 'Feed Instagram'], ['facebook', 'Facebook'], ['linkedin', 'LinkedIn']]
+    : [['feed', 'Feed Instagram'], ['grid', 'Siatka profilu'], ['story', 'Relacja'], ['facebook', 'Facebook'], ['linkedin', 'LinkedIn']];
+  const previewTab: PreviewTab = previewTabs.some(([key]) => key === preview) ? preview : previewTabs[0][0];
   const slide = carouselOn && slideIndex !== null ? draft.slides[slideIndex] || null : null;
   const slideAsset = slide?.asset || null;
   const slideCrop = slide && slideAsset?.width && slideAsset.height
@@ -532,15 +581,17 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
               <section className={`${cardClass} space-y-3 p-4`}>
                 <h3 className="text-sm font-medium">Publikacja</h3>
                 <div className="space-y-1.5">
-                  {SOCIAL_CHANNELS.map((channel) => (
+                  {SOCIAL_CHANNELS.filter((channel) => !canvas || (canvas.mode === 'grid' ? channel === 'instagram_feed' : channel !== 'instagram_story')).map((channel) => (
                     <label key={channel} className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" disabled={!editable} checked={draft.channels.includes(channel)}
+                      <input type="checkbox" disabled={!editable || canvas?.mode === 'grid'} checked={draft.channels.includes(channel)}
                         onChange={(e) => change({ channels: e.target.checked ? [...draft.channels, channel] : draft.channels.filter((item) => item !== channel) })} />
                       {SOCIAL_CHANNEL_LABELS[channel]}
                       {draft.channels.includes(channel) && <span className="text-[11px] text-[#e5e4e2]/40">→ {channelFormat(channel, enabledFormats) || 'brak grafiki'}</span>}
                     </label>
                   ))}
                 </div>
+                {canvas?.mode === 'grid' && <p className="text-[11px] text-[#e5e4e2]/45">Siatka profilu trafia tylko na Instagram — każdy kafelek to osobny post (publikacja od ostatniego kafelka).</p>}
+                {canvas?.mode === 'panorama' && <p className="text-[11px] text-[#e5e4e2]/45">Panorama to karuzela: na Instagramie przesuwana bez przerw, na Facebooku i LinkedIn — post z kilkoma zdjęciami.</p>}
                 <label className="block text-sm">Termin publikacji
                   <input type="datetime-local" disabled={!editable || (detail.post.status === 'scheduled' && !detail.access.publish)} value={draft.scheduledAt}
                     onChange={(e) => change({ scheduledAt: e.target.value })} className={`${inputClass} mt-1`} />
@@ -566,6 +617,22 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                 )}
               </section>
 
+              {canvas ? (
+                <section className={`${cardClass} space-y-3 p-4`}>
+                  <h3 className="text-sm font-medium">Siatka profilu / panorama</h3>
+                  <CanvasPicker options={detail.canvasLayouts || []} value={draft.layout} canvas={canvas} colors={detail.spec?.colors || null}
+                    disabled={!editable} onChange={changeCanvasLayout} />
+                  {canvas.mode === 'grid' ? (
+                    <ul className="list-disc space-y-0.5 pl-4 text-[11px] text-[#e5e4e2]/50">
+                      <li>Każdy kafelek to osobny post — zasięg rozkłada się na kafelki; całość widać po wejściu na profil.</li>
+                      <li>Publikacja od ostatniego kafelka do pierwszego (kafelek 1 ląduje w lewym górnym rogu).</li>
+                      <li>Przypięte posty przesuwają siatkę; kolejne posty publikuj po 3, żeby została równa (kolejność poprawisz też w profilu Instagram).</li>
+                    </ul>
+                  ) : (
+                    <p className="text-[11px] text-[#e5e4e2]/50">Jedno zdjęcie przez wszystkie slajdy — jeden post, całe zaangażowanie w jednym miejscu.</p>
+                  )}
+                </section>
+              ) : (
               <section className={`${cardClass} space-y-3 p-4`}>
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-medium">Układ grafiki</h3>
@@ -595,7 +662,9 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                   <p className="text-[11px] text-[#e5e4e2]/45">Kolaż: {layoutSlots} zdjęcia — kolejne zdjęcia wybierasz w pasku „Kolaż” nad edytorem kadru.</p>
                 )}
               </section>
+              )}
 
+              {!canvas && (
               <section className={`${cardClass} space-y-3 p-4`}>
                 <h3 className="text-sm font-medium">Styl grafiki</h3>
                 {layoutDefinition && <p className="text-[11px] text-[#e5e4e2]/45">Wybrany układ zastępuje styl na okładce — styl dotyczy kolejnych zdjęć karuzeli.</p>}
@@ -603,6 +672,7 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                   photoUrl={activeAsset?.workUrl || null} crop={activeCrop} headline={draft.headline} subline={draft.subline} kicker={draft.kicker}
                   value={draft.style} defaultStyle={detail.template?.defaultStyle || null} disabled={!editable} onChange={(style) => change({ style })} />
               </section>
+              )}
 
               <section className={`${cardClass} space-y-3 p-4`}>
                 <h3 className="text-sm font-medium">Tekst na grafice</h3>
@@ -670,6 +740,14 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
             </aside>
 
             <section className={`${cardClass} min-w-0 space-y-4 p-4`}>
+              {canvas ? (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium text-[#d3bb73]">{detail.canvasLayouts?.find((item) => item.key === draft.layout?.key)?.name || 'Duża grafika'}</span>
+                  <span className="text-xs text-[#e5e4e2]/45">
+                    {canvas.mode === 'grid' ? `${canvas.rows * 3} ${canvas.rows === 1 ? 'kafelki' : 'kafelków'} po 1080×1350 px (siatka 3:4 w profilu)` : `${canvas.slides} ${canvas.slides === 5 ? 'slajdów' : 'slajdy'} po 1080×1350 px`}
+                  </span>
+                </div>
+              ) : (<>
               <div className="flex flex-wrap items-center gap-2">
                 {SOCIAL_FORMATS.map((format) => {
                   const variant = draft.variants[format];
@@ -693,6 +771,7 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                 {editable && <button type="button" className={secondaryButton} onClick={() => setPicker('all')}><Images className="h-4 w-4" />Zdjęcie dla wszystkich formatów</button>}
               </div>
               <p className="text-xs text-[#e5e4e2]/45">{SOCIAL_FORMAT_INFO[active].hint} · {SOCIAL_FORMAT_INFO[active].width}×{SOCIAL_FORMAT_INFO[active].height} px</p>
+              </>)}
 
               {collageOn && (
                 <div className="space-y-2 rounded-lg border border-[#d3bb73]/10 p-2">
@@ -813,6 +892,31 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                   <Images className="h-10 w-10 text-[#d3bb73]/40" />Wybierz zdjęcie z biblioteki.
                   {editable && <button type="button" className={primaryButton} onClick={() => setPicker(active)}>Wybierz zdjęcie</button>}
                 </div>
+              ) : canvas ? (
+                <div className="space-y-4">
+                  {activeAsset.workUrl && activeAsset.width && activeAsset.height && activeCrop ? (
+                    <SocialCropEditor imageUrl={activeAsset.workUrl} imageWidth={activeAsset.width} imageHeight={activeAsset.height}
+                      format={active} crop={activeCrop} proposal={activeAsset.crops[active] || null} guides={null}
+                      aspect={socialLayoutSlotAspect(layoutDefinition, 0, active)}
+                      disabled={!editable} onChange={(crop) => changeVariant(active, { crop, touched: true })} />
+                  ) : <p className="text-sm text-[#e5e4e2]/50">Zdjęcie nie ma jeszcze wersji roboczej.</p>}
+                  {editable && (
+                    <div className="flex flex-wrap justify-center gap-2">
+                      <button type="button" className={secondaryButton} onClick={() => setPicker(active)}><Images className="h-4 w-4" />Inne zdjęcie</button>
+                      {activeVariant.crop && <button type="button" className={secondaryButton} onClick={() => changeVariant(active, { crop: null, touched: true })}><RotateCcw className="h-4 w-4" />Kadr z propozycji</button>}
+                    </div>
+                  )}
+                  <div ref={setCanvasBox} className="space-y-2">
+                    <div className="text-xs text-[#e5e4e2]/50">Cała grafika — podgląd na żywo (ten sam szablon co render); serwer tnie ją na kafelki po zapisie</div>
+                    <CanvasPreview source={variantSource(active)} canvas={canvas} width={canvasWidth} warnings={canvasWarnings} />
+                    {!dirty && detail.variants.some((item) => item.assetId && !item.upToDate) && detail.access.create && socialPostEditable(detail.post.status) && (
+                      <button type="button" className={secondaryButton} onClick={async () => {
+                        const result = await run('Generuję kafelki', () => socialPost<SocialPostDetail>('renderPost', { id: detail.post.id }), 'Kafelki są aktualne');
+                        if (result) apply(result);
+                      }}><RefreshCw className="h-4 w-4" />Odśwież kafelki</button>
+                    )}
+                  </div>
+                </div>
               ) : (
                 <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_300px]">
                   <div className="min-w-0">
@@ -853,6 +957,7 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                 </div>
                 <textarea disabled={!editable} value={draft.caption} maxLength={SOCIAL_LIMITS.caption} rows={6} onChange={(e) => change({ caption: e.target.value })} className={inputClass}
                   placeholder="Krótko i z klasą: co się wydarzyło, dla kogo, co nas wyróżnia." />
+                {canvas?.mode === 'grid' && <p className="text-[11px] text-[#e5e4e2]/45">Opis z hashtagami trafia do kafelka 1 (lewy górny, publikowany na końcu); pozostałe kafelki dostają same hashtagi.</p>}
                 <label className="block text-sm">Hashtagi <span className={`text-xs ${hashtagCount > SOCIAL_LIMITS.hashtags ? 'text-red-300' : 'text-[#e5e4e2]/40'}`}>({hashtagCount}/{SOCIAL_LIMITS.hashtags})</span>
                   <input disabled={!editable} value={draft.hashtags} onChange={(e) => change({ hashtags: e.target.value })} className={`${inputClass} mt-1`} placeholder="#mavinci #eventy #gala" />
                 </label>
@@ -876,11 +981,23 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
 
             <aside className={`${cardClass} space-y-3 p-4`}>
               <div className="flex flex-wrap gap-1">
-                {([['feed', 'Feed Instagram'], ['grid', 'Siatka profilu'], ['story', 'Relacja'], ['facebook', 'Facebook'], ['linkedin', 'LinkedIn']] as const).map(([key, label]) => (
+                {previewTabs.map(([key, label]) => (
                   <button key={key} type="button" onClick={() => setPreview(key)}
-                    className={`rounded-lg px-3 py-1.5 text-xs ${preview === key ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'}`}>{label}</button>
+                    className={`rounded-lg px-3 py-1.5 text-xs ${previewTab === key ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'}`}>{label}</button>
                 ))}
               </div>
+              {canvas ? (
+                <>
+                  {previewTab === 'grid' && <CanvasGridPreview tiles={tileSources} grid={detail.grid} />}
+                  {previewTab === 'feed' && (
+                    <InstagramFeedPreview source={tileSources[0] || null} slides={canvas.mode === 'panorama' ? tileSources.slice(1) : []} account={account}
+                      logoUrl={detail.template?.logoUrl || null} caption={publicationText} />
+                  )}
+                  {previewTab === 'feed' && canvas.mode === 'grid' && <p className="text-[11px] text-[#e5e4e2]/45">W feedzie kafelki pojawiają się jako osobne posty — kafelek 1 (najnowszy) z opisem, pozostałe z hashtagami.</p>}
+                  {previewTab === 'facebook' && <FacebookPreview source={tileSources[0] || null} slides={tileSources.slice(1)} account={account} logoUrl={detail.template?.logoUrl || null} caption={publicationText} />}
+                  {previewTab === 'linkedin' && <LinkedInPreview source={tileSources[0] || null} slides={tileSources.slice(1)} account={detail.meta?.linkedin?.organizationName || detail.company.name} logoUrl={detail.template?.logoUrl || null} caption={publicationText} />}
+                </>
+              ) : (<>
               {preview === 'feed' && <InstagramFeedPreview source={feedFormat ? variantSource(feedFormat) : null} slides={feedSlides} account={account} logoUrl={detail.template?.logoUrl || null} caption={publicationText} />}
               {preview === 'grid' && <ProfileGridPreview current={feedFormat ? variantSource(feedFormat) : null} grid={detail.grid} />}
               {preview === 'story' && (storyFormat
@@ -888,6 +1005,7 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                 : <p className="p-6 text-center text-sm text-[#e5e4e2]/45">Włącz format „Relacja 9:16” i kanał „Instagram — relacja”, żeby zobaczyć relację.</p>)}
               {preview === 'facebook' && <FacebookPreview source={fbFormat ? variantSource(fbFormat) : null} slides={fbSlides} account={account} logoUrl={detail.template?.logoUrl || null} caption={publicationText} />}
               {preview === 'linkedin' && <LinkedInPreview source={linkedinFormat ? variantSource(linkedinFormat) : null} slides={linkedinSlides} account={detail.meta?.linkedin?.organizationName || detail.company.name} logoUrl={detail.template?.logoUrl || null} caption={publicationText} />}
+              </>)}
               <p className="text-[11px] text-[#e5e4e2]/40">Podglądy pokazują grafiki w proporcjach platform. Ostateczny plik generuje serwer — identyczny w CRM, na Macu i w telefonie.</p>
               {detail.post.status === 'published' && detail.post.publishedUrl && (
                 <a href={detail.post.publishedUrl} target="_blank" rel="noreferrer" className={secondaryButton}><Link2 className="h-4 w-4" />Opublikowany post</a>

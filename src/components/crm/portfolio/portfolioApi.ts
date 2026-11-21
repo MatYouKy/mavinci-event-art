@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase/browser';
-import type { PortfolioContent, PortfolioPhoto, PortfolioStatus } from '@/lib/portfolio/portfolioShared';
+import type { PortfolioAiSuggestions, PortfolioContent, PortfolioPhoto, PortfolioStatus } from '@/lib/portfolio/portfolioShared';
 
 /*
  * Klient API „Realizacji” w CRM — to samo API co Mac i telefon (`/bridge/native/v1/portfolio`, token sesji pracownika,
@@ -26,11 +26,8 @@ export type PortfolioItem = {
 export type PortfolioDetail = { item: PortfolioItem; event: PortfolioEvent | null };
 export type PortfolioPhotoSource = 'event' | 'material' | 'social';
 export type PortfolioPhotoOption = { id: string; name: string; thumbnailUrl: string | null; width: number | null; height: number | null; bytes: number | null };
-export type PortfolioAiResult = {
-  title?: string; description?: string; detailedDescription?: string; metaDescription?: string; keywords?: string[];
-  features?: Array<{ icon: string; title: string; description: string }>; alts?: Array<{ src: string; alt: string }>;
-  model: string; usedPhotos: boolean;
-};
+/** Propozycje asystenta AI (kształt wspólny z serwerem — `portfolioShared.ts`). */
+export type PortfolioAiResult = PortfolioAiSuggestions;
 
 const ENDPOINT = '/bridge/native/v1/portfolio';
 

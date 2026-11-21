@@ -84,6 +84,8 @@ import SwiftUI
                 Button { store.layoutsShown = true } label: { Label("Układy grafik", systemImage: "rectangle.3.group") }
             }
             if home.access.create {
+                Button { Task { await store.createCanvas() } } label: { Label("Siatka / panorama", systemImage: "square.grid.3x3") }
+                    .help("Jedna duża grafika pocięta na kafelki siatki profilu albo slajdy panoramy")
                 Button { Task { await store.createPost() } } label: { Label("Nowy post", systemImage: "plus") }.buttonStyle(.borderedProminent)
             }
         }
@@ -239,6 +241,7 @@ import SwiftUI
             SocialImageView(url: post.thumbnailUrl).frame(width: 26, height: 33).clipShape(RoundedRectangle(cornerRadius: 3))
             VStack(alignment: .leading, spacing: 2) {
                 Text((post.scheduledDate.map(SocialDates.time) ?? "") + " " + post.displayTitle).font(.caption2).lineLimit(1)
+                if let canvas = post.canvas { Text(canvas.label).font(.system(size: 9)).foregroundStyle(theme.accent.opacity(0.85)).lineLimit(1) }
                 SocialStatusBadge(status: post.status)
             }
             Spacer(minLength: 0)
@@ -290,6 +293,7 @@ import SwiftUI
                             VStack(alignment: .leading, spacing: 5) {
                                 SocialStatusBadge(status: post.status)
                                 Text(post.displayTitle).font(.headline).lineLimit(1)
+                                if let canvas = post.canvas { Text(canvas.label).font(.caption).foregroundStyle(theme.accent) }
                                 Text(post.channels.map(\.label).joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
                                 Text(post.captionPreview.isEmpty ? "Bez opisu" : post.captionPreview).font(.caption).lineLimit(2)
                                 if post.status == .failed, let error = post.publishError { Text(error).font(.caption).foregroundStyle(.red).lineLimit(2) }

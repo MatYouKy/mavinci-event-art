@@ -59,6 +59,8 @@ struct PortfolioDraft: Equatable {
     @Published private(set) var details: [String: PortfolioDetail] = [:]
     @Published var detailErrors: [String: String] = [:]
     @Published var drafts: [String: PortfolioDraft] = [:]
+    /// Notatka dla asystenta AI (na realizację) — wspólna dla „Podstaw”, przycisków AI przy sekcjach i panelu bocznego.
+    @Published var briefs: [String: String] = [:]
     @Published var query = ""
     @Published var filter: PortfolioFilter = .all
     @Published var creating = false
@@ -387,7 +389,7 @@ struct PortfolioDraft: Equatable {
 
     // MARK: Asystent AI
     /// Propozycje tekstów do bieżącej (także niezapisanej) treści — nic się nie zapisuje, dopóki ich nie użyjesz.
-    func assist(_ id: String, brief: String, fields: [PortfolioAiField], usePhotos: Bool) async -> PortfolioAiResult? {
+    func assist(_ id: String, brief: String, fields: [PortfolioAiField], usePhotos: Bool, pending: String = "Asystent AI pisze") async -> PortfolioAiResult? {
         guard let workspace, let draft = drafts[id] else { return nil }
         guard workspace.canWrite else { workspace.error = "Asystent AI wymaga połączenia z serwerem CRM."; return nil }
         let body: [String: JSONValue] = [
@@ -395,7 +397,7 @@ struct PortfolioDraft: Equatable {
             "brief": .string(String(brief.prefix(1500))), "fields": .array(fields.map { JSONValue.string($0.rawValue) }), "usePhotos": .bool(usePhotos),
         ]
         do {
-            let data = try await workspace.withPending("Asystent AI pisze") { try await post("assist", body, timeout: 180) }
+            let data = try await workspace.withPending(pending) { try await post("assist", body, timeout: 180) }
             return try JSONDecoder().decode(PortfolioAiResult.self, from: data)
         } catch {
             workspace.error = failureText(error, "Asystent AI nie odpowiedział. Spróbuj ponownie.")

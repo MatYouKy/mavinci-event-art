@@ -89,6 +89,8 @@ export interface MenuItem {
 export const SOCIAL_MEDIA_PERMISSIONS = ['marketing_social_view', 'marketing_social_create', 'marketing_social_approve', 'marketing_social_publish'];
 /** Realizacje (Marketing → portfolio strony) — jak w CRM: edycja strony (`website_edit` albo `page_manage`). */
 export const PORTFOLIO_PERMISSIONS = ['website_edit', 'page_manage'];
+/** Strefa sprzedawcy → Prezentacje — jak w CRM: podgląd z dostępem do ofert albo „Prezentacje — podgląd”, przygotowanie — „Prezentacje — przygotowanie”. */
+export const PRESENTATIONS_PERMISSIONS = ['presentations_view', 'presentations_manage', 'offers_view', 'offers_create', 'offers_manage'];
 
 export const MENU_ITEMS: MenuItem[] = [
   { icon: 'home', label: 'Dashboard', screen: 'Dashboard' },
@@ -100,6 +102,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { icon: 'star', label: 'Wydarzenia', screen: 'Events', module: 'events' },
   { icon: 'check-square', label: 'Zadania', screen: 'Tasks', module: 'tasks' },
   { icon: 'phone-call', label: 'Zapytania', screen: 'Inquiries', module: 'inquiries' },
+  { icon: 'tablet', label: 'Prezentacje', screen: 'Presentations', anyPermissions: PRESENTATIONS_PERMISSIONS },
   { icon: 'briefcase', label: 'Przetargi', screen: 'Tenders', module: 'tenders' },
   { icon: 'clock', label: 'Czas pracy', screen: 'TimeTracking', module: 'time_tracking' },
   { icon: 'users', label: 'Pracownicy', screen: 'Employees', module: 'employees' },

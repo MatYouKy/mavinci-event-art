@@ -542,9 +542,14 @@ export async function portfolioAi(ctx: NativeContext, body: Row) {
     const { data } = await ctx.supabase.from('schema_org_places').select('name').eq('is_global', true).eq('locality', content.eventCitySlug).limit(1).maybeSingle();
     cityName = text(data?.name) || null;
   }
-  const photos = body.usePhotos === true || fields.includes('alts')
-    ? [...(content.image ? [content.image] : []), ...content.gallery].slice(0, 12).map((photo, index) => ({ index: index + 1, url: photo.thumb, src: photo.src }))
-    : [];
+  // Zdjęcia: do opisów alt — wszystkie bez opisu (gdy każde ma opis — wszystkie, nowe propozycje), do 24; jako kontekst
+  // tekstów („Uwzględnij zdjęcia”) — pierwsze 6.
+  const all = [...(content.image ? [content.image] : []), ...content.gallery];
+  const altTargets = fields.includes('alts') ? (all.some((photo) => !photo.alt) ? all.filter((photo) => !photo.alt) : all).slice(0, 24) : [];
+  const contextPhotos = body.usePhotos === true ? all.slice(0, 6) : [];
+  const chosen = all.filter((photo) => altTargets.includes(photo) || contextPhotos.includes(photo));
+  const photos = chosen.map((photo, index) => ({ index: index + 1, url: photo.thumb, src: photo.src, alt: altTargets.includes(photo) }));
+  const cities = fields.includes('city') || fields.includes('referenceCities') ? await portfolioCities(ctx) : [];
   return portfolioAssist({
     content,
     brief: text(body.brief).trim().slice(0, 1500),
@@ -558,7 +563,25 @@ export async function portfolioAi(ctx: NativeContext, body: Row) {
     cityName,
     fields,
     photos,
+    cities,
+    tagVocabulary: fields.includes('tags') ? await portfolioTagVocabulary(ctx) : [],
   });
+}
+
+/** Tagi używane na stronie i w kopiach roboczych realizacji (najczęstsze najpierw) — spójne nazewnictwo w propozycjach AI. */
+async function portfolioTagVocabulary(ctx: NativeContext) {
+  const [{ data: sites }, { data: drafts }] = await Promise.all([
+    ctx.supabase.from('portfolio_projects').select('tags').limit(500),
+    ctx.supabase.from('marketing_portfolio_items').select('tags:content->tags').limit(500),
+  ]);
+  const counts = new Map<string, number>();
+  for (const row of [...((sites || []) as Row[]), ...((drafts || []) as Row[])]) {
+    for (const tag of Array.isArray(row.tags) ? row.tags : []) {
+      const value = text(tag).trim().toLowerCase();
+      if (value) counts.set(value, (counts.get(value) || 0) + 1);
+    }
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pl')).slice(0, 40).map(([tag]) => tag);
 }
 
 // Social media ----------------------------------------------------------------------------------------------------------

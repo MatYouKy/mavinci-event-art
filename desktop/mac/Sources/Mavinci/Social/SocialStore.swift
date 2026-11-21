@@ -373,6 +373,21 @@ struct SocialLibraryFilter: Equatable {
         }
     }
 
+    /// Siatka profilu (domyślnie baner z 3 kafelków; kształt i układ zmienisz w kreatorze) albo panorama — jak w CRM.
+    func createCanvas() async {
+        guard let companyID = home?.company.id else { return }
+        let body: [String: JSONValue] = [
+            "companyId": .string(companyID),
+            "channels": .array([.string(SocialChannel.instagramFeed.rawValue)]),
+            "layout": .object(["id": .null, "key": .string("preset-grid-1-photo")]),
+            "title": .string("Siatka profilu"),
+        ]
+        if let detail = await runDetail("Tworzę siatkę profilu", "createPost", body, success: "Utworzono szkic siatki — wybierz zdjęcie i układ") {
+            tab = .calendar
+            openedPostID = detail.post.id
+        }
+    }
+
     /// Termin z kalendarza (przeciągnięcie) — godzina zostaje (bez terminu — 18:00).
     func schedule(_ postID: String, to day: Date) async {
         // `item`, nie `post` — lokalna nazwa nie może zasłaniać metody `post(_:_:)` wywoływanej niżej.

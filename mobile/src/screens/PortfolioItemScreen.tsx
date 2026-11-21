@@ -7,14 +7,17 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { colors, spacing, borderRadius, typography } from '../theme';
+import ReorderableList from '../components/ReorderableList';
 import {
-  PORTFOLIO_ICONS, PORTFOLIO_LIMITS, normalizePortfolioContent, portfolioChecklist, portfolioSearchPreview, portfolioSlug,
-  type PortfolioContent, type PortfolioFeature, type PortfolioPhoto,
+  PORTFOLIO_AI_SECTIONS, PORTFOLIO_ICONS, PORTFOLIO_LIMITS, normalizePortfolioContent, portfolioAddFeatures, portfolioCheckTarget, portfolioChecklist,
+  portfolioMergePhrases, portfolioSearchPreview, portfolioSlug, portfolioWithAlts, portfolioWithTitle,
+  type PortfolioAiSection, type PortfolioContent, type PortfolioFeature, type PortfolioPhoto,
 } from '../lib/portfolioShared';
 import {
-  pickPortfolioPhotos, portfolioErrorMessage, portfolioGet, portfolioPost, uploadPortfolioPhoto, type PickedPortfolioPhoto, type PortfolioCity, type PortfolioDetail,
-  type PortfolioEvent, type PortfolioHome, type PortfolioPhotoOption, type PortfolioPhotoSource,
+  pickPortfolioPhotos, portfolioErrorMessage, portfolioGet, portfolioPost, uploadPortfolioPhoto, type PickedPortfolioPhoto, type PortfolioAiResult, type PortfolioCity,
+  type PortfolioDetail, type PortfolioEvent, type PortfolioHome, type PortfolioPhotoOption, type PortfolioPhotoSource,
 } from '../lib/portfolioApi';
+import { AiButton, AiChip, AiLink, AiPanel, AiText, aiStyles } from '../components/Portfolio/PortfolioAiProposals';
 import PortfolioEventPicker, { portfolioEventSummary } from '../components/Portfolio/PortfolioEventPicker';
 import PortfolioPhotoPicker from '../components/Portfolio/PortfolioPhotoPicker';
 import PortfolioAssistantCard from '../components/Portfolio/PortfolioAssistantCard';
@@ -24,7 +27,8 @@ import { SOCIAL_CHANNELS, SOCIAL_CHANNEL_LABELS, SOCIAL_LIMITS, type SocialChann
 /*
  * Karta realizacji w aplikacji — ten sam zakres co CRM i Mac: podstawy i wydarzenie, zdjęcie główne i galeria (aparat,
  * galeria telefonu, pliki wydarzenia, Materiały, biblioteka social media; kolejność strzałkami, „Ustaw jako główne”, opisy alt),
- * opisy, elementy realizacji, SEO i miasta, lista kontrolna, podgląd w Google, asystent AI. „Zapisz” — kopia robocza,
+ * opisy, elementy realizacji, SEO i miasta, lista kontrolna (dotknięcie — przejście do pola), podgląd w Google, asystent AI — przy
+ * sekcjach (tytuł, opisy, elementy, SEO, opisy zdjęć; notatka dla asystenta w „Podstawach”) i w karcie zbiorczej. „Zapisz” — kopia robocza,
  * „Opublikuj” — strona (przy zmianie także na stronie: wybór wersji), „Wersja ze strony”, „Usuń ze strony”, „Usuń”,
  * „Utwórz post” — szkic posta social media z karuzelą zdjęć realizacji (otwiera kartę posta).
  */
@@ -99,6 +103,8 @@ export default function PortfolioItemScreen() {
   const route = useRoute<any>();
   const id: string = route.params?.id;
   const [detail, setDetail] = useState<PortfolioDetail | null>(null);
+  /** Przeciąganie wiersza (galeria, elementy) — przewijanie ekranu wyłączone. */
+  const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [cities, setCities] = useState<PortfolioCity[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -116,6 +122,21 @@ export default function PortfolioItemScreen() {
   const [socialPhotos, setSocialPhotos] = useState<string[]>([]);
   const [socialChannels, setSocialChannels] = useState<SocialChannel[]>(['instagram_feed', 'facebook_feed']);
   const leaving = useRef(false);
+  /** Lista kontrolna → pole: położenie kart (przewinięcie), pola tekstowe (fokus) i podświetlenie karty. */
+  const scrollRef = useRef<ScrollView>(null);
+  const cardY = useRef<Record<string, number>>({});
+  const inputs = useRef<Record<string, TextInput | null>>({});
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Asystent AI: notatka (wspólna dla sekcji i karty asystenta), propozycje pod sekcjami, krótka informacja po wstawieniu. */
+  const [aiBrief, setAiBrief] = useState('');
+  const [ai, setAi] = useState<Partial<Record<PortfolioAiSection, PortfolioAiResult>>>({});
+  const [aiNote, setAiNote] = useState<string | null>(null);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+  }, []);
 
   const apply = useCallback((value: PortfolioDetail) => {
     setDetail(value);
@@ -337,12 +358,69 @@ export default function PortfolioItemScreen() {
   const moveFeature = (from: number, to: number) => {
     if (to < 0 || to >= content.features.length) return;
     const features = [...content.features];
-    [features[from], features[to]] = [features[to], features[from]];
+    const [moved] = features.splice(from, 1);
+    features.splice(to, 0, moved);
     set({ features });
   };
 
   const allPhotos = [...(content.image ? [content.image] : []), ...content.gallery];
+  const missingAlt = allPhotos.filter((photo) => !photo.alt).length;
   const socialLimit = SOCIAL_LIMITS.slides + 1;
+
+  // Lista kontrolna → pole -----------------------------------------------------------------------------------------------
+  const CARD_OF: Record<string, string> = {
+    title: 'basics', slug: 'basics', image: 'photos', gallery: 'photos', description: 'descriptions', detailed: 'descriptions',
+    features: 'features', meta: 'seo', keywords: 'seo', city: 'seo',
+  };
+  const jump = (key: string) => {
+    const target = portfolioCheckTarget(key, content);
+    const card = CARD_OF[target] || 'basics';
+    scrollRef.current?.scrollTo({ y: Math.max(0, (cardY.current[card] || 0) - spacing.sm), animated: true });
+    setHighlight(card);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlight(null), 1800);
+    const field = key === 'alt'
+      ? (content.image && !content.image.alt ? 'alt:hero' : `alt:${content.gallery.find((photo) => !photo.alt)?.src || ''}`)
+      : ['title', 'description', 'detailed', 'meta'].includes(key) ? key : null;
+    if (field) setTimeout(() => inputs.current[field]?.focus(), 450);
+  };
+  const cardLayout = (card: string) => (event: { nativeEvent: { layout: { y: number } } }) => { cardY.current[card] = event.nativeEvent.layout.y; };
+  const marked = (card: string) => (highlight === card ? styles.cardHighlight : null);
+
+  // Asystent AI przy sekcjach --------------------------------------------------------------------------------------------
+  const flash = (message = 'Wstawiono propozycję — zapisz realizację') => {
+    setAiNote(message);
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => setAiNote(null), 3500);
+  };
+  const closeAi = (section: PortfolioAiSection) => setAi((current) => { const next = { ...current }; delete next[section]; return next; });
+  const askAi = async (section: PortfolioAiSection) => {
+    const config = PORTFOLIO_AI_SECTIONS[section];
+    setBusy(config.pending);
+    try {
+      const result = await portfolioPost<PortfolioAiResult>('assist', {
+        id: item.id, content, eventId: draft.eventId, brief: aiBrief, fields: config.fields, usePhotos: config.photos && allPhotos.length > 0,
+      });
+      if (section === 'alts') {
+        const all = missingAlt === 0;
+        const filled = portfolioWithAlts(content, result.alts || [], all).filled;
+        setDraft((current) => (current ? { ...current, content: { ...current.content, ...portfolioWithAlts(current.content, result.alts || [], all).patch } } : current));
+        if (filled) flash(`Uzupełniono opisy zdjęć: ${filled} — sprawdź je i zapisz realizację`);
+        else Alert.alert('Asystent AI', 'Asystent nie zaproponował opisów zdjęć — spróbuj ponownie.');
+        return;
+      }
+      setAi((current) => ({ ...current, [section]: result }));
+    } catch (cause) {
+      Alert.alert('Asystent AI', portfolioErrorMessage(cause, 'Asystent AI nie odpowiedział. Spróbuj ponownie.'));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const titleAi = ai.title?.titles || [];
+  const descriptionAi = ai.descriptions;
+  const featureAi = ai.features?.features || [];
+  const seoAi = ai.seo;
+  const sameText = (a: string, b: string) => a.toLocaleLowerCase('pl') === b.toLocaleLowerCase('pl');
   const createSocial = async () => {
     let current = detail;
     if (dirty) {
@@ -369,7 +447,7 @@ export default function PortfolioItemScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-      <ScrollView contentContainerStyle={{ padding: spacing.md, gap: spacing.md, paddingBottom: 120 }} keyboardShouldPersistTaps="handled"
+      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: spacing.md, gap: spacing.md, paddingBottom: 120 }} keyboardShouldPersistTaps="handled" scrollEnabled={!dragging}
         refreshControl={<RefreshControl refreshing={refreshing} tintColor={colors.primary.gold} onRefresh={refresh} />}>
         <View style={styles.card}>
           <Text style={styles.title}>{content.title || 'Realizacja bez tytułu'}</Text>
@@ -412,11 +490,31 @@ export default function PortfolioItemScreen() {
         )}
 
         {/* Podstawy */}
-        <View style={styles.card}>
+        <View style={[styles.card, marked('basics')]} onLayout={cardLayout('basics')}>
           <Text style={styles.section}>Podstawy</Text>
-          <Text style={styles.label}>Tytuł</Text>
-          <TextInput style={styles.input} value={content.title} onChangeText={(value) => set({ title: value.slice(0, PORTFOLIO_LIMITS.title) })}
+          <View style={[styles.row, { marginTop: spacing.sm }]}>
+            <Text style={[styles.label, { flex: 1, marginTop: 0 }]}>Tytuł</Text>
+            <AiButton label={PORTFOLIO_AI_SECTIONS.title.button} onPress={() => { void askAi('title'); }} />
+          </View>
+          <TextInput ref={(input) => { inputs.current.title = input; }} style={styles.input} value={content.title} onChangeText={(value) => set({ title: value.slice(0, PORTFOLIO_LIMITS.title) })}
             placeholder="Jubileusz 30 lat marki" placeholderTextColor={colors.text.tertiary} />
+          {titleAi.length > 0 && (
+            <AiPanel title="Propozycje tytułu — dotknij, żeby wstawić" onClose={() => closeAi('title')} onRetry={() => { void askAi('title'); }}>
+              <View style={{ gap: 6 }}>
+                {titleAi.map((title) => (
+                  <TouchableOpacity key={title} style={[styles.chip, content.title === title && styles.chipActive]}
+                    onPress={() => { set(portfolioWithTitle(content, title, onSite)); flash('Wstawiono tytuł — zapisz realizację'); }}>
+                    <Text style={[styles.body, { flex: 1 }, content.title === title && { color: colors.primary.gold }]}>{title}</Text>
+                    <Text style={styles.muted}>{title.length} zn.</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {!onSite && <Text style={styles.muted}>Adres strony zmieni się razem z tytułem, jeśli nie był ustawiony ręcznie.</Text>}
+            </AiPanel>
+          )}
+          <Text style={styles.label}>Notatka dla asystenta AI (opcjonalnie — motyw, dla kogo, co przygotowaliśmy; asystent użyje jej przy tytule, opisach, elementach i SEO)</Text>
+          <TextInput style={[styles.input, styles.multiline, { minHeight: 64 }]} multiline value={aiBrief} onChangeText={(value) => setAiBrief(value.slice(0, 1500))}
+            placeholder="Np. urodziny w stylu Wielkiego Gatsby'ego, scena z ekranem LED, kasyno, fotolustro, muzyka na żywo." placeholderTextColor={colors.text.tertiary} />
           <Text style={styles.label}>Adres strony {onSite ? '(opublikowany adres się nie zmienia)' : ''}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
             <Text style={styles.muted}>/portfolio/</Text>
@@ -495,8 +593,11 @@ export default function PortfolioItemScreen() {
         </View>
 
         {/* Zdjęcia */}
-        <View style={styles.card}>
-          <Text style={styles.section}>Zdjęcia ({(content.image ? 1 : 0) + content.gallery.length})</Text>
+        <View style={[styles.card, marked('photos')]} onLayout={cardLayout('photos')}>
+          <View style={styles.row}>
+            <Text style={[styles.section, { flex: 1 }]}>Zdjęcia ({(content.image ? 1 : 0) + content.gallery.length})</Text>
+            {allPhotos.length > 0 && <AiButton label={missingAlt ? `Opisz zdjęcia (${missingAlt})` : 'Nowe opisy zdjęć'} onPress={() => { void askAi('alts'); }} />}
+          </View>
           <View style={styles.wrap}>
             <TouchableOpacity style={styles.small} onPress={() => { void fromPhone('camera'); }}><Feather name="camera" size={14} color={colors.primary.gold} /><Text style={styles.smallText}>Aparat</Text></TouchableOpacity>
             <TouchableOpacity style={styles.small} onPress={() => { void fromPhone('library'); }}><Feather name="image" size={14} color={colors.primary.gold} /><Text style={styles.smallText}>Galeria telefonu</Text></TouchableOpacity>
@@ -511,18 +612,20 @@ export default function PortfolioItemScreen() {
                 <Image source={{ uri: content.image.thumb }} style={styles.hero} />
                 <TouchableOpacity style={styles.overlayButton} onPress={() => set({ image: null })}><Feather name="x" size={16} color={colors.white} /></TouchableOpacity>
               </View>
-              <TextInput style={[styles.input, !content.image.alt && styles.warnBorder]} value={content.image.alt} onChangeText={(value) => setAlt('hero', value)}
+              <TextInput ref={(input) => { inputs.current['alt:hero'] = input; }} style={[styles.input, !content.image.alt && styles.warnBorder]} value={content.image.alt} onChangeText={(value) => setAlt('hero', value)}
                 placeholder="Opis zdjęcia (alt)" placeholderTextColor={colors.text.tertiary} />
             </View>
           ) : (
             <View style={[styles.hero, styles.placeholder]}><Feather name="image" size={28} color={colors.text.tertiary} /></View>
           )}
-          <Text style={styles.label}>Galeria</Text>
-          {content.gallery.map((photo, index) => (
-            <View key={`${photo.src}-${index}`} style={styles.galleryRow}>
+          <Text style={styles.label}>Galeria{content.gallery.length > 1 ? ' — przeciągnij za uchwyt ≡, żeby zmienić kolejność' : ''}</Text>
+          <ReorderableList items={content.gallery} keyOf={(photo) => photo.src} onMove={moveGallery} onDragChange={setDragging}
+            renderItem={(photo, index, handle) => (
+            <View style={styles.galleryRow}>
+              {handle}
               <Image source={{ uri: photo.thumb }} style={styles.galleryThumb} />
               <View style={{ flex: 1, gap: 6 }}>
-                <TextInput style={[styles.input, { paddingVertical: 6 }, !photo.alt && styles.warnBorder]} value={photo.alt} onChangeText={(value) => setAlt(index, value)}
+                <TextInput ref={(input) => { inputs.current[`alt:${photo.src}`] = input; }} style={[styles.input, { paddingVertical: 6 }, !photo.alt && styles.warnBorder]} value={photo.alt} onChangeText={(value) => setAlt(index, value)}
                   placeholder="Opis (alt)" placeholderTextColor={colors.text.tertiary} />
                 <View style={{ flexDirection: 'row', gap: spacing.xs }}>
                   <TouchableOpacity style={styles.iconButton} disabled={index === 0} onPress={() => moveGallery(index, index - 1)}>
@@ -538,23 +641,45 @@ export default function PortfolioItemScreen() {
                 </View>
               </View>
             </View>
-          ))}
+          )} />
           {!content.gallery.length && <Text style={styles.muted}>Dodaj 5–12 zdjęć: szerokie ujęcie sali, scena, detale, goście (bez portretów).</Text>}
         </View>
 
         {/* Opisy */}
-        <View style={styles.card}>
-          <Text style={styles.section}>Opisy</Text>
+        <View style={[styles.card, marked('descriptions')]} onLayout={cardLayout('descriptions')}>
+          <View style={styles.row}>
+            <Text style={[styles.section, { flex: 1 }]}>Opisy</Text>
+            <AiButton label={PORTFOLIO_AI_SECTIONS.descriptions.button} onPress={() => { void askAi('descriptions'); }} />
+          </View>
+          {descriptionAi && (descriptionAi.description || descriptionAi.detailedDescription) ? (
+            <AiPanel title="Propozycje opisów" onClose={() => closeAi('descriptions')} onRetry={() => { void askAi('descriptions'); }}>
+              {descriptionAi.description ? (
+                <AiText label="Krótki opis" hint={`${descriptionAi.description.length} zn.`} text={descriptionAi.description}
+                  onUse={() => { set({ description: descriptionAi.description || '' }); flash(); }} />
+              ) : null}
+              {descriptionAi.detailedDescription ? (
+                <AiText label="Szczegółowy opis" hint={`${descriptionAi.detailedDescription.length} zn.`} text={descriptionAi.detailedDescription}
+                  onUse={() => { set({ detailedDescription: descriptionAi.detailedDescription || '' }); flash(); }} />
+              ) : null}
+              {descriptionAi.description && descriptionAi.detailedDescription ? (
+                <AiLink label="Użyj obu" onPress={() => {
+                  set({ description: descriptionAi.description || '', detailedDescription: descriptionAi.detailedDescription || '' });
+                  flash('Wstawiono oba opisy — zapisz realizację');
+                  closeAi('descriptions');
+                }} />
+              ) : null}
+            </AiPanel>
+          ) : null}
           <Text style={styles.label}>Krótki opis ({content.description.length}/{PORTFOLIO_LIMITS.description} — karta realizacji)</Text>
-          <TextInput style={[styles.input, styles.multiline]} multiline value={content.description}
+          <TextInput ref={(input) => { inputs.current.description = input; }} style={[styles.input, styles.multiline]} multiline value={content.description}
             onChangeText={(value) => set({ description: value.slice(0, PORTFOLIO_LIMITS.description) })} />
           <Text style={styles.label}>Szczegółowy opis ({content.detailedDescription.length} znaków, zalecane od {PORTFOLIO_LIMITS.detailedRecommended}; akapity oddziel pustą linią)</Text>
-          <TextInput style={[styles.input, styles.multiline, { minHeight: 180 }]} multiline value={content.detailedDescription}
+          <TextInput ref={(input) => { inputs.current.detailed = input; }} style={[styles.input, styles.multiline, { minHeight: 180 }]} multiline value={content.detailedDescription}
             onChangeText={(value) => set({ detailedDescription: value.slice(0, PORTFOLIO_LIMITS.detailedDescription) })} />
         </View>
 
         {/* Elementy realizacji */}
-        <View style={styles.card}>
+        <View style={[styles.card, marked('features')]} onLayout={cardLayout('features')}>
           <View style={styles.row}>
             <Text style={[styles.section, { flex: 1 }]}>Elementy realizacji ({content.features.length}/{PORTFOLIO_LIMITS.features})</Text>
             <TouchableOpacity style={styles.small} disabled={content.features.length >= PORTFOLIO_LIMITS.features}
@@ -562,9 +687,34 @@ export default function PortfolioItemScreen() {
               <Feather name="plus" size={14} color={colors.primary.gold} /><Text style={styles.smallText}>Dodaj</Text>
             </TouchableOpacity>
           </View>
-          {content.features.map((feature, index) => (
-            <View key={index} style={styles.featureRow}>
+          <AiButton label={PORTFOLIO_AI_SECTIONS.features.button} onPress={() => { void askAi('features'); }} />
+          {featureAi.length > 0 && (
+            <AiPanel title="Propozycje elementów realizacji" onClose={() => closeAi('features')} onRetry={() => { void askAi('features'); }}>
+              {featureAi.map((feature, index) => {
+                const exists = content.features.some((item) => sameText(item.title, feature.title));
+                return (
+                  <View key={`${feature.title}-${index}`} style={aiStyles.row}>
+                    <Feather name={ICON_GLYPHS[feature.icon] || 'star'} size={15} color={colors.primary.gold} />
+                    <Text style={[styles.body, { flex: 1 }]}>{feature.title}{feature.description ? <Text style={styles.muted}> — {feature.description}</Text> : null}</Text>
+                    {exists ? <Text style={styles.muted}>już jest</Text> : (
+                      <AiLink label="Dodaj" disabled={content.features.length >= PORTFOLIO_LIMITS.features}
+                        onPress={() => { set({ features: portfolioAddFeatures(content, [feature]) }); flash('Dodano element — zapisz realizację'); }} />
+                    )}
+                  </View>
+                );
+              })}
+              <View style={[aiStyles.row, { gap: spacing.md, marginTop: 4 }]}>
+                <AiLink label="Zastąp listę" onPress={() => { set({ features: featureAi.slice(0, PORTFOLIO_LIMITS.features) }); flash('Zastąpiono elementy realizacji — zapisz realizację'); closeAi('features'); }} />
+                <AiLink label="Dodaj nowe" onPress={() => { set({ features: portfolioAddFeatures(content, featureAi) }); flash('Dodano nowe elementy — zapisz realizację'); closeAi('features'); }} />
+              </View>
+            </AiPanel>
+          )}
+          {content.features.length > 1 && <Text style={styles.muted}>Przeciągnij element za uchwyt ≡, żeby zmienić kolejność (albo strzałki).</Text>}
+          <ReorderableList items={content.features} keyOf={(_, index) => String(index)} onMove={moveFeature} onDragChange={setDragging}
+            renderItem={(feature, index, handle) => (
+            <View style={styles.featureRow}>
               <View style={styles.row}>
+                {handle}
                 <TouchableOpacity style={[styles.small, { flex: 1 }]} onPress={() => setIconPicker(index)}>
                   <Feather name={ICON_GLYPHS[feature.icon] || 'star'} size={16} color={colors.primary.gold} />
                   <Text style={styles.smallText}>{iconLabel(feature.icon)}</Text>
@@ -584,19 +734,81 @@ export default function PortfolioItemScreen() {
               <TextInput style={styles.input} value={feature.description} onChangeText={(value) => setFeature(index, { description: value.slice(0, PORTFOLIO_LIMITS.featureDescription) })}
                 placeholder="Krótki opis (opcjonalnie)" placeholderTextColor={colors.text.tertiary} />
             </View>
-          ))}
+          )} />
         </View>
 
         {/* SEO i miasta */}
-        <View style={styles.card}>
-          <Text style={styles.section}>SEO i miasta</Text>
+        <View style={[styles.card, marked('seo')]} onLayout={cardLayout('seo')}>
+          <View style={styles.row}>
+            <Text style={[styles.section, { flex: 1 }]}>SEO i miasta</Text>
+            <AiButton label={PORTFOLIO_AI_SECTIONS.seo.button} onPress={() => { void askAi('seo'); }} />
+          </View>
+          {seoAi && (
+            <AiPanel title="Propozycje SEO — opis w Google, frazy, tagi i miasta" onClose={() => closeAi('seo')} onRetry={() => { void askAi('seo'); }}>
+              {seoAi.metaDescription ? (
+                <AiText label="Opis w Google" text={seoAi.metaDescription} hint={`${seoAi.metaDescription.length} zn.`}
+                  hintColor={seoAi.metaDescription.length >= PORTFOLIO_LIMITS.metaMin && seoAi.metaDescription.length <= PORTFOLIO_LIMITS.metaMax ? colors.status.success : colors.status.warning}
+                  onUse={() => { set({ metaDescription: seoAi.metaDescription || '' }); flash(); }} />
+              ) : null}
+              {(seoAi.keywords?.length || 0) > 0 && (
+                <View style={{ gap: 4 }}>
+                  <View style={[aiStyles.row, { gap: spacing.md }]}>
+                    <Text style={[styles.muted, { flex: 1 }]}>Słowa kluczowe</Text>
+                    <AiLink label="Dodaj brakujące" onPress={() => { set({ keywords: portfolioMergePhrases(content.keywords, seoAi.keywords || [], PORTFOLIO_LIMITS.keywords, PORTFOLIO_LIMITS.keyword) }); flash('Dodano słowa kluczowe — zapisz realizację'); }} />
+                    <AiLink label="Zastąp" onPress={() => { set({ keywords: portfolioMergePhrases([], seoAi.keywords || [], PORTFOLIO_LIMITS.keywords, PORTFOLIO_LIMITS.keyword) }); flash('Zastąpiono słowa kluczowe — zapisz realizację'); }} />
+                  </View>
+                  <View style={aiStyles.wrap}>
+                    {(seoAi.keywords || []).map((keyword) => <AiChip key={keyword} label={keyword} done={content.keywords.some((item) => sameText(item, keyword))} />)}
+                  </View>
+                </View>
+              )}
+              {(seoAi.tags?.length || 0) > 0 && (
+                <View style={aiStyles.wrap}>
+                  <Text style={styles.muted}>Tagi:</Text>
+                  {(seoAi.tags || []).map((tag) => <AiChip key={tag} label={tag} done={content.tags.includes(tag)} />)}
+                  <AiLink label="Dodaj" onPress={() => { set({ tags: portfolioMergePhrases(content.tags, seoAi.tags || [], PORTFOLIO_LIMITS.tags, PORTFOLIO_LIMITS.tag) }); flash('Dodano tagi — zapisz realizację'); }} />
+                </View>
+              )}
+              {seoAi.eventCitySlug !== undefined && (
+                <View style={aiStyles.wrap}>
+                  <Text style={styles.muted}>Miasto realizacji:</Text>
+                  {seoAi.eventCitySlug ? (
+                    <>
+                      <Text style={styles.body}>{cityName(seoAi.eventCitySlug)}</Text>
+                      {content.eventCitySlug === seoAi.eventCitySlug ? <Text style={[styles.muted, { color: colors.status.success }]}>ustawione</Text> : (
+                        <AiLink label="Ustaw" onPress={() => { set({ eventCitySlug: seoAi.eventCitySlug || null }); flash('Ustawiono miasto realizacji — zapisz realizację'); }} />
+                      )}
+                    </>
+                  ) : <Text style={styles.muted}>nie udało się ustalić — wpisz miasto w polu „Miejsce” albo wybierz z listy</Text>}
+                </View>
+              )}
+              {(seoAi.referenceCitySlugs?.length || 0) > 0 && (
+                <View style={aiStyles.wrap}>
+                  <Text style={styles.muted}>Priorytetowe miasta:</Text>
+                  {(seoAi.referenceCitySlugs || []).map((slug) => <AiChip key={slug} label={cityName(slug)} done={content.referenceCitySlugs.includes(slug)} />)}
+                  <AiLink label="Dodaj" onPress={() => { set({ referenceCitySlugs: portfolioMergePhrases(content.referenceCitySlugs, seoAi.referenceCitySlugs || [], 60, 120) }); flash('Dodano priorytetowe miasta — zapisz realizację'); }} />
+                </View>
+              )}
+              <AiLink label="Użyj wszystkich (frazy, tagi i miasta — dopisane do obecnych)" onPress={() => {
+                set({
+                  ...(seoAi.metaDescription ? { metaDescription: seoAi.metaDescription } : {}),
+                  keywords: portfolioMergePhrases(content.keywords, seoAi.keywords || [], PORTFOLIO_LIMITS.keywords, PORTFOLIO_LIMITS.keyword),
+                  tags: portfolioMergePhrases(content.tags, seoAi.tags || [], PORTFOLIO_LIMITS.tags, PORTFOLIO_LIMITS.tag),
+                  ...(seoAi.eventCitySlug ? { eventCitySlug: seoAi.eventCitySlug } : {}),
+                  referenceCitySlugs: portfolioMergePhrases(content.referenceCitySlugs, seoAi.referenceCitySlugs || [], 60, 120),
+                });
+                flash('Wstawiono propozycje SEO — zapisz realizację');
+                closeAi('seo');
+              }} />
+            </AiPanel>
+          )}
           <Text style={styles.label}>
             Opis w Google{' '}
             <Text style={{ color: metaLength >= PORTFOLIO_LIMITS.metaMin && metaLength <= PORTFOLIO_LIMITS.metaMax ? colors.status.success : colors.status.warning }}>
               {metaLength} znaków (zalecane {PORTFOLIO_LIMITS.metaMin}–{PORTFOLIO_LIMITS.metaMax})
             </Text>
           </Text>
-          <TextInput style={[styles.input, styles.multiline, { minHeight: 70 }]} multiline value={content.metaDescription}
+          <TextInput ref={(input) => { inputs.current.meta = input; }} style={[styles.input, styles.multiline, { minHeight: 70 }]} multiline value={content.metaDescription}
             onChangeText={(value) => set({ metaDescription: value.slice(0, PORTFOLIO_LIMITS.metaDescription) })} />
           <Text style={styles.label}>Słowa kluczowe (Enter albo przecinek)</Text>
           <ChipsInput values={content.keywords} onChange={(keywords) => set({ keywords })} placeholder="gala firmowa olsztyn" max={PORTFOLIO_LIMITS.keywords} maxLength={PORTFOLIO_LIMITS.keyword} />
@@ -638,15 +850,18 @@ export default function PortfolioItemScreen() {
         {/* Lista kontrolna i podgląd */}
         <View style={styles.card}>
           <Text style={styles.section}>Lista kontrolna</Text>
+          <Text style={styles.muted}>Dotknij punktu, żeby przejść do pola.</Text>
           {checks.map((check) => (
-            <View key={check.key} style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' }}>
+            <TouchableOpacity key={check.key} style={{ flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start', paddingVertical: 4 }}
+              onPress={() => jump(check.key)} accessibilityRole="button" accessibilityLabel={`Przejdź do pola: ${check.label}`}>
               <Feather name={check.ok ? 'check-circle' : check.required ? 'alert-triangle' : 'circle'} size={16}
                 color={check.ok ? colors.status.success : check.required ? colors.status.error : colors.status.warning} />
               <View style={{ flex: 1 }}>
-                <Text style={[styles.body, !check.ok && { color: check.required ? colors.status.error : colors.status.warning }]}>{check.label}{check.required && !check.ok ? ' (wymagane)' : ''}</Text>
+                <Text style={[styles.body, !check.ok && { color: check.required ? colors.status.error : colors.status.warning, textDecorationLine: 'underline' }]}>{check.label}{check.required && !check.ok ? ' (wymagane)' : ''}</Text>
                 {!check.ok && <Text style={styles.muted}>{check.hint}</Text>}
               </View>
-            </View>
+              <Feather name="chevron-right" size={16} color={colors.text.tertiary} />
+            </TouchableOpacity>
           ))}
         </View>
         <View style={styles.card}>
@@ -658,7 +873,7 @@ export default function PortfolioItemScreen() {
           </View>
         </View>
 
-        <PortfolioAssistantCard itemId={item.id} content={content} eventId={draft.eventId} onBusy={setBusy} onApply={set} />
+        <PortfolioAssistantCard itemId={item.id} content={content} eventId={draft.eventId} onSite={onSite} brief={aiBrief} onBrief={setAiBrief} onBusy={setBusy} onApply={set} />
 
         <View style={styles.card}>
           <Text style={styles.muted}>Utworzono {momentLabel(item.createdAt)}{item.createdByName ? ` · ${item.createdByName}` : ''}</Text>
@@ -667,6 +882,7 @@ export default function PortfolioItemScreen() {
       </ScrollView>
 
       <View style={styles.bottomBar}>
+        {aiNote && <Text style={[styles.muted, { color: colors.primary.gold, textAlign: 'center' }]}>✓ {aiNote}</Text>}
         {missing.length > 0 && (
           <Text style={[styles.muted, { color: colors.status.warning, textAlign: 'center' }]}>Uzupełnij przed publikacją: {missing.map((check) => check.label).join(', ')}</Text>
         )}
@@ -801,6 +1017,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background.primary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background.primary, padding: spacing.lg },
   card: { gap: spacing.xs, padding: spacing.md, borderRadius: borderRadius.lg, backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.default },
+  cardHighlight: { borderColor: colors.primary.gold, borderWidth: 2 },
   title: { color: colors.text.primary, fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.medium },
   section: { color: colors.text.primary, fontSize: typography.fontSizes.md, fontWeight: typography.fontWeights.medium, marginBottom: spacing.xs },
   label: { color: colors.text.secondary, fontSize: typography.fontSizes.xs, marginTop: spacing.sm },

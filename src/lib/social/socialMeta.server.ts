@@ -4,6 +4,7 @@ import { decryptMarketingCredentials } from '@/lib/marketing/crypto.server';
 import { META_SOCIAL_SCOPES, MetaGraphError, hasMetaScope, metaGraph, missingMetaScopes } from '@/lib/marketing/metaGraph.server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import { SOCIAL_BUCKET, downloadSocialFile, isObject, text, type Row } from './socialCommon.server';
+import { parseSocialLayout, socialCanvasTileCount } from './socialLayout';
 import {
   LINKEDIN_TEXT_LIMIT, LinkedInUncertainError, linkedInComments, linkedInRecentPost, loadLinkedInAccount, publishLinkedInPost, replyOnLinkedIn,
   type LinkedInAccount,
@@ -238,13 +239,14 @@ const uncertain = (error: unknown) =>
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function publicationRow(admin: SupabaseClient, post: Row, channel: SocialChannel, format: SocialFormat): Promise<PublicationRow> {
+/** Stan publikacji kanału (siatka profilu — osobny wiersz na kafelek, `tile` 1…n; zwykły post — `tile` 0). */
+async function publicationRow(admin: SupabaseClient, post: Row, channel: SocialChannel, format: SocialFormat, tile = 0): Promise<PublicationRow> {
   const { data: existing, error } = await admin.from('social_publications').select('id, status, attempts, attempted_at, container_id')
-    .eq('post_id', post.id).eq('channel', channel).maybeSingle();
+    .eq('post_id', post.id).eq('channel', channel).eq('tile', tile).maybeSingle();
   if (error) throw new Error(`Nie udało się odczytać stanu publikacji: ${error.message}`);
   if (existing) return existing as PublicationRow;
   const { data, error: insertError } = await admin.from('social_publications')
-    .insert({ post_id: post.id, company_id: post.company_id, channel, format, status: 'pending' })
+    .insert({ post_id: post.id, company_id: post.company_id, channel, tile, format, status: 'pending' })
     .select('id, status, attempts, attempted_at, container_id').single();
   if (insertError || !data) throw new Error(`Nie udało się zapisać stanu publikacji: ${insertError?.message || ''}`);
   return data as PublicationRow;
@@ -312,6 +314,8 @@ async function waitForContainer(token: string, containerId: string) {
  */
 async function recoverPublication(
   admin: SupabaseClient, account: SocialMetaAccount, channel: SocialChannel, publication: PublicationRow, message: string,
+  /** Identyfikatory postów Instagram już przypisane innym kafelkom tej siatki (ten sam opis — nie mylić kafelków). */
+  exclude: string[] = [],
 ): Promise<'done' | { container: string } | null> {
   const token = account.pageToken as string;
   const since = (publication.attempted_at ? new Date(publication.attempted_at).getTime() : Date.now()) - 5 * 60_000;
@@ -339,7 +343,7 @@ async function recoverPublication(
     const media = await metaGraph<{ data?: Row[] }>(path, {
       token, label: 'Instagram', params: { fields: 'id,caption,timestamp,permalink', limit: 10 },
     });
-    const found = (media.data || []).find((item) => notBefore(item.timestamp, since)
+    const found = (media.data || []).find((item) => notBefore(item.timestamp, since) && !exclude.includes(text(item.id))
       && (channel === 'instagram_story' || sameText(item.caption, message)));
     await updatePublication(admin, publication.id, {
       status: 'published', external_id: found ? text(found.id) : null, permalink: found ? httpsOrNull(found.permalink) : null,
@@ -363,13 +367,15 @@ async function recoverPublication(
  */
 async function publishChannel(
   admin: SupabaseClient, account: SocialMetaAccount, post: Row, channel: SocialChannel, format: SocialFormat, paths: string[], message: string,
+  /** Kafelek siatki profilu (osobny post Instagram) i posty już opublikowane z innych kafelków. */
+  tile = 0, exclude: string[] = [],
 ) {
-  const publication = await publicationRow(admin, post, channel, format);
+  const publication = await publicationRow(admin, post, channel, format, tile);
   if (publication.status === 'published') return;
   const token = account.pageToken as string;
   let reusable: string | null = null;
   if (publication.status === 'sending') {
-    const recovered = await recoverPublication(admin, account, channel, publication, message);
+    const recovered = await recoverPublication(admin, account, channel, publication, message, exclude);
     if (recovered === 'done') return;
     reusable = recovered?.container || null;
   }
@@ -449,7 +455,8 @@ async function publishChannel(
       token,
       method: 'POST',
       label: 'Instagram',
-      params: channel === 'instagram_story' ? { image_url: imageUrl, media_type: 'STORIES' } : { image_url: imageUrl, caption: message },
+      // Kafelek siatki bez hashtagów — bez opisu.
+      params: channel === 'instagram_story' ? { image_url: imageUrl, media_type: 'STORIES' } : message ? { image_url: imageUrl, caption: message } : { image_url: imageUrl },
       timeoutMs: 90_000,
     });
     container = text(created.id);
@@ -531,9 +538,10 @@ async function publishClaimedPost(admin: SupabaseClient, postId: string, actorId
     const { data: problems } = await admin.rpc('social_post_problems', { p_post_id: postId, p_require_consent: true });
     if (Array.isArray(problems) && problems.length) throw new Error((problems as unknown[]).map(text).join(' '));
     const account = await loadMetaAccount(admin, String(post.company_id));
-    const [{ data: variantData }, { data: slideData }] = await Promise.all([
-      admin.from('social_post_variants').select('format, rendered_path, asset_id').eq('post_id', postId),
+    const [{ data: variantData }, { data: slideData }, { data: tileData }] = await Promise.all([
+      admin.from('social_post_variants').select('format, rendered_path, render_hash, asset_id, layout').eq('post_id', postId),
       admin.from('social_post_slides').select('format, position, rendered_path').eq('post_id', postId).order('position'),
+      admin.from('social_post_tiles').select('position, rendered_path, render_hash').eq('post_id', postId).order('position'),
     ]);
     const rendered = new Map<SocialFormat, string>();
     for (const variant of (variantData || []) as Row[]) {
@@ -543,7 +551,60 @@ async function publishClaimedPost(admin: SupabaseClient, postId: string, actorId
     const channels = CHANNEL_ORDER.filter((channel) => Array.isArray(post.channels) && post.channels.includes(channel));
     const hashtags = Array.isArray(post.hashtags) ? (post.hashtags as unknown[]).map(text) : [];
     const message = socialPublicationText(text(post.caption), hashtags);
-    for (const channel of channels) {
+    // Siatka profilu / panorama: kafelki z jednego, aktualnego renderu dużej grafiki (wariant 4:5).
+    const canvasVariant = ((variantData || []) as Row[]).find((variant) => variant.format === '4:5' && parseSocialLayout(variant.layout)?.canvas);
+    const canvas = canvasVariant ? parseSocialLayout(canvasVariant.layout)?.canvas || null : null;
+    if (canvas) {
+      const tiles = ((tileData || []) as Row[]).filter((tile) => Number(tile.position) <= socialCanvasTileCount(canvas));
+      const ready = Boolean(canvasVariant?.asset_id) && tiles.length === socialCanvasTileCount(canvas)
+        && tiles.every((tile) => tile.rendered_path && tile.render_hash === canvasVariant?.render_hash);
+      for (const channel of channels) {
+        let tile = 0;
+        try {
+          const problem = account.channels[channel].problem;
+          if (problem) throw new PrecheckError(problem);
+          if (!ready) throw new PrecheckError('brak aktualnych kafelków — zapisz post, żeby je wygenerować.');
+          if (canvas.mode === 'grid') {
+            if (channel !== 'instagram_feed') throw new PrecheckError('siatkę profilu publikujemy tylko na Instagramie.');
+            if (message.length > INSTAGRAM_CAPTION_LIMIT) {
+              throw new PrecheckError(`opis z hashtagami ma ${message.length} znaków — Instagram przyjmuje najwyżej ${INSTAGRAM_CAPTION_LIMIT}.`);
+            }
+            // Od ostatniego kafelka do pierwszego — w profilu najnowszy (kafelek 1) jest w lewym górnym rogu. Opis z hashtagami
+            // przy kafelku 1, przy pozostałych same hashtagi. Błąd kafelka zatrzymuje kolejne (siatka bez przesunięć).
+            const tagsOnly = hashtags.length ? socialPublicationText('', hashtags) : '';
+            for (const item of [...tiles].reverse()) {
+              tile = Number(item.position);
+              const { data: done } = await admin.from('social_publications').select('external_id')
+                .eq('post_id', postId).eq('channel', channel).eq('status', 'published').gt('tile', 0);
+              const exclude = ((done || []) as Row[]).map((row) => text(row.external_id)).filter(Boolean);
+              await publishChannel(admin, account, post, channel, '4:5', [String(item.rendered_path)], tile === 1 ? message : tagsOnly, tile, exclude);
+              if (tile > 1) await sleep(2500);
+            }
+            continue;
+          }
+          if (channel === 'instagram_story') throw new PrecheckError('panorama nie trafia do relacji — usuń ten kanał.');
+          if (channel === 'instagram_feed' && message.length > INSTAGRAM_CAPTION_LIMIT) {
+            throw new PrecheckError(`opis z hashtagami ma ${message.length} znaków — Instagram przyjmuje najwyżej ${INSTAGRAM_CAPTION_LIMIT}.`);
+          }
+          if (channel === 'linkedin_page' && message.length > LINKEDIN_TEXT_LIMIT) {
+            throw new PrecheckError(`opis z hashtagami ma ${message.length} znaków — LinkedIn przyjmuje najwyżej ${LINKEDIN_TEXT_LIMIT}.`);
+          }
+          const paths = tiles.map((item) => String(item.rendered_path));
+          if (channel === 'linkedin_page') await publishLinkedInChannel(admin, account.linkedinAccount, post, '4:5', paths, message);
+          else await publishChannel(admin, account, post, channel, '4:5', paths, message);
+        } catch (error) {
+          const failure = `${SOCIAL_CHANNEL_LABELS[channel]}${tile ? ` (kafelek ${tile})` : ''}: ${errorMessage(error)}`.slice(0, 2000);
+          errors.push(failure);
+          const { data: publication } = await admin.from('social_publications').select('id, status')
+            .eq('post_id', postId).eq('channel', channel).eq('tile', tile).maybeSingle();
+          if (publication && publication.status !== 'published') {
+            const keep = error instanceof UncertainPublishError || error instanceof PrecheckError;
+            await admin.from('social_publications').update(keep ? { error: failure } : { status: 'failed', error: failure }).eq('id', publication.id);
+          }
+        }
+      }
+    }
+    for (const channel of canvas ? [] : channels) {
       try {
         const format = channelFormat(channel, Array.from(rendered.keys()));
         if (!format) throw new PrecheckError('brak wygenerowanej grafiki — zapisz post, żeby ją utworzyć.');
@@ -567,7 +628,7 @@ async function publishClaimedPost(admin: SupabaseClient, postId: string, actorId
       } catch (error) {
         const failure = `${SOCIAL_CHANNEL_LABELS[channel]}: ${errorMessage(error)}`.slice(0, 2000);
         errors.push(failure);
-        const { data: publication } = await admin.from('social_publications').select('id, status').eq('post_id', postId).eq('channel', channel).maybeSingle();
+        const { data: publication } = await admin.from('social_publications').select('id, status').eq('post_id', postId).eq('channel', channel).eq('tile', 0).maybeSingle();
         if (publication && publication.status !== 'published') {
           // Niepewny wynik wysyłki i braki sprzed wysyłki nie zmieniają stanu kanału (bez ryzyka podwójnej publikacji).
           const keep = error instanceof UncertainPublishError || error instanceof PrecheckError;

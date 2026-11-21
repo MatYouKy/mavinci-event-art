@@ -372,6 +372,87 @@ export function portfolioKeepPhotoDetails(next: PortfolioContent, previous: Port
   return { ...next, image: next.image ? merge(next.image) : null, gallery: next.gallery.map(merge) };
 }
 
+/**
+ * Lista kontrolna → pole w kreatorze: identyfikator miejsca do przewinięcia i podświetlenia (CRM: `id` elementu
+ * `portfolio-<pole>`, Mac i telefon — kotwice o tych samych nazwach). Opisy alt — pierwsze zdjęcie bez opisu.
+ */
+export function portfolioCheckTarget(key: string, content: PortfolioContent): string {
+  if (key === 'alt') {
+    if (content.image && !content.image.alt) return 'image';
+    return content.gallery.length ? 'gallery' : 'image';
+  }
+  if (key === 'gallery') return 'gallery';
+  return ['title', 'slug', 'image', 'description', 'meta', 'detailed', 'keywords', 'city', 'features'].includes(key) ? key : 'title';
+}
+
+/** Propozycje asystenta AI (`op=assist`) — tylko pola zamówionych sekcji. */
+export type PortfolioAiSuggestions = {
+  title?: string;
+  /** 3–5 propozycji tytułu do wyboru. */
+  titles?: string[];
+  description?: string;
+  detailedDescription?: string;
+  metaDescription?: string;
+  keywords?: string[];
+  tags?: string[];
+  /** Miasto realizacji z listy miast strony (`null` — nie wiadomo). */
+  eventCitySlug?: string | null;
+  referenceCitySlugs?: string[];
+  features?: PortfolioFeature[];
+  alts?: Array<{ src: string; alt: string }>;
+  model: string;
+  usedPhotos: boolean;
+};
+
+/** Asystent AI przy sekcjach kreatora: pola, o które prosimy, i czy pokazać AI zdjęcia (kontekst). */
+export type PortfolioAiSection = 'title' | 'descriptions' | 'features' | 'seo' | 'alts';
+export const PORTFOLIO_AI_SECTIONS: Record<PortfolioAiSection, { fields: string[]; photos: boolean; button: string; pending: string }> = {
+  title: { fields: ['titles'], photos: true, button: 'Zaproponuj tytuł', pending: 'Asystent AI szuka tytułu' },
+  descriptions: { fields: ['description', 'detailedDescription'], photos: true, button: 'Napisz opisy', pending: 'Asystent AI pisze opisy' },
+  features: { fields: ['features'], photos: true, button: 'Zaproponuj elementy', pending: 'Asystent AI dobiera elementy realizacji' },
+  seo: { fields: ['metaDescription', 'keywords', 'tags', 'city', 'referenceCities'], photos: false, button: 'Uzupełnij SEO', pending: 'Asystent AI przygotowuje SEO' },
+  alts: { fields: ['alts'], photos: true, button: 'Opisz zdjęcia', pending: 'Asystent AI opisuje zdjęcia' },
+};
+
+/** Nowy tytuł; adres strony idzie za tytułem, gdy realizacji nie ma na stronie, a adres był pusty albo powstał ze starego tytułu. */
+export function portfolioWithTitle(content: PortfolioContent, title: string, onSite: boolean): Partial<PortfolioContent> {
+  const clean = line(title, PORTFOLIO_LIMITS.title);
+  const followSlug = !onSite && (!content.slug || content.slug === portfolioSlug(content.title));
+  return followSlug ? { title: clean, slug: portfolioSlug(clean) } : { title: clean };
+}
+
+/** Elementy z propozycji, których jeszcze nie ma (ten sam tytuł bez względu na wielkość liter), dopisane do limitu. */
+export function portfolioAddFeatures(content: PortfolioContent, proposed: PortfolioFeature[]): PortfolioFeature[] {
+  const known = new Set(content.features.map((feature) => feature.title.toLocaleLowerCase('pl-PL')));
+  const next = [...content.features];
+  for (const feature of proposed) {
+    const key = feature.title.toLocaleLowerCase('pl-PL');
+    if (!feature.title || known.has(key) || next.length >= PORTFOLIO_LIMITS.features) continue;
+    known.add(key);
+    next.push(feature);
+  }
+  return next;
+}
+
+/** Frazy (słowa kluczowe, tagi, miasta) dopisane bez powtórzeń do limitu. */
+export function portfolioMergePhrases(values: string[], added: string[], max: number, maxLength: number): string[] {
+  return list([...values, ...added], max, maxLength);
+}
+
+/** Opisy alt z propozycji: tylko zdjęcia bez opisu (`all` — także zastąpienie istniejących). */
+export function portfolioWithAlts(content: PortfolioContent, alts: Array<{ src: string; alt: string }>, all = false): { patch: Partial<PortfolioContent>; filled: number } {
+  const map = new Map(alts.map((item) => [item.src, line(item.alt, PORTFOLIO_LIMITS.alt)]));
+  let filled = 0;
+  const fill = (photo: PortfolioPhoto): PortfolioPhoto => {
+    const alt = map.get(photo.src);
+    if (!alt || (photo.alt && !all)) return photo;
+    filled += 1;
+    return { ...photo, alt };
+  };
+  const patch: Partial<PortfolioContent> = { image: content.image ? fill(content.image) : null, gallery: content.gallery.map(fill) };
+  return { patch, filled };
+}
+
 /** Podgląd wyniku w Google: tytuł strony realizacji i opis (jak w metadanych strony). */
 export function portfolioSearchPreview(content: PortfolioContent) {
   return {

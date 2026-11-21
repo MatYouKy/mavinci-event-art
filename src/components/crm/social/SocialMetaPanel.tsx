@@ -89,7 +89,14 @@ export function MetaPublishPanel({ detail, onRefreshMetrics }: { detail: SocialP
       )}
       <ul className="space-y-1.5 text-xs">
         {post.channels.map((channel) => {
-          const publication = publications.find((item) => item.channel === channel);
+          // Siatka profilu: osobny post Instagram na kafelek — stan zbiorczy i lista kafelków.
+          const tileRows = detail.canvas?.mode === 'grid'
+            ? publications.filter((item) => item.channel === channel && (item.tile || 0) > 0).sort((a, b) => (a.tile || 0) - (b.tile || 0)) : [];
+          const tileTotal = detail.canvas?.mode === 'grid' ? detail.canvas.tiles : 0;
+          const tilesPublished = tileRows.filter((item) => item.status === 'published').length;
+          const publication = tileTotal
+            ? (tileRows.length ? { ...(tileRows.find((item) => item.status !== 'published') || tileRows[0]), status: tilesPublished === tileTotal ? 'published' : tileRows.some((item) => item.status === 'failed') ? 'failed' : tileRows.some((item) => item.status === 'sending') ? 'sending' : 'pending' } : undefined)
+            : publications.find((item) => item.channel === channel);
           const problem = meta?.channels[channel]?.problem;
           const manual = manualChannel(meta, channel);
           return (
@@ -102,10 +109,22 @@ export function MetaPublishPanel({ detail, onRefreshMetrics }: { detail: SocialP
                 <span className="font-medium">{SOCIAL_CHANNEL_LABELS[channel]}</span>
                 <span className="text-[#e5e4e2]/45">
                   {publication ? SOCIAL_PUBLICATION_STATUS_LABELS[publication.status] || publication.status : manual ? 'publikacja ręczna' : problem ? 'niegotowy' : 'gotowy'}
+                  {tileTotal ? ` · ${tilesPublished}/${tileTotal} kafelków` : ''}
                 </span>
                 <span className="flex-1" />
-                {publication?.permalink && <a href={publication.permalink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#d3bb73] hover:underline">Otwórz<ExternalLink className="h-3 w-3" /></a>}
+                {!tileTotal && publication?.permalink && <a href={publication.permalink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[#d3bb73] hover:underline">Otwórz<ExternalLink className="h-3 w-3" /></a>}
               </div>
+              {tileRows.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {tileRows.map((item) => (
+                    item.permalink
+                      ? <a key={item.tile} href={item.permalink} target="_blank" rel="noreferrer" className="rounded border border-emerald-400/30 px-1.5 py-0.5 text-[10px] text-emerald-200 hover:underline">Kafelek {item.tile}</a>
+                      : <span key={item.tile} title={item.error || ''} className={`rounded border px-1.5 py-0.5 text-[10px] ${item.status === 'failed' ? 'border-red-400/30 text-red-200' : 'border-[#d3bb73]/15 text-[#e5e4e2]/50'}`}>
+                        Kafelek {item.tile}: {SOCIAL_PUBLICATION_STATUS_LABELS[item.status] || item.status}
+                      </span>
+                  ))}
+                </div>
+              )}
               {publication?.status === 'published' && publication.publishedAt && <p className="mt-0.5 text-[#e5e4e2]/40">{dateTimeLabel(publication.publishedAt)}</p>}
               {publication?.status === 'published' && (channel === 'linkedin_page'
                 ? <p className="mt-1 text-[#e5e4e2]/40">Wyniki postów LinkedIn nie są jeszcze pobierane do CRM.</p>

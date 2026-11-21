@@ -18,7 +18,8 @@ export const maxDuration = 300;
  * POST JSON op=create {title?, eventId?} | save {id, version, content, eventId} | publish {id, version, overwrite?} |
  *   discard {id} (kopia robocza = wersja ze strony) | unpublish {id, version} | delete {id, version, removeFromSite} |
  *   import {id, source: event | material | social, fileId, alt?} → `{photo}` |
- *   assist {id, content, eventId, brief, fields[], usePhotos} (asystent AI — propozycje bez zapisu) |
+ *   assist {id, content, eventId, brief, fields[], usePhotos} (asystent AI — propozycje bez zapisu; pola: title, titles,
+ *   description, detailedDescription, metaDescription, keywords, tags, city, referenceCities, features, alts — opisy zdjęć bez alt) |
  *   socialPost {id, photos?[], channels?[], companyId?} → `{postId, companyId, photos}` (szkic posta social media z karuzelą).
  */
 

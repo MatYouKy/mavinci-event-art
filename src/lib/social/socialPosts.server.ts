@@ -7,8 +7,8 @@ import {
   signedUrls, socialAccess, socialCompanies, text, uuidOrNull, type Row,
 } from './socialCommon.server';
 import {
-  graphicSpec, loadTemplates, pickTemplate, renderHash, renderOverlay, renderVariant, templateDTO, type LoadedTemplate,
-  type SocialGraphicSpec, type SocialTemplateDTO,
+  graphicSpec, loadTemplates, pickTemplate, renderCanvas, renderHash, renderOverlay, renderVariant, templateDTO, type LoadedTemplate,
+  type RenderedTile, type SocialGraphicSpec, type SocialTemplateDTO,
 } from './socialTemplate.server';
 import {
   SOCIAL_CHANNELS, SOCIAL_FORMATS, SOCIAL_LIMITS, SOCIAL_SLIDE_FORMATS, channelFormat, defaultFormatsForChannels, effectiveCrop, fitCrop, formatSlug,
@@ -21,8 +21,8 @@ import {
 import { createZip } from './zip.server';
 import { LINKEDIN_TEXT_LIMIT } from './socialLinkedIn.server';
 import {
-  SOCIAL_LAYOUT_PRESETS, fitAspectCrop, parseSocialLayout, socialAspectCrop, socialCropFitsAspect, socialLayoutPreset, socialLayoutSlotAspect,
-  socialLayoutSlots, type SocialLayoutDefinition,
+  SOCIAL_CANVAS_PRESETS, SOCIAL_LAYOUT_PRESETS, fitAspectCrop, parseSocialCanvas, parseSocialLayout, socialAspectCrop, socialCanvasLabel, socialCanvasSize,
+  socialCanvasTileCount, socialCropFitsAspect, socialLayoutPreset, socialLayoutSlotAspect, socialLayoutSlots, type SocialCanvas, type SocialLayoutDefinition,
 } from './socialLayout';
 import {
   INSTAGRAM_CAPTION_LIMIT, errorMessage, instagramRecentMedia, metaStatusDTO, replyAsBrand, runSocialPublishing, socialMetaAccount,
@@ -41,6 +41,9 @@ import {
  * Układy jako dane (`socialLayout.ts`): wariant ma wskazany układ (`layout_id` — układ marki, albo gotowy układ) i migawkę
  * jego definicji (`layout`) z chwili zapisu; kolaż — zdjęcia w miejscach 1–3 w `social_post_slots` (miejsce 0 to zdjęcie
  * wariantu). Kadr zdjęcia w układzie ma proporcje miejsca (nie formatu).
+ * Siatka profilu i panorama (Etap G): układ z `canvas` (duża grafika) — post ma jeden wariant 4:5, serwer tnie render na kafelki
+ * (`social_post_tiles`); siatka publikuje się na Instagramie jako osobne posty od ostatniego kafelka do pierwszego (opis
+ * z hashtagami na kafelku 1, na pozostałych same hashtagi), panorama — jako karuzela (Instagram, Facebook, LinkedIn).
  * Te same funkcje obsługują web CRM, Maca i telefon (`/bridge/native/v1/social`).
  */
 
@@ -71,6 +74,8 @@ export type SocialPostListItem = {
   formats: SocialFormat[];
   /** Liczba zdjęć w poście (okładka + karuzela); 1 — pojedyncze zdjęcie. */
   photos: number;
+  /** Siatka profilu albo panorama (duża grafika pocięta na kafelki); `null` — zwykły post. */
+  canvas: { mode: 'grid' | 'panorama'; tiles: number } | null;
   authorId: string | null;
   authorName: string | null;
   revision: number;
@@ -86,7 +91,7 @@ async function listItems(ctx: NativeContext, rows: Row[]): Promise<SocialPostLis
   if (!rows.length) return [];
   const ids = rows.map((row) => String(row.id));
   const [{ data: variants }, names, { data: slides }] = await Promise.all([
-    ctx.supabase.from('social_post_variants').select('post_id, format, rendered_path, asset:social_assets(thumbnail_path)').in('post_id', ids),
+    ctx.supabase.from('social_post_variants').select('post_id, format, rendered_path, canvas:layout->canvas, asset:social_assets(thumbnail_path)').in('post_id', ids),
     employeeNames(ctx.supabase, rows.map((row) => row.author_id)),
     ctx.supabase.from('social_post_slides').select('post_id, position').in('post_id', ids),
   ]);
@@ -113,6 +118,7 @@ async function listItems(ctx: NativeContext, rows: Row[]): Promise<SocialPostLis
   const urls = await signedUrls(ctx.supabase, thumbPaths);
   return rows.map((row, index) => {
     const list = byPost.get(String(row.id)) || [];
+    const canvas = list.map((item) => parseSocialCanvas(item.canvas)).find(Boolean) || null;
     return {
       id: String(row.id),
       companyId: String(row.company_id),
@@ -123,7 +129,8 @@ async function listItems(ctx: NativeContext, rows: Row[]): Promise<SocialPostLis
       captionPreview: text(row.caption).slice(0, 160),
       thumbnailUrl: thumbPaths[index] ? urls.get(thumbPaths[index] as string) || null : null,
       formats: SOCIAL_FORMATS.filter((format) => list.some((item) => item.format === format)),
-      photos: 1 + (slideCount.get(String(row.id))?.size || 0),
+      photos: canvas ? socialCanvasTileCount(canvas) : 1 + (slideCount.get(String(row.id))?.size || 0),
+      canvas: canvas ? { mode: canvas.mode, tiles: socialCanvasTileCount(canvas) } : null,
       authorId: uuidOrNull(row.author_id),
       authorName: row.author_id ? names.get(String(row.author_id).toLowerCase()) || null : null,
       revision: Number(row.revision) || 1,
@@ -319,14 +326,14 @@ function postLayoutDTO(variants: VariantRow[]): SocialPostLayoutDTO | null {
   };
 }
 
-/** Gotowe układy i układy marki (bez archiwalnych — chyba że post go używa). */
+/** Gotowe układy i układy marki (bez archiwalnych — chyba że post go używa; bez układów dużej grafiki). */
 async function layoutOptions(ctx: NativeContext, companyId: string, usedId: string | null = null): Promise<SocialLayoutOption[]> {
   const { data } = await ctx.supabase.from('social_layouts').select(LAYOUT_FIELDS).eq('company_id', companyId).order('name');
   const brand = ((data || []) as Row[])
     .filter((row) => !row.is_archived || String(row.id) === usedId)
     .map((row): SocialLayoutOption | null => {
       const definition = parseSocialLayout(row.definition);
-      return definition ? {
+      return definition && !definition.canvas ? {
         id: String(row.id), key: null, name: text(row.name), description: '', definition, slots: socialLayoutSlots(definition), archived: row.is_archived === true,
       } : null;
     })
@@ -339,6 +346,45 @@ async function layoutOptions(ctx: NativeContext, companyId: string, usedId: stri
     })),
   ];
 }
+
+/** Gotowe układy siatki profilu i panoramy (kształt — `definition.canvas`). */
+const canvasLayoutOptions = (): SocialLayoutOption[] => SOCIAL_CANVAS_PRESETS.map((preset) => ({
+  id: null, key: preset.key, name: preset.name, description: preset.description, definition: preset.definition,
+  slots: socialLayoutSlots(preset.definition), archived: false,
+}));
+
+/** Duża grafika posta (siatka, panorama) — z migawki układu wariantu. */
+const variantsCanvas = (variants: Row[]): SocialCanvas | null => variants.map((variant) => variantLayout(variant)?.canvas || null).find(Boolean) || null;
+
+/** Kanały dozwolone dla dużej grafiki: siatka — tylko feed Instagram; panorama — bez relacji. */
+function canvasChannels(canvas: SocialCanvas, channels: SocialChannel[]): SocialChannel[] {
+  if (canvas.mode === 'grid') return ['instagram_feed'];
+  const allowed = channels.filter((channel) => channel !== 'instagram_story');
+  return allowed.length ? allowed : ['instagram_feed', 'facebook_feed'];
+}
+
+async function tileRows(ctx: NativeContext, postId: string): Promise<Row[]> {
+  const { data, error } = await ctx.supabase.from('social_post_tiles').select('id, post_id, position, rendered_path, render_hash, rendered_at')
+    .eq('post_id', postId).order('position');
+  check(error, 'Nie udało się pobrać kafelków.');
+  return (data || []) as Row[];
+}
+
+const renderedTiles = (rows: Row[]): RenderedTile[] => rows.map((row) => ({
+  id: String(row.id), position: Number(row.position), renderedPath: text(row.rendered_path) || null, renderHash: text(row.render_hash) || null,
+}));
+
+/** Duża grafika w karcie posta: kształt, wymiary i opis. */
+export type SocialCanvasDTO = {
+  mode: 'grid' | 'panorama'; rows: number | null; slides: number | null; tiles: number; width: number; height: number; label: string;
+};
+/** Kafelek / slajd dużej grafiki (1 — lewy górny); siatka publikuje się od ostatniego. */
+export type SocialTileDTO = { position: number; renderedUrl: string | null; upToDate: boolean };
+
+const canvasDTO = (canvas: SocialCanvas): SocialCanvasDTO => ({
+  mode: canvas.mode, rows: canvas.mode === 'grid' ? canvas.rows : null, slides: canvas.mode === 'panorama' ? canvas.slides : null,
+  tiles: socialCanvasTileCount(canvas), ...socialCanvasSize(canvas), label: socialCanvasLabel(canvas),
+});
 
 type SlideRow = Row & { assetRow: Row | null };
 
@@ -422,6 +468,10 @@ export type SocialPostDetail = {
   layout: SocialPostLayoutDTO | null;
   layouts: SocialLayoutOption[];
   slots: SocialSlotDTO[];
+  /** Siatka profilu / panorama: kształt dużej grafiki, kafelki (po zapisie) i gotowe układy dużej grafiki do wyboru. */
+  canvas: SocialCanvasDTO | null;
+  tiles: SocialTileDTO[];
+  canvasLayouts: SocialLayoutOption[];
   channelFormats: Partial<Record<SocialChannel, SocialFormat | null>>;
   /** `meta` — co blokuje automatyczną publikację w Meta (konto, uprawnienia, grafiki). */
   problems: { submit: string[]; publish: string[]; meta: string[] };
@@ -442,6 +492,8 @@ export type SocialPostDetail = {
 
 export type SocialPublicationDTO = {
   channel: SocialChannel;
+  /** Kafelek siatki profilu (1 — lewy górny; siatka — osobny post na kafelek); 0 — cały post. */
+  tile: number;
   status: string;
   format: SocialFormat | null;
   permalink: string | null;
@@ -458,6 +510,7 @@ export type SocialPublicationDTO = {
 
 const publicationDTO = (row: Row): SocialPublicationDTO => ({
   channel: row.channel as SocialChannel,
+  tile: Number(row.tile) || 0,
   status: text(row.status),
   format: isSocialFormat(row.format) ? row.format : null,
   permalink: text(row.permalink) || null,
@@ -471,8 +524,11 @@ const publicationDTO = (row: Row): SocialPublicationDTO => ({
   metricsError: text(row.metrics_error) || null,
 });
 
-/** Braki blokujące publikację w Meta: konto i uprawnienia kanałów oraz wygenerowane grafiki. */
-function metaProblems(account: SocialMetaAccount | null, channels: SocialChannel[], renderedFormats: SocialFormat[], slides: SocialSlideDTO[] = []): string[] {
+/** Braki blokujące publikację w Meta: konto i uprawnienia kanałów oraz wygenerowane grafiki (duża grafika — kafelki). */
+function metaProblems(
+  account: SocialMetaAccount | null, channels: SocialChannel[], renderedFormats: SocialFormat[], slides: SocialSlideDTO[] = [],
+  tilesReady: boolean | null = null,
+): string[] {
   return channels.flatMap((channel) => {
     const label = SOCIAL_CHANNEL_LABELS[channel];
     const problem = account ? account.channels[channel].problem
@@ -482,8 +538,9 @@ function metaProblems(account: SocialMetaAccount | null, channels: SocialChannel
       && slides.some((slide) => !slide.formats.some((item) => item.format === format && item.renderedUrl));
     return [
       problem ? `${label}: ${problem}` : null,
-      format ? null : `${label}: brak wygenerowanej grafiki — zapisz post.`,
-      slidesMissing ? `${label}: brak grafik karuzeli — zapisz post.` : null,
+      tilesReady === null ? (format ? null : `${label}: brak wygenerowanej grafiki — zapisz post.`)
+        : tilesReady ? null : `${label}: brak aktualnych kafelków — zapisz post.`,
+      tilesReady === null && slidesMissing ? `${label}: brak grafik karuzeli — zapisz post.` : null,
     ].filter((item): item is string => Boolean(item));
   });
 }
@@ -493,7 +550,7 @@ export async function socialPost(ctx: NativeContext, id: string): Promise<Social
   const row = await postRow(ctx, id);
   const companyId = String(row.company_id);
   const [access, variants, templates, historyResult, submitProblems, publishProblems, settings, companyRow, publicationsResult,
-    commentRows, metaAccount, slides, slots] = await Promise.all([
+    commentRows, metaAccount, slides, slots, tiles] = await Promise.all([
     socialAccess(ctx, companyId),
     variantRows(ctx, id),
     loadTemplates(ctx, companyId),
@@ -503,7 +560,7 @@ export async function socialPost(ctx: NativeContext, id: string): Promise<Social
     ctx.supabase.from('social_settings').select('*').eq('company_id', companyId).maybeSingle(),
     ctx.supabase.from('my_companies').select('id, name').eq('id', companyId).maybeSingle(),
     ctx.supabase.from('social_publications')
-      .select('channel, status, format, permalink, error, attempts, published_at, attempted_at, metrics, metrics_synced_at, metrics_error').eq('post_id', id),
+      .select('channel, tile, status, format, permalink, error, attempts, published_at, attempted_at, metrics, metrics_synced_at, metrics_error').eq('post_id', id),
     ctx.supabase.from('social_comments').select('parent_external_id, is_own, answered_at').eq('post_id', id).limit(2000),
     socialMetaAccount(companyId).catch((error) => {
       console.warn('[social] meta account', errorMessage(error));
@@ -511,9 +568,10 @@ export async function socialPost(ctx: NativeContext, id: string): Promise<Social
     }),
     slideRows(ctx, id),
     slotRows(ctx, id),
+    tileRows(ctx, id),
   ]);
   const publications = ((publicationsResult.data || []) as Row[]).map(publicationDTO)
-    .sort((a, b) => SOCIAL_CHANNELS.indexOf(a.channel) - SOCIAL_CHANNELS.indexOf(b.channel));
+    .sort((a, b) => SOCIAL_CHANNELS.indexOf(a.channel) - SOCIAL_CHANNELS.indexOf(b.channel) || a.tile - b.tile);
   const topComments = ((commentRows.data || []) as Row[]).filter((item) => !item.parent_external_id && !item.is_own);
   const template = pickTemplate(templates, row.template_id);
   const [listItem] = await listItems(ctx, [row]);
@@ -522,8 +580,19 @@ export async function socialPost(ctx: NativeContext, id: string): Promise<Social
   const assets = await assetDTOs(ctx, [...variants, ...slides, ...slots].map((item) => item.assetRow).filter((asset): asset is Row => Boolean(asset))
     .filter((asset, index, list) => list.findIndex((item) => item.id === asset.id) === index), { work: true });
   const assetById = new Map(assets.map((asset) => [asset.id, asset]));
-  const rendered = await signedUrls(ctx.supabase, [...variants, ...slides].map((item) => item.rendered_path));
+  const rendered = await signedUrls(ctx.supabase, [...variants, ...slides, ...tiles].map((item) => item.rendered_path));
   const postLayout = postLayoutDTO(variants);
+  const canvas = postLayout?.definition.canvas || null;
+  // Kafelki dużej grafiki: aktualne, gdy mają skrót aktualnej grafiki wariantu 4:5 (wszystkie z jednego renderu).
+  const canvasVariant = canvas ? variants.find((variant) => variant.format === '4:5') || variants[0] : null;
+  const canvasSource = canvasVariant ? renderSource(canvasVariant, slots) : null;
+  const canvasExpected = canvas && template && canvasSource && !template.problems.length ? renderHash(template, canvasSource) : null;
+  const tileDTOs: SocialTileDTO[] = canvas ? tiles.filter((tile) => Number(tile.position) <= socialCanvasTileCount(canvas)).map((tile) => ({
+    position: Number(tile.position),
+    renderedUrl: tile.rendered_path ? rendered.get(tile.rendered_path) || null : null,
+    upToDate: Boolean(canvasExpected && tile.render_hash === canvasExpected && tile.rendered_path),
+  })) : [];
+  const tilesReady = canvas ? tileDTOs.length === socialCanvasTileCount(canvas) && tileDTOs.every((tile) => tile.upToDate) : null;
   const variantDTOs: SocialVariantDTO[] = variants.map((variant) => {
     const source = renderSource(variant, slots);
     const expected = template && source && !template.problems.length ? renderHash(template, source) : null;
@@ -540,7 +609,7 @@ export async function socialPost(ctx: NativeContext, id: string): Promise<Social
       aspect: Math.round(socialLayoutSlotAspect(variantLayout(variant), 0, variant.format as SocialFormat) * 10000) / 10000,
       renderedUrl: variant.rendered_path ? rendered.get(variant.rendered_path) || null : null,
       renderedAt: text(variant.rendered_at) || null,
-      upToDate: Boolean(expected && variant.render_hash === expected && variant.rendered_path),
+      upToDate: Boolean(expected && variant.render_hash === expected && variant.rendered_path) && tilesReady !== false,
       asset: variant.asset_id ? assetById.get(String(variant.asset_id)) || null : null,
     };
   });
@@ -585,7 +654,8 @@ export async function socialPost(ctx: NativeContext, id: string): Promise<Social
   }
   const layouts = await layoutOptions(ctx, companyId, postLayout?.id || null);
   if (postLayout) {
-    const option = layouts.find((item) => (postLayout.id ? item.id === postLayout.id : Boolean(postLayout.key) && item.key === postLayout.key));
+    const option = [...layouts, ...canvasLayoutOptions()]
+      .find((item) => (postLayout.id ? item.id === postLayout.id : Boolean(postLayout.key) && item.key === postLayout.key));
     // Porównanie znormalizowanych definicji (ta sama kolejność pól i zaokrąglenia po obu stronach).
     postLayout.outdated = Boolean(option) && JSON.stringify(parseSocialLayout(option!.definition)) !== JSON.stringify(parseSocialLayout(postLayout.definition));
   }
@@ -622,14 +692,26 @@ export async function socialPost(ctx: NativeContext, id: string): Promise<Social
     .order('scheduled_at', { ascending: false, nullsFirst: false }).limit(12);
   const gridIds = ((gridRows || []) as Row[]).map((item) => String(item.id));
   const { data: gridVariants } = gridIds.length
-    ? await ctx.supabase.from('social_post_variants').select('post_id, format, rendered_path').in('post_id', gridIds).in('format', ['4:5', '1:1'])
+    ? await ctx.supabase.from('social_post_variants').select('post_id, format, rendered_path, canvas:layout->canvas').in('post_id', gridIds).in('format', ['4:5', '1:1'])
     : { data: [] as Row[] };
   const gridPath = new Map<string, string>();
+  const gridSeries = new Set<string>();
   for (const variant of (gridVariants || []) as Row[]) {
+    if (parseSocialCanvas(variant.canvas)?.mode === 'grid') gridSeries.add(String(variant.post_id));
     if (!variant.rendered_path) continue;
     if (!gridPath.has(String(variant.post_id)) || variant.format === '4:5') gridPath.set(String(variant.post_id), String(variant.rendered_path));
   }
-  const gridUrls = await signedUrls(ctx.supabase, Array.from(gridPath.values()));
+  // Inne siatki profilu zajmują w siatce tyle pól, ile mają kafelków (kafelek 1 — najnowszy, na początku).
+  const { data: seriesTiles } = gridSeries.size
+    ? await ctx.supabase.from('social_post_tiles').select('post_id, position, rendered_path').in('post_id', Array.from(gridSeries)).order('position')
+    : { data: [] as Row[] };
+  const tilesByPost = new Map<string, Row[]>();
+  for (const tile of (seriesTiles || []) as Row[]) {
+    const list = tilesByPost.get(String(tile.post_id)) || [];
+    list.push(tile);
+    tilesByPost.set(String(tile.post_id), list);
+  }
+  const gridUrls = await signedUrls(ctx.supabase, [...Array.from(gridPath.values()), ...((seriesTiles || []) as Row[]).map((tile) => tile.rendered_path)]);
 
   const hashtags = Array.isArray(row.hashtags) ? (row.hashtags as unknown[]).map(text) : [];
   return {
@@ -660,12 +742,15 @@ export async function socialPost(ctx: NativeContext, id: string): Promise<Social
     layout: postLayout,
     layouts,
     slots: slotDTOs,
+    canvas: canvas ? canvasDTO(canvas) : null,
+    tiles: tileDTOs,
+    canvasLayouts: canvasLayoutOptions(),
     channelFormats: Object.fromEntries(channels.map((channel) => [channel, channelFormat(channel, formats)])),
     problems: {
       submit: Array.isArray(submitProblems.data) ? (submitProblems.data as unknown[]).map(text) : [],
       publish: Array.isArray(publishProblems.data) ? (publishProblems.data as unknown[]).map(text) : [],
       meta: metaProblems(metaAccount, channels.filter((channel) => !publications.some((item) => item.channel === channel && item.status === 'published')),
-        variantDTOs.filter((variant) => variant.assetId && variant.renderedUrl).map((variant) => variant.format), slideDTOs),
+        variantDTOs.filter((variant) => variant.assetId && variant.renderedUrl).map((variant) => variant.format), slideDTOs, tilesReady),
     },
     publications,
     meta: metaAccount ? metaStatusDTO(metaAccount) : null,
@@ -683,14 +768,16 @@ export async function socialPost(ctx: NativeContext, id: string): Promise<Social
     event,
     portfolio,
     grid: [
-      ...((gridRows || []) as Row[]).map((item) => ({
-        id: String(item.id),
-        status: text(item.status) as SocialPostStatus,
-        imageUrl: gridPath.has(String(item.id)) ? gridUrls.get(gridPath.get(String(item.id)) as string) || null : null,
-        date: text(item.published_at) || text(item.scheduled_at) || null,
-        source: 'crm' as const,
-        permalink: null,
-      })),
+      ...((gridRows || []) as Row[]).flatMap((item) => {
+        const base = {
+          status: text(item.status) as SocialPostStatus, date: text(item.published_at) || text(item.scheduled_at) || null, source: 'crm' as const, permalink: null,
+        };
+        const series = tilesByPost.get(String(item.id));
+        if (series?.length) {
+          return series.map((tile) => ({ ...base, id: `${String(item.id)}-${Number(tile.position)}`, imageUrl: tile.rendered_path ? gridUrls.get(String(tile.rendered_path)) || null : null }));
+        }
+        return [{ ...base, id: String(item.id), imageUrl: gridPath.has(String(item.id)) ? gridUrls.get(gridPath.get(String(item.id)) as string) || null : null }];
+      }),
       ...(instagramGrid || []).map((item) => ({
         id: `ig-${item.id}`,
         status: 'published' as SocialPostStatus,
@@ -717,6 +804,15 @@ async function renderStale(ctx: NativeContext, post: Row, templates?: LoadedTemp
   for (const variant of variants) {
     const source = renderSource(variant, slots);
     if (!source) continue;
+    if (source.layout?.canvas) {
+      // Duża grafika: jeden render i kafelki (tylko wariant 4:5 — inne formaty nie występują w siatce i panoramie).
+      if (variant.format !== '4:5') continue;
+      const result = await renderCanvas(ctx, { id: String(post.id), companyId: String(post.company_id) }, template,
+        { id: String(variant.id), renderedPath: variant.rendered_path || null, renderHash: variant.render_hash || null }, source,
+        renderedTiles(await tileRows(ctx, String(post.id))));
+      if (result.rendered) rendered += 1;
+      continue;
+    }
     const result = await renderVariant(ctx, { id: String(post.id), companyId: String(post.company_id) }, template,
       { id: String(variant.id), renderedPath: variant.rendered_path || null, renderHash: variant.render_hash || null }, source);
     if (result.rendered) rendered += 1;
@@ -1100,7 +1196,11 @@ export async function createPost(ctx: NativeContext, body: Row) {
   const templates = await loadTemplates(ctx, company.id);
   const template = pickTemplate(templates, body.templateId);
   const patch = postPatch(body);
-  const channels: SocialChannel[] = Array.isArray(patch.channels) && patch.channels.length ? patch.channels : ['instagram_feed'];
+  const layout = await resolveLayout(ctx, company.id, body, []);
+  // Siatka profilu / panorama: jeden wariant 4:5 i kanały dozwolone dla dużej grafiki.
+  const canvas = parseSocialLayout(layout?.snapshot)?.canvas || null;
+  const requested: SocialChannel[] = Array.isArray(patch.channels) && patch.channels.length ? patch.channels : ['instagram_feed'];
+  const channels: SocialChannel[] = canvas ? canvasChannels(canvas, requested) : requested;
   let eventId = patch.event_id ?? null;
   if (assetId) {
     if (!asset || asset.company_id !== company.id) fail('Wybierz zdjęcie z biblioteki tej marki.', 400);
@@ -1116,10 +1216,9 @@ export async function createPost(ctx: NativeContext, body: Row) {
   }).select(POST_FIELDS).single();
   check(error, 'Nie udało się utworzyć posta.');
   const post = data as Row;
-  const formats = Array.isArray(body.formats) && body.formats.some(isSocialFormat)
+  const formats: SocialFormat[] = canvas ? ['4:5'] : Array.isArray(body.formats) && body.formats.some(isSocialFormat)
     ? SOCIAL_FORMATS.filter((format) => (body.formats as unknown[]).includes(format))
     : defaultFormatsForChannels(channels);
-  const layout = await resolveLayout(ctx, company.id, body, []);
   await saveVariants(ctx, post, formats.map((format) => ({
     format,
     assetId,
@@ -1129,7 +1228,7 @@ export async function createPost(ctx: NativeContext, body: Row) {
     style: isSocialGraphicStyle(body.graphicStyle) ? body.graphicStyle : template?.defaultStyle || 'classic',
     kicker: kickerText(body.kicker),
   })), 'classic', layout);
-  const slides = slideInputs(body.slides);
+  const slides = canvas ? null : slideInputs(body.slides);
   if (assetId && slides?.length) await saveSlides(ctx, post, slides.filter((slide) => slide.assetId !== assetId));
   const slots = slotInputs(body.slots);
   if (assetId && slots?.length) await saveSlots(ctx, post, slots);
@@ -1143,8 +1242,23 @@ export async function savePost(ctx: NativeContext, body: Row) {
   await requireAccess(ctx, String(row.company_id), 'create');
   editable(row);
   if (text(body.updatedAt) !== text(row.updated_at)) fail('Post zmieniono w innym oknie. Odśwież widok — Twoje zmiany nie zostały zapisane.', 409);
+  const currentVariants = await variantRows(ctx, String(row.id));
+  const layout = await resolveLayout(ctx, String(row.company_id), body, currentVariants);
+  const currentCanvas = variantsCanvas(currentVariants);
+  const nextCanvas = layout !== undefined ? parseSocialLayout(layout.snapshot)?.canvas || null : currentCanvas;
+  if (currentCanvas && !nextCanvas) {
+    fail('Siatkę profilu i panoramę można zmienić tylko na inny układ siatki albo panoramy — zwykły post utwórz jako nowy.', 400);
+  }
+  if (!currentCanvas && nextCanvas && currentVariants.length) {
+    fail('Siatkę profilu albo panoramę utworzysz przyciskiem „Nowa siatka / panorama” — zwykłego posta nie da się w nią zmienić.', 400);
+  }
   const patch = postPatch(body);
   if ('channels' in patch && !(patch.channels as unknown[]).length) fail('Wybierz co najmniej jeden kanał publikacji.');
+  if (nextCanvas) {
+    // Siatka — tylko feed Instagram; panorama — bez relacji (także po zmianie kształtu bez kanałów w żądaniu).
+    const wanted = canvasChannels(nextCanvas, 'channels' in patch ? patch.channels as SocialChannel[] : channelsOf(row.channels));
+    if ('channels' in patch || wanted.join(',') !== channelsOf(row.channels).join(',')) patch.channels = wanted;
+  }
   const { data, error } = await ctx.supabase.from('social_posts').update(Object.keys(patch).length ? patch : { title: row.title })
     .eq('id', row.id).eq('updated_at', row.updated_at).select(POST_FIELDS);
   check(error, 'Nie udało się zapisać posta.');
@@ -1152,19 +1266,22 @@ export async function savePost(ctx: NativeContext, body: Row) {
   const post = data[0] as Row;
   const templates = await loadTemplates(ctx, String(post.company_id));
   const variants = variantInputs(body.variants);
-  const currentVariants = await variantRows(ctx, String(post.id));
-  const layout = await resolveLayout(ctx, String(post.company_id), body, currentVariants);
   // Zmiana układu bez wariantów w żądaniu — te same zdjęcia i teksty z nowym układem (kadry dopasowane do miejsc).
-  const variantList = variants ?? (layout !== undefined ? currentVariants.filter((variant) => isSocialFormat(variant.format)).map((variant) => ({
+  const requestedVariants = variants ?? (layout !== undefined ? currentVariants.filter((variant) => isSocialFormat(variant.format)).map((variant) => ({
     format: variant.format as SocialFormat,
     assetId: uuidOrNull(variant.asset_id),
     crop: isSocialCrop(variant.crop) ? variant.crop : null,
     headline: text(variant.headline),
     subline: text(variant.subline),
   })) : null);
+  // Duża grafika: jeden wariant 4:5 (ze zdjęciem i tekstami z pierwszego podanego formatu).
+  const variantList = requestedVariants && nextCanvas
+    ? (requestedVariants.find((item) => item.format === '4:5') ? requestedVariants.filter((item) => item.format === '4:5')
+      : requestedVariants.slice(0, 1).map((item) => ({ ...item, format: '4:5' as SocialFormat, crop: null })))
+    : requestedVariants;
   if (variantList) await saveVariants(ctx, post, variantList, pickTemplate(templates, post.template_id)?.defaultStyle || 'classic', layout);
-  // Karuzela: `slides` (nowe wersje aplikacji) albo tylko dopasowanie zdjęć do zmienionych formatów okładki.
-  const slides = slideInputs(body.slides);
+  // Karuzela: `slides` (nowe wersje aplikacji) albo tylko dopasowanie zdjęć do zmienionych formatów okładki; duża grafika — bez karuzeli.
+  const slides = nextCanvas ? [] : slideInputs(body.slides);
   if (slides || variantList) await saveSlides(ctx, post, slides);
   // Kolaż: `slots` albo tylko dopasowanie do układu i formatów (starsze wersje aplikacji nie wysyłają `slots`).
   const slots = slotInputs(body.slots);
@@ -1306,11 +1423,11 @@ export async function duplicatePost(ctx: NativeContext, id: string) {
 export async function deletePost(ctx: NativeContext, id: string) {
   const row = await postRow(ctx, id);
   if (!['draft', 'cancelled'].includes(text(row.status))) fail('Usunąć można szkic albo anulowany post. Inny post najpierw anuluj.', 409);
-  const [variants, slides] = await Promise.all([variantRows(ctx, id), slideRows(ctx, id)]);
+  const [variants, slides, tiles] = await Promise.all([variantRows(ctx, id), slideRows(ctx, id), tileRows(ctx, id)]);
   const { data, error } = await ctx.supabase.from('social_posts').delete().eq('id', id).select('id');
   check(error, 'Nie udało się usunąć posta.');
   if (!data?.length) fail('Szkic usuwa jego autor albo akceptujący.', 403);
-  await removeSocialFiles(ctx.supabase, [...variants, ...slides].map((item) => item.rendered_path));
+  await removeSocialFiles(ctx.supabase, [...variants, ...slides, ...tiles].map((item) => item.rendered_path));
   return { deleted: id };
 }
 
@@ -1498,6 +1615,23 @@ export async function postPackage(ctx: NativeContext, id: string): Promise<{ fil
   const slides = (await slideRows(ctx, id)).filter((slide) => slide.rendered_path);
   const base = safeFileName(text(row.title), 'post');
   const files: Array<{ name: string; data: Buffer }> = [];
+  const canvas = variantsCanvas(variants);
+  if (canvas) {
+    // Siatka profilu / panorama: kafelki z numerami (1 — lewy górny) i instrukcja publikacji.
+    const tiles = (await tileRows(ctx, id)).filter((tile) => tile.rendered_path && Number(tile.position) <= socialCanvasTileCount(canvas));
+    if (tiles.length < socialCanvasTileCount(canvas)) fail('Post nie ma jeszcze wszystkich kafelków. Zapisz post, żeby je wygenerować.', 409);
+    const name = (position: number) => `${base}-${canvas.mode === 'grid' ? 'kafelek' : 'slajd'}-${String(position).padStart(2, '0')}.jpg`;
+    for (const tile of tiles) files.push({ name: name(Number(tile.position)), data: await downloadSocialFile(ctx.supabase, String(tile.rendered_path)) });
+    const hashtags = Array.isArray(row.hashtags) ? row.hashtags.map(text) : [];
+    const order = tiles.map((tile) => Number(tile.position));
+    const guide = canvas.mode === 'grid'
+      ? `Siatka profilu Instagram — ${order.length} osobnych postów. Publikuj od ostatniego kafelka do pierwszego: ${[...order].reverse().map(name).join(', ')}.\n`
+        + 'Opis z hashtagami — przy kafelku 1 (lewy górny, publikowany na końcu); przy pozostałych same hashtagi.\n'
+        + 'Siatka zostaje równa, gdy kolejne posty publikujesz po 3 naraz; przypięte posty przesuwają siatkę.'
+      : `Panorama — jedna karuzela: ${order.map(name).join(', ')} (w tej kolejności).`;
+    files.push({ name: 'opis.txt', data: Buffer.from(`${socialPublicationText(text(row.caption), hashtags)}\n\n---\n${guide}\n`, 'utf8') });
+    return { fileName: `${base}.zip`, zip: createZip(files) };
+  }
   for (const variant of variants) {
     files.push({ name: `${base}-${formatSlug(variant.format as SocialFormat)}.jpg`, data: await downloadSocialFile(ctx.supabase, String(variant.rendered_path)) });
   }

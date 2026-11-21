@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from './supabase';
-import type { PortfolioContent, PortfolioPhoto, PortfolioStatus } from './portfolioShared';
+import type { PortfolioAiSuggestions, PortfolioContent, PortfolioPhoto, PortfolioStatus } from './portfolioShared';
 
 /*
  * Marketing → „Realizacje” w aplikacji — to samo API co CRM i Mac (`/bridge/native/v1/portfolio`, token sesji pracownika,
@@ -32,11 +32,8 @@ export type PortfolioItem = {
 export type PortfolioDetail = { item: PortfolioItem; event: PortfolioEvent | null };
 export type PortfolioPhotoSource = 'event' | 'material' | 'social';
 export type PortfolioPhotoOption = { id: string; name: string; thumbnailUrl: string | null; width: number | null; height: number | null; bytes: number | null };
-export type PortfolioAiResult = {
-  title?: string; description?: string; detailedDescription?: string; metaDescription?: string; keywords?: string[];
-  features?: Array<{ icon: string; title: string; description: string }>; alts?: Array<{ src: string; alt: string }>;
-  model: string; usedPhotos: boolean;
-};
+/** Propozycje asystenta AI (kształt wspólny z serwerem — `portfolioShared.ts`). */
+export type PortfolioAiResult = PortfolioAiSuggestions;
 
 async function headers(json: boolean): Promise<Record<string, string>> {
   const { data: { session } } = await supabase.auth.getSession();

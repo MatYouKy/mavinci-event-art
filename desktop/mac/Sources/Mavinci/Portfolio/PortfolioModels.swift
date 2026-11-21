@@ -255,6 +255,87 @@ struct PortfolioContent: Codable, Equatable {
             if image == nil { image = photo } else if gallery.count < PortfolioLimits.gallery { gallery.append(photo) }
         }
     }
+
+    /// Zdjęcia upuszczone na zdjęcie główne: pierwsze zostaje głównym (dotychczasowe — na początek galerii), reszta — do galerii.
+    mutating func addAsMain(_ added: [PortfolioPhoto]) {
+        guard let first = added.first else { return }
+        if let image, gallery.count < PortfolioLimits.gallery { gallery.insert(image, at: 0) }
+        image = first
+        add(Array(added.dropFirst()))
+    }
+
+    /// Zdjęcia upuszczone na kafelek galerii — wstawione w to miejsce (bez zdjęcia głównego pierwsze zostaje głównym).
+    mutating func insert(_ added: [PortfolioPhoto], at index: Int) {
+        var queue = added
+        if image == nil, !queue.isEmpty { image = queue.removeFirst() }
+        var position = min(max(0, index), gallery.count)
+        for photo in queue where gallery.count < PortfolioLimits.gallery {
+            gallery.insert(photo, at: position)
+            position += 1
+        }
+    }
+
+    /// Nowy tytuł; adres strony idzie za tytułem, gdy realizacji nie ma na stronie, a adres był pusty albo powstał ze starego
+    /// tytułu (jak `portfolioWithTitle` w CRM).
+    mutating func setTitle(_ value: String, onSite: Bool) {
+        let clean = String(value.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").prefix(PortfolioLimits.title))
+        let followSlug = !onSite && (slug.isEmpty || slug == portfolioSlug(title))
+        title = clean
+        if followSlug { slug = portfolioSlug(clean) }
+    }
+
+    /// Dopisuje elementy, których jeszcze nie ma (ten sam tytuł bez względu na wielkość liter), do limitu.
+    mutating func addFeatures(_ proposed: [PortfolioFeature]) {
+        let locale = Locale(identifier: "pl_PL")
+        var known = Set(features.map { $0.title.lowercased(with: locale) })
+        for feature in proposed where !feature.title.isEmpty && features.count < PortfolioLimits.features {
+            let key = feature.title.lowercased(with: locale)
+            if known.contains(key) { continue }
+            known.insert(key)
+            features.append(feature)
+        }
+    }
+
+    /// Opisy alt z propozycji: zdjęcia bez opisu (`all` — także zastąpienie istniejących). Zwraca liczbę uzupełnionych.
+    @discardableResult mutating func applyAlts(_ alts: [PortfolioAiAlt], all: Bool = false) -> Int {
+        var map: [String: String] = [:]
+        for item in alts {
+            let clean = String(item.alt.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").prefix(PortfolioLimits.alt))
+            if !clean.isEmpty { map[item.src] = clean }
+        }
+        var filled = 0
+        if let current = image, let alt = map[current.src], all || current.alt.isEmpty { image?.alt = alt; filled += 1 }
+        for index in gallery.indices {
+            if let alt = map[gallery[index].src], all || gallery[index].alt.isEmpty { gallery[index].alt = alt; filled += 1 }
+        }
+        return filled
+    }
+}
+
+/// Frazy (słowa kluczowe, tagi, miasta) dopisane bez powtórzeń (wielkość liter bez znaczenia) do limitu.
+func portfolioMergePhrases(_ values: [String], _ added: [String], max: Int, maxLength: Int) -> [String] {
+    var next: [String] = []
+    let locale = Locale(identifier: "pl_PL")
+    for item in values + added {
+        let clean = String(item.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").prefix(maxLength))
+        guard !clean.isEmpty, next.count < max else { continue }
+        if next.contains(where: { $0.lowercased(with: locale) == clean.lowercased(with: locale) }) { continue }
+        next.append(clean)
+    }
+    return next
+}
+
+/// Lista kontrolna → kotwica pola w kreatorze (jak `portfolioCheckTarget` w CRM); opisy alt — pierwsze zdjęcie bez opisu.
+func portfolioCheckTarget(_ key: String, _ content: PortfolioContent) -> String {
+    switch key {
+    case "alt":
+        if let image = content.image, image.alt.isEmpty { return "image" }
+        return content.gallery.isEmpty ? "image" : "gallery"
+    case "title", "slug", "image", "description", "meta", "detailed", "gallery", "keywords", "city", "features":
+        return key
+    default:
+        return "title"
+    }
 }
 
 struct PortfolioListItem: Codable, Identifiable, Hashable {
@@ -384,17 +465,59 @@ struct PortfolioPhotoReply: Codable {
 }
 
 enum PortfolioAiField: String, CaseIterable, Identifiable {
-    case title, description, detailedDescription, metaDescription, keywords, features, alts
+    case title, titles, description, detailedDescription, metaDescription, keywords, tags, city, referenceCities, features, alts
     var id: String { rawValue }
     var label: String {
         switch self {
         case .title: return "Tytuł"
+        case .titles: return "Propozycje tytułu"
         case .description: return "Krótki opis"
         case .detailedDescription: return "Szczegółowy opis"
         case .metaDescription: return "Opis w Google"
         case .keywords: return "Słowa kluczowe"
+        case .tags: return "Tagi"
+        case .city: return "Miasto realizacji"
+        case .referenceCities: return "Priorytetowe miasta"
         case .features: return "Elementy realizacji"
         case .alts: return "Opisy zdjęć (alt)"
+        }
+    }
+
+    /// Pola panelu „Asystent AI” (kilka naraz); pozostałe — przyciski przy sekcjach.
+    static let panel: [PortfolioAiField] = [.title, .description, .detailedDescription, .metaDescription, .keywords, .features, .alts]
+}
+
+/// Asystent AI przy sekcji kreatora — te same pola i etykiety co `PORTFOLIO_AI_SECTIONS` w CRM.
+enum PortfolioAiSection: String, Identifiable {
+    case title, descriptions, features, seo, alts
+    var id: String { rawValue }
+    var fields: [PortfolioAiField] {
+        switch self {
+        case .title: return [.titles]
+        case .descriptions: return [.description, .detailedDescription]
+        case .features: return [.features]
+        case .seo: return [.metaDescription, .keywords, .tags, .city, .referenceCities]
+        case .alts: return [.alts]
+        }
+    }
+    /// Zdjęcia jako kontekst (pierwsze 6) — przy SEO bez zdjęć.
+    var photos: Bool { self != .seo }
+    var button: String {
+        switch self {
+        case .title: return "Zaproponuj tytuł"
+        case .descriptions: return "Napisz opisy"
+        case .features: return "Zaproponuj elementy"
+        case .seo: return "Uzupełnij SEO"
+        case .alts: return "Opisz zdjęcia"
+        }
+    }
+    var pending: String {
+        switch self {
+        case .title: return "Asystent AI szuka tytułu"
+        case .descriptions: return "Asystent AI pisze opisy"
+        case .features: return "Asystent AI dobiera elementy realizacji"
+        case .seo: return "Asystent AI przygotowuje SEO"
+        case .alts: return "Asystent AI opisuje zdjęcia"
         }
     }
 }
@@ -406,10 +529,14 @@ struct PortfolioAiAlt: Codable, Hashable {
 
 struct PortfolioAiResult: Codable {
     let title: String?
+    let titles: [String]?
     let description: String?
     let detailedDescription: String?
     let metaDescription: String?
     let keywords: [String]?
+    let tags: [String]?
+    let eventCitySlug: String?
+    let referenceCitySlugs: [String]?
     let features: [PortfolioFeature]?
     let alts: [PortfolioAiAlt]?
     let model: String
@@ -419,21 +546,28 @@ struct PortfolioAiResult: Codable {
     func preview(_ field: PortfolioAiField) -> String {
         switch field {
         case .title: return title ?? ""
+        case .titles: return (titles ?? []).joined(separator: "\n")
         case .description: return description ?? ""
         case .detailedDescription: return detailedDescription ?? ""
         case .metaDescription: return metaDescription ?? ""
         case .keywords: return (keywords ?? []).joined(separator: ", ")
+        case .tags: return (tags ?? []).joined(separator: ", ")
+        case .city: return eventCitySlug ?? ""
+        case .referenceCities: return (referenceCitySlugs ?? []).joined(separator: ", ")
         case .features: return (features ?? []).map { $0.description.isEmpty ? $0.title : "\($0.title) — \($0.description)" }.joined(separator: "\n")
         case .alts: return (alts ?? []).isEmpty ? "" : "\(alts?.count ?? 0) opisów zdjęć"
         }
     }
 
     /// Wstawia propozycję pola do treści; `false` — brak propozycji.
-    @discardableResult func apply(_ field: PortfolioAiField, to content: inout PortfolioContent) -> Bool {
+    @discardableResult func apply(_ field: PortfolioAiField, to content: inout PortfolioContent, onSite: Bool = true) -> Bool {
         switch field {
         case .title:
             guard let title, !title.isEmpty else { return false }
-            content.title = title
+            content.setTitle(title, onSite: onSite)
+        case .titles:
+            guard let first = titles?.first, !first.isEmpty else { return false }
+            content.setTitle(first, onSite: onSite)
         case .description:
             guard let description, !description.isEmpty else { return false }
             content.description = description
@@ -446,17 +580,21 @@ struct PortfolioAiResult: Codable {
         case .keywords:
             guard let keywords, !keywords.isEmpty else { return false }
             content.keywords = keywords
+        case .tags:
+            guard let tags, !tags.isEmpty else { return false }
+            content.tags = portfolioMergePhrases(content.tags, tags, max: PortfolioLimits.tags, maxLength: PortfolioLimits.tag)
+        case .city:
+            guard let eventCitySlug, !eventCitySlug.isEmpty else { return false }
+            content.eventCitySlug = eventCitySlug
+        case .referenceCities:
+            guard let referenceCitySlugs, !referenceCitySlugs.isEmpty else { return false }
+            content.referenceCitySlugs = portfolioMergePhrases(content.referenceCitySlugs, referenceCitySlugs, max: 60, maxLength: 120)
         case .features:
             guard let features, !features.isEmpty else { return false }
             content.features = features
         case .alts:
             guard let alts, !alts.isEmpty else { return false }
-            var map: [String: String] = [:]
-            for item in alts { map[item.src] = item.alt }
-            if let image = content.image, let alt = map[image.src], !alt.isEmpty { content.image?.alt = alt }
-            for index in content.gallery.indices {
-                if let alt = map[content.gallery[index].src], !alt.isEmpty { content.gallery[index].alt = alt }
-            }
+            content.applyAlts(alts, all: true)
         }
         return true
     }

@@ -3,10 +3,113 @@ import AppKit
 import UniformTypeIdentifiers
 
 // MARK: Marketing → „Realizacje” → karta realizacji — 1:1 z CRM (`PortfolioEditor`): podstawy i wydarzenie, zdjęcie główne
-// i galeria (z Findera — także HEIC, z plików wydarzenia, Materiałów i biblioteki social media; kolejność przeciąganiem, opisy
-// alt), opisy, elementy realizacji, SEO i miasta, lista kontrolna, podgląd w Google i asystent AI. „Zapisz” (⌘S) — kopia
-// robocza, „Opublikuj” — strona (przy zmianie także na stronie: wybór wersji), „Utwórz post” — szkic posta social media
-// z karuzelą zdjęć realizacji. Dwie kolumny na szerokim ekranie (MacBook Pro 16"), jedna na MacBooku Air 13".
+// i galeria (przeciągnięcie z Findera, Zdjęć, Safari, Poczty — także HEIC; z plików wydarzenia, Materiałów i biblioteki social
+// media; kolejność przeciąganiem, opisy alt), opisy, elementy realizacji, SEO i miasta, lista kontrolna (kliknięcie — przejście
+// do pola z podświetleniem), podgląd w Google i asystent AI — przy sekcjach (tytuł, opisy, elementy, SEO, opisy zdjęć) i w panelu.
+// „Zapisz” (⌘S) — kopia robocza, „Opublikuj” — strona (przy zmianie także na stronie: wybór wersji), „Utwórz post” — szkic posta
+// social media z karuzelą zdjęć realizacji. Dwie kolumny na szerokim ekranie (MacBook Pro 16"), jedna na MacBooku Air 13".
+
+/// Pole z fokusem po przejściu z listy kontrolnej.
+private enum PortfolioFocus: Hashable {
+    case title, description, detailed, meta, heroAlt, alt(Int)
+}
+
+/// Gdzie trafiają upuszczone zdjęcia: na koniec, jako zdjęcie główne albo w miejsce kafelka galerii.
+private enum PortfolioDropPlace {
+    case append, main, at(Int)
+}
+
+/// Podświetlenie pola, do którego przeszedł pracownik z listy kontrolnej.
+private struct PortfolioMark: ViewModifier {
+    let active: Bool
+    let color: Color
+    func body(content: Content) -> some View {
+        content
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(color, lineWidth: active ? 2 : 0).padding(-5).allowsHitTesting(false))
+            .animation(.easeInOut(duration: 0.25), value: active)
+    }
+}
+
+private extension View {
+    func portfolioMark(_ active: Bool, _ color: Color) -> some View { modifier(PortfolioMark(active: active, color: color)) }
+}
+
+/// Zdjęcia przeciągnięte z innych aplikacji (Finder, Zdjęcia, Safari, Poczta, zrzuty ekranu) → pliki do wysłania na serwer.
+enum PortfolioDrop {
+    /// Typy przyjmowane przez sekcję zdjęć (przeciąganie kolejności w galerii to tekst — obsługiwany osobno).
+    static let types: [UTType] = [.fileURL, .image, .url]
+
+    /// Przeciągane są zdjęcia z zewnątrz (nie kafelek galerii).
+    static func external(_ providers: [NSItemProvider]) -> Bool {
+        providers.contains { provider in
+            [UTType.fileURL, .image, .url].contains { provider.hasItemConformingToTypeIdentifier($0.identifier) }
+        }
+    }
+
+    static func folder() -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("mavinci-portfolio-drop", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    static func files(_ providers: [NSItemProvider]) async -> [URL] {
+        var urls: [URL] = []
+        for provider in providers { if let url = await file(provider) { urls.append(url) } }
+        return urls
+    }
+
+    /// Plik z Findera; obraz bez pliku (Zdjęcia, Safari, zrzut ekranu) — kopia w katalogu tymczasowym; adres obrazu — pobranie.
+    static func file(_ provider: NSItemProvider) async -> URL? {
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier), let url = await loadURL(provider), url.isFileURL { return url }
+        if let type = provider.registeredTypeIdentifiers.compactMap({ UTType($0) }).first(where: { $0.conforms(to: .image) }),
+           let url = await copy(provider, type: type) {
+            return url
+        }
+        if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier), let url = await loadURL(provider),
+           ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+            return await download(url)
+        }
+        return nil
+    }
+
+    static func loadURL(_ provider: NSItemProvider) async -> URL? {
+        await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in continuation.resume(returning: url) }
+        }
+    }
+
+    static func copy(_ provider: NSItemProvider, type: UTType) async -> URL? {
+        let fileCopy: URL? = await withCheckedContinuation { continuation in
+            _ = provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
+                guard let url else { continuation.resume(returning: nil); return }
+                let ext = url.pathExtension.isEmpty ? (type.preferredFilenameExtension ?? "jpg") : url.pathExtension
+                let target = folder().appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
+                continuation.resume(returning: (try? FileManager.default.copyItem(at: url, to: target)) != nil ? target : nil)
+            }
+        }
+        if let fileCopy { return fileCopy }
+        return await withCheckedContinuation { continuation in
+            _ = provider.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, _ in
+                guard let data, !data.isEmpty else { continuation.resume(returning: nil); return }
+                let target = folder().appendingPathComponent(UUID().uuidString).appendingPathExtension(type.preferredFilenameExtension ?? "jpg")
+                continuation.resume(returning: (try? data.write(to: target)) != nil ? target : nil)
+            }
+        }
+    }
+
+    static func download(_ url: URL) async -> URL? {
+        guard let result = try? await URLSession.shared.download(from: url), let mime = result.1.mimeType, mime.hasPrefix("image/") else { return nil }
+        let ext = UTType(mimeType: mime)?.preferredFilenameExtension ?? (url.pathExtension.isEmpty ? "jpg" : url.pathExtension)
+        let target = folder().appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
+        return (try? FileManager.default.moveItem(at: result.0, to: target)) != nil ? target : nil
+    }
+
+    /// Usuwa kopie tymczasowe po wysłaniu (pliki z Findera zostają).
+    static func cleanup(_ urls: [URL]) {
+        let root = folder().standardizedFileURL.path
+        for url in urls where url.standardizedFileURL.path.hasPrefix(root) { try? FileManager.default.removeItem(at: url) }
+    }
+}
 
 @MainActor struct PortfolioEditorView: View {
     @ObservedObject var store: PortfolioStore
@@ -24,10 +127,20 @@ import UniformTypeIdentifiers
     @State private var socialShown = false
     @State private var cityQuery = ""
     @State private var dropping = false
+    @State private var heroDropping = false
     @State private var dropIndex: Int?
+    /// Lista kontrolna → pole: podświetlenie i fokus.
+    @State private var highlight: String?
+    @State private var highlightTask: Task<Void, Never>?
+    @FocusState private var focus: PortfolioFocus?
+    /// Propozycje asystenta AI pod sekcjami.
+    @State private var ai: [PortfolioAiSection: PortfolioAiResult] = [:]
+    /// Element realizacji, nad którym jest przeciągany inny element (miejsce upuszczenia).
+    @State private var featureDropIndex: Int?
     @FocusState private var slugFocused: Bool
 
     private static let dragPrefix = "mavinci-portfolio-gallery:"
+    private static let featurePrefix = "mavinci-portfolio-feature:"
 
     private var detail: PortfolioDetail? { store.details[id] }
 
@@ -55,7 +168,8 @@ import UniformTypeIdentifiers
                 ProgressView("Ładowanie realizacji...").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .task(id: id) { await store.loadDetail(id) }
+        .task(id: id) { ai = [:]; await store.loadDetail(id) }
+        .onDisappear { highlightTask?.cancel() }
     }
 
     private func editor(_ detail: PortfolioDetail, _ draft: PortfolioDraft) -> some View {
@@ -65,19 +179,21 @@ import UniformTypeIdentifiers
             if detail.item.status == .conflict { conflictBanner }
             GeometryReader { geometry in
                 let wide = geometry.size.width >= 1080
-                ScrollView {
-                    if wide {
-                        HStack(alignment: .top, spacing: 14) {
-                            mainColumn(detail, draft).frame(maxWidth: .infinity)
-                            aside(detail, draft).frame(width: 340)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        if wide {
+                            HStack(alignment: .top, spacing: 14) {
+                                mainColumn(detail, draft).frame(maxWidth: .infinity)
+                                aside(detail, draft) { key in jump(key, proxy) }.frame(width: 340)
+                            }
+                            .padding(.bottom, 16)
+                        } else {
+                            VStack(spacing: 14) {
+                                mainColumn(detail, draft)
+                                aside(detail, draft) { key in jump(key, proxy) }
+                            }
+                            .padding(.bottom, 16)
                         }
-                        .padding(.bottom, 16)
-                    } else {
-                        VStack(spacing: 14) {
-                            mainColumn(detail, draft)
-                            aside(detail, draft)
-                        }
-                        .padding(.bottom, 16)
                     }
                 }
             }
@@ -222,16 +338,135 @@ import UniformTypeIdentifiers
         Task { await upload(urls) }
     }
 
-    private func accept(_ providers: [NSItemProvider]) {
+    /// Zdjęcia upuszczone z innych aplikacji: na sekcję (na koniec), na zdjęcie główne albo na kafelek galerii (w to miejsce).
+    private func accept(_ providers: [NSItemProvider], place: PortfolioDropPlace = .append) {
         Task {
-            var urls: [URL] = []
-            for provider in providers {
-                if let url = await SocialLibraryView.fileURL(provider) { urls.append(url) }
+            let urls = await PortfolioDrop.files(providers)
+            guard !urls.isEmpty else {
+                state.error = "Nie udało się odczytać przeciągniętego zdjęcia. Przeciągnij plik JPEG, PNG, WebP albo HEIC."
+                return
             }
-            guard !urls.isEmpty else { return }
-            await upload(urls)
+            let added = await store.upload(urls, itemID: id)
+            PortfolioDrop.cleanup(urls)
+            guard !added.isEmpty else { return }
+            switch place {
+            case .append: store.drafts[id]?.content.add(added)
+            case .main: store.drafts[id]?.content.addAsMain(added)
+            case .at(let index): store.drafts[id]?.content.insert(added, at: index)
+            }
         }
     }
+
+    /// Kafelek galerii przeciągnięty w obrębie kreatora (tekst z numerem pozycji).
+    private func internalIndex(_ providers: [NSItemProvider], prefix: String, _ handle: @escaping @MainActor (Int) -> Void) {
+        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: NSString.self) }) else { return }
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let value = object as? NSString else { return }
+            let text = value as String
+            guard text.hasPrefix(prefix), let index = Int(text.dropFirst(prefix.count)) else { return }
+            Task { @MainActor in handle(index) }
+        }
+    }
+
+    // MARK: Lista kontrolna → pole
+    private func jump(_ key: String, _ proxy: ScrollViewProxy) {
+        let target = portfolioCheckTarget(key, content.wrappedValue)
+        // Pola w siatkach SEO — przewijamy do karty (siatka tworzy pola leniwie), podświetlamy pole.
+        let anchor: String = ["keywords", "city"].contains(target) ? "seo" : target
+        withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("portfolio-" + anchor, anchor: .center) }
+        highlightTask?.cancel()
+        highlight = target
+        highlightTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(450))
+            if Task.isCancelled { return }
+            switch key {
+            case "title": focus = .title
+            case "slug": slugFocused = true
+            case "description": focus = .description
+            case "detailed": focus = .detailed
+            case "meta": focus = .meta
+            case "alt":
+                if let image = content.wrappedValue.image, image.alt.isEmpty { focus = .heroAlt }
+                else if let index = content.wrappedValue.gallery.firstIndex(where: { $0.alt.isEmpty }) { focus = .alt(index) }
+            default: break
+            }
+            try? await Task.sleep(for: .milliseconds(1400))
+            if Task.isCancelled { return }
+            highlight = nil
+        }
+    }
+
+    // MARK: Asystent AI przy sekcjach
+    private var briefBinding: Binding<String> {
+        Binding(get: { store.briefs[id] ?? "" }, set: { store.briefs[id] = String($0.prefix(1500)) })
+    }
+
+    /// Propozycje do bieżącej (także niezapisanej) treści; opisy zdjęć trafiają od razu do pustych pól.
+    private func askAi(_ section: PortfolioAiSection) async {
+        let photos = content.wrappedValue.photos
+        guard let result = await store.assist(id, brief: store.briefs[id] ?? "", fields: section.fields,
+                                              usePhotos: section.photos && !photos.isEmpty, pending: section.pending) else { return }
+        if section == .alts {
+            var value = content.wrappedValue
+            let filled = value.applyAlts(result.alts ?? [], all: !value.photos.contains { $0.alt.isEmpty })
+            if filled > 0 {
+                content.wrappedValue = value
+                state.succeed("Uzupełniono opisy zdjęć: \(filled) — sprawdź je i zapisz realizację")
+            } else {
+                state.error = "Asystent nie zaproponował opisów zdjęć — spróbuj ponownie."
+            }
+            return
+        }
+        ai[section] = result
+    }
+
+    private func aiButton(_ section: PortfolioAiSection, label: String? = nil) -> some View {
+        Button { Task { await askAi(section) } } label: { Label(label ?? section.button, systemImage: "sparkles") }
+            .buttonStyle(.bordered).tint(theme.accent).controlSize(.small)
+            .help("Asystent AI — propozycje z danych realizacji, notatki dla asystenta i zdjęć")
+    }
+
+    private func aiPanel<Inner: View>(_ title: String, _ section: PortfolioAiSection, @ViewBuilder _ inner: () -> Inner) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles").foregroundStyle(theme.accent)
+                Text(title).font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+                Spacer()
+                Button("Inne propozycje") { Task { await askAi(section) } }.buttonStyle(.link).font(.caption)
+                Button { ai[section] = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain).help("Zamknij propozycje")
+            }
+            inner()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.accent.opacity(0.35)))
+    }
+
+    private func aiText(_ label: String, _ text: String, hint: String? = nil, hintColor: Color = .secondary, use: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(label).font(.caption).foregroundStyle(.secondary)
+                if let hint { Text(hint).font(.caption2).foregroundStyle(hintColor) }
+                Spacer()
+                Button("Użyj", action: use).buttonStyle(.link).font(.caption)
+            }
+            Text(text).font(.callout).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
+    }
+
+    private func aiChip(_ text: String, done: Bool) -> some View {
+        Text(text).font(.caption)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .overlay(Capsule().stroke(done ? Color.green.opacity(0.5) : theme.accent.opacity(0.4)))
+            .foregroundStyle(done ? Color.green : theme.accent)
+    }
+
+    private func applied(_ message: String = "Wstawiono propozycję — zapisz realizację") { state.succeed(message) }
+
+    private func cityName(_ slug: String) -> String { cities.first { $0.locality == slug }?.name ?? slug }
 
     private func upload(_ urls: [URL]) async {
         let added = await store.upload(urls, itemID: id)
@@ -316,18 +551,29 @@ import UniformTypeIdentifiers
             basics(detail, draft)
             photos(draft)
             descriptions(draft)
-            features(draft)
-            seo(draft)
+            features(draft).id("portfolio-features").portfolioMark(highlight == "features", theme.accent)
+            seo(draft).id("portfolio-seo")
         }
     }
 
     // MARK: Podstawy
     private func basics(_ detail: PortfolioDetail, _ draft: PortfolioDraft) -> some View {
         card("Podstawy") {
-            field("Tytuł") {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Text("Tytuł").font(.callout)
+                    Spacer()
+                    aiButton(.title)
+                }
                 TextField("Jubileusz 30 lat marki", text: limited(content.title, PortfolioLimits.title)).textFieldStyle(.roundedBorder)
+                    .focused($focus, equals: .title)
+                if let titles = ai[.title]?.titles, !titles.isEmpty { titleProposals(titles, onSite: detail.item.status.onSite) }
             }
-            slugField(detail, draft)
+            .id("portfolio-title").portfolioMark(highlight == "title", theme.accent)
+            field("Notatka dla asystenta AI", hint: "(opcjonalnie — motyw, dla kogo, co przygotowaliśmy; asystent użyje jej przy tytule, opisach, elementach i SEO)") {
+                textBox(briefBinding, height: 46, placeholder: "Np. urodziny 30-latki w stylu Wielkiego Gatsby'ego, scena z ekranem LED, kasyno, fotolustro, muzyka na żywo.")
+            }
+            slugField(detail, draft).id("portfolio-slug").portfolioMark(highlight == "slug", theme.accent)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .topLeading), GridItem(.flexible(), alignment: .topLeading)],
                       alignment: .leading, spacing: 10) {
                 field("Kategoria") { categoryField }
@@ -348,6 +594,33 @@ import UniformTypeIdentifiers
                     Stepper("", value: content.orderIndex, in: -9999...9999).labelsHidden()
                 }
                 Spacer()
+            }
+        }
+    }
+
+    private func titleProposals(_ titles: [String], onSite: Bool) -> some View {
+        aiPanel("Propozycje tytułu — kliknij, żeby wstawić", .title) {
+            WrapLayout(spacing: 6) {
+                ForEach(titles, id: \.self) { title in
+                    let current = content.wrappedValue.title == title
+                    Button {
+                        content.wrappedValue.setTitle(title, onSite: onSite)
+                        applied("Wstawiono tytuł — zapisz realizację")
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(title).font(.callout)
+                            Text("\(title.count) zn.").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(current ? theme.accent.opacity(0.18) : Color.clear))
+                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(current ? theme.accent : theme.accent.opacity(0.3)))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if !onSite {
+                Text("Adres strony zmieni się razem z tytułem, jeśli nie był ustawiony ręcznie.").font(.caption2).foregroundStyle(.secondary)
             }
         }
     }
@@ -431,25 +704,40 @@ import UniformTypeIdentifiers
 
     // MARK: Zdjęcia
     private func photos(_ draft: PortfolioDraft) -> some View {
-        card(nil) {
+        let missingAlt = draft.content.photos.filter { $0.alt.isEmpty }.count
+        return card(nil) {
             HStack(spacing: 8) {
                 Text("Zdjęcia").font(.headline)
                 Text("(\(draft.content.photos.count))").font(.caption).foregroundStyle(.secondary)
+                if !draft.content.photos.isEmpty {
+                    aiButton(.alts, label: missingAlt > 0 ? "Opisz zdjęcia (\(missingAlt) bez opisu)" : "Nowe opisy zdjęć")
+                }
                 Spacer(minLength: 8)
                 Button { chooseFiles() } label: { Label("Z dysku", systemImage: "square.and.arrow.up") }
                 ForEach(PortfolioPhotoSource.allCases) { source in
                     Button { picker = source } label: { Label(source.button, systemImage: source.symbol) }
                 }
             }
-            Text("Przeciągnij zdjęcia z Findera na tę sekcję (JPEG, PNG, WebP, HEIC). Wersje strony (WebP: komputer, telefon, miniatura) powstaną na serwerze.")
-                .font(.caption).foregroundStyle(.secondary)
+            Text("Przeciągnij zdjęcia z Findera, Zdjęć albo Safari na tę sekcję (na zdjęcie główne — zastąpi je, na kafelek galerii — wstawi w to miejsce). JPEG, PNG, WebP, HEIC; wersje strony (WebP: komputer, telefon, miniatura) powstaną na serwerze.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack(alignment: .top, spacing: 14) {
-                hero(draft).frame(width: 250)
-                gallery(draft)
+                hero(draft).frame(width: 250).id("portfolio-image").portfolioMark(highlight == "image", theme.accent)
+                gallery(draft).id("portfolio-gallery").portfolioMark(highlight == "gallery", theme.accent)
             }
         }
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(dropping ? theme.accent : Color.clear, lineWidth: 2))
-        .onDrop(of: [UTType.fileURL], isTargeted: $dropping) { providers in
+        .overlay {
+            if dropping {
+                RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.55))
+                    .overlay(Label("Upuść zdjęcia, żeby dodać je do realizacji", systemImage: "square.and.arrow.down")
+                        .font(.title3).foregroundStyle(theme.accent)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(theme.card)))
+                    .allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: PortfolioDrop.types, isTargeted: $dropping) { providers in
+            guard PortfolioDrop.external(providers) else { return false }
             accept(providers)
             return true
         }
@@ -470,14 +758,35 @@ import UniformTypeIdentifiers
                         overlayButton("xmark", help: "Usuń zdjęcie główne") { content.wrappedValue.image = nil }.padding(5)
                     }
                     .contextMenu { Button("Otwórz zdjęcie") { openLink(image.src) } }
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(heroDropping ? theme.accent : Color.clear, lineWidth: 3))
                 TextField("Opis zdjęcia (alt)", text: alt).textFieldStyle(.roundedBorder)
+                    .focused($focus, equals: .heroAlt)
                     .overlay(RoundedRectangle(cornerRadius: 5).stroke(image.alt.isEmpty ? Color.orange.opacity(0.5) : Color.clear))
             } else {
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(theme.accent.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4]))
-                    .aspectRatio(4.0 / 3.0, contentMode: .fit)
-                    .overlay(Image(systemName: "photo").font(.largeTitle).foregroundStyle(theme.accent.opacity(0.4)))
+                Button { chooseFiles() } label: {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(theme.accent.opacity(heroDropping ? 0.9 : 0.35), style: StrokeStyle(lineWidth: heroDropping ? 2 : 1, dash: [5, 4]))
+                        .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                        .overlay {
+                            VStack(spacing: 6) {
+                                Image(systemName: "photo.badge.plus").font(.largeTitle)
+                                Text("Upuść zdjęcie główne albo kliknij").font(.caption)
+                            }
+                            .foregroundStyle(theme.accent.opacity(heroDropping ? 1 : 0.6))
+                        }
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
+        }
+        // Zdjęcie z zewnątrz — nowe zdjęcie główne; kafelek galerii — „Ustaw jako główne”.
+        .onDrop(of: PortfolioDrop.types + [UTType.utf8PlainText, .plainText], isTargeted: $heroDropping) { providers in
+            if PortfolioDrop.external(providers) {
+                accept(providers, place: .main)
+            } else {
+                internalIndex(providers, prefix: Self.dragPrefix) { from in makeMain(from) }
+            }
+            return true
         }
     }
 
@@ -487,12 +796,34 @@ import UniformTypeIdentifiers
             Text("Galeria — przeciągnij, żeby zmienić kolejność").font(.caption).foregroundStyle(.secondary)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
                 ForEach(items, id: \.offset) { item in galleryTile(item.element, index: item.offset, count: items.count) }
+                if items.count < PortfolioLimits.gallery { dropTile }
             }
             if items.isEmpty {
                 Text("Dodaj 5–12 zdjęć: szerokie ujęcie sali, scena, detale, goście (bez portretów).").font(.caption).foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Widoczna strefa upuszczania na końcu galerii (kliknięcie — wybór z dysku).
+    private var dropTile: some View {
+        Button { chooseFiles() } label: {
+            VStack(spacing: 5) {
+                Image(systemName: "square.and.arrow.down.on.square").font(.title2)
+                Text("Upuść zdjęcia tutaj").font(.caption.weight(.semibold))
+                Text("z Findera, Zdjęć, Safari — albo kliknij").font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+            .foregroundStyle(theme.accent.opacity(0.85))
+            .frame(maxWidth: .infinity, minHeight: 140)
+            .background(RoundedRectangle(cornerRadius: 8).strokeBorder(theme.accent.opacity(0.4), style: StrokeStyle(lineWidth: 1.2, dash: [5, 4])))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onDrop(of: PortfolioDrop.types, isTargeted: nil) { providers in
+            guard PortfolioDrop.external(providers) else { return false }
+            accept(providers)
+            return true
+        }
     }
 
     private func galleryAlt(_ index: Int) -> Binding<String> {
@@ -526,17 +857,24 @@ import UniformTypeIdentifiers
                     SocialImageView(url: photo.thumb).frame(width: 120, height: 90).clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             TextField("Opis (alt)", text: galleryAlt(index)).textFieldStyle(.roundedBorder).font(.caption)
+                .focused($focus, equals: .alt(index))
                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(photo.alt.isEmpty ? Color.orange.opacity(0.5) : Color.clear))
         }
         .padding(4)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(targeted ? 0.14 : 0.04)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(targeted ? theme.accent : Color.clear, lineWidth: 1.5))
-        .dropDestination(for: String.self) { items, _ in
-            guard let item = items.first, item.hasPrefix(Self.dragPrefix), let from = Int(item.dropFirst(Self.dragPrefix.count)) else { return false }
-            moveGallery(from: from, to: index)
+        // Kafelek galerii (zmiana kolejności) albo zdjęcia z zewnątrz (Finder, Zdjęcia, Safari) — wstawione w to miejsce.
+        .onDrop(of: [UTType.utf8PlainText, .plainText] + PortfolioDrop.types, isTargeted: Binding(
+            get: { dropIndex == index },
+            set: { inside in if inside { dropIndex = index } else if dropIndex == index { dropIndex = nil } }
+        )) { providers in
+            dropIndex = nil
+            if PortfolioDrop.external(providers) {
+                accept(providers, place: .at(index))
+            } else {
+                internalIndex(providers, prefix: Self.dragPrefix) { from in moveGallery(from: from, to: index) }
+            }
             return true
-        } isTargeted: { inside in
-            if inside { dropIndex = index } else if dropIndex == index { dropIndex = nil }
         }
         .contextMenu {
             Button("Ustaw jako główne") { makeMain(index) }
@@ -550,13 +888,39 @@ import UniformTypeIdentifiers
 
     // MARK: Opisy
     private func descriptions(_ draft: PortfolioDraft) -> some View {
-        card("Opisy") {
+        card(nil) {
+            HStack {
+                Text("Opisy").font(.headline)
+                Spacer()
+                aiButton(.descriptions)
+            }
+            if let result = ai[.descriptions], (result.description?.isEmpty == false) || (result.detailedDescription?.isEmpty == false) {
+                aiPanel("Propozycje opisów", .descriptions) {
+                    if let short = result.description, !short.isEmpty {
+                        aiText("Krótki opis", short, hint: "\(short.count) zn.") { content.wrappedValue.description = String(short.prefix(PortfolioLimits.description)); applied() }
+                    }
+                    if let long = result.detailedDescription, !long.isEmpty {
+                        aiText("Szczegółowy opis", long, hint: "\(long.count) zn.") { content.wrappedValue.detailedDescription = String(long.prefix(PortfolioLimits.detailedDescription)); applied() }
+                    }
+                    if let short = result.description, !short.isEmpty, let long = result.detailedDescription, !long.isEmpty {
+                        Button("Użyj obu") {
+                            content.wrappedValue.description = String(short.prefix(PortfolioLimits.description))
+                            content.wrappedValue.detailedDescription = String(long.prefix(PortfolioLimits.detailedDescription))
+                            applied("Wstawiono oba opisy — zapisz realizację")
+                            ai[.descriptions] = nil
+                        }
+                        .buttonStyle(.link).font(.caption)
+                    }
+                }
+            }
             field("Krótki opis", hint: "(\(draft.content.description.count)/\(PortfolioLimits.description) — karta realizacji)") {
-                textBox(limited(content[dynamicMember: \.description], PortfolioLimits.description), height: 70)
+                textBox(limited(content[dynamicMember: \.description], PortfolioLimits.description), height: 70).focused($focus, equals: .description)
             }
+            .id("portfolio-description").portfolioMark(highlight == "description", theme.accent)
             field("Szczegółowy opis", hint: "(\(draft.content.detailedDescription.count) znaków, zalecane od \(PortfolioLimits.detailedRecommended); akapity oddziel pustą linią)") {
-                textBox(limited(content.detailedDescription, PortfolioLimits.detailedDescription), height: 220)
+                textBox(limited(content.detailedDescription, PortfolioLimits.detailedDescription), height: 220).focused($focus, equals: .detailed)
             }
+            .id("portfolio-detailed").portfolioMark(highlight == "detailed", theme.accent)
         }
     }
 
@@ -578,6 +942,15 @@ import UniformTypeIdentifiers
         content.wrappedValue.features = features
     }
 
+    /// Przeciągnięcie elementu realizacji: upuszczony element zajmuje miejsce wiersza docelowego.
+    private func dragFeature(from: Int, to: Int) {
+        var features = content.wrappedValue.features
+        guard features.indices.contains(from), features.indices.contains(to), from != to else { return }
+        let moved = features.remove(at: from)
+        features.insert(moved, at: to)
+        content.wrappedValue.features = features
+    }
+
     private func features(_ draft: PortfolioDraft) -> some View {
         let count = draft.content.features.count
         return card(nil) {
@@ -585,8 +958,13 @@ import UniformTypeIdentifiers
                 Text("Elementy realizacji").font(.headline)
                 Text("(\(count)/\(PortfolioLimits.features))").font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                aiButton(.features)
                 Button { content.wrappedValue.features.append(PortfolioFeature()) } label: { Label("Dodaj element", systemImage: "plus") }
                     .disabled(count >= PortfolioLimits.features)
+            }
+            if let proposed = ai[.features]?.features, !proposed.isEmpty { featureProposals(proposed) }
+            if count > 1 {
+                Text("Przeciągnij element za uchwyt, żeby zmienić kolejność (albo strzałki).").font(.caption2).foregroundStyle(.secondary)
             }
             ForEach(Array(draft.content.features.indices), id: \.self) { index in featureRow(index, count: count) }
             if count == 0 {
@@ -596,10 +974,53 @@ import UniformTypeIdentifiers
         }
     }
 
+    private func featureProposals(_ proposed: [PortfolioFeature]) -> some View {
+        let locale = Locale(identifier: "pl_PL")
+        return aiPanel("Propozycje elementów realizacji", .features) {
+            ForEach(Array(proposed.enumerated()), id: \.offset) { item in
+                let feature = item.element
+                let exists = content.wrappedValue.features.contains { $0.title.lowercased(with: locale) == feature.title.lowercased(with: locale) }
+                HStack(spacing: 8) {
+                    Image(systemName: PortfolioIcon.named(feature.icon).symbol).foregroundStyle(theme.accent).frame(width: 20)
+                    (Text(feature.title).font(.callout) + Text(feature.description.isEmpty ? "" : " — \(feature.description)").font(.caption).foregroundColor(.secondary))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if exists {
+                        Text("już jest").font(.caption2).foregroundStyle(.secondary)
+                    } else {
+                        Button("Dodaj") { content.wrappedValue.addFeatures([feature]); applied("Dodano element — zapisz realizację") }
+                            .buttonStyle(.link).font(.caption).disabled(content.wrappedValue.features.count >= PortfolioLimits.features)
+                    }
+                }
+            }
+            Divider()
+            HStack(spacing: 14) {
+                Button("Zastąp listę") {
+                    content.wrappedValue.features = Array(proposed.prefix(PortfolioLimits.features))
+                    applied("Zastąpiono elementy realizacji — zapisz realizację")
+                    ai[.features] = nil
+                }
+                Button("Dodaj nowe") {
+                    content.wrappedValue.addFeatures(proposed)
+                    applied("Dodano nowe elementy — zapisz realizację")
+                    ai[.features] = nil
+                }
+            }
+            .buttonStyle(.link).font(.caption)
+        }
+    }
+
     private func featureRow(_ index: Int, count: Int) -> some View {
         let binding = feature(index)
         let icon = PortfolioIcon.named(binding.wrappedValue.icon)
+        let targeted = featureDropIndex == index
         return HStack(spacing: 8) {
+            // Uchwyt przeciągania (pola tekstowe wiersza zostają do zaznaczania tekstu).
+            Image(systemName: "line.3.horizontal").foregroundStyle(.secondary).frame(width: 18, height: 22).contentShape(Rectangle())
+                .help("Przeciągnij, żeby zmienić kolejność")
+                .draggable(Self.featurePrefix + String(index)) {
+                    Label(binding.wrappedValue.title.isEmpty ? icon.label : binding.wrappedValue.title, systemImage: icon.symbol)
+                        .padding(6).background(RoundedRectangle(cornerRadius: 6).fill(theme.card))
+                }
             Menu {
                 ForEach(PortfolioIcon.all) { option in
                     Button { binding.wrappedValue.icon = option.name } label: { Label("\(option.category) — \(option.label)", systemImage: option.symbol) }
@@ -616,29 +1037,48 @@ import UniformTypeIdentifiers
                 content.wrappedValue.features.remove(at: index)
             } label: { Image(systemName: "trash") }.help("Usuń element")
         }
+        .padding(4)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(targeted ? 0.12 : 0)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(targeted ? theme.accent : Color.clear, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
+        .dropDestination(for: String.self) { items, _ in
+            featureDropIndex = nil
+            guard let item = items.first, item.hasPrefix(Self.featurePrefix), let from = Int(item.dropFirst(Self.featurePrefix.count)) else { return false }
+            dragFeature(from: from, to: index)
+            return true
+        } isTargeted: { inside in
+            if inside { featureDropIndex = index } else if featureDropIndex == index { featureDropIndex = nil }
+        }
     }
 
     // MARK: SEO i miasta
     private func seo(_ draft: PortfolioDraft) -> some View {
         let meta = draft.content.metaDescription.count
         let metaOK = meta >= PortfolioLimits.metaMin && meta <= PortfolioLimits.metaMax
-        return card("SEO i miasta") {
+        return card(nil) {
+            HStack {
+                Text("SEO i miasta").font(.headline)
+                Spacer()
+                aiButton(.seo)
+            }
+            if let result = ai[.seo] { seoProposals(result) }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text("Opis w Google").font(.callout)
                     Text("\(meta) znaków (zalecane \(PortfolioLimits.metaMin)–\(PortfolioLimits.metaMax))").font(.caption).foregroundStyle(metaOK ? Color.green : Color.orange)
                 }
-                textBox(limited(content.metaDescription, PortfolioLimits.metaDescription), height: 54)
+                textBox(limited(content.metaDescription, PortfolioLimits.metaDescription), height: 54).focused($focus, equals: .meta)
             }
+            .id("portfolio-meta").portfolioMark(highlight == "meta", theme.accent)
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .topLeading), GridItem(.flexible(), alignment: .topLeading)],
                       alignment: .leading, spacing: 10) {
                 field("Słowa kluczowe", hint: "(Enter albo przecinek)") {
                     PortfolioChipsField(values: content.keywords, placeholder: "gala firmowa olsztyn", max: PortfolioLimits.keywords, maxLength: PortfolioLimits.keyword)
                 }
+                .portfolioMark(highlight == "keywords", theme.accent)
                 field("Tagi", hint: "(np. „konferencje” — strony konferencji)") {
                     PortfolioChipsField(values: content.tags, placeholder: "konferencje", max: PortfolioLimits.tags, maxLength: PortfolioLimits.tag)
                 }
-                field("Miasto realizacji") { cityPicker(draft) }
+                field("Miasto realizacji") { cityPicker(draft) }.portfolioMark(highlight == "city", theme.accent)
                 field("Na stronach konferencji") { conferencePicker }
             }
             referenceCities(draft)
@@ -649,6 +1089,93 @@ import UniformTypeIdentifiers
                 ))
                 .textFieldStyle(.roundedBorder)
             }
+        }
+    }
+
+    private func seoProposals(_ result: PortfolioAiResult) -> some View {
+        let locale = Locale(identifier: "pl_PL")
+        let current = content.wrappedValue
+        return aiPanel("Propozycje SEO — opis w Google, frazy, tagi i miasta", .seo) {
+            if let meta = result.metaDescription, !meta.isEmpty {
+                let ok = meta.count >= PortfolioLimits.metaMin && meta.count <= PortfolioLimits.metaMax
+                aiText("Opis w Google", meta, hint: "\(meta.count) zn.", hintColor: ok ? .green : .orange) {
+                    content.wrappedValue.metaDescription = String(meta.prefix(PortfolioLimits.metaDescription)); applied()
+                }
+            }
+            if let keywords = result.keywords, !keywords.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 12) {
+                        Text("Słowa kluczowe").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Dodaj brakujące") {
+                            content.wrappedValue.keywords = portfolioMergePhrases(current.keywords, keywords, max: PortfolioLimits.keywords, maxLength: PortfolioLimits.keyword)
+                            applied("Dodano słowa kluczowe — zapisz realizację")
+                        }
+                        Button("Zastąp") {
+                            content.wrappedValue.keywords = portfolioMergePhrases([], keywords, max: PortfolioLimits.keywords, maxLength: PortfolioLimits.keyword)
+                            applied("Zastąpiono słowa kluczowe — zapisz realizację")
+                        }
+                    }
+                    .buttonStyle(.link).font(.caption)
+                    WrapLayout(spacing: 4) {
+                        ForEach(keywords, id: \.self) { keyword in
+                            aiChip(keyword, done: current.keywords.contains { $0.lowercased(with: locale) == keyword.lowercased(with: locale) })
+                        }
+                    }
+                }
+            }
+            if let tags = result.tags, !tags.isEmpty {
+                HStack(spacing: 6) {
+                    Text("Tagi:").font(.caption).foregroundStyle(.secondary)
+                    WrapLayout(spacing: 4) { ForEach(tags, id: \.self) { tag in aiChip(tag, done: current.tags.contains(tag)) } }
+                    Spacer()
+                    Button("Dodaj") {
+                        content.wrappedValue.tags = portfolioMergePhrases(current.tags, tags, max: PortfolioLimits.tags, maxLength: PortfolioLimits.tag)
+                        applied("Dodano tagi — zapisz realizację")
+                    }
+                    .buttonStyle(.link).font(.caption)
+                }
+            }
+            HStack(spacing: 6) {
+                Text("Miasto realizacji:").font(.caption).foregroundStyle(.secondary)
+                if let slug = result.eventCitySlug, !slug.isEmpty {
+                    Text(cityName(slug)).font(.callout)
+                    Spacer()
+                    if current.eventCitySlug == slug {
+                        Text("ustawione").font(.caption2).foregroundStyle(.green)
+                    } else {
+                        Button("Ustaw") { content.wrappedValue.eventCitySlug = slug; applied("Ustawiono miasto realizacji — zapisz realizację") }
+                            .buttonStyle(.link).font(.caption)
+                    }
+                } else {
+                    Text("nie udało się ustalić — wpisz miasto w polu „Miejsce” albo wybierz z listy").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+            if let slugs = result.referenceCitySlugs, !slugs.isEmpty {
+                HStack(spacing: 6) {
+                    Text("Priorytetowe miasta:").font(.caption).foregroundStyle(.secondary)
+                    WrapLayout(spacing: 4) { ForEach(slugs, id: \.self) { slug in aiChip(cityName(slug), done: current.referenceCitySlugs.contains(slug)) } }
+                    Spacer()
+                    Button("Dodaj") {
+                        content.wrappedValue.referenceCitySlugs = portfolioMergePhrases(current.referenceCitySlugs, slugs, max: 60, maxLength: 120)
+                        applied("Dodano priorytetowe miasta — zapisz realizację")
+                    }
+                    .buttonStyle(.link).font(.caption)
+                }
+            }
+            Button("Użyj wszystkich (frazy, tagi i miasta — dopisane do obecnych)") {
+                var value = content.wrappedValue
+                if let meta = result.metaDescription, !meta.isEmpty { value.metaDescription = String(meta.prefix(PortfolioLimits.metaDescription)) }
+                value.keywords = portfolioMergePhrases(value.keywords, result.keywords ?? [], max: PortfolioLimits.keywords, maxLength: PortfolioLimits.keyword)
+                value.tags = portfolioMergePhrases(value.tags, result.tags ?? [], max: PortfolioLimits.tags, maxLength: PortfolioLimits.tag)
+                if let slug = result.eventCitySlug, !slug.isEmpty { value.eventCitySlug = slug }
+                value.referenceCitySlugs = portfolioMergePhrases(value.referenceCitySlugs, result.referenceCitySlugs ?? [], max: 60, maxLength: 120)
+                content.wrappedValue = value
+                applied("Wstawiono propozycje SEO — zapisz realizację")
+                ai[.seo] = nil
+            }
+            .buttonStyle(.link).font(.caption)
         }
     }
 
@@ -711,11 +1238,11 @@ import UniformTypeIdentifiers
     }
 
     // MARK: Panel boczny
-    private func aside(_ detail: PortfolioDetail, _ draft: PortfolioDraft) -> some View {
+    private func aside(_ detail: PortfolioDetail, _ draft: PortfolioDraft, jump: @escaping (String) -> Void) -> some View {
         VStack(spacing: 14) {
-            checklist(draft)
+            checklist(draft, jump: jump)
             googlePreview(draft)
-            card(nil) { PortfolioAssistantPanel(store: store, id: id) }
+            card(nil) { PortfolioAssistantPanel(store: store, id: id, onSite: detail.item.status.onSite) }
             card(nil) {
                 Text("Utworzono \(PortfolioDates.moment(detail.item.createdAt))" + (detail.item.createdByName.map { " · \($0)" } ?? ""))
                     .font(.caption).foregroundStyle(.secondary)
@@ -727,23 +1254,31 @@ import UniformTypeIdentifiers
         }
     }
 
-    private func checklist(_ draft: PortfolioDraft) -> some View {
+    private func checklist(_ draft: PortfolioDraft, jump: @escaping (String) -> Void) -> some View {
         card("Lista kontrolna") {
-            ForEach(portfolioChecklist(draft.content)) { check in checkRow(check) }
+            Text("Kliknij punkt, żeby przejść do pola.").font(.caption2).foregroundStyle(.secondary)
+            ForEach(portfolioChecklist(draft.content)) { check in checkRow(check, jump: jump) }
         }
     }
 
-    private func checkRow(_ check: PortfolioCheck) -> some View {
+    private func checkRow(_ check: PortfolioCheck, jump: @escaping (String) -> Void) -> some View {
         let symbol: String = check.ok ? "checkmark.circle.fill" : check.required ? "exclamationmark.triangle.fill" : "circle.dashed"
         let color: Color = check.ok ? .green : check.required ? .red : .orange
         let label: String = check.label + (check.required && !check.ok ? " (wymagane)" : "")
-        return HStack(alignment: .top, spacing: 8) {
-            Image(systemName: symbol).foregroundStyle(color).font(.callout)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(label).font(.caption).foregroundStyle(check.ok ? Color.primary : color)
-                if !check.ok { Text(check.hint).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+        return Button { jump(check.key) } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: symbol).foregroundStyle(color).font(.callout)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(label).font(.caption).underline(!check.ok, pattern: .dot).foregroundStyle(check.ok ? Color.primary : color)
+                    if !check.ok { Text(check.hint).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
             }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .help("Przejdź do pola „\(check.label)”")
     }
 
     private func googlePreview(_ draft: PortfolioDraft) -> some View {
@@ -813,29 +1348,33 @@ import UniformTypeIdentifiers
 @MainActor struct PortfolioAssistantPanel: View {
     @ObservedObject var store: PortfolioStore
     let id: String
+    /// Realizacja na stronie — adres strony nie idzie za nowym tytułem.
+    var onSite = true
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
-    @State private var brief = ""
     @State private var fields: Set<PortfolioAiField> = [.description, .detailedDescription, .metaDescription, .keywords]
     @State private var usePhotos = false
     @State private var result: PortfolioAiResult?
 
     private var photoCount: Int { store.drafts[id]?.content.photos.count ?? 0 }
+    private var brief: String { store.briefs[id] ?? "" }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Asystent AI", systemImage: "sparkles").font(.headline)
-            TextEditor(text: Binding(get: { brief }, set: { brief = String($0.prefix(1500)) }))
+            Text("Kilka pól naraz. Pojedyncze sekcje — przyciski AI przy tytule, opisach, elementach, SEO i zdjęciach.")
+                .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            TextEditor(text: Binding(get: { store.briefs[id] ?? "" }, set: { store.briefs[id] = String($0.prefix(1500)) }))
                 .font(.body).frame(height: 80).scrollContentBackground(.hidden)
                 .padding(6).background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
                 .overlay(alignment: .topLeading) {
                     if brief.isEmpty {
-                        Text("Kilka zdań o realizacji: dla kogo, co przygotowaliśmy (scena, technika, program), co było wyjątkowe.")
+                        Text("Notatka dla asystenta (ta sama co w „Podstawach”): dla kogo, co przygotowaliśmy (scena, technika, program), co było wyjątkowe.")
                             .font(.callout).foregroundStyle(.tertiary).padding(.horizontal, 11).padding(.vertical, 6).allowsHitTesting(false)
                     }
                 }
             WrapLayout(spacing: 4) {
-                ForEach(PortfolioAiField.allCases) { field in fieldChip(field) }
+                ForEach(PortfolioAiField.panel) { field in fieldChip(field) }
             }
             Toggle("Uwzględnij zdjęcia (opis tego, co na nich widać; przy opisach zdjęć — zawsze)", isOn: $usePhotos)
                 .toggleStyle(.checkbox).font(.caption).disabled(photoCount == 0)
@@ -871,7 +1410,7 @@ import UniformTypeIdentifiers
                 Spacer()
                 Button("Użyj wszystkich") { useAll(result) }.buttonStyle(.link)
             }
-            ForEach(PortfolioAiField.allCases.filter { !result.preview($0).isEmpty }) { field in
+            ForEach(PortfolioAiField.panel.filter { !result.preview($0).isEmpty }) { field in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text(field.label).font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
@@ -890,13 +1429,13 @@ import UniformTypeIdentifiers
     }
 
     private func ask() async {
-        let ordered = PortfolioAiField.allCases.filter { fields.contains($0) }
+        let ordered = PortfolioAiField.panel.filter { fields.contains($0) }
         if let value = await store.assist(id, brief: brief, fields: ordered, usePhotos: usePhotos && photoCount > 0) { result = value }
     }
 
     private func use(_ field: PortfolioAiField, _ result: PortfolioAiResult) {
         guard var content = store.drafts[id]?.content else { return }
-        if result.apply(field, to: &content) {
+        if result.apply(field, to: &content, onSite: onSite) {
             store.drafts[id]?.content = content
             state.succeed("Wstawiono propozycję — zapisz realizację")
         }
@@ -904,7 +1443,7 @@ import UniformTypeIdentifiers
 
     private func useAll(_ result: PortfolioAiResult) {
         guard var content = store.drafts[id]?.content else { return }
-        for field in PortfolioAiField.allCases { result.apply(field, to: &content) }
+        for field in PortfolioAiField.panel { result.apply(field, to: &content, onSite: onSite) }
         store.drafts[id]?.content = content
         state.succeed("Wstawiono wszystkie propozycje — zapisz realizację")
     }

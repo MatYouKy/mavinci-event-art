@@ -258,7 +258,7 @@ export const modularText = (modular: ProductConfigurationSnapshot) => ({ name: m
 // MARK: Katalog do dodawania
 
 /** Szkic początkowy po wyborze produktu (jak `useEffect([selectedProduct])` w `AddOfferItemModal`, także z propozycji). */
-function initialDraft(product: Row, proposal: Row | undefined) {
+export function initialDraft(product: Row, proposal: Row | undefined) {
   const variants = activeVariants(product);
   const config = proposal?.pricing_configuration as Row | undefined;
   if (product.configuration_schema) {

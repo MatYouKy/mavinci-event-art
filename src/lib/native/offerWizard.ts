@@ -74,7 +74,7 @@ export async function offerWizardEvents(ctx: NativeContext) {
 
 // MARK: Dane kreatora
 
-const WIZARD_PRODUCT_SELECT = `*, category:event_categories(id, name),
+export const WIZARD_PRODUCT_SELECT = `*, category:event_categories(id, name),
   variants:offer_product_variants(id, name, short_description, description, price_net, price_gross, is_recommended, is_active,
     display_order, quantity_source, overrides_contract_clauses, recommended_contract_clauses),
   equipment:offer_product_equipment(id), staff:offer_product_staff(hourly_rate, estimated_hours, compensation, is_optional)`;
@@ -246,7 +246,7 @@ export async function addOfferWizardContact(ctx: NativeContext, body: Row) {
 
 // MARK: Wycena szkicu
 
-const audienceFrom = (body: Row): OfferAudience => {
+export const audienceFrom = (body: Row): OfferAudience => {
   const raw = body.audience && typeof body.audience === 'object' ? body.audience as Row : {};
   const value = (input: unknown) => (input == null || input === '' ? null : Number(input));
   return { guest_count: value(raw.guestCount), guests_per_table: Number(raw.guestsPerTable ?? 10) || 10, table_count: value(raw.tableCount) };
@@ -254,7 +254,7 @@ const audienceFrom = (body: Row): OfferAudience => {
 
 const AUDIENCE_ERROR = 'Uzupełnij liczbę osób i poprawne ustawienia stołów w szczegółach oferty.';
 
-type Evaluated = {
+export type Evaluated = {
   key: string;
   productId: string | null;
   product: Row | null;
@@ -279,7 +279,8 @@ type Evaluated = {
   submitError: string | null;
 };
 
-async function evaluateItems(ctx: NativeContext, body: Row, audience: OfferAudience) {
+/** Wycena pozycji szkicu (kreator, a także „Oferta ze spotkania” w Prezentacjach — `src/lib/showcase/showcaseOffer.server.ts`). */
+export async function evaluateItems(ctx: NativeContext, body: Row, audience: OfferAudience) {
   const raw = (Array.isArray(body.items) ? body.items : []).slice(0, 200) as Row[];
   const ids = Array.from(new Set(raw.map((item) => text(item.productId)).filter((id) => UUID.test(id))));
   const products = new Map<string, Row>();
@@ -372,7 +373,7 @@ async function evaluateItems(ctx: NativeContext, body: Row, audience: OfferAudie
 }
 
 /** Cena docelowa i rabat całej oferty (jak `pricing` w `useOfferWizardLogic`). */
-function pricingOf(items: Evaluated[], target: unknown) {
+export function pricingOf(items: Evaluated[], target: unknown) {
   const listNet = items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
   const raw = target == null ? '' : String(target).trim().replace(',', '.');
   const parsed = raw === '' ? listNet : Number(raw);

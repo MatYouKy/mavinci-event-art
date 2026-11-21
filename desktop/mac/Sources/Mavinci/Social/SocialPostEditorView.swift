@@ -212,8 +212,36 @@ private enum SocialPickerTarget: Identifiable {
 
     /// Miniatury stylów (edytowalny post ze zdjęciem w aktywnym formacie i gotowym szablonem).
     private func styleThumbnailsShown(_ detail: SocialPostDetail) -> Bool {
-        detail.access.create && detail.post.status.editable && detail.spec?.ready != false && draft.variant(active).enabled
+        canvasOf(detail) == nil && detail.access.create && detail.post.status.editable && detail.spec?.ready != false && draft.variant(active).enabled
             && draft.variant(active).asset != nil
+    }
+
+    // MARK: Siatka profilu / panorama (duża grafika)
+    /// Duża grafika z migawki albo wybranego układu (`nil` — zwykły post).
+    private func canvasOf(_ detail: SocialPostDetail) -> SocialLayoutCanvas? { layoutDefinition(detail)?.canvas }
+
+    /// Kafelki do podglądów: pliki z serwera (bez zmian, aktualne) albo wycinki podglądu na żywo całej grafiki.
+    private func tileGraphics(_ detail: SocialPostDetail) -> [SocialGraphicSource?] {
+        guard let canvas = canvasOf(detail) else { return [] }
+        let tiles = canvas.tiles
+        let saved = detail.tiles ?? []
+        if !liveNeeded(detail), saved.count == tiles.count, saved.allSatisfy({ $0.upToDate && $0.renderedUrl != nil }) {
+            return tiles.map { tile in saved.first { $0.position == tile.position }?.renderedUrl.map { SocialGraphicSource.rendered($0) } }
+        }
+        guard let whole = graphic(detail, .portrait) else { return tiles.map { _ in nil } }
+        return tiles.map { tile in SocialGraphicSource.tile(whole, canvas: canvas.size, viewport: tile.frame) }
+    }
+
+    /// Wybór układu dużej grafiki; siatka — tylko feed Instagram, panorama — bez relacji.
+    private func changeCanvasLayout(_ detail: SocialPostDetail, _ choice: SocialLayoutChoice) {
+        changeLayout(detail, choice)
+        guard let next = (detail.canvasLayouts ?? []).first(where: { $0.choice == choice })?.definition.canvas else { return }
+        if next.isGrid {
+            draft.channels = [.instagramFeed]
+        } else {
+            draft.channels.remove(.instagramStory)
+            if draft.channels.isEmpty { draft.channels = [.instagramFeed, .facebookFeed] }
+        }
     }
 
     /// Warstwa zdjęć karuzeli: styl okładki bez tytułu, podpisu i napisu.
@@ -247,6 +275,8 @@ private enum SocialPickerTarget: Identifiable {
     private func overlayFormats(_ detail: SocialPostDetail) -> [SocialFormat] {
         let formats = draft.formatsWithPhoto
         guard !formats.isEmpty, detail.spec?.ready != false else { return [] }
+        // Duża grafika: podgląd całości zawsze na żywo (plik wariantu to tylko kafelek 1).
+        if canvasOf(detail) != nil { return formats.contains(.portrait) ? [.portrait] : [] }
         if liveNeeded(detail) { return (formats.contains(active) ? [active] : []) + formats.filter { $0 != active } }
         return detail.access.create && detail.post.status.editable && formats.contains(active) ? [active] : []
     }
@@ -255,20 +285,20 @@ private enum SocialPickerTarget: Identifiable {
     /// z formularza (jak `#photo` w HTML grafiki) i warstwa szablonu z serwera.
     private func graphic(_ detail: SocialPostDetail, _ format: SocialFormat) -> SocialGraphicSource? {
         let saved = detail.variant(format)
-        if !liveNeeded(detail), let saved, saved.upToDate, let url = saved.renderedUrl { return .rendered(url) }
-        guard let photo = livePhoto(detail, format) else { return saved?.renderedUrl.map { SocialGraphicSource.rendered($0) } }
+        if canvasOf(detail) == nil, !liveNeeded(detail), let saved, saved.upToDate, let url = saved.renderedUrl { return .rendered(url) }
+        guard let photo = livePhoto(detail, format) else { return canvasOf(detail) == nil ? saved?.renderedUrl.map { SocialGraphicSource.rendered($0) } : nil }
         if let layout = layoutDefinition(detail) {
             // Układ: zdjęcia w prostokątach miejsc (kolaż) pod warstwą układu z serwera.
             var photos: [SocialLayoutPhotoSource] = []
             for slot in 0..<layout.slots {
                 guard let rect = layout.slotRect(slot, format) else { continue }
                 if slot == 0 {
-                    photos.append(SocialLayoutPhotoSource(workURL: photo.work, crop: photo.crop, rect: rect, radius: layout.slotRadius(slot)))
+                    photos.append(SocialLayoutPhotoSource(workURL: photo.work, crop: photo.crop, rect: rect, radius: layout.previewRadius(slot)))
                 } else if let item = draft.slots.first(where: { $0.slot == slot }), let work = item.asset.workUrl,
                           let crop = layoutCrop(item.asset, item.crops[format], format, slot: slot, layout: layout) {
-                    photos.append(SocialLayoutPhotoSource(workURL: work, crop: crop, rect: rect, radius: layout.slotRadius(slot)))
+                    photos.append(SocialLayoutPhotoSource(workURL: work, crop: crop, rect: rect, radius: layout.previewRadius(slot)))
                 } else {
-                    photos.append(SocialLayoutPhotoSource(workURL: nil, crop: SocialCrop(x: 0, y: 0, w: 1, h: 1), rect: rect, radius: layout.slotRadius(slot)))
+                    photos.append(SocialLayoutPhotoSource(workURL: nil, crop: SocialCrop(x: 0, y: 0, w: 1, h: 1), rect: rect, radius: layout.previewRadius(slot)))
                 }
             }
             return .layout(photos: photos, overlay: store.overlays[overlayKey(detail, format, layout: layout)], pending: detail.spec?.ready != false)
@@ -498,16 +528,22 @@ private enum SocialPickerTarget: Identifiable {
             metaCard(detail)
             card {
                 Text("Publikacja").font(.headline)
-                ForEach(SocialChannel.allCases) { channel in
+                let canvas = canvasOf(detail)
+                ForEach(SocialChannel.allCases.filter { channel in canvas.map { $0.isGrid ? channel == .instagramFeed : channel != .instagramStory } ?? true }) { channel in
                     HStack {
                         Toggle(channel.label, isOn: Binding(get: { draft.channels.contains(channel) }, set: { on in
                             if on { draft.channels.insert(channel) } else { draft.channels.remove(channel) }
                         }))
-                        .disabled(!editable)
+                        .disabled(!editable || canvas?.isGrid == true)
                         if draft.channels.contains(channel) {
                             Text("→ \(channel.format(in: draft.formatsWithPhoto)?.rawValue ?? "brak grafiki")").font(.caption2).foregroundStyle(.secondary)
                         }
                     }
+                }
+                if let canvas {
+                    Text(canvas.isGrid ? "Siatka profilu trafia tylko na Instagram — każdy kafelek to osobny post (publikacja od ostatniego kafelka)."
+                         : "Panorama to karuzela: na Instagramie przesuwana bez przerw, na Facebooku i LinkedIn — post z kilkoma zdjęciami.")
+                        .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 let dateLocked = detail.post.status == .scheduled && !detail.access.publish
                 Toggle("Termin publikacji", isOn: $draft.hasDate).disabled(!editable || detail.post.status == .scheduled)
@@ -535,6 +571,24 @@ private enum SocialPickerTarget: Identifiable {
                     Text(template.problems.joined(separator: " ")).font(.caption).foregroundStyle(.orange)
                 }
             }
+            if let canvas = canvasOf(detail) {
+                card {
+                    Text("Siatka profilu / panorama").font(.headline)
+                    SocialCanvasPicker(options: detail.canvasLayouts ?? [], selection: draft.layout, canvas: canvas, colors: detail.template?.colors,
+                                       disabled: !editable) { choice in changeCanvasLayout(detail, choice) }
+                    if canvas.isGrid {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("• Każdy kafelek to osobny post — zasięg rozkłada się na kafelki; całość widać po wejściu na profil.")
+                            Text("• Publikacja od ostatniego kafelka do pierwszego (kafelek 1 ląduje w lewym górnym rogu).")
+                            Text("• Przypięte posty przesuwają siatkę; kolejne posty publikuj po 3, żeby została równa (kolejność poprawisz też w profilu Instagram).")
+                        }
+                        .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("Jedno zdjęcie przez wszystkie slajdy — jeden post, całe zaangażowanie w jednym miejscu.")
+                            .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            } else {
             card {
                 HStack {
                     Text("Układ grafiki").font(.headline)
@@ -557,6 +611,8 @@ private enum SocialPickerTarget: Identifiable {
                         .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
+            }
+            if canvasOf(detail) == nil {
             card {
                 Text("Styl grafiki").font(.headline)
                 if layoutDefinition(detail) != nil {
@@ -577,6 +633,7 @@ private enum SocialPickerTarget: Identifiable {
                 }
                 Text(draft.style.hint + " Logo, kolory i fonty zawsze z księgi znaku marki.").font(.caption2).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
             }
             card {
                 Text("Tekst na grafice").font(.headline)
@@ -712,7 +769,15 @@ private enum SocialPickerTarget: Identifiable {
     // MARK: Środek — formaty, kadr, opis
     private func graphicColumn(_ detail: SocialPostDetail, editable: Bool) -> some View {
         let variant = draft.variant(active)
+        let canvas = canvasOf(detail)
         return VStack(alignment: .leading, spacing: 12) {
+            if let canvas {
+                HStack(spacing: 8) {
+                    Text((detail.canvasLayouts ?? []).first(where: { $0.choice == draft.layout })?.name ?? canvas.label).font(.callout.weight(.semibold)).foregroundStyle(theme.accent)
+                    Text(canvas.isGrid ? "\(canvas.tileCount) \(canvas.tileCount == 3 ? "kafelki" : "kafelków") po 1080×1350 px (siatka 3:4 w profilu)"
+                         : "\(canvas.tileCount) \(canvas.tileCount == 5 ? "slajdów" : "slajdy") po 1080×1350 px").font(.caption).foregroundStyle(.secondary)
+                }
+            } else {
             HStack(spacing: 8) {
                 ForEach(SocialFormat.allCases) { format in
                     let item = draft.variant(format)
@@ -735,6 +800,7 @@ private enum SocialPickerTarget: Identifiable {
                 if editable { Button { picker = .all } label: { Label("Zdjęcie dla wszystkich formatów", systemImage: "photo.on.rectangle") } }
             }
             Text("\(active.hint) · \(Int(active.width))×\(Int(active.height)) px").font(.caption).foregroundStyle(.secondary)
+            }
             if collageOn(detail, variant) { collageStrip(detail, variant, editable: editable) }
             if carouselOn(variant) { carouselStrip(variant, editable: editable) }
             if let index = selectedSlide(variant), slotEdit == nil {
@@ -779,8 +845,9 @@ private enum SocialPickerTarget: Identifiable {
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    renderedBox(detail)
+                    if canvas == nil { renderedBox(detail) }
                 }
+                if let canvas { canvasBox(detail, canvas) }
             } else {
                 VStack(spacing: 10) {
                     Image(systemName: "photo.on.rectangle").font(.largeTitle).foregroundStyle(theme.accent.opacity(0.5))
@@ -799,6 +866,10 @@ private enum SocialPickerTarget: Identifiable {
                 .font(.body).frame(height: 150).scrollContentBackground(.hidden)
                 .padding(6).background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
                 .disabled(!editable)
+            if canvas?.isGrid == true {
+                Text("Opis z hashtagami trafia do kafelka 1 (lewy górny, publikowany na końcu); pozostałe kafelki dostają same hashtagi.")
+                    .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             let count = socialHashtags(draft.hashtags).count
             Text("Hashtagi (\(count)/30)").font(.caption).foregroundStyle(count > 30 ? Color.red : Color.secondary)
             TextField("#mavinci #eventy #gala", text: $draft.hashtags).textFieldStyle(.roundedBorder).disabled(!editable)
@@ -885,13 +956,16 @@ private enum SocialPickerTarget: Identifiable {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Zdjęcie \(slot + 1) kolażu — \(active.label)").font(.caption).foregroundStyle(.secondary)
-                    SocialGraphicView(source: graphic(detail, active), width: 240, height: 240 / active.aspect)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                if layout.canvas == nil {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Zdjęcie \(slot + 1) kolażu — \(active.label)").font(.caption).foregroundStyle(.secondary)
+                        SocialGraphicView(source: graphic(detail, active), width: 240, height: 240 / active.aspect)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .frame(width: 240)
                 }
-                .frame(width: 240)
             }
+            if let canvas = layout.canvas { canvasBox(detail, canvas) }
         } else {
             Text("Zdjęcie nie ma jeszcze wersji roboczej.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(40)
         }
@@ -900,7 +974,7 @@ private enum SocialPickerTarget: Identifiable {
     // MARK: Karuzela
     /// Karuzela w aktywnym formacie: format feedu (4:5, 1:1, 1,91:1) z okładką.
     private func carouselOn(_ variant: SocialVariantDraft) -> Bool {
-        socialSlideFormats.contains(active) && variant.enabled && variant.asset != nil
+        socialSlideFormats.contains(active) && variant.enabled && variant.asset != nil && detail.flatMap { canvasOf($0) } == nil
     }
 
     private func selectedSlide(_ variant: SocialVariantDraft) -> Int? {
@@ -1035,6 +1109,52 @@ private enum SocialPickerTarget: Identifiable {
     }
 
     /// Grafika aktywnego formatu: z serwera (ta sama co w CRM i telefonie) albo podgląd na żywo przy zmianach.
+    /// Cała duża grafika (podgląd na żywo: zdjęcia pod warstwą z serwera) z liniami cięcia: styki kafelków, pasy obcinane
+    /// w siatce profilu, numery kafelków i kolejność publikacji siatki.
+    private func canvasBox(_ detail: SocialPostDetail, _ canvas: SocialLayoutCanvas) -> some View {
+        let size = canvas.size
+        let crossings = layoutDefinition(detail).map { socialCanvasCrossings($0) } ?? []
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Cała grafika — podgląd na żywo (ten sam szablon co render); serwer tnie ją na kafelki po zapisie").font(.caption).foregroundStyle(.secondary)
+            GeometryReader { geometry in
+                let width: Double = max(240, Double(geometry.size.width))
+                let height: Double = width * size.height / size.width
+                let scale: Double = width / size.width
+                ZStack(alignment: .topLeading) {
+                    SocialGraphicView(source: graphic(detail, .portrait), width: width, height: height)
+                    ForEach(Array(canvas.hiddenStrips.enumerated()), id: \.offset) { item in
+                        Rectangle().fill(Color.black.opacity(0.45)).frame(width: item.element.w * scale, height: height).offset(x: item.element.x * scale)
+                    }
+                    ForEach(canvas.seamsX, id: \.self) { x in
+                        Rectangle().fill(Color.white.opacity(0.7)).frame(width: 1, height: height).offset(x: x * scale)
+                    }
+                    ForEach(canvas.seamsY, id: \.self) { y in
+                        Rectangle().fill(Color.white.opacity(0.7)).frame(width: width, height: 1).offset(y: y * scale)
+                    }
+                    ForEach(canvas.tiles, id: \.position) { tile in
+                        Text(canvas.isGrid ? "\(tile.position) · publikacja \(canvas.tileCount - tile.position + 1)." : "\(tile.position)")
+                            .font(.caption2).padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(RoundedRectangle(cornerRadius: 3).fill(Color.black.opacity(0.6))).foregroundStyle(.white)
+                            .offset(x: tile.visible.minX * scale + 4, y: tile.visible.minY * scale + 4)
+                    }
+                }
+                .frame(width: width, height: height, alignment: .topLeading)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .aspectRatio(size.width / size.height, contentMode: .fit)
+            Text(canvas.isGrid
+                 ? "Linie — styki kafelków w siatce profilu; przyciemnione pasy siatka obcina (kafelki zachodzą na siebie, więc w profilu łączą się bez przesunięć). Logo i teksty trzymaj w obrębie jednego kafelka."
+                 : "Linie — granice slajdów karuzeli (na Instagramie przesuwane bez przerw; na Facebooku i LinkedIn — post z kilkoma zdjęciami).")
+                .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if !crossings.isEmpty {
+                Text("Część logo albo tekstów wypada na styku kafelków — w feedzie będzie przecięta.").font(.caption2).foregroundStyle(.orange)
+            }
+            if !dirty && detail.variants.contains(where: { $0.assetId != nil && !$0.upToDate }) && detail.access.create && detail.post.status.editable {
+                Button { Task { await store.runDetail("Generuję kafelki", "renderPost", ["id": .string(detail.post.id)], success: "Kafelki są aktualne") } } label: { Label("Odśwież kafelki", systemImage: "arrow.clockwise") }
+            }
+        }
+    }
+
     private func renderedBox(_ detail: SocialPostDetail) -> some View {
         let saved = detail.variant(active)
         let current = saved?.upToDate == true && !liveNeeded(detail)
@@ -1076,21 +1196,47 @@ private enum SocialPickerTarget: Identifiable {
         let account = detail.company.name.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "_" }
         let text = socialPublicationText(draft.caption, socialHashtags(draft.hashtags))
         let logo = detail.template?.logoUrl
+        let canvas = canvasOf(detail)
+        // Duża grafika: siatka — profil i feed (osobne posty), panorama — karuzela na Instagramie, Facebooku i LinkedIn.
+        let tabs: [SocialPreviewTab] = canvas.map { shape -> [SocialPreviewTab] in shape.isGrid ? [.grid, .feed] : [.feed, .facebook, .linkedin] } ?? SocialPreviewTab.allCases
+        let current = tabs.contains(preview) ? preview : tabs[0]
         return VStack(alignment: .leading, spacing: 10) {
             // Zakładki podglądów zawijane jak w CRM (pięć platform nie mieści się w kontrolce segmentowej).
             WrapLayout(spacing: 4) {
-                ForEach(SocialPreviewTab.allCases) { tab in
+                ForEach(tabs) { tab in
                     Button { preview = tab } label: {
                         Text(tab.label).font(.caption)
                             .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(preview == tab ? theme.accent.opacity(0.18) : Color.clear))
-                            .foregroundStyle(preview == tab ? theme.accent : Color.secondary)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(current == tab ? theme.accent.opacity(0.18) : Color.clear))
+                            .foregroundStyle(current == tab ? theme.accent : Color.secondary)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
             }
-            switch preview {
+            if let canvas {
+                let tiles = tileGraphics(detail)
+                let first: SocialGraphicSource? = tiles.first ?? nil
+                let rest = Array(tiles.dropFirst())
+                switch current {
+                case .grid:
+                    SocialCanvasGridPreview(tiles: tiles, grid: detail.grid)
+                case .feed:
+                    SocialFeedPreview(graphic: first, format: .portrait, account: account, logo: logo, caption: text, slides: canvas.isGrid ? [] : rest)
+                    if canvas.isGrid {
+                        Text("W feedzie kafelki pojawiają się jako osobne posty — kafelek 1 (najnowszy) z opisem, pozostałe z hashtagami.")
+                            .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                case .facebook:
+                    SocialFacebookPreview(graphic: first, format: .portrait, account: detail.company.name, logo: logo, caption: text, slides: rest)
+                case .linkedin:
+                    SocialLinkedInPreview(graphic: first, format: .portrait, account: detail.meta?.linkedin?.organizationName ?? detail.company.name,
+                                          logo: logo, caption: text, slides: rest)
+                case .story:
+                    EmptyView()
+                }
+            } else {
+            switch current {
             case .feed:
                 SocialFeedPreview(graphic: feed.flatMap { graphic(detail, $0) }, format: feed ?? .portrait, account: account, logo: logo, caption: text,
                                   slides: slideGraphics(detail, feed))
@@ -1106,6 +1252,7 @@ private enum SocialPickerTarget: Identifiable {
                 SocialLinkedInPreview(graphic: linkedin.flatMap { graphic(detail, $0) }, format: linkedin ?? .portrait,
                                       account: detail.meta?.linkedin?.organizationName ?? detail.company.name, logo: logo, caption: text,
                                       slides: slideGraphics(detail, linkedin))
+            }
             }
             Text(live
                  ? "Podgląd na żywo: zdjęcie w bieżącym kadrze z warstwą szablonu z serwera — po zapisie serwer wygeneruje taką samą grafikę (wspólną dla CRM, Maca i telefonu)."
@@ -1153,7 +1300,12 @@ private enum SocialPickerTarget: Identifiable {
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.1)))
                 }
                 ForEach(detail.post.channels, id: \.self) { channel in
-                    let publication = publications.first { $0.channel == channel }
+                    // Siatka profilu: osobny post Instagram na kafelek — stan zbiorczy i lista kafelków (jak w CRM).
+                    let tileTotal = detail.canvas?.mode == "grid" ? (detail.canvas?.tiles ?? 0) : 0
+                    let tileRows: [SocialPublication] = tileTotal > 0
+                        ? publications.filter({ $0.channel == channel && ($0.tile ?? 0) > 0 }).sorted(by: { ($0.tile ?? 0) < ($1.tile ?? 0) }) : []
+                    let tilesPublished = tileRows.filter({ $0.status == "published" }).count
+                    let publication: SocialPublication? = tileTotal > 0 ? gridPublication(tileRows, total: tileTotal) : publications.first(where: { $0.channel == channel })
                     let problem = detail.meta?.channel(channel)?.problem
                     let manual = detail.meta?.manual(channel) ?? (channel == .linkedinPage)
                     let symbol: String = publication?.status == "published" ? "checkmark.circle.fill"
@@ -1165,10 +1317,27 @@ private enum SocialPickerTarget: Identifiable {
                         HStack(spacing: 6) {
                             Image(systemName: symbol).foregroundStyle(tint)
                             Text(channel.label).font(.caption.weight(.semibold))
-                            Text(stateLabel).font(.caption2).foregroundStyle(.secondary)
+                            Text(stateLabel + (tileTotal > 0 ? " · \(tilesPublished)/\(tileTotal) kafelków" : "")).font(.caption2).foregroundStyle(.secondary)
                             Spacer()
-                            if let link = publication?.permalink, let url = URL(string: link) {
+                            if tileTotal == 0, let link = publication?.permalink, let url = URL(string: link) {
                                 Link(destination: url) { Label("Otwórz", systemImage: "arrow.up.right.square") }.font(.caption2)
+                            }
+                        }
+                        if !tileRows.isEmpty {
+                            WrapLayout(spacing: 4) {
+                                ForEach(tileRows, id: \.tile) { item in
+                                    if let link = item.permalink, let url = URL(string: link) {
+                                        Link(destination: url) { Text("Kafelek \(item.tile ?? 0)").font(.caption2) }
+                                            .padding(.horizontal, 5).padding(.vertical, 2)
+                                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.green.opacity(0.4)))
+                                    } else {
+                                        Text("Kafelek \(item.tile ?? 0): \(item.statusLabel)").font(.caption2)
+                                            .foregroundStyle(item.status == "failed" ? Color.red : Color.secondary)
+                                            .padding(.horizontal, 5).padding(.vertical, 2)
+                                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(item.status == "failed" ? Color.red.opacity(0.4) : Color.primary.opacity(0.15)))
+                                            .help(item.error ?? "")
+                                    }
+                                }
                             }
                         }
                         if let error = publication?.error, publication?.status != "published" { Text(error).font(.caption2).foregroundStyle(.red) }
@@ -1192,6 +1361,15 @@ private enum SocialPickerTarget: Identifiable {
                 }
             }
         }
+    }
+
+    /// Stan zbiorczy siatki profilu: pierwszy nieopublikowany kafelek (albo kafelek 1) ze statusem całej serii.
+    private func gridPublication(_ rows: [SocialPublication], total: Int) -> SocialPublication? {
+        guard var item = rows.first(where: { $0.status != "published" }) ?? rows.first else { return nil }
+        let published = rows.filter { $0.status == "published" }.count
+        item.status = published == total ? "published" : rows.contains { $0.status == "failed" } ? "failed"
+            : rows.contains { $0.status == "sending" } ? "sending" : "pending"
+        return item
     }
 
     /// Wyniki kanału z Meta (stan narastająco od publikacji).
@@ -1513,6 +1691,8 @@ enum SocialGraphicSource {
     case live(workURL: String, crop: SocialCrop, overlay: NSImage?, pending: Bool)
     /// Układ jako dane: zdjęcia w prostokątach miejsc (kolaż) pod warstwą układu z serwera (tło z otworami, logo, teksty).
     case layout(photos: [SocialLayoutPhotoSource], overlay: NSImage?, pending: Bool)
+    /// Kafelek dużej grafiki (siatka profilu, panorama): wycinek podglądu całości (`canvas` i `viewport` w px).
+    indirect case tile(SocialGraphicSource, canvas: CGSize, viewport: CGRect)
 }
 
 /// Zdjęcie w miejscu układu: wersja robocza (brak — miejsce jeszcze bez zdjęcia), kadr w proporcjach miejsca, prostokąt 0…1
@@ -1575,6 +1755,12 @@ struct SocialGraphicView: View {
             }
             .frame(width: width, height: height, alignment: .topLeading)
             .clipped()
+        case .tile(let whole, let canvas, let viewport):
+            let scale = width / max(1, viewport.width)
+            SocialGraphicView(source: whole, width: canvas.width * scale, height: canvas.height * scale)
+                .offset(x: -viewport.minX * scale, y: -viewport.minY * scale)
+                .frame(width: width, height: height, alignment: .topLeading)
+                .clipped()
         case .rendered(let url):
             SocialImageView(url: url, contentMode: .fill).frame(width: width, height: height).clipped()
         case nil:
@@ -1686,6 +1872,40 @@ struct SocialGridPreview: View {
                 }
             }
             Text("Siatka profilu przycina posty do 3:4 — środek grafiki pozostaje widoczny.").font(.caption2).foregroundStyle(.white.opacity(0.5))
+        }
+        .padding(4)
+        .background(Color.black)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// Siatka profilu z kafelkami dużej grafiki (1:1 z `CanvasGridPreview` w CRM): kafelki przycięte do 3:4 jak w profilu,
+/// potem dotychczasowe posty marki.
+struct SocialCanvasGridPreview: View {
+    let tiles: [SocialGraphicSource?]
+    let grid: [SocialGridItem]
+    var body: some View {
+        let cell: Double = 110
+        let cellHeight = cell * 4 / 3
+        let columns = Array(repeating: GridItem(.fixed(cell), spacing: 2), count: 3)
+        VStack(alignment: .leading, spacing: 4) {
+            LazyVGrid(columns: columns, spacing: 2) {
+                ForEach(Array(tiles.enumerated()), id: \.offset) { item in
+                    ZStack(alignment: .topLeading) {
+                        SocialGraphicView(source: item.element, width: cellHeight * 0.8, height: cellHeight)
+                            .frame(width: cell, height: cellHeight).clipped()
+                        if item.offset == 0 {
+                            Text("TA SIATKA").font(.system(size: 8, weight: .bold)).padding(.horizontal, 3).background(Color(red: 0.83, green: 0.73, blue: 0.45)).foregroundStyle(.black).padding(3)
+                        }
+                    }
+                }
+                ForEach(grid.prefix(max(0, 12 - tiles.count))) { item in
+                    SocialImageView(url: item.imageUrl, contentMode: .fill).frame(width: cell, height: cellHeight).clipped()
+                }
+            }
+            Text("Siatka profilu przycina kafelki do 3:4 — tu widać, jak złożą się na profilu. Przypięte posty przesuwają siatkę; kolejne posty publikuj po 3, żeby została równa.")
+                .font(.caption2).foregroundStyle(.white.opacity(0.5)).fixedSize(horizontal: false, vertical: true)
         }
         .padding(4)
         .background(Color.black)

@@ -22,6 +22,9 @@ import SocialPostScreen from '../screens/SocialPostScreen';
 import SocialQuickPostScreen from '../screens/SocialQuickPostScreen';
 import PortfolioScreen from '../screens/PortfolioScreen';
 import PortfolioItemScreen from '../screens/PortfolioItemScreen';
+import PresentationsScreen from '../screens/PresentationsScreen';
+import PresentationScreen from '../screens/PresentationScreen';
+import ShowcaseOfferScreen from '../screens/ShowcaseOfferScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -46,6 +49,11 @@ export type RootStackParamList = {
   /** Marketing → Realizacje: portfolio strony (kopie robocze, SEO, publikacja). */
   Portfolio: undefined;
   PortfolioItem: { id: string };
+  /** Strefa sprzedawcy → Prezentacje: działy i karty na spotkania z klientami (podgląd jak u klienta). */
+  Presentations: undefined;
+  Presentation: { id: string; title?: string };
+  /** Oferta ze spotkania (koszyk z pokazu, klient, utworzenie oferty i PDF). */
+  ShowcaseOffer: undefined;
   PdfViewer: { url: string };
   EventDetail: {
     eventId: string;
@@ -224,6 +232,36 @@ export default function RootNavigator() {
               options={{
                 headerShown: true,
                 title: 'Realizacja'.toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="Presentations"
+              component={PresentationsScreen}
+              options={{
+                headerShown: true,
+                title: 'Prezentacje'.toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="Presentation"
+              component={PresentationScreen}
+              options={({ route }) => ({
+                headerShown: true,
+                title: (route.params?.title || 'Prezentacja').toLocaleUpperCase('pl-PL'),
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              })}
+            />
+            <Stack.Screen
+              name="ShowcaseOffer"
+              component={ShowcaseOfferScreen}
+              options={{
+                headerShown: true,
+                title: 'Oferta dla klienta'.toLocaleUpperCase('pl-PL'),
                 headerStyle: { backgroundColor: colors.background.secondary },
                 headerTintColor: colors.text.primary,
               }}

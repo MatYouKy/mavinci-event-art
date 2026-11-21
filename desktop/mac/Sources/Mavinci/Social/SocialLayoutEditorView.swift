@@ -74,6 +74,8 @@ private func socialLayoutElementSymbol(_ type: String) -> String {
     @State private var moveStart: SocialLayoutRect?
     @State private var resizeStart: SocialLayoutRect?
     @State private var lastOverlay: NSImage?
+    /// Wiersz listy elementów, nad którym jest przeciągany element (miejsce upuszczenia).
+    @State private var rowTarget: String?
     @FocusState private var canvasFocused: Bool
 
     private var editable: Bool { reply?.access.approve == true }
@@ -665,15 +667,48 @@ private func socialLayoutElementSymbol(_ type: String) -> String {
     private func elementsList(_ definition: SocialLayoutDefinition) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Elementy (kolejność rysowania; zdjęcia zawsze pod resztą)").font(.caption.weight(.semibold))
-            ForEach(Array(definition.elements.enumerated()), id: \.element.id) { item in
-                elementRow(item.element, index: item.offset, count: definition.elements.count)
+            if editable {
+                Text("Przeciągnij wiersz, żeby zmienić kolejność (albo strzałki).").font(.caption2).foregroundStyle(.secondary)
             }
+            ForEach(Array(definition.elements.enumerated()), id: \.element.id) { item in
+                reorderable(elementRow(item.element, index: item.offset, count: definition.elements.count), id: item.element.id, index: item.offset)
+            }
+        }
+    }
+
+    /// Przeciąganie wiersza (drag & drop): upuszczony element zajmuje miejsce wiersza docelowego.
+    @ViewBuilder private func reorderable<Row: View>(_ row: Row, id: String, index: Int) -> some View {
+        if editable {
+            row
+                .draggable("mavinci-layout-element:\(id)")
+                .dropDestination(for: String.self) { values, _ in
+                    rowTarget = nil
+                    guard let value = values.first, value.hasPrefix("mavinci-layout-element:") else { return false }
+                    moveElement(String(value.dropFirst("mavinci-layout-element:".count)), toIndex: index)
+                    return true
+                } isTargeted: { targeted in
+                    if targeted { rowTarget = id } else if rowTarget == id { rowTarget = nil }
+                }
+        } else {
+            row
+        }
+    }
+
+    private func moveElement(_ id: String, toIndex target: Int) {
+        updateDefinition { definition in
+            guard let index = definition.elements.firstIndex(where: { $0.id == id }), index != target else { return }
+            let moved = definition.elements.remove(at: index)
+            definition.elements.insert(moved, at: min(max(0, target), definition.elements.count))
         }
     }
 
     private func elementRow(_ element: SocialLayoutElement, index: Int, count: Int) -> some View {
         let active = element.id == selected
+        let targeted = rowTarget == element.id
         return HStack(spacing: 6) {
+            if editable {
+                Image(systemName: "line.3.horizontal").font(.caption2).foregroundStyle(.secondary).help("Przeciągnij, żeby zmienić kolejność")
+            }
             Button { selected = element.id } label: {
                 HStack(spacing: 6) {
                     Image(systemName: socialLayoutElementSymbol(element.type)).foregroundStyle(theme.accent).frame(width: 16)
@@ -695,7 +730,9 @@ private func socialLayoutElementSymbol(_ type: String) -> String {
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
         .background(RoundedRectangle(cornerRadius: 6).fill(active ? theme.accent.opacity(0.12) : Color.clear))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? theme.accent : Color.primary.opacity(0.1)))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(active || targeted ? theme.accent : Color.primary.opacity(0.1),
+                                                          style: StrokeStyle(lineWidth: targeted ? 2 : 1, dash: targeted ? [4, 3] : [])))
+        .contentShape(Rectangle())
     }
 
     // MARK: Właściwości elementu

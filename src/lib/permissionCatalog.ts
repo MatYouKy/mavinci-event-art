@@ -56,6 +56,8 @@ export const PERMISSION_SCOPE_GROUPS: PermissionScopeGroup[] = [
       { key: 'contacts_view', label: 'Podgląd kontaktów', description: 'Widzi osoby i organizacje w bazie kontaktów.' },
       { key: 'contacts_manage', label: 'Zarządzanie kontaktami', description: 'Może edytować i przypisywać kontakty.' },
       { key: 'contacts_create', label: 'Tworzenie kontaktów', description: 'Może dodawać osoby i organizacje.' },
+      { key: 'presentations_view', label: 'Prezentacje — podgląd i pokaz', description: 'Przegląda i pokazuje klientom prezentacje ze strefy sprzedawcy (działy i karty widoczne na spotkaniach). Dostęp do ofert daje ten zakres automatycznie.' },
+      { key: 'presentations_manage', label: 'Prezentacje — przygotowanie', description: 'Tworzy i porządkuje działy i karty prezentacji, dodaje zdjęcia, produkty z katalogu, korzyści, przygotowanie i pytania klientów; widzi też ukryte karty. „Zarządzanie ofertami” daje ten zakres automatycznie.' },
       { key: 'inquiries_view', label: 'Dostęp do zapytań', description: 'Otwiera moduł zapytań sprzedażowych.' },
       { key: 'inquiries_manage', label: 'Zarządzanie zapytaniami', description: 'Podstawowy zakres zarządzania zapytaniami.' },
       { key: 'inquiries_view_pool', label: 'Wspólna kolejka zapytań', description: 'Widzi nowe, jeszcze nieprzypisane zapytania.' },

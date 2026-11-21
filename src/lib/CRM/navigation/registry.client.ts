@@ -36,6 +36,7 @@ import {
   BadgePercent,
   Images,
   Award,
+  Presentation,
 } from 'lucide-react';
 
 /**
@@ -61,6 +62,7 @@ export const NavigationIcons = {
   tasks: CheckSquare,
   employees: Users,
   salespeople: BadgePercent,
+  presentations: Presentation,
   offers: FileText,
   contacts: UserRound,
   contracts: ScrollText,
