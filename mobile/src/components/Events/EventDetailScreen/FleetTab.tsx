@@ -264,7 +264,7 @@ export function FleetTab({ assignments, currentEmployeeId, onChanged }: FleetTab
     <View style={styles.container}>
       <View style={styles.sectionHeader}>
         <View>
-          <Text style={styles.sectionTitle}>Flota wydarzenia</Text>
+          <Text style={styles.sectionTitle}>Flota eventu</Text>
           <Text style={styles.sectionSubtitle}>
             Dane aktualizują się automatycznie dla wszystkich użytkowników
           </Text>

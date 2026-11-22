@@ -23,7 +23,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const eventId = params.id;
   const download = new URL(req.url).searchParams.get('download') === '1';
   if (!UUID.test(eventId)) {
-    return NextResponse.json({ error: 'Nieprawidłowy identyfikator wydarzenia.' }, { status: 400 });
+    return NextResponse.json({ error: 'Nieprawidłowy identyfikator eventu.' }, { status: 400 });
   }
 
   try {

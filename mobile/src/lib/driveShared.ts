@@ -15,10 +15,10 @@ export type DriveDocumentSection = 'offers' | 'calculations' | 'contracts';
 
 /** Działy w kolejności jak w Finderze. */
 export const DRIVE_SECTIONS: ReadonlyArray<{ key: DriveSection; label: string; description: string }> = [
-  { key: 'events', label: 'Eventy', description: 'Pliki wydarzeń: rok → wydarzenie → foldery z zakładki Pliki.' },
+  { key: 'events', label: 'Eventy', description: 'Pliki eventów: rok → event → foldery z zakładki Pliki.' },
   { key: 'materials', label: 'Materiały', description: 'Logotypy i księga znaku, zdjęcia, wideo, prezentacje i dokumenty marki.' },
   { key: 'offers', label: 'Oferty', description: 'PDF-y wystawionych ofert: rok → miesiąc.' },
-  { key: 'calculations', label: 'Kalkulacje', description: 'PDF-y kalkulacji wydarzeń i zapytań: rok → miesiąc.' },
+  { key: 'calculations', label: 'Kalkulacje', description: 'PDF-y kalkulacji eventów i zapytań: rok → miesiąc.' },
   { key: 'contracts', label: 'Umowy', description: 'PDF-y umów: rok → miesiąc.' },
   { key: 'warehouse', label: 'Magazyn', description: 'Sprzęt: zdjęcia, pliki i instrukcje — kategoria → sprzęt.' },
   { key: 'employees', label: 'Pracownicy', description: 'Zdjęcia, dokumenty i umowy pracowników — pracownik → Zdjęcia, Dokumenty, Umowy.' },
@@ -234,7 +234,7 @@ export function driveRecordPath(record: DriveFile['record']): string | null {
 /** Etykieta przycisku otwarcia rekordu. */
 export const DRIVE_RECORD_LABELS: Record<DriveRecordType, string> = {
   offer: 'Otwórz ofertę',
-  event: 'Otwórz wydarzenie',
+  event: 'Otwórz event',
   inquiry: 'Otwórz zapytanie',
   contract: 'Otwórz umowę',
   equipment: 'Otwórz sprzęt',

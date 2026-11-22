@@ -174,7 +174,7 @@ export function EquipmentRowBadges({ line, stage, people }: EquipmentRowChecklis
     badges.push(
       <Badge key="missing" tone="danger" title={who || undefined}>
         {avatar}
-        Brak {line.shipped_qty - line.loadback_qty} po wydarzeniu
+        Brak {line.shipped_qty - line.loadback_qty} po evencie
       </Badge>,
     );
   } else if (stage === 'return' && line.return_ok_qty != null) {
@@ -281,7 +281,7 @@ export function EquipmentRowQtyChip(props: EquipmentRowChecklist) {
   const label = `${value ?? '–'}/${of}`;
   const titles: Record<EquipmentStageKey, string> = {
     dispatch: 'Spakowana ilość',
-    loadback: 'Ile wraca po wydarzeniu',
+    loadback: 'Ile wraca po evencie',
     return: 'Ile wróciło sprawne',
   };
 

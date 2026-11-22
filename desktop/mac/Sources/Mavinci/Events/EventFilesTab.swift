@@ -227,7 +227,7 @@ private struct UploadReply: Decodable { var added: Int; var failed: [String] }
             if FinderDomain.available {
                 Button { Task { await FinderDomain.reveal(event: eventID) } } label: { Label("Pokaż w Finderze", systemImage: "folder") }
                     .buttonStyle(.borderless).font(.caption).foregroundStyle(.secondary)
-                    .help("Pliki tego wydarzenia w Finderze: Mavinci → Eventy → rok → wydarzenie (zmiany wracają do CRM).")
+                    .help("Pliki tego eventu w Finderze: Mavinci → Eventy → rok → event (zmiany wracają do CRM).")
                     .padding(12)
             }
         }

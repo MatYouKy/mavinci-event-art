@@ -250,8 +250,8 @@ export default function NotificationsScreen() {
       Alert.alert(
         actualStatus === 'accepted' ? 'Zaakceptowano' : 'Odrzucono',
         actualStatus === 'accepted'
-          ? 'Zaproszenie do wydarzenia zostało zaakceptowane.'
-          : 'Zaproszenie do wydarzenia zostało odrzucone.',
+          ? 'Zaproszenie do eventu zostało zaakceptowane.'
+          : 'Zaproszenie do eventu zostało odrzucone.',
       );
     } catch (error) {
       console.error('Error responding to assignment:', error);
@@ -264,7 +264,7 @@ export default function NotificationsScreen() {
   const handleAccept = (notification: Notification) => {
     Alert.alert(
       'Akceptacja zaproszenia',
-      'Czy na pewno chcesz zaakceptować zaproszenie do tego wydarzenia?',
+      'Czy na pewno chcesz zaakceptować zaproszenie do tego eventu?',
       [
         { text: 'Anuluj', style: 'cancel' },
         { text: 'Akceptuj', onPress: () => handleAssignmentResponse(notification, 'accepted') },
@@ -275,7 +275,7 @@ export default function NotificationsScreen() {
   const handleReject = (notification: Notification) => {
     Alert.alert(
       'Odrzucenie zaproszenia',
-      'Czy na pewno chcesz odrzucić zaproszenie do tego wydarzenia?',
+      'Czy na pewno chcesz odrzucić zaproszenie do tego eventu?',
       [
         { text: 'Anuluj', style: 'cancel' },
         {

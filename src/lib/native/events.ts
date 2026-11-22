@@ -110,7 +110,7 @@ async function loadEvents(ctx: NativeContext): Promise<Item[]> {
     const status = text(event.status) || 'inquiry';
     const display = operational ? operationalStates[event.id] || operationalFallback(status) : status;
     const state = operational
-      ? { state: display === 'settled' ? 'settled' : display === 'in_progress' ? 'live' : display === 'cancelled' ? 'cancelled' : 'scheduled', label: OPERATIONAL_LABELS[display] || 'Nowe wydarzenie', days: 0 }
+      ? { state: display === 'settled' ? 'settled' : display === 'in_progress' ? 'live' : display === 'cancelled' ? 'cancelled' : 'scheduled', label: OPERATIONAL_LABELS[display] || 'Nowy event', days: 0 }
       : eventListState(event, payments[event.id] || []);
     const budgets = Array.isArray(event.invoice_budget) ? event.invoice_budget : [];
     const loc = event.locations as Row | null;

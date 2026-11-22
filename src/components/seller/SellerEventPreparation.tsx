@@ -19,7 +19,7 @@ const sections = [
   ['phases', 'Timeline', 'Godziny i etapy pracy'],
   ['team', 'Zespół', 'Pracownicy i zaproszenia'],
   ['equipment', 'Sprzęt', 'Plan, braki i rezerwacje'],
-  ['agenda', 'Agenda', 'Program wydarzenia'],
+  ['agenda', 'Agenda', 'Program eventu'],
   ['logistics', 'Logistyka', 'Transport, kierowcy i przejazdy'],
   ['finances', 'Finanse i prowizje', 'Planowane rozliczenia i wypłaty'],
 ] as const;
@@ -46,16 +46,16 @@ export default function SellerEventPreparation({ offerId, eventId }: { offerId: 
   const pending = matching && state?.realization?.stage === 'awaiting_crm_confirmation';
   return <section className="space-y-4 rounded-xl bg-white/[0.035] p-4 sm:p-5">
     <div className="flex items-start justify-between gap-3">
-      <h2 className="flex items-center gap-2 text-base uppercase"><CalendarDays className="h-4 w-4 text-[#d3bb73]"/>Przygotowanie wydarzenia z oferty</h2>
-      <button type="button" className={button} disabled={loading} onClick={() => setRefresh(value => value + 1)} aria-label="Odśwież przygotowanie wydarzenia"><RefreshCw className="h-4 w-4"/></button>
+      <h2 className="flex items-center gap-2 text-base uppercase"><CalendarDays className="h-4 w-4 text-[#d3bb73]"/>Przygotowanie eventu z oferty</h2>
+      <button type="button" className={button} disabled={loading} onClick={() => setRefresh(value => value + 1)} aria-label="Odśwież przygotowanie eventu"><RefreshCw className="h-4 w-4"/></button>
     </div>
     {loading && <p role="status" className="flex items-center gap-2 text-sm text-white/50"><Loader2 className="h-4 w-4 animate-spin"/>Wczytywanie stanu realizacji…</p>}
     {error && <p role="alert" className="text-sm text-amber-200">{error}</p>}
     {matching && <>
       <p className={pending ? 'text-sm text-amber-200' : 'text-sm text-white/65'}>{pending
-        ? 'Oferta przyjęta — wydarzenie istnieje i oczekuje na potwierdzenie realizacji. Możesz już przygotować plan.'
-        : state?.realization?.stage === 'cancelled' ? 'Wydarzenie anulowane. Zachowano dokumenty i historię przygotowań.'
-        : 'Wydarzenie jest powiązane z ofertą. Dalsze przygotowanie prowadzisz w standardowych sekcjach CRM.'}</p>
+        ? 'Oferta przyjęta — event istnieje i oczekuje na potwierdzenie realizacji. Możesz już przygotować plan.'
+        : state?.realization?.stage === 'cancelled' ? 'Event anulowany. Zachowano dokumenty i historię przygotowań.'
+        : 'Event jest powiązany z ofertą. Dalsze przygotowanie prowadzisz w standardowych sekcjach CRM.'}</p>
       {state?.offer_summary && <p className="text-sm text-white/60">{[state.offer_summary.seller_name, state.offer_summary.seller_organization].filter(Boolean).join(' · ')}</p>}
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{sections.map(([tab, label, description]) => <Link key={tab} href={`/crm/events/${eventId}?tab=${tab}`} className="rounded-lg bg-black/15 p-3 hover:bg-white/5">
         <span className="block text-sm text-[#d3bb73]">{label}</span><span className="mt-1 block text-xs text-white/45">{description}</span>
@@ -64,7 +64,7 @@ export default function SellerEventPreparation({ offerId, eventId }: { offerId: 
       {pending && state?.can_manage && state.realization?.can_create_event && <button type="button" className={button} disabled={!state.realization.auto_event_ready} onClick={() => setOpen(true)}>Sprawdź dane i potwierdź realizację</button>}
       {pending && !state?.realization?.auto_event_ready && <p className="text-xs text-amber-200">Potwierdzenie wymaga migracji 20261028170000_seller_acceptance_event_handoff.sql.</p>}
     </>}
-    {!loading && !error && !matching && <p className="text-sm text-white/50">Nie potwierdzono dostępu do tej relacji oferty i wydarzenia. Odśwież dane lub wróć do oferty źródłowej.</p>}
+    {!loading && !error && !matching && <p className="text-sm text-white/50">Nie potwierdzono dostępu do tej relacji oferty i eventu. Odśwież dane lub wróć do oferty źródłowej.</p>}
     {open && matching && <CreateSellerEventModal offerId={offerId} api={api} onClose={() => setOpen(false)} onCreated={() => {
       setOpen(false); setRefresh(value => value + 1);
       window.dispatchEvent(new Event('seller-workspace-changed')); router.refresh();

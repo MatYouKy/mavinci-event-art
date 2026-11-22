@@ -207,7 +207,7 @@ struct InquiryActions {
                 Button("Anuluj", role: .cancel) {}
             }
         } message: {
-            Text("Zapytanie nie ma zadań, ofert, kalkulacji ani powiązanego wydarzenia. Zostanie trwale usunięte wraz z historią. Tej operacji nie można cofnąć.")
+            Text("Zapytanie nie ma zadań, ofert, kalkulacji ani powiązanego eventu. Zostanie trwale usunięte wraz z historią. Tej operacji nie można cofnąć.")
         }
         .task(id: state.employee?.id) {
             if store.inquiries.isEmpty { await store.backgroundSync() }
@@ -617,7 +617,7 @@ struct FlowBadges: View {
                     field("Powód utraty", inquiry.lostReason)
                 }
             }
-            group("Wydarzenie") {
+            group("Event") {
                 field("Miejsce", inquiry.locationText)
                 field("Zakres", inquiry.scope)
                 messageField(inquiry)
@@ -627,7 +627,7 @@ struct FlowBadges: View {
                     Button("Otwórz ofertę", systemImage: "doc.text") { state.open(.offers, id: offer) }
                 }
                 if let event = inquiry.eventId, state.employee?.canView(.events) == true {
-                    Button("Otwórz wydarzenie", systemImage: "sparkles") { state.showEvent(event) }
+                    Button("Otwórz event", systemImage: "sparkles") { state.showEvent(event) }
                 }
                 if state.employee?.canView(.contacts) == true {
                     if let organization = inquiry.organizationId { Button("Otwórz organizację", systemImage: "building.2") { state.showContact(organization) } }

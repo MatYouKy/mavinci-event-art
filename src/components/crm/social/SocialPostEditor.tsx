@@ -598,12 +598,12 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                 </label>
                 {detail.post.status === 'scheduled' && <p className="text-[11px] text-[#e5e4e2]/40">Zmiana treści cofnie zaplanowany post do szkicu (wymaga ponownej akceptacji).</p>}
                 <div className="text-sm">
-                  <div className="mb-1">Wydarzenie</div>
+                  <div className="mb-1">Event</div>
                   <div className="flex gap-2">
                     <button type="button" disabled={!editable} className={`${secondaryButton} flex-1 justify-start truncate`} onClick={() => setEventPicker(true)}>
-                      <CalendarDays className="h-4 w-4 shrink-0" /><span className="truncate">{draft.eventName || 'Wybierz wydarzenie'}</span>
+                      <CalendarDays className="h-4 w-4 shrink-0" /><span className="truncate">{draft.eventName || 'Wybierz event'}</span>
                     </button>
-                    {draft.eventId && editable && <button type="button" className={secondaryButton} aria-label="Bez wydarzenia" onClick={() => change({ eventId: null, eventName: null })}><X className="h-4 w-4" /></button>}
+                    {draft.eventId && editable && <button type="button" className={secondaryButton} aria-label="Bez eventu" onClick={() => change({ eventId: null, eventName: null })}><X className="h-4 w-4" /></button>}
                   </div>
                   {detail.event && <p className="mt-1 text-xs text-[#e5e4e2]/45">{[detail.event.location, detail.event.organizationName].filter(Boolean).join(' · ')}</p>}
                 </div>
@@ -711,7 +711,7 @@ export default function SocialPostEditor({ postId, onClose, onChanged, onOpenPos
                     <ConsentBadge consent={asset.consent} compact />
                   </div>
                 ))}
-                <p className="text-[11px] text-[#e5e4e2]/40">Zgodę ustawisz w Bibliotece (zdjęcie, wydarzenie albo klient).</p>
+                <p className="text-[11px] text-[#e5e4e2]/40">Zgodę ustawisz w Bibliotece (zdjęcie, event albo klient).</p>
               </section>
 
               {(detail.problems.submit.length > 0 || detail.problems.publish.length > 0) && (

@@ -353,12 +353,12 @@ function InquiryEditorModal({ inquiry, employees, canAssign, onClose, onSaved }:
               <p className="mt-1 text-xs text-[#e5e4e2]/45">Te dane zostaną odziedziczone przez ofertę i pokazane na stronie „Założenia wydarzenia”.</p>
             </div>
             <label className="block">
-              <span className="mb-2 block text-xs text-[#e5e4e2]/55">Założenia wydarzenia</span>
+              <span className="mb-2 block text-xs text-[#e5e4e2]/55">Założenia eventu</span>
               <textarea disabled title="Założenia edytuj w obszarze zapytania" value={eventAssumptions} onChange={(event) => setEventAssumptions(event.target.value)} rows={4} placeholder="Format, liczba uczestników, układ sali, godziny, sposób realizacji…" className="w-full resize-y rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/50" />
             </label>
             <label className="block">
-              <span className="mb-2 block text-xs text-[#e5e4e2]/55">Cel wydarzenia</span>
-              <textarea disabled title="Cel edytuj w obszarze zapytania" value={eventGoal} onChange={(event) => setEventGoal(event.target.value)} rows={3} placeholder="Co klient chce osiągnąć dzięki wydarzeniu?" className="w-full resize-y rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/50" />
+              <span className="mb-2 block text-xs text-[#e5e4e2]/55">Cel eventu</span>
+              <textarea disabled title="Cel edytuj w obszarze zapytania" value={eventGoal} onChange={(event) => setEventGoal(event.target.value)} rows={3} placeholder="Co klient chce osiągnąć dzięki eventowi?" className="w-full resize-y rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/50" />
             </label>
           </div>
 

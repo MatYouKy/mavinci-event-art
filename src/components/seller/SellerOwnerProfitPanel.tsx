@@ -36,18 +36,18 @@ export default function SellerOwnerProfitPanel({ offerId, refreshKey = 0 }: { of
         Prowizja opiekuna
       </h3>
       <p className="text-xs leading-5 text-[#e5e4e2]/65">
-        Prowizję opiekuna liczy teraz zakładka Podsumowanie w wydarzeniu (udział sprzedawcy, 5% / 10% od zysku).
+        Prowizję opiekuna liczy teraz zakładka Podsumowanie w evencie (udział sprzedawcy, 5% / 10% od zysku).
       </p>
       {eventId ? (
         <Link
           href={`/crm/events/${eventId}?tab=summary`}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/20"
         >
-          Otwórz podsumowanie wydarzenia
+          Otwórz podsumowanie eventu
           <ArrowRight className="h-3.5 w-3.5" aria-hidden />
         </Link>
       ) : (
-        <p className="text-xs text-[#e5e4e2]/45">Podsumowanie będzie dostępne po akceptacji oferty i utworzeniu wydarzenia.</p>
+        <p className="text-xs text-[#e5e4e2]/45">Podsumowanie będzie dostępne po akceptacji oferty i utworzeniu eventu.</p>
       )}
     </section>
   );

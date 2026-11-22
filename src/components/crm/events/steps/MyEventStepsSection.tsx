@@ -80,7 +80,7 @@ export default function MyEventStepsSection() {
   const groups = useMemo(() => {
     const byEvent = new Map<string, { event: MyEventStep['event']; steps: MyEventStep[] }>();
     for (const step of items) {
-      const event = step.event ?? { id: step.event_id, name: 'Wydarzenie', event_date: null, location: null };
+      const event = step.event ?? { id: step.event_id, name: 'Event', event_date: null, location: null };
       const group = byEvent.get(event.id);
       if (group) group.steps.push(step);
       else byEvent.set(event.id, { event, steps: [step] });
@@ -98,7 +98,7 @@ export default function MyEventStepsSection() {
             Kroki realizacji do wykonania
           </h2>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
-            Kroki przypisane do Ciebie albo do Twojej roli, które można wykonać teraz — ze wszystkich wydarzeń.
+            Kroki przypisane do Ciebie albo do Twojej roli, które można wykonać teraz — ze wszystkich eventów.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">

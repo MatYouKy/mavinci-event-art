@@ -88,7 +88,7 @@ export default function SocialAssistant({ detail, draft, run, onUse, onHashtags,
           <button type="button" className={secondaryButton} onClick={async () => {
             const ok = await showConfirm({
               title: 'Włączyć asystenta AI?',
-              message: 'Do OpenAI trafią: temat i opis wpisane w kreatorze, rodzaj wydarzenia, miejsce, miesiąc i opis realizacji; nazwa wydarzenia i klient — tylko przy zgodzie klienta na publikację; zdjęcie — tylko gdy zaznaczysz „Uwzględnij zdjęcie” i ma ono zgodę klienta. Zgoda zostanie zapisana z Twoim nazwiskiem i datą; wyłączysz ją w „Szablony i AI”.',
+              message: 'Do OpenAI trafią: temat i opis wpisane w kreatorze, rodzaj eventu, miejsce, miesiąc i opis realizacji; nazwa eventu i klient — tylko przy zgodzie klienta na publikację; zdjęcie — tylko gdy zaznaczysz „Uwzględnij zdjęcie” i ma ono zgodę klienta. Zgoda zostanie zapisana z Twoim nazwiskiem i datą; wyłączysz ją w „Szablony i AI”.',
               confirmText: 'Włącz asystenta',
             });
             if (!ok) return;
@@ -221,7 +221,7 @@ export default function SocialAssistant({ detail, draft, run, onUse, onHashtags,
       ))}
 
       <p className="text-[11px] text-[#e5e4e2]/40">
-        Do AI trafia temat i opis z kreatora, rodzaj wydarzenia, miejsce, miesiąc i opis realizacji; nazwa wydarzenia i klient — tylko przy
+        Do AI trafia temat i opis z kreatora, rodzaj eventu, miejsce, miesiąc i opis realizacji; nazwa eventu i klient — tylko przy
         zgodzie klienta; zdjęcie — tylko gdy zaznaczysz i ma zgodę klienta na publikację. Propozycje nie zmieniają posta, dopóki ich nie użyjesz.
         {reply?.usedPhoto ? ' Ta odpowiedź uwzględnia zdjęcie.' : ''}
       </p>

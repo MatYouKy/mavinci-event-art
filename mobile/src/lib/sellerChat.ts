@@ -17,7 +17,7 @@ export type SellerConversation = {
 };
 
 export function sellerConversationLabel(conversation: SellerConversation) {
-  return conversation.has_event ? 'Rozmowa o wydarzeniu'
+  return conversation.has_event ? 'Rozmowa o evencie'
     : conversation.offer_id ? 'Rozmowa o ofercie' : 'Rozmowa ze sprzedawcą';
 }
 

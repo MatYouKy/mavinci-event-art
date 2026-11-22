@@ -30,15 +30,15 @@ enum RozliczeniePart: String, CaseIterable, Identifiable {
     var help: String {
         switch self {
         case .revenue:
-            return "Wszystko, co wpływa do firmy za to wydarzenie: klient, sposób rozliczenia i terminy płatności (zaliczka, raty, płatność końcowa), faktury oraz przychody netto ujęte w podsumowaniu.\n\nPo co: tu sprawdzasz, czy klient zapłacił i co jeszcze trzeba zafakturować."
+            return "Wszystko, co wpływa do firmy za ten event: klient, sposób rozliczenia i terminy płatności (zaliczka, raty, płatność końcowa), faktury oraz przychody netto ujęte w podsumowaniu.\n\nPo co: tu sprawdzasz, czy klient zapłacił i co jeszcze trzeba zafakturować."
         case .costs:
-            return "Koszty wydarzenia: koszty dodane ręcznie (z akceptacją i oznaczeniem zapłaty), wykonawcy zewnętrzni, koszty bezpośrednie i ekipa z podsumowania. Budżet gotówkowy widzi tylko administrator.\n\nPo co: pełny obraz wydatków, z którego liczy się marża."
+            return "Koszty eventu: koszty dodane ręcznie (z akceptacją i oznaczeniem zapłaty), wykonawcy zewnętrzni, koszty bezpośrednie i ekipa z podsumowania. Budżet gotówkowy widzi tylko administrator.\n\nPo co: pełny obraz wydatków, z którego liczy się marża."
         case .result:
-            return "Marża i wynik: plan z zaakceptowanej oferty lub kalkulacji porównany z wykonaniem (zatwierdzone koszty, czas pracy, zlecenia podwykonawców, faktyczne wpływy), jakość danych i wynik podsumowania.\n\nPo co: widzisz, czy wydarzenie zarabia tyle, ile zakładano, i których danych brakuje."
+            return "Marża i wynik: plan z zaakceptowanej oferty lub kalkulacji porównany z wykonaniem (zatwierdzone koszty, czas pracy, zlecenia podwykonawców, faktyczne wpływy), jakość danych i wynik podsumowania.\n\nPo co: widzisz, czy event zarabia tyle, ile zakładano, i których danych brakuje."
         case .commissions:
             return "Prowizje: rejestr prowizji i poleceń (sprzedawcy, hotele, sale, partnerzy) ze statusami planowana / zatwierdzona / wypłacona oraz wyliczenie prowizji pracowników i sprzedawców zewnętrznych z podsumowania, z podziałem udziałów.\n\nPo co: prowizje są kosztem firmy i zmniejszają zysk — tu ustalasz, komu i ile się należy."
         case .closing:
-            return "Zamknięcie: stan podsumowania i jego obieg (wysłanie do zatwierdzenia, zatwierdzenie, zwrot do poprawy), zamknięcie wydarzenia i historia wersji.\n\nPo co: zatwierdzone podsumowanie jest ostatecznym rozliczeniem wydarzenia i podstawą wypłat prowizji."
+            return "Zamknięcie: stan podsumowania i jego obieg (wysłanie do zatwierdzenia, zatwierdzenie, zwrot do poprawy), zamknięcie eventu i historia wersji.\n\nPo co: zatwierdzone podsumowanie jest ostatecznym rozliczeniem eventu i podstawą wypłat prowizji."
         }
     }
     var symbol: String {
@@ -207,7 +207,7 @@ enum RozliczeniePart: String, CaseIterable, Identifiable {
                    color: (profit ?? 0) >= 0 ? green : red, part: .result),
             Figure(title: "Prowizje", value: money(commissions), detail: s == nil ? "po zatwierdzeniu podsumowania" : "pracownicy i sprzedawcy zewnętrzni",
                    color: Color.primary, part: .commissions),
-            Figure(title: "Zysk po prowizjach", value: money(after), detail: s == nil ? "wymaga dostępu do podsumowania" : "wynik wydarzenia",
+            Figure(title: "Zysk po prowizjach", value: money(after), detail: s == nil ? "wymaga dostępu do podsumowania" : "wynik eventu",
                    color: (after ?? 0) >= 0 ? green : red, part: .closing),
         ]
     }

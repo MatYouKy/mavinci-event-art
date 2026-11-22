@@ -110,7 +110,7 @@ export type EventTabId =
 export type EventTabGroupId = 'main' | 'preparation' | 'commercial';
 
 export const EVENT_TAB_GROUPS: { id: EventTabGroupId; label: string; tabs: EventTabId[] }[] = [
-  { id: 'main', label: 'Wydarzenie', tabs: ['overview', 'details'] },
+  { id: 'main', label: 'Event', tabs: ['overview', 'details'] },
   {
     id: 'preparation',
     label: 'Przygotowanie',
@@ -234,15 +234,15 @@ export function visibleEventTabGroups(
 /** Opis zakresu dla stopki „Widzisz: …” (np. pod nagłówkiem wydarzenia). */
 export function eventAccessSummary(access: EventAccess | null | undefined): string {
   if (isSalesColleagueView(access)) {
-    return 'Wydarzenie innego sprzedawcy: widzisz termin, miejsce, klienta, sprzedane usługi i kto sprzedał — bez kwot i dokumentów.';
+    return 'Event innego sprzedawcy: widzisz termin, miejsce, klienta, sprzedane usługi i kto sprzedał — bez kwot i dokumentów.';
   }
-  if (!access || !access.areas.operations) return 'Brak dostępu do tego wydarzenia.';
+  if (!access || !access.areas.operations) return 'Brak dostępu do tego eventu.';
   const shown = EVENT_ACCESS_AREAS.filter(area => area !== 'sales_overview');
   const visible = shown.filter(area => access.areas[area]).map(area => EVENT_AREA_LABELS[area]);
   const hidden = shown.filter(area => !access.areas[area]).map(area => EVENT_AREA_LABELS[area].toLowerCase());
   return hidden.length
     ? `Widzisz: ${visible.join(', ').toLowerCase()}. Poza Twoim zakresem: ${hidden.join(', ')}.`
-    : 'Widzisz wszystkie dane wydarzenia.';
+    : 'Widzisz wszystkie dane eventu.';
 }
 
 // ---------------------------------------------------------------------------------------------------------------

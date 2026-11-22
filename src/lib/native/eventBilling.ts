@@ -24,7 +24,7 @@ type Row = Record<string, any>;
 type Arrangement = 'direct' | 'hotel' | 'agency' | 'other';
 const ARRANGEMENTS: Arrangement[] = ['direct', 'hotel', 'agency', 'other'];
 const ARRANGEMENT_LABELS: Record<Arrangement, string> = {
-  direct: 'Bezpośrednio przez klienta wydarzenia',
+  direct: 'Bezpośrednio przez klienta eventu',
   hotel: 'Przez hotel',
   agency: 'Przez agencję',
   other: 'Przez inną organizację',
@@ -67,13 +67,13 @@ async function eventBillingRow(ctx: NativeContext, eventId: string) {
   const base = 'id,name,organization_id,contact_person_id,my_company_id,billing_arrangement,billing_organization_id,purchase_order_number';
   const full = await ctx.supabase.from('events').select(`${base},referring_sales_partner_id`).eq('id', eventId).maybeSingle();
   if (!full.error) {
-    if (!full.data) fail('Nie znaleziono wydarzenia albo nie masz do niego dostępu.');
+    if (!full.data) fail('Nie znaleziono eventu albo nie masz do niego dostępu.');
     return { event: full.data as Row, referralSchema: true };
   }
   if (!missingColumn(full.error)) throw full.error;
   const fallback = await ctx.supabase.from('events').select(base).eq('id', eventId).maybeSingle();
   if (fallback.error) throw fallback.error;
-  if (!fallback.data) fail('Nie znaleziono wydarzenia albo nie masz do niego dostępu.');
+  if (!fallback.data) fail('Nie znaleziono eventu albo nie masz do niego dostępu.');
   return { event: fallback.data as Row, referralSchema: false };
 }
 
@@ -101,7 +101,7 @@ function sellerOption(row: Row, terms: Row[], companyId: string | null) {
   const term = terms.find((item) => item.sales_partner_id === row.id);
   const label = employee ? [employee.name, employee.surname].filter(Boolean).join(' ') : str(contact?.full_name);
   const commissionReady = Boolean(term?.is_active && term.commission_enabled && Number(term.default_commission_rate) > 0);
-  const termsLabel = !companyId ? 'Wybierz markę wydarzenia'
+  const termsLabel = !companyId ? 'Wybierz markę eventu'
     : commissionReady ? `Domyślna prowizja: ${Number(term!.default_commission_rate)}%`
     : 'Warunki prowizji wymagają uzupełnienia';
   return {
@@ -215,10 +215,10 @@ async function billingTab(ctx: NativeContext, eventId: string) {
       const eventsRes = await s.from('events').select('id,name,event_date').in('id', members.map((member) => member.event_id));
       const primary = str((groupRes.data as Row).primary_event_id) || str(members.find((member) => member.is_primary)?.event_id) || eventId;
       settlement = {
-        groupId, name: str((groupRes.data as Row).name) || 'Wspólne rozliczenie wydarzeń', primaryEventId: primary,
+        groupId, name: str((groupRes.data as Row).name) || 'Wspólne rozliczenie eventów', primaryEventId: primary,
         events: members.map((member) => {
           const row = ((eventsRes.data || []) as Row[]).find((item) => item.id === member.event_id);
-          return { id: str(member.event_id), name: str(row?.name) || 'Wydarzenie', date: row?.event_date ?? null };
+          return { id: str(member.event_id), name: str(row?.name) || 'Event', date: row?.event_date ?? null };
         }),
       };
     }
@@ -526,13 +526,13 @@ async function saveBilling(ctx: NativeContext, eventId: string, body: Row) {
   const referralPartnerId = str(body.referralPartnerId);
   const savedReferralPartnerId = str(body.savedReferralPartnerId);
   const { referralSchema } = await eventBillingRow(ctx, eventId);
-  if (referralSchema && referralEnabled && !referralPartnerId) fail('Wybierz sprzedawcę, który pozyskał wydarzenie, albo odznacz pole polecenia.');
+  if (referralSchema && referralEnabled && !referralPartnerId) fail('Wybierz sprzedawcę, który pozyskał event, albo odznacz pole polecenia.');
   if (referralSchema && referralEnabled && referralPartnerId !== savedReferralPartnerId) {
     if (!UUID.test(referralPartnerId)) fail('Wybierz aktywnego sprzedawcę z kartoteki.');
     const { data } = await s.from('sales_partner_profiles').select('status').eq('id', referralPartnerId).maybeSingle();
     if ((data as Row | null)?.status !== 'active') fail('Wybierz aktywnego sprzedawcę z kartoteki.');
   }
-  if (arrangement !== 'direct' && !UUID.test(billingOrganizationId)) fail('Wybierz organizację, która będzie rozliczać wydarzenie');
+  if (arrangement !== 'direct' && !UUID.test(billingOrganizationId)) fail('Wybierz organizację, która będzie rozliczać event');
 
   const storedBillingOrganizationId = arrangement === 'direct' ? null : billingOrganizationId;
   const storedReferralPartnerId = referralEnabled ? referralPartnerId || null : null;
@@ -546,7 +546,7 @@ async function saveBilling(ctx: NativeContext, eventId: string, body: Row) {
     update = savedReferralPartnerId ? update.eq('referring_sales_partner_id', savedReferralPartnerId) : update.is('referring_sales_partner_id', null);
   }
   const { data: saved, error } = await update.select('id').maybeSingle();
-  if (error) fail(error.message || 'Nie udało się zapisać rozliczenia wydarzenia');
+  if (error) fail(error.message || 'Nie udało się zapisać rozliczenia eventu');
   if (!saved) fail('Przypisanie sprzedawcy zmieniło się w innej karcie albo brak dostępu do zapisu. Odśwież dane przed ponowieniem.');
 
   const removed = await s.from('event_billing_contacts').delete().eq('event_id', eventId);
@@ -557,7 +557,7 @@ async function saveBilling(ctx: NativeContext, eventId: string, body: Row) {
     })));
     if (inserted.error) fail(inserted.error.message || 'Nie udało się zapisać opiekunów rozliczenia');
   }
-  return { ok: true, message: 'Sposób rozliczenia wydarzenia został zapisany' };
+  return { ok: true, message: 'Sposób rozliczenia eventu został zapisany' };
 }
 
 /** „Połącz wydarzenia” / „Edytuj powiązanie” — `save_event_settlement_group` (co najmniej dwa wydarzenia). */
@@ -566,13 +566,13 @@ async function saveSettlement(ctx: NativeContext, eventId: string, body: Row) {
   if (!eventIds.includes(eventId)) eventIds.unshift(eventId);
   if (eventIds.length < 2) {
     fail(body.hasGroup === true
-      ? 'Grupa musi zawierać co najmniej dwa wydarzenia. Aby ją usunąć, wybierz „Rozłącz grupę”.'
-      : 'Wybierz co najmniej dwa wydarzenia do wspólnego rozliczenia.');
+      ? 'Grupa musi zawierać co najmniej dwa eventy. Aby ją usunąć, wybierz „Rozłącz grupę”.'
+      : 'Wybierz co najmniej dwa eventy do wspólnego rozliczenia.');
   }
   const primary = eventIds.includes(str(body.primaryEventId)) ? str(body.primaryEventId) : eventId;
   const { error } = await ctx.supabase.rpc('save_event_settlement_group', {
     p_anchor_event_id: eventId, p_event_ids: eventIds,
-    p_name: str(body.name).trim() || 'Wspólne rozliczenie wydarzeń', p_primary_event_id: primary,
+    p_name: str(body.name).trim() || 'Wspólne rozliczenie eventów', p_primary_event_id: primary,
   });
   if (error) fail(error.message || 'Nie udało się zapisać wspólnego rozliczenia');
   return { ok: true, message: 'Wspólne rozliczenie zostało zapisane' };
@@ -580,8 +580,8 @@ async function saveSettlement(ctx: NativeContext, eventId: string, body: Row) {
 
 async function dissolve(ctx: NativeContext, eventId: string) {
   const { error } = await ctx.supabase.rpc('dissolve_event_settlement_group', { p_event_id: eventId });
-  if (error) fail(error.message || 'Nie udało się rozłączyć wydarzeń');
-  return { ok: true, message: 'Wydarzenia zostały rozłączone. Historia faktur pozostała zachowana.' };
+  if (error) fail(error.message || 'Nie udało się rozłączyć eventów');
+  return { ok: true, message: 'Eventy zostały rozłączone. Historia faktur pozostała zachowana.' };
 }
 
 // MARK: Prowizje
@@ -596,7 +596,7 @@ async function commissionOfEvent(ctx: NativeContext, eventId: string, id: string
       .eq('id', id).eq('event_id', eventId).maybeSingle()
     : extended;
   if (result.error) throw result.error;
-  if (!result.data) fail('Nie znaleziono prowizji w tym wydarzeniu. Odśwież dane.');
+  if (!result.data) fail('Nie znaleziono prowizji w tym evencie. Odśwież dane.');
   return result.data as Row;
 }
 
@@ -611,7 +611,7 @@ async function commissionPartner(ctx: NativeContext, eventId: string, body: Row)
   return {
     ok: true, commissionId, created: result.body.created === true,
     message: !commissionId ? str(result.body.message) || 'Uzupełnij dane potrzebne do naliczenia.'
-      : result.body.created === true ? 'Sprzedawca dodany — kwotę prowizji liczy podsumowanie wydarzenia' : 'Prowizja dla tej osoby jest już zapisana',
+      : result.body.created === true ? 'Sprzedawca dodany — kwotę prowizji liczy podsumowanie eventu' : 'Prowizja dla tej osoby jest już zapisana',
     tone: commissionId ? 'success' : 'warning',
   };
 }
@@ -634,7 +634,7 @@ async function guardDuplicate(ctx: NativeContext, eventId: string, partnerId: st
     || (employeeId && str(row.employee_id) === employeeId);
   const manual = ((commissions.data || []) as Row[]).find((row) => !isAutomaticCommission(row) && same(row));
   if (manual && !allowSecond) {
-    fail(`Ta osoba ma już ręczną prowizję w tym wydarzeniu: ${str(manual.beneficiary_name)} — ${num(manual.amount).toFixed(2).replace('.', ',')} zł (${commissionStatusLabels[str(manual.status) as CommissionStatus] || str(manual.status)}). Edytuj ten wpis zamiast dodawać drugi — inaczej zapłacisz dwa razy. Jeśli to inna należność, potwierdź to w formularzu.`);
+    fail(`Ta osoba ma już ręczną prowizję w tym evencie: ${str(manual.beneficiary_name)} — ${num(manual.amount).toFixed(2).replace('.', ',')} zł (${commissionStatusLabels[str(manual.status) as CommissionStatus] || str(manual.status)}). Edytuj ten wpis zamiast dodawać drugi — inaczej zapłacisz dwa razy. Jeśli to inna należność, potwierdź to w formularzu.`);
   }
   const markupPartners = ((offers.error ? [] : offers.data || []) as Row[]).map((row) => str(row.sales_partner_id)).filter(Boolean);
   if (markupPartners.length) {
@@ -644,7 +644,7 @@ async function guardDuplicate(ctx: NativeContext, eventId: string, partnerId: st
       ownsMarkup = ((data || []) as Row[]).some((row) => (contactId && str(row.contact_id) === contactId) || (employeeId && str(row.employee_id) === employeeId));
     }
     if (ownsMarkup) {
-      fail('Ten sprzedawca ma w wydarzeniu ofertę z narzutem — narzut jest już kosztem w podsumowaniu i należnością na jego koncie prowizji. Nie dopisuj go drugi raz; jeśli należy mu się więcej, zmień narzut w ofercie.');
+      fail('Ten sprzedawca ma w evencie ofertę z narzutem — narzut jest już kosztem w podsumowaniu i należnością na jego koncie prowizji. Nie dopisuj go drugi raz; jeśli należy mu się więcej, zmień narzut w ofercie.');
     }
   }
 }
@@ -655,7 +655,7 @@ async function commissionSave(ctx: NativeContext, eventId: string, body: Row) {
   const s = ctx.supabase;
   const editingId = str(body.id) || null;
   const saved = editingId ? await commissionOfEvent(ctx, eventId, editingId) : null;
-  if (saved && isAutomaticCommission(saved)) fail('Kwotę, podstawę i odbiorcę tej prowizji ustala podsumowanie wydarzenia — zmień termin wypłaty i notatkę.');
+  if (saved && isAutomaticCommission(saved)) fail('Kwotę, podstawę i odbiorcę tej prowizji ustala podsumowanie eventu — zmień termin wypłaty i notatkę.');
   if (saved?.status === 'paid') fail('Prowizja została wypłacona. Odśwież dane przed edycją.');
   const source = ['partner', 'contact', 'employee', 'manual'].includes(str(body.beneficiarySource)) ? str(body.beneficiarySource) : 'manual';
   const beneficiaryId = str(body.beneficiaryId);
@@ -749,7 +749,7 @@ async function commissionStatus(ctx: NativeContext, eventId: string, body: Row) 
   const row = await commissionOfEvent(ctx, eventId, str(body.id));
   const status = str(body.status) as CommissionStatus;
   if (!['planned', 'approved', 'paid', 'cancelled'].includes(status) || status === row.status) return { ok: true };
-  if (isAutomaticCommission(row)) fail('Status prowizji z podsumowania zmienia podsumowanie wydarzenia.');
+  if (isAutomaticCommission(row)) fail('Status prowizji z podsumowania zmienia podsumowanie eventu.');
   if (row.status === 'paid') fail('Wypłacona prowizja pozostaje w historii rozliczeń. Nie można cofnąć jej samą zmianą statusu.');
   if (row.automatic_waiting_for_offer && (status === 'approved' || status === 'paid')) fail('Najpierw zaakceptuj ofertę lub zapisz ręcznie podstawę prowizji.');
   const { error } = await ctx.supabase.from('event_commissions').update({ status }).eq('id', row.id).eq('event_id', eventId);
@@ -780,7 +780,7 @@ async function commissionRestore(ctx: NativeContext, eventId: string, body: Row)
   const row = await commissionOfEvent(ctx, eventId, str(body.id));
   const { error } = await ctx.supabase.rpc('set_event_commission_cancelled', { p_commission_id: row.id, p_cancel: false });
   if (error) fail(error.message || 'Nie udało się przywrócić prowizji. Odśwież dane.');
-  return { ok: true, message: 'Prowizja przywrócona — kwotę ustali podsumowanie wydarzenia' };
+  return { ok: true, message: 'Prowizja przywrócona — kwotę ustali podsumowanie eventu' };
 }
 
 registerEventActions('billing', {

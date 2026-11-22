@@ -16,7 +16,7 @@ export type EventOnsiteContact = {
 
 const SOURCE_LABELS: Record<EventOnsiteContact['source'], string> = {
   client: 'Klient',
-  event: 'Wydarzenie',
+  event: 'Event',
   venue: 'Obiekt',
 };
 

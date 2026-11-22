@@ -145,7 +145,7 @@ enum EventBillingQuery {
 /// Etykiety i wyliczenia jak w CRM (`eventCommission.ts`, `EventBillingContextCard`).
 enum EventBillingText {
     static let arrangements: [(String, String)] = [
-        ("direct", "Bezpośrednio przez klienta wydarzenia"), ("hotel", "Przez hotel"), ("agency", "Przez agencję"), ("other", "Przez inną organizację"),
+        ("direct", "Bezpośrednio przez klienta eventu"), ("hotel", "Przez hotel"), ("agency", "Przez agencję"), ("other", "Przez inną organizację"),
     ]
     static let beneficiaryTypes: [(String, String)] = [
         ("salesperson", "Sprzedawca / osoba polecająca"), ("hotel", "Hotel / sala"), ("partner", "Partner"), ("employee", "Pracownik"), ("other", "Inny beneficjent"),
@@ -170,7 +170,7 @@ enum EventBillingText {
     }
     static let defaultBaseDescription = "Wartość netto zaakceptowanej oferty"
     /// Podstawa „% od naszego zysku” z rozliczenia wydarzenia (zysk przed prowizjami sprzedawców zewnętrznych).
-    static let profitBaseDescription = "Zysk netto z rozliczenia wydarzenia (przed prowizjami sprzedawców)"
+    static let profitBaseDescription = "Zysk netto z rozliczenia eventu (przed prowizjami sprzedawców)"
 
     static func payment(_ method: String) -> String { paymentMethods.first { $0.0 == method }?.1 ?? method }
 
@@ -349,10 +349,10 @@ enum EventBillingText {
     private func billingSection(_ data: EventBillingData) -> some View {
         let billing = data.billing
         let direct = billing.arrangement == "direct"
-        let payer = direct ? billing.clientName?.nonEmpty ?? "Klient przypisany do wydarzenia"
+        let payer = direct ? billing.clientName?.nonEmpty ?? "Klient przypisany do eventu"
             : billing.billingOrganizationName?.nonEmpty ?? "Nie wybrano organizacji"
         let edit: (String, () -> Void)? = canEdit ? ("Edytuj…", { sheet = .billing }) : nil
-        return section("Rozliczenie wydarzenia", symbol: "doc.text", subtitle: "Określ nabywcę faktur i osoby odpowiedzialne za rozliczenie.",
+        return section("Rozliczenie eventu", symbol: "doc.text", subtitle: "Określ nabywcę faktur i osoby odpowiedzialne za rozliczenie.",
                        action: edit, actionDisabled: billing.referralError != nil) {
             fact("Rozlicza") {
                 Text(payer).font(.callout.weight(.medium)).textSelection(.enabled)
@@ -370,7 +370,7 @@ enum EventBillingText {
                     Button("Odśwież sprzedawców") { reload() }.buttonStyle(.link).linkCursor().font(.caption)
                 }
             } else if let referral = billing.referral {
-                fact("Sprzedawca pozyskujący wydarzenie") {
+                fact("Sprzedawca pozyskujący event") {
                     Text(referral.label).font(.callout).textSelection(.enabled)
                     Text("Prowizja niezależna od nabywcy faktury — szczegóły poniżej.").font(.caption).foregroundStyle(.secondary)
                 }
@@ -389,19 +389,19 @@ enum EventBillingText {
 
     private func settlementSection(_ data: EventBillingData) -> some View {
         let settlement = data.settlement
-        let edit: (String, () -> Void)? = canEdit ? (settlement == nil ? "Połącz wydarzenia…" : "Edytuj powiązanie…", { sheet = .settlement }) : nil
+        let edit: (String, () -> Void)? = canEdit ? (settlement == nil ? "Połącz eventy…" : "Edytuj powiązanie…", { sheet = .settlement }) : nil
         return section("Wspólne rozliczenie", symbol: "link",
-                       subtitle: "Połącz osobne realizacje, gdy mają otrzymać jedną fakturę. Timeline, zespół, sprzęt i koszty pozostają oddzielne, a przychód faktury jest przypisywany do każdego wydarzenia.",
+                       subtitle: "Połącz osobne realizacje, gdy mają otrzymać jedną fakturę. Timeline, zespół, sprzęt i koszty pozostają oddzielne, a przychód faktury jest przypisywany do każdego eventu.",
                        action: edit) {
             if let settlement {
                 fact("Nazwa rozliczenia") { Text(settlement.name).font(.callout.weight(.medium)).textSelection(.enabled) }
-                fact("Wydarzenia w rozliczeniu") {
+                fact("Eventy w rozliczeniu") {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(settlement.events) { item in settlementRow(item, primary: item.id == settlement.primaryEventId) }
                     }
                 }
             } else {
-                Text("To wydarzenie jest obecnie rozliczane samodzielnie.").font(.callout).foregroundStyle(.secondary)
+                Text("Ten event jest obecnie rozliczany samodzielnie.").font(.callout).foregroundStyle(.secondary)
             }
         }
     }
@@ -413,9 +413,9 @@ enum EventBillingText {
                 if current {
                     Text(item.name).font(.callout)
                 } else {
-                    Button(item.name) { state.showEvent(item.id) }.buttonStyle(.link).linkCursor().font(.callout).help("Otwórz wydarzenie")
+                    Button(item.name) { state.showEvent(item.id) }.buttonStyle(.link).linkCursor().font(.callout).help("Otwórz event")
                 }
-                Label(EventBillingText.day(item.date) + (current ? " · aktualne wydarzenie" : ""), systemImage: "calendar")
+                Label(EventBillingText.day(item.date) + (current ? " · aktualny event" : ""), systemImage: "calendar")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
@@ -447,7 +447,7 @@ enum EventBillingText {
 
     @ViewBuilder private func commissionsContent(_ data: EventBillingData) -> some View {
         let commissions = data.commissions
-        Text("Prowizje automatyczne (sprzedawca wydarzenia, polecenie, kontakt rozliczeniowy, pośrednik, sprzedawca z portalu) liczy podsumowanie wydarzenia — kwota, podstawa i stawka zmieniają się tam. Tutaj dodasz sprzedawcę z kartoteki albo wpis ręczny w innych przypadkach.")
+        Text("Prowizje automatyczne (sprzedawca eventu, polecenie, kontakt rozliczeniowy, pośrednik, sprzedawca z portalu) liczy podsumowanie eventu — kwota, podstawa i stawka zmieniają się tam. Tutaj dodasz sprzedawcę z kartoteki albo wpis ręczny w innych przypadkach.")
             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         if canOpenTab("summary") {
             Button("Wyliczenie: zakładka Podsumowanie") { navigate("summary") }.buttonStyle(.link).linkCursor().font(.caption)
@@ -464,7 +464,7 @@ enum EventBillingText {
         Text("Wypłaty częściowe oraz daty i numery przelewów zapiszesz w Rozliczeniach prowizji. Poniżej są kwoty naliczeń, nie saldo pozostałe po wypłatach.")
             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         if commissions.rows.isEmpty {
-            Label("Brak naliczonych prowizji dla tego wydarzenia.", systemImage: "banknote")
+            Label("Brak naliczonych prowizji dla tego eventu.", systemImage: "banknote")
                 .font(.caption).foregroundStyle(.secondary)
                 .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.12), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))

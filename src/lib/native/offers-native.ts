@@ -28,7 +28,7 @@ export const offersMeta = (ctx: NativeContext): DocSectionMeta => ({
   title: 'Oferty',
   href: '/crm/offers',
   param: 'id',
-  headers: ['Numer', 'Oferta', 'Klient', 'Wydarzenie', 'Status', 'Wartość'],
+  headers: ['Numer', 'Oferta', 'Klient', 'Event', 'Status', 'Wartość'],
   openLabel: 'Otwarte (szkice i wysłane)',
   hint: can(ctx.employee, 'offers_manage')
     ? 'Oferty z CRM. Edytor, generowanie i wysyłka PDF są na razie w CRM — „Otwórz w CRM” na karcie.'
@@ -99,7 +99,7 @@ function card(ctx: NativeContext, o: Obj): DocRecord {
   if (event) {
     sections.push({
       id: 'event',
-      title: 'Wydarzenie',
+      title: 'Event',
       rows: rows([
         ['Nazwa', event.name, eventLink(String(event.id), 'offer')],
         ['Termin', [day(event.event_date), day(event.event_end_date)].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' – ')],
@@ -107,7 +107,7 @@ function card(ctx: NativeContext, o: Obj): DocRecord {
       ]),
     });
   } else if (o.event_location || o.event_date) {
-    sections.push({ id: 'event', title: 'Wydarzenie', rows: rows([['Termin', day(o.event_date)], ['Miejsce', o.event_location]]) });
+    sections.push({ id: 'event', title: 'Event', rows: rows([['Termin', day(o.event_date)], ['Miejsce', o.event_location]]) });
   }
   if (items.length) {
     sections.push({
@@ -140,7 +140,7 @@ function card(ctx: NativeContext, o: Obj): DocRecord {
   const actions: DocAction[] = [
     { id: 'panel', label: 'Otwórz w CRM', icon: 'open', url: `${crmUrl()}/crm/offers/${o.id}`, role: 'primary' },
   ];
-  if (event) actions.push({ id: 'panel', label: 'Otwórz wydarzenie', icon: 'open', open: `mavinci://event/${event.id}` });
+  if (event) actions.push({ id: 'panel', label: 'Otwórz event', icon: 'open', open: `mavinci://event/${event.id}` });
   return {
     id: String(o.id),
     kind: 'offer',

@@ -977,14 +977,14 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] p-0.5 text-sm">
-          {([['materials', 'Materiały'], ...(home.eventsAccess ? [['events', 'Pliki wydarzeń']] : [])] as Array<[Scope, string]>).map(([value, label]) => (
+          {([['materials', 'Materiały'], ...(home.eventsAccess ? [['events', 'Pliki eventów']] : [])] as Array<[Scope, string]>).map(([value, label]) => (
             <button key={value} type="button" onClick={() => setScope(value)}
               className={`rounded-md px-3 py-1.5 ${scope === value ? 'bg-[#d3bb73] text-[#1c1f33]' : 'text-[#e5e4e2]/70 hover:text-[#e5e4e2]'}`}>{label}</button>
           ))}
         </div>
         {searching && <Loader2 className="h-4 w-4 animate-spin text-[#d3bb73]" />}
         <p className="text-xs text-[#e5e4e2]/40">
-          {scope === 'materials' ? 'Wszystkie marki z dostępem · nazwa, opis i tagi' : 'Wydarzenia, które widzisz w CRM · nazwa pliku, wydarzenia i folderu'}
+          {scope === 'materials' ? 'Wszystkie marki z dostępem · nazwa, opis i tagi' : 'Eventy, które widzisz w CRM · nazwa pliku, eventu i folderu'}
         </p>
       </div>
       {scope === 'materials' && search?.scope === 'materials' && (
@@ -1043,7 +1043,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
                   onClick={() => void downloadMaterial('event', hit.id).catch((error) => showSnackbar(errorMessage(error, 'Nie udało się pobrać pliku.'), 'error'))}>
                   <Download className="h-4 w-4" />
                 </button>
-                <Link href={`/crm/events/${hit.eventId}?tab=files`} className={ghostButton} title="Otwórz wydarzenie"><CalendarDays className="h-4 w-4" /></Link>
+                <Link href={`/crm/events/${hit.eventId}?tab=files`} className={ghostButton} title="Otwórz event"><CalendarDays className="h-4 w-4" /></Link>
                 {canManage && (
                   <button type="button" className={secondaryButton} onClick={() => saveEventFile(hit)}>
                     <FolderInput className="h-4 w-4" />Zapisz w Materiałach
@@ -1052,7 +1052,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
               </div>
             ))}
           </div>
-        ) : !searching && <div className={`${cardClass} py-16 text-center text-sm text-[#e5e4e2]/50`}>Nic nie znaleziono w plikach wydarzeń.</div>
+        ) : !searching && <div className={`${cardClass} py-16 text-center text-sm text-[#e5e4e2]/50`}>Nic nie znaleziono w plikach eventów.</div>
       )}
     </div>
   );
@@ -1079,13 +1079,13 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
         {embedded ? (
           <div>
             <h2 className="text-lg font-light">Materiały</h2>
-            <p className="text-xs text-[#e5e4e2]/50">Logotypy i księga znaku, zdjęcia, wideo, prezentacje i dokumenty marki. Wyszukiwanie obejmuje też pliki wydarzeń.</p>
+            <p className="text-xs text-[#e5e4e2]/50">Logotypy i księga znaku, zdjęcia, wideo, prezentacje i dokumenty marki. Wyszukiwanie obejmuje też pliki eventów.</p>
           </div>
         ) : (
           <div>
             <h1 className="text-2xl font-light md:text-3xl">Materiały</h1>
             <p className="mt-1 max-w-3xl text-sm text-[#e5e4e2]/50">
-              Logotypy, zdjęcia, wideo, prezentacje i dokumenty marki w jednym miejscu. Wyszukiwanie obejmuje też pliki wydarzeń.
+              Logotypy, zdjęcia, wideo, prezentacje i dokumenty marki w jednym miejscu. Wyszukiwanie obejmuje też pliki eventów.
             </p>
           </div>
         )}

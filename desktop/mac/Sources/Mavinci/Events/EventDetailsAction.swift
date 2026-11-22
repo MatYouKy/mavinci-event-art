@@ -131,7 +131,7 @@ import AppKit
         defer { savingCategory = false }
         do {
             try await store.detailsRun(eventID, "category", ["categoryId": categoryID.isEmpty ? .null : .string(categoryID)],
-                                       success: "Zaktualizowano kategorię wydarzenia")
+                                       success: "Zaktualizowano kategorię eventu")
             editingCategory = false
         } catch {
             state.error = store.failureText(error, "Błąd podczas zmiany kategorii")
@@ -320,9 +320,9 @@ import AppKit
                     (Text("Odbiorca: ") + Text(email).foregroundColor(.primary) + Text(preview.recipientName.isEmpty ? "" : " · \(preview.recipientName)"))
                         .font(.callout)
                 } else {
-                    Text("Brak e-maila kontaktu i organizacji wydarzenia. Akceptacja jest możliwa bez wiadomości.").font(.callout).foregroundStyle(CrmTheme.rgb(0xfde68a))
+                    Text("Brak e-maila kontaktu i organizacji eventu. Akceptacja jest możliwa bez wiadomości.").font(.callout).foregroundStyle(CrmTheme.rgb(0xfde68a))
                 }
-                Text("Potwierdzenie realizacji korzysta z danych wydarzenia: terminu, miejsca, harmonogramu i zaakceptowanej oferty. To ten sam szablon co przy zmianie statusu wydarzenia. Nie wystawia ani nie wysyła faktury.")
+                Text("Potwierdzenie realizacji korzysta z danych eventu: terminu, miejsca, harmonogramu i zaakceptowanej oferty. To ten sam szablon co przy zmianie statusu eventu. Nie wystawia ani nie wysyła faktury.")
                     .font(.caption)
             }
             .foregroundStyle(.secondary)
@@ -333,7 +333,7 @@ import AppKit
 
     private func send() async {
         guard !sending, let email = preview?.recipientEmail?.nonEmpty else {
-            state.error = "Brak potwierdzonego odbiorcy wiadomości dla tego wydarzenia."
+            state.error = "Brak potwierdzonego odbiorcy wiadomości dla tego eventu."
             return
         }
         sending = true

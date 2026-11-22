@@ -178,7 +178,7 @@ export function AddPhaseVehicleModal({
             const relatedPhase = Array.isArray(item.phase) ? item.phase[0] : item.phase;
             return {
               id: item.id,
-              label: relatedPhase?.name || 'Inna faza wydarzenia',
+              label: relatedPhase?.name || 'Inna faza eventu',
               start: item.assigned_start,
               end: item.assigned_end,
             };
@@ -368,7 +368,7 @@ export function AddPhaseVehicleModal({
             <div className="space-y-5">
               <section>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#d3bb73]">
-                  Fazy wydarzenia
+                  Fazy eventu
                 </p>
                 <div className="space-y-2">
                   {phases.map((item) => {
@@ -493,7 +493,7 @@ export function AddPhaseVehicleModal({
                     />
                     {checkingConflicts
                       ? 'Sprawdzanie dostępności…'
-                      : 'Pojazd koliduje z innym wydarzeniem'}
+                      : 'Pojazd koliduje z innym eventem'}
                   </div>
                   {conflicts.map((conflict) => (
                     <p key={conflict.id} className="mt-2 text-xs text-red-300">

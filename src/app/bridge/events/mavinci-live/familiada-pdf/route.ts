@@ -65,7 +65,7 @@ export async function POST(request: Request) {
   try {
     const { eventId, gameId } = (await request.json()) as Body;
     if (!eventId || !gameId) {
-      return NextResponse.json({ error: 'Wybierz wydarzenie i gotową grę Familiady.' }, { status: 400 });
+      return NextResponse.json({ error: 'Wybierz event i gotową grę Familiady.' }, { status: 400 });
     }
 
     const userClient = createSupabaseServerClient(cookies());
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       p_event_id: eventId,
     });
     if (permissionError || !canManage) {
-      return NextResponse.json({ error: 'Nie masz uprawnień do przygotowania materiałów tego wydarzenia.' }, { status: 403 });
+      return NextResponse.json({ error: 'Nie masz uprawnień do przygotowania materiałów tego eventu.' }, { status: 403 });
     }
 
     const { data: employeeId } = await userClient.rpc('current_mavinci_employee_id');
@@ -92,13 +92,13 @@ export async function POST(request: Request) {
     ]);
 
     if (eventResult.error || !eventResult.data) {
-      return NextResponse.json({ error: 'Nie znaleziono wydarzenia.' }, { status: 404 });
+      return NextResponse.json({ error: 'Nie znaleziono eventu.' }, { status: 404 });
     }
     if (gameResult.error || !gameResult.data || !gameResult.data.is_active) {
       return NextResponse.json({ error: 'Wybrana gra Familiady nie jest już dostępna.' }, { status: 404 });
     }
     if (gameResult.data.event_id && gameResult.data.event_id !== eventId) {
-      return NextResponse.json({ error: 'Ta gra jest przypisana do innego wydarzenia.' }, { status: 403 });
+      return NextResponse.json({ error: 'Ta gra jest przypisana do innego eventu.' }, { status: 403 });
     }
     if (projectResult.error) throw projectResult.error;
 
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
     const pdfBuffer = await page.pdf({ format: 'A4', printBackground: true, preferCSSPageSize: true });
 
     const timestamp = generatedAt.replace(/[:.]/g, '-').slice(0, -5);
-    const fileName = `pytania-familiada-${safeFilePart(eventResult.data.name) || 'wydarzenie'}-${timestamp}.pdf`;
+    const fileName = `pytania-familiada-${safeFilePart(eventResult.data.name) || 'event'}-${timestamp}.pdf`;
     const storagePath = `${eventId}/documents/mavinci-live/${fileName}`;
     const folderId = await getOrCreateMavinciLiveFolderId({
       supabase: admin,

@@ -2,8 +2,8 @@ import { PERMISSION_SCOPE_GROUPS } from './permissionCatalog';
 
 const definitions = [
   ['contracts', 'Umowy z klientami', ['/crm/contracts', '/crm/contract-templates']],
-  ['events', 'Wydarzenia', ['/crm/events']],
-  ['event_categories', 'Kategorie wydarzeń', ['/crm/event-categories']],
+  ['events', 'Eventy', ['/crm/events']],
+  ['event_categories', 'Kategorie eventów', ['/crm/event-categories']],
   ['calendar', 'Kalendarz i spotkania', ['/crm/calendar', '/crm/meetings']],
   ['tasks', 'Zadania firmowe', ['/crm/tasks']],
   ['offers', 'Oferty i produkty', ['/crm/offers', '/crm/brochures']],
@@ -18,7 +18,7 @@ const definitions = [
   ['personnel', 'Umowy i wynagrodzenia zespołu', ['/crm/employees/contracts', '/crm/employees/collaborators']],
   ['time_tracking', 'Czas pracy', ['/crm/time-tracking']],
   ['invoices', 'Faktury', ['/crm/invoices']],
-  ['finances', 'Wartości finansowe wydarzeń', ['/crm/finances']],
+  ['finances', 'Wartości finansowe eventów', ['/crm/finances']],
   ['messages', 'Wiadomości', ['/crm/messages']],
   ['chat', 'Komunikator', ['/crm/chat']],
   ['marketing_campaigns', 'Marketing', ['/crm/campaigns', '/crm/mailing']],

@@ -500,7 +500,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                               <span>{employee.name} {employee.surname}</span>
                               {eventTeamIds.has(employee.id) && (
                                 <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-                                  Zespół wydarzenia
+                                  Zespół eventu
                                 </span>
                               )}
                             </div>
@@ -556,7 +556,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
               {!eventTeamIds.has(selectedEmployee.id) && (
                 <div className="mb-4 rounded-lg border border-blue-400/20 bg-blue-400/10 p-3 text-sm text-blue-100">
-                  Ta osoba nie jest jeszcze w zespole wydarzenia. Przy zapisie otrzyma dostęp do
+                  Ta osoba nie jest jeszcze w zespole eventu. Przy zapisie otrzyma dostęp do
                   eventu i zostanie dodana do wybranych etapów timeline.
                 </div>
               )}
@@ -593,7 +593,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                     </div>
                     <p className="mb-3 text-xs text-[#e5e4e2]/60">
                       Konflikt wynika wyłącznie z godzin pracy na timeline. Autor, sprzedawca i
-                      osoby mające sam dostęp do innych wydarzeń nie są tutaj uwzględniane.
+                      osoby mające sam dostęp do innych eventów nie są tutaj uwzględniane.
                     </p>
 
                     <div className="space-y-2">
@@ -666,7 +666,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                           </span>
                           <span className="mt-1 block text-xs leading-5 text-[#e5e4e2]/55">
                             Potwierdzam, że przejazd, godziny obecności i zakres koordynacji zostały
-                            sprawdzone. Decyzja będzie widoczna w kontroli wydarzenia.
+                            sprawdzone. Decyzja będzie widoczna w kontroli eventu.
                           </span>
                         </span>
                       </label>
@@ -680,7 +680,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                             value={conflictReason}
                             onChange={(event) => setConflictReason(event.target.value)}
                             rows={3}
-                            placeholder="Np. koordynuje oba wydarzenia, a na miejscu jest w godz. 18:00–20:00; pozostały czas przejmuje lider techniczny."
+                            placeholder="Np. koordynuje oba eventy, a na miejscu jest w godz. 18:00–20:00; pozostały czas przejmuje lider techniczny."
                             className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0d0f1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73] focus:outline-none"
                           />
                           <div className="mt-1 text-right text-[10px] text-[#e5e4e2]/35">

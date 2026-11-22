@@ -291,7 +291,7 @@ export default function PortfolioEditor({ id, cities, categories, onChanged, onD
   const remove = async () => {
     if (!(await showConfirm({
       title: 'Usunąć realizację?',
-      message: published ? 'Realizacja zostanie usunięta ze strony i z „Realizacji”. Zdjęcia zostają w źródłach (Materiały, pliki wydarzenia). Tej operacji nie można cofnąć.' : 'Kopia robocza zostanie usunięta. Tej operacji nie można cofnąć.',
+      message: published ? 'Realizacja zostanie usunięta ze strony i z „Realizacji”. Zdjęcia zostają w źródłach (Materiały, pliki eventu). Tej operacji nie można cofnąć.' : 'Kopia robocza zostanie usunięta. Tej operacji nie można cofnąć.',
       confirmText: 'Usuń',
     }))) return;
     const result = await run('Usuwam realizację', () => portfolioPost('delete', { id: item.id, version: item.version, removeFromSite: published }), 'Usunięto realizację');
@@ -530,7 +530,7 @@ export default function PortfolioEditor({ id, cities, categories, onChanged, onD
               <input value={content.category} list="portfolio-categories" maxLength={PORTFOLIO_LIMITS.category} onChange={(event) => set({ category: event.target.value })} className={`${inputClass} mt-1`} placeholder="Gala, Konferencja, Jubileusz…" />
               <datalist id="portfolio-categories">{categories.map((category) => <option key={category} value={category} />)}</datalist>
             </label>
-            <label className="block text-sm">Data wydarzenia
+            <label className="block text-sm">Data eventu
               <input type="date" value={content.eventDate || ''} onChange={(event) => set({ eventDate: event.target.value || null })} className={`${inputClass} mt-1`} />
             </label>
             <label className="block text-sm">Miejsce (obiekt, miasto)
@@ -540,17 +540,17 @@ export default function PortfolioEditor({ id, cities, categories, onChanged, onD
               <input value={content.client} maxLength={PORTFOLIO_LIMITS.client} onChange={(event) => set({ client: event.target.value })} className={`${inputClass} mt-1`} />
             </label>
             <div className="text-sm md:col-span-2">
-              <div className="mb-1">Wydarzenie w CRM</div>
+              <div className="mb-1">Event w CRM</div>
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" className={`${secondaryButton} max-w-full justify-start truncate`} onClick={() => setEventPicker((value) => !value)}>
-                  <CalendarDays className="h-4 w-4 shrink-0" /><span className="truncate">{draft.event?.name || 'Powiąż z wydarzeniem'}</span>
+                  <CalendarDays className="h-4 w-4 shrink-0" /><span className="truncate">{draft.event?.name || 'Powiąż z eventem'}</span>
                 </button>
-                {draft.eventId && <button type="button" className={secondaryButton} aria-label="Bez wydarzenia" onClick={() => setDraft({ ...draft, eventId: null, event: null })}><X className="h-4 w-4" /></button>}
+                {draft.eventId && <button type="button" className={secondaryButton} aria-label="Bez eventu" onClick={() => setDraft({ ...draft, eventId: null, event: null })}><X className="h-4 w-4" /></button>}
                 {draft.event && <span className="text-xs text-[#e5e4e2]/45">{[draft.event.date?.slice(0, 10), draft.event.location, draft.event.category].filter(Boolean).join(' · ')}</span>}
               </div>
               {eventPicker && (
                 <div className="mt-2 space-y-2 rounded-lg border border-[#d3bb73]/15 p-2">
-                  <input value={eventQuery} onChange={(event) => setEventQuery(event.target.value)} placeholder="Szukaj wydarzenia" className={inputClass} autoFocus />
+                  <input value={eventQuery} onChange={(event) => setEventQuery(event.target.value)} placeholder="Szukaj eventu" className={inputClass} autoFocus />
                   <div className="max-h-56 space-y-1 overflow-y-auto">
                     {events.map((event) => (
                       <button key={event.id} type="button" className="block w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-[#d3bb73]/10"
@@ -558,7 +558,7 @@ export default function PortfolioEditor({ id, cities, categories, onChanged, onD
                         {event.name}<span className="ml-2 text-xs text-[#e5e4e2]/45">{[event.date?.slice(0, 10), event.location].filter(Boolean).join(' · ')}</span>
                       </button>
                     ))}
-                    {!events.length && <p className="p-2 text-xs text-[#e5e4e2]/45">Brak wydarzeń.</p>}
+                    {!events.length && <p className="p-2 text-xs text-[#e5e4e2]/45">Brak eventów.</p>}
                   </div>
                 </div>
               )}
@@ -588,7 +588,7 @@ export default function PortfolioEditor({ id, cities, categories, onChanged, onD
               )}
               <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={(event) => void uploadFiles(event.target.files)} />
               <button type="button" className={secondaryButton} onClick={() => fileInput.current?.click()}><Upload className="h-4 w-4" />Z dysku</button>
-              <button type="button" className={secondaryButton} onClick={() => setPicker('event')}><FolderOpen className="h-4 w-4" />Z wydarzenia</button>
+              <button type="button" className={secondaryButton} onClick={() => setPicker('event')}><FolderOpen className="h-4 w-4" />Z eventu</button>
               <button type="button" className={secondaryButton} onClick={() => setPicker('material')}><Images className="h-4 w-4" />Z Materiałów</button>
               <button type="button" className={secondaryButton} onClick={() => setPicker('social')}><Sparkles className="h-4 w-4" />Z biblioteki social</button>
             </div>
@@ -843,7 +843,7 @@ export default function PortfolioEditor({ id, cities, categories, onChanged, onD
               </select>
             </label>
             <div className="text-sm md:col-span-2">
-              <div className="mb-1">Priorytetowe miasta <span className="text-xs text-[#e5e4e2]/40">(na których stronach usług pokazać realizację wyżej; nie zmieniają miejsca wydarzenia)</span></div>
+              <div className="mb-1">Priorytetowe miasta <span className="text-xs text-[#e5e4e2]/40">(na których stronach usług pokazać realizację wyżej; nie zmieniają miejsca eventu)</span></div>
               <input value={cityQuery} onChange={(event) => setCityQuery(event.target.value)} placeholder="Szukaj miasta…" className={inputClass} />
               <div className="mt-2 grid max-h-48 gap-1 overflow-y-auto sm:grid-cols-3">
                 {filteredCities.map((city) => (

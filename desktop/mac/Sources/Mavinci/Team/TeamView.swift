@@ -49,7 +49,7 @@ struct TeamActions {
                 Button("Anuluj", role: .cancel) {}
             }
         } message: {
-            Text("Czy na pewno chcesz trwale usunąć pracownika \(removing?.fullName ?? "")? Tej operacji nie można cofnąć. Autorstwo wydarzeń i wymaganych dokumentów przejmie Twoje konto administratora, a przypisania tego pracownika zostaną usunięte.")
+            Text("Czy na pewno chcesz trwale usunąć pracownika \(removing?.fullName ?? "")? Tej operacji nie można cofnąć. Autorstwo eventów i wymaganych dokumentów przejmie Twoje konto administratora, a przypisania tego pracownika zostaną usunięte.")
         }
         .task(id: state.employee?.id) {
             if store.members.isEmpty { await store.backgroundSync() }

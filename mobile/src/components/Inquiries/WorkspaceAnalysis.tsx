@@ -159,10 +159,10 @@ export function AnalysisResult({ analysis, wide }: { analysis: WorkspaceAnalysis
     <View style={kit.gapSm}>
       <Block title="Podsumowanie zapytania i korespondencji">
         <Text style={kit.text} selectable>{analysis.summary}</Text>
-        {analysis.eventGoal ? <Text style={kit.muted}>Cel wydarzenia: {analysis.eventGoal}</Text> : null}
+        {analysis.eventGoal ? <Text style={kit.muted}>Cel eventu: {analysis.eventGoal}</Text> : null}
       </Block>
       <View style={styles.grid}>
-        <Block title="Założenia wydarzenia" style={half}><Items values={analysis.assumptions} /></Block>
+        <Block title="Założenia eventu" style={half}><Items values={analysis.assumptions} /></Block>
         {analysis.clientNeeds.length ? <Block title="Potrzeby klienta" style={half}><Items values={analysis.clientNeeds} /></Block> : null}
         <Block title="Co trzeba doprecyzować" style={half}><Items values={analysis.missing} /></Block>
         <Block title="Szacunkowa kalkulacja" style={half}>

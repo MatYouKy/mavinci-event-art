@@ -319,7 +319,7 @@ export function briefProblem(brief: WorkspaceBrief): string | null {
   }
   if (value.budgetMin && value.budgetMax && Number(value.budgetMin) > Number(value.budgetMax)) return 'Budżet „od” jest większy niż „do”.';
   if (value.termin && !value.eventSingleDay) {
-    if (!value.eventEndDate) return 'Wybierz dzień zakończenia albo zaznacz wydarzenie jednodniowe.';
+    if (!value.eventEndDate) return 'Wybierz dzień zakończenia albo zaznacz event jednodniowy.';
     if (value.eventEndDate < value.termin) return 'Dzień zakończenia jest wcześniejszy niż dzień rozpoczęcia.';
   }
   return null;

@@ -89,8 +89,8 @@ enum OfferTemplateKind {
         var id: String { key }
     }
     static let all: [Kind] = [
-        Kind(key: "cover", label: "1. Okładka", symbol: "doc.text", detail: "Nazwa wydarzenia, termin, klient i zdjęcie przewodnie"),
-        Kind(key: "about", label: "2. Założenia wydarzenia", symbol: "building.2", detail: "Najważniejsze liczby, cel spotkania i rekomendowany zakres"),
+        Kind(key: "cover", label: "1. Okładka", symbol: "doc.text", detail: "Nazwa eventu, termin, klient i zdjęcie przewodnie"),
+        Kind(key: "about", label: "2. Założenia eventu", symbol: "building.2", detail: "Najważniejsze liczby, cel spotkania i rekomendowany zakres"),
         Kind(key: "product", label: "3. Strony produktów i usług", symbol: "shippingbox", detail: "Powtarzalna strona z opisem, grafiką i danymi pozycji"),
         Kind(key: "pricing", label: "4. Wycena", symbol: "dollarsign.circle", detail: "Podsumowanie cenowe i warunki"),
         Kind(key: "final", label: "5. Zakończenie", symbol: "checkmark.circle", detail: "Zdjęcie, dane sprzedawcy i czytelne wezwanie do kontaktu"),

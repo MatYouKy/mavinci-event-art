@@ -121,9 +121,9 @@ export default function SocialLibrary({ companyId, access, onCreatePost, onChang
             <option value="used">Użyte w postach</option>
           </select>
           <button type="button" className={secondaryButton} onClick={() => setEventPicker(true)}>
-            <CalendarDays className="h-4 w-4" />{event ? event.name : 'Wydarzenie'}
+            <CalendarDays className="h-4 w-4" />{event ? event.name : 'Event'}
           </button>
-          {event && <button type="button" className={secondaryButton} aria-label="Wyczyść wydarzenie" onClick={() => { setEvent(null); setOffset(0); }}><X className="h-4 w-4" /></button>}
+          {event && <button type="button" className={secondaryButton} aria-label="Wyczyść event" onClick={() => { setEvent(null); setOffset(0); }}><X className="h-4 w-4" /></button>}
           <label className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-[#e5e4e2]/30" />
             <input value={query} onChange={(e) => { setQuery(e.target.value); setOffset(0); }} placeholder="Szukaj w opisach i nazwach" className={`${inputClass} w-64 pl-8`} />
@@ -134,7 +134,7 @@ export default function SocialLibrary({ companyId, access, onCreatePost, onChang
             <input ref={fileInput} type="file" multiple accept={SOCIAL_UPLOAD_TYPES.join(',')} className="hidden"
               onChange={(e) => { const files = Array.from(e.target.files || []); e.target.value = ''; void upload(files); }} />
             <button type="button" className={primaryButton} onClick={() => fileInput.current?.click()}><Upload className="h-4 w-4" />Wgraj z dysku</button>
-            <button type="button" className={secondaryButton} onClick={() => setImporter('event')}><FolderOpen className="h-4 w-4" />Z plików wydarzenia</button>
+            <button type="button" className={secondaryButton} onClick={() => setImporter('event')}><FolderOpen className="h-4 w-4" />Z plików eventu</button>
             <button type="button" className={secondaryButton} onClick={() => setImporter('portfolio')}><ImagePlus className="h-4 w-4" />Z realizacji na stronie</button>
           </div>
         )}
@@ -198,15 +198,15 @@ export function EventPicker({ companyId, onClose, onPick }: { companyId: string;
         const result = await socialGet<{ events: SocialEventOption[] }>('events', { company: companyId, q: query.trim() });
         setEvents(result.events);
       } catch (cause) {
-        showSnackbar(errorMessage(cause, 'Nie udało się pobrać wydarzeń.'), 'error');
+        showSnackbar(errorMessage(cause, 'Nie udało się pobrać eventów.'), 'error');
       }
     }, 250);
     return () => window.clearTimeout(timer);
   }, [companyId, query, showSnackbar]);
   return (
-    <Modal open onClose={onClose} title="Wybierz wydarzenie" scrollBody>
-      <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nazwa wydarzenia" className={`${inputClass} mb-3`} />
-      {!events ? <p className="text-sm text-[#e5e4e2]/50">Ładowanie…</p> : events.length === 0 ? <p className="text-sm text-[#e5e4e2]/50">Brak wydarzeń.</p> : (
+    <Modal open onClose={onClose} title="Wybierz event" scrollBody>
+      <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Nazwa eventu" className={`${inputClass} mb-3`} />
+      {!events ? <p className="text-sm text-[#e5e4e2]/50">Ładowanie…</p> : events.length === 0 ? <p className="text-sm text-[#e5e4e2]/50">Brak eventów.</p> : (
         <div className="space-y-1.5">
           {events.map((item) => (
             <button key={item.id} type="button" onClick={() => onPick(item)} className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119]/60 p-3 text-left hover:border-[#d3bb73]/40">
@@ -240,7 +240,7 @@ function ImportModal({ kind, companyId, onClose, onImported }: { kind: 'event' |
     setFiles(null);
     socialGet<{ files: Array<{ id: string; name: string; url: string | null; imported: boolean }> }>('eventImages', { event: event.id })
       .then((result) => setFiles(result.files))
-      .catch((cause) => showSnackbar(errorMessage(cause, 'Nie udało się pobrać plików wydarzenia.'), 'error'));
+      .catch((cause) => showSnackbar(errorMessage(cause, 'Nie udało się pobrać plików eventu.'), 'error'));
   }, [event, showSnackbar]);
 
   const importOne = async (payload: Record<string, unknown>, label: string) => {
@@ -261,8 +261,8 @@ function ImportModal({ kind, companyId, onClose, onImported }: { kind: 'event' |
   if (kind === 'event' && !event) return <EventPicker companyId={companyId} onClose={onClose} onPick={setEvent} />;
   const current = projects?.find((item) => item.id === project);
   return (
-    <Modal open onClose={onClose} title={kind === 'event' ? `Zdjęcia z wydarzenia „${event?.name || ''}”` : current ? current.title : 'Realizacje na stronie'} scrollBody>
-      {kind === 'event' && (!files ? <p className="text-sm text-[#e5e4e2]/50">Ładowanie…</p> : files.length === 0 ? <p className="text-sm text-[#e5e4e2]/50">To wydarzenie nie ma zdjęć w plikach.</p> : (
+    <Modal open onClose={onClose} title={kind === 'event' ? `Zdjęcia z eventu „${event?.name || ''}”` : current ? current.title : 'Realizacje na stronie'} scrollBody>
+      {kind === 'event' && (!files ? <p className="text-sm text-[#e5e4e2]/50">Ładowanie…</p> : files.length === 0 ? <p className="text-sm text-[#e5e4e2]/50">Ten event nie ma zdjęć w plikach.</p> : (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {files.map((file) => (
             <button key={file.id} type="button" disabled={file.imported}
@@ -356,8 +356,8 @@ function AssetModal({ id, onClose, onCreatePost, onChanged }: { id: string; onCl
             <label className="text-sm">Marki widoczne na zdjęciu (po przecinku)<input value={form.visibleBrands} onChange={(e) => setForm({ ...form, visibleBrands: e.target.value })} className={`${inputClass} mt-1`} /></label>
             <label className="text-sm md:col-span-2">Notatka<textarea value={form.note} maxLength={SOCIAL_LIMITS.note} rows={2} onChange={(e) => setForm({ ...form, note: e.target.value })} className={`${inputClass} mt-1`} /></label>
             <div className="md:col-span-2 flex flex-wrap gap-2">
-              <button type="button" className={secondaryButton} onClick={() => setEventPicker(true)}><CalendarDays className="h-4 w-4" />{asset.eventName ? `Wydarzenie: ${asset.eventName}` : 'Powiąż z wydarzeniem'}</button>
-              {asset.eventId && <button type="button" className={secondaryButton} onClick={() => void update({ eventId: null }, 'Usunięto powiązanie z wydarzeniem')}><X className="h-4 w-4" />Bez wydarzenia</button>}
+              <button type="button" className={secondaryButton} onClick={() => setEventPicker(true)}><CalendarDays className="h-4 w-4" />{asset.eventName ? `Event: ${asset.eventName}` : 'Powiąż z eventem'}</button>
+              {asset.eventId && <button type="button" className={secondaryButton} onClick={() => void update({ eventId: null }, 'Usunięto powiązanie z eventem')}><X className="h-4 w-4" />Bez eventu</button>}
               <button type="button" className={primaryButton} onClick={() => void update({
                 title: form.title, note: form.note, visibleBrands: form.visibleBrands.split(',').map((item) => item.trim()).filter(Boolean),
               }, 'Zapisano opis zdjęcia')}>Zapisz opis</button>
@@ -366,11 +366,11 @@ function AssetModal({ id, onClose, onCreatePost, onChanged }: { id: string; onCl
         )}
         <div className="rounded-lg border border-[#d3bb73]/10 p-3">
           <h3 className="mb-1 text-sm font-medium">Zgoda klienta na publikację</h3>
-          <p className="mb-3 text-xs text-[#e5e4e2]/50">Obowiązuje: {SOCIAL_CONSENT_LABELS[(asset.consent.status in SOCIAL_CONSENT_LABELS ? asset.consent.status : 'unknown') as SocialConsentStatus]} ({SOCIAL_CONSENT_SOURCE_LABELS[asset.consent.source]}). Kolejność: zdjęcie → wydarzenie → klient.</p>
+          <p className="mb-3 text-xs text-[#e5e4e2]/50">Obowiązuje: {SOCIAL_CONSENT_LABELS[(asset.consent.status in SOCIAL_CONSENT_LABELS ? asset.consent.status : 'unknown') as SocialConsentStatus]} ({SOCIAL_CONSENT_SOURCE_LABELS[asset.consent.source]}). Kolejność: zdjęcie → event → klient.</p>
           {consentEditable ? (
             <div className="space-y-2">
               <select value={form.consentStatus} onChange={(e) => setForm({ ...form, consentStatus: e.target.value as SocialConsentStatus })} className={inputClass}>
-                {SOCIAL_CONSENT_STATUSES.map((value) => <option key={value} value={value}>{value === 'inherit' ? 'Dla zdjęcia: jak wydarzenie i klient' : `Dla zdjęcia: ${SOCIAL_CONSENT_LABELS[value]}`}</option>)}
+                {SOCIAL_CONSENT_STATUSES.map((value) => <option key={value} value={value}>{value === 'inherit' ? 'Dla zdjęcia: jak event i klient' : `Dla zdjęcia: ${SOCIAL_CONSENT_LABELS[value]}`}</option>)}
               </select>
               {form.consentStatus === 'granted' && (
                 <div className="flex flex-wrap gap-3 text-sm">
@@ -384,7 +384,7 @@ function AssetModal({ id, onClose, onCreatePost, onChanged }: { id: string; onCl
               <input value={form.consentNote} onChange={(e) => setForm({ ...form, consentNote: e.target.value })} placeholder="Notatka (np. mail klienta z 12.11)" className={inputClass} />
               <div className="flex flex-wrap gap-2">
                 <button type="button" className={primaryButton} onClick={() => void update({ consentStatus: form.consentStatus, consentChannels: form.consentStatus === 'granted' ? form.consentChannels : [], consentNote: form.consentNote }, 'Zapisano zgodę dla zdjęcia')}>Zapisz zgodę zdjęcia</button>
-                {asset.eventId && <button type="button" className={secondaryButton} onClick={() => setLevelConsent({ eventId: asset.eventId!, label: `wydarzenia „${asset.eventName || ''}”` })}>Zgoda dla całego wydarzenia</button>}
+                {asset.eventId && <button type="button" className={secondaryButton} onClick={() => setLevelConsent({ eventId: asset.eventId!, label: `eventu „${asset.eventName || ''}”` })}>Zgoda dla całego eventu</button>}
                 {asset.organizationId && <button type="button" className={secondaryButton} onClick={() => setLevelConsent({ organizationId: asset.organizationId!, label: `klienta „${asset.organizationName || ''}”` })}>Zgoda dla klienta</button>}
               </div>
             </div>
@@ -420,7 +420,7 @@ function AssetModal({ id, onClose, onCreatePost, onChanged }: { id: string; onCl
           </div>
         )}
       </div>
-      {eventPicker && <EventPicker companyId={asset.companyId} onClose={() => setEventPicker(false)} onPick={(item) => { setEventPicker(false); void update({ eventId: item.id }, 'Powiązano zdjęcie z wydarzeniem'); }} />}
+      {eventPicker && <EventPicker companyId={asset.companyId} onClose={() => setEventPicker(false)} onPick={(item) => { setEventPicker(false); void update({ eventId: item.id }, 'Powiązano zdjęcie z eventem'); }} />}
       {levelConsent && <LevelConsentModal target={levelConsent} onClose={() => setLevelConsent(null)} onSaved={() => { setLevelConsent(null); socialGet<SocialAssetDetail>('asset', { id }).then(apply).catch(() => undefined); onChanged(); }} />}
     </Modal>
   );

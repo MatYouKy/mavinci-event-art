@@ -259,7 +259,7 @@ const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 10
 function sourceCurrency(source: Row) {
   const stored = source.currency_code ?? source.currency ?? 'PLN';
   if (typeof stored !== 'string' || !/^[A-Z]{3}$/.test(stored.trim().toUpperCase())) {
-    throw new Error('Źródło cen wydarzenia ma nieprawidłową walutę. Popraw ją przed wystawieniem faktury końcowej.');
+    throw new Error('Źródło cen eventu ma nieprawidłową walutę. Popraw ją przed wystawieniem faktury końcowej.');
   }
   return stored.trim().toUpperCase();
 }
@@ -273,34 +273,34 @@ function payerId(event: Row, group: Row | null) {
 async function loadEventOrder(ctx: NativeContext, eventId: string) {
   const { data: membership, error: membershipError } = await ctx.supabase.from('event_settlement_group_members')
     .select('group_id').eq('event_id', eventId).maybeSingle();
-  if (membershipError) throw new Error('Nie udało się odczytać wspólnego rozliczenia wydarzenia. Spróbuj ponownie.');
+  if (membershipError) throw new Error('Nie udało się odczytać wspólnego rozliczenia eventu. Spróbuj ponownie.');
   let group: Row | null = null;
   let eventIds = [eventId];
   if ((membership as Row | null)?.group_id) {
     const { data, error } = await ctx.supabase.from('event_settlement_groups')
       .select('id,name,primary_event_id,billing_arrangement,billing_organization_id,status').eq('id', (membership as Row).group_id).maybeSingle();
-    if (error || !data) throw new Error('Nie udało się odczytać grupy rozliczeniowej wydarzenia.');
+    if (error || !data) throw new Error('Nie udało się odczytać grupy rozliczeniowej eventu.');
     const groupRow = data as Row;
     if (groupRow.status === 'active') {
       group = groupRow;
       const { data: members, error: membersError } = await ctx.supabase.from('event_settlement_group_members').select('event_id').eq('group_id', groupRow.id);
-      if (membersError || !rows(members).length) throw new Error('Nie udało się odczytać wydarzeń wspólnego rozliczenia.');
+      if (membersError || !rows(members).length) throw new Error('Nie udało się odczytać eventów wspólnego rozliczenia.');
       eventIds = [...new Set(rows(members).map((member) => str(member.event_id)))];
       if (!eventIds.includes(eventId) || !eventIds.includes(str(groupRow.primary_event_id))) {
-        throw new Error('Powiązania wspólnego rozliczenia są niepełne. Sprawdź je w wydarzeniu.');
+        throw new Error('Powiązania wspólnego rozliczenia są niepełne. Sprawdź je w evencie.');
       }
     }
   }
   const { data: eventRows, error: eventsError } = await ctx.supabase.from('events').select('*').in('id', eventIds).order('event_date', { ascending: true });
   if (eventsError || !eventRows || eventRows.length !== eventIds.length) {
-    throw new Error('Nie udało się odczytać wszystkich powiązanych wydarzeń. Nie pobrano częściowej wartości zamówienia.');
+    throw new Error('Nie udało się odczytać wszystkich powiązanych eventów. Nie pobrano częściowej wartości zamówienia.');
   }
   const events = eventRows as Row[];
   const primaryEvent = events.find((event) => event.id === (group?.primary_event_id || eventId));
-  if (!primaryEvent) throw new Error('Nie odnaleziono głównego wydarzenia rozliczenia.');
+  if (!primaryEvent) throw new Error('Nie odnaleziono głównego eventu rozliczenia.');
   const expectedPayer = payerId(primaryEvent, group);
   if (events.some((event) => payerId(event, group) !== expectedPayer)) {
-    throw new Error('Wydarzenia wspólnego rozliczenia mają różnych nabywców. Sprawdź sposób rozliczenia wydarzeń.');
+    throw new Error('Eventy wspólnego rozliczenia mają różnych nabywców. Sprawdź sposób rozliczenia eventów.');
   }
   const prepared = await Promise.all(events.map(async (event) => {
     let source: Row;
@@ -308,33 +308,33 @@ async function loadEventOrder(ctx: NativeContext, eventId: string) {
     let label: string;
     if (event.financial_source === 'calculation') {
       if (!event.accepted_calculation_id) {
-        throw new Error(`Wydarzenie „${event.name}” nie ma wybranej zaakceptowanej kalkulacji. Uzupełnij źródło cen w wydarzeniu.`);
+        throw new Error(`Event „${event.name}” nie ma wybranej zaakceptowanej kalkulacji. Uzupełnij źródło cen w evencie.`);
       }
       const { data, error } = await ctx.supabase.from('event_calculations')
         .select('*,event_calculation_items(name,quantity,unit,unit_price,days,vat_rate,position)')
         .eq('id', event.accepted_calculation_id).eq('event_id', event.id).eq('is_accepted', true).maybeSingle();
-      if (error || !data) throw new Error(`Nie odczytano zaakceptowanej kalkulacji wydarzenia „${event.name}”. Sprawdź źródło cen w wydarzeniu.`);
+      if (error || !data) throw new Error(`Nie odczytano zaakceptowanej kalkulacji eventu „${event.name}”. Sprawdź źródło cen w evencie.`);
       source = data as Row;
       prefill = getAcceptedCalculationInvoicePrefill(source as never);
       label = `Kalkulacja: ${str(source.name)}`;
     } else {
       const { data: financialRows, error: financialError } = await ctx.supabase.rpc('get_event_financial_info', { p_event_id: event.id });
-      if (financialError) throw new Error(`Nie udało się odczytać uzgodnionych cen wydarzenia „${event.name}”.`);
+      if (financialError) throw new Error(`Nie udało się odczytać uzgodnionych cen eventu „${event.name}”.`);
       const financialInfo = (Array.isArray(financialRows) ? financialRows[0] : null) as Row | null;
       if (!financialInfo?.accepted_offer_id) {
-        throw new Error(`Wydarzenie „${event.name}” nie ma zaakceptowanej oferty. Zaakceptuj właściwą ofertę lub kalkulację w wydarzeniu.`);
+        throw new Error(`Event „${event.name}” nie ma zaakceptowanej oferty. Zaakceptuj właściwą ofertę lub kalkulację w evencie.`);
       }
       const { data, error } = await ctx.supabase.from('offers')
         .select('*,offer_items(name,quantity,unit,unit_price,discount_percent,total,display_order)')
         .eq('id', financialInfo.accepted_offer_id).eq('event_id', event.id).eq('status', 'accepted').maybeSingle();
-      if (error || !data) throw new Error(`Nie odczytano zaakceptowanej oferty wydarzenia „${event.name}”. Sprawdź źródło cen w wydarzeniu.`);
+      if (error || !data) throw new Error(`Nie odczytano zaakceptowanej oferty eventu „${event.name}”. Sprawdź źródło cen w evencie.`);
       source = data as Row;
       prefill = getAcceptedOfferInvoicePrefill(source as never, str(event.name));
       label = `Oferta ${str(source.offer_number) || str(financialInfo.accepted_offer_number)}`.trim();
     }
     const currencyCode = sourceCurrency(source);
     if ((event.currency_code || event.currency) && sourceCurrency(event) !== currencyCode) {
-      throw new Error(`Waluta wydarzenia „${event.name}” różni się od waluty jego uzgodnionych cen.`);
+      throw new Error(`Waluta eventu „${event.name}” różni się od waluty jego uzgodnionych cen.`);
     }
     if (event.my_company_id && source.my_company_id && event.my_company_id !== source.my_company_id) {
       const { data: sourceAllowed, error: sourceAccessError } = await ctx.supabase.rpc('can_use_event_invoice_source', {
@@ -343,13 +343,13 @@ async function loadEventOrder(ctx: NativeContext, eventId: string) {
         p_source_id: source.id,
       });
       if (sourceAccessError || sourceAllowed !== true) {
-        throw new Error(`Wydarzenie „${event.name}” i jego źródło cen wskazują różne firmy, bez potwierdzonego przeniesienia przez fakturę.`);
+        throw new Error(`Event „${event.name}” i jego źródło cen wskazują różne firmy, bez potwierdzonego przeniesienia przez fakturę.`);
       }
     }
     const calculatedNet = money(prefill.items.reduce((sum, item) => sum + money(item.quantity * item.price_net), 0));
     const calculatedVat = money(prefill.items.reduce((sum, item) => sum + money(money(item.quantity * item.price_net) * item.vat_rate / 100), 0));
     if (calculatedNet !== prefill.totals.net || calculatedVat !== prefill.totals.taxAmount || money(calculatedNet + calculatedVat) !== prefill.totals.gross) {
-      throw new Error(`Kwoty pozycji wydarzenia „${event.name}” nie odpowiadają jego uzgodnionemu podsumowaniu. Popraw źródło cen w wydarzeniu.`);
+      throw new Error(`Kwoty pozycji eventu „${event.name}” nie odpowiadają jego uzgodnionemu podsumowaniu. Popraw źródło cen w evencie.`);
     }
     return { ...prefill, label, currencyCode, myCompanyId: (event.my_company_id || source.my_company_id || null) as string | null };
   }));
@@ -362,7 +362,7 @@ async function loadEventOrder(ctx: NativeContext, eventId: string) {
     name: item.name, unit: item.unit, quantity: item.quantity, price_net: item.price_net, vat_rate: item.vat_rate, vat_code: item.vat_code as VatCode,
   })));
   if (!items.length || money(prepared.reduce((sum, entry) => sum + entry.totals.gross, 0)) <= 0) {
-    throw new Error('Pełna wartość zamówienia wydarzenia musi być większa od zera. Uzupełnij zaakceptowane źródło cen.');
+    throw new Error('Pełna wartość zamówienia eventu musi być większa od zera. Uzupełnij zaakceptowane źródło cen.');
   }
   return {
     items,
@@ -382,14 +382,14 @@ async function eventOrderFor(ctx: NativeContext, eventId: string, reference: Row
   try {
     order = await loadEventOrder(ctx, eventId);
   } catch (problem) {
-    error = problem instanceof Error ? problem.message : 'Nie udało się pobrać pełnego zamówienia wydarzenia.';
+    error = problem instanceof Error ? problem.message : 'Nie udało się pobrać pełnego zamówienia eventu.';
   }
   const currency = str(reference?.currency_code) || order?.currencyCode || 'PLN';
   if (!error && order && reference && order.currencyCode !== currency) {
-    error = 'Waluta zamówienia wydarzenia różni się od waluty zaliczek. Sprawdź dokumenty przed rozliczeniem.';
+    error = 'Waluta zamówienia eventu różni się od waluty zaliczek. Sprawdź dokumenty przed rozliczeniem.';
   }
   if (!error && order?.myCompanyId && reference?.my_company_id && order.myCompanyId !== reference.my_company_id) {
-    error = 'Wydarzenie i zaliczki mają różne firmy wystawiające. Sprawdź rozliczenie wydarzenia.';
+    error = 'Event i zaliczki mają różne firmy wystawiające. Sprawdź rozliczenie eventu.';
   }
   return { order, error };
 }
@@ -695,7 +695,7 @@ export async function finalCreate(ctx: NativeContext, body: Row) {
     const { error: linkError } = await ctx.supabase.rpc('link_invoice_to_event_settlement', {
       p_invoice_id: createdId, p_source_event_id: settlementEventId,
     });
-    if (linkError) warning = 'Faktura końcowa powstała, ale nie udało się przypisać jej do całej grupy wydarzeń';
+    if (linkError) warning = 'Faktura końcowa powstała, ale nie udało się przypisać jej do całej grupy eventów';
   }
   return { ok: true, id: str(createdId), message: 'Faktura końcowa utworzona', warning };
 }

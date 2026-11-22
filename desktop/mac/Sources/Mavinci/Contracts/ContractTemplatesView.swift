@@ -106,7 +106,7 @@ import SwiftUI
             TableColumn("Format", value: \.format) { item in
                 Text(item.formatText).foregroundStyle(item.format == "word" ? Color.primary : Color.secondary)
             }.width(min: 110, ideal: 130, max: 160)
-            TableColumn("Kategorie wydarzeń", value: \.categoriesText) { item in
+            TableColumn("Kategorie eventów", value: \.categoriesText) { item in
                 Text(item.categoriesText).lineLimit(1).foregroundStyle(item.categories.isEmpty ? .secondary : .primary)
             }.width(min: 140, ideal: 220)
             TableColumn("Umowy", value: \.contracts) { item in
@@ -235,7 +235,7 @@ import SwiftUI
 
     private var summary: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
-            row("Kategorie wydarzeń", item.categoriesText)
+            row("Kategorie eventów", item.categoriesText)
             row("Umowy z szablonu", item.contracts == 0 ? "—" : "\(item.contracts)")
             row("Strony", item.pages == 0 ? "—" : "\(item.pages)")
             row("Pola umowy", item.fields == 0 ? "—" : "\(item.fields)")

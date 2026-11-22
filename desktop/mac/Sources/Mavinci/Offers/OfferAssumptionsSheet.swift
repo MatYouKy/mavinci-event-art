@@ -22,7 +22,7 @@ import SwiftUI
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Założenia wydarzenia").font(.title3.weight(.semibold))
+                    Text("Założenia eventu").font(.title3.weight(.semibold))
                     Text("Założenia realizacji — trzy najważniejsze informacje. Te same trzy karty oraz ich liczbowe znaczniki trafią do oferty PDF.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -41,7 +41,7 @@ import SwiftUI
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         ForEach(items.indices, id: \.self) { index in card(index, data) }
-                        ProductField(label: "Cel wydarzenia") {
+                        ProductField(label: "Cel eventu") {
                             ProductTextArea(text: $goal, prompt: "Rezultat, który klient chce osiągnąć…", lines: 3...6)
                         }
                     }
@@ -160,7 +160,7 @@ import SwiftUI
         saving = true
         defer { saving = false }
         let body: [String: JSONValue] = ["items": .array(items.map(\.json)), "goal": .string(goal)]
-        if await store.change(offerID, "assumptionsSave", body, success: "Założenia wydarzenia zapisane") { dismiss() }
+        if await store.change(offerID, "assumptionsSave", body, success: "Założenia eventu zapisane") { dismiss() }
         else if let message = store.workspace?.error { problem = message }
     }
 }
@@ -190,13 +190,13 @@ import SwiftUI
                     Text("\(index + 1). \(item.label.isEmpty ? item.key : item.label)").font(.callout)
                 }
             }
-            Toggle("Uzupełnij również cel wydarzenia", isOn: $generateGoal)
+            Toggle("Uzupełnij również cel eventu", isOn: $generateGoal)
             ProductField(label: "Co chcesz osiągnąć? (opcjonalnie)", help: "Puste pole = propozycja według bazowej instrukcji. \(instructions.count)/2000") {
                 ProductTextArea(text: Binding(get: { instructions }, set: { instructions = String($0.prefix(2000)) }),
-                                prompt: "Np. podkreśl prestiż wydarzenia, komfort prelegentów i widoczność prezentacji. Ton profesjonalny, bez przesadnych sloganów.",
+                                prompt: "Np. podkreśl prestiż eventu, komfort prelegentów i widoczność prezentacji. Ton profesjonalny, bez przesadnych sloganów.",
                                 lines: 4...7)
             }
-            Text("Propozycja zastąpi treści trzech wybranych założeń oraz — jeśli zaznaczono — cel wydarzenia. Przed zapisaniem możesz je poprawić.")
+            Text("Propozycja zastąpi treści trzech wybranych założeń oraz — jeśli zaznaczono — cel eventu. Przed zapisaniem możesz je poprawić.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let problem { Text(problem).font(.callout).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
             HStack {
@@ -224,7 +224,7 @@ import SwiftUI
             let draft = try await store.draftAssumptions(offerID, items: items, goal: goal,
                                                          instructions: instructions.trimmingCharacters(in: .whitespacesAndNewlines), generateGoal: generateGoal)
             onDraft(draft)
-            store.workspace?.succeed(generateGoal ? "AI uzupełniło wybrane założenia i cel wydarzenia" : "AI uzupełniło wybrane założenia")
+            store.workspace?.succeed(generateGoal ? "AI uzupełniło wybrane założenia i cel eventu" : "AI uzupełniło wybrane założenia")
             dismiss()
         } catch {
             problem = store.failureText(error, "Nie udało się przygotować założeń przez AI")

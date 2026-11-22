@@ -60,13 +60,13 @@ export function SalesFunnel({ funnel }: { funnel: DashboardAnalytics['funnel'] }
     { label: 'Zapytania', value: funnel.inquiries, color: '#f59e0b' },
     { label: 'Zapytania z ofertą', value: funnel.offers, color: '#60a5fa' },
     { label: 'Wygrane zapytania', value: funnel.acceptedOffers, color: '#34d399' },
-    { label: 'Powiązane wydarzenia', value: funnel.events, color: '#d3bb73' },
+    { label: 'Powiązane eventy', value: funnel.events, color: '#d3bb73' },
   ];
 
   return (
     <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 sm:p-6">
       <h3 className="text-lg font-light text-[#e5e4e2]">Lejek sprzedaży</h3>
-      <p className="mt-1 text-xs leading-relaxed text-[#e5e4e2]/45">Zapytania utworzone w ostatnich 12 miesiącach: od etapu oferty do wygranej i powiązanego wydarzenia. Liczby dotyczą zapytań, nie liczby dokumentów ofertowych.</p>
+      <p className="mt-1 text-xs leading-relaxed text-[#e5e4e2]/45">Zapytania utworzone w ostatnich 12 miesiącach: od etapu oferty do wygranej i powiązanego eventu. Liczby dotyczą zapytań, nie liczby dokumentów ofertowych.</p>
       <div className="mt-5">
         <CrmCartesianChart
           data={steps.map((step) => ({ label: step.label, count: step.value }))}
@@ -107,7 +107,7 @@ export function SalesFunnel({ funnel }: { funnel: DashboardAnalytics['funnel'] }
 export function OperationalAttention({ attention }: { attention: DashboardAnalytics['attention'] }) {
   const items = [
     {
-      label: 'Procesy wydarzeń po terminie',
+      label: 'Procesy eventów po terminie',
       value: attention.workflowRisks,
       href: '/crm/events',
       icon: Workflow,
@@ -149,7 +149,7 @@ export function OperationalAttention({ attention }: { attention: DashboardAnalyt
       color: 'text-orange-400',
     },
     {
-      label: 'Wydarzenia w ciągu 30 dni',
+      label: 'Eventy w ciągu 30 dni',
       value: attention.eventsNext30Days,
       href: '/crm/events',
       icon: CalendarClock,

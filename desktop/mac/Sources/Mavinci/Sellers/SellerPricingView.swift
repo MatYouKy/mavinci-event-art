@@ -416,7 +416,7 @@ struct SellerComponentRates: Decodable {
                 }
             }
             labeled("Dodatkowe wymagania widoczne dla sprzedawcy") {
-                TextField("Np. dostęp do obiektu 3 godziny przed wydarzeniem", text: model.field(key, \.requirements, fallback: ""), axis: .vertical)
+                TextField("Np. dostęp do obiektu 3 godziny przed eventem", text: model.field(key, \.requirements, fallback: ""), axis: .vertical)
                     .lineLimit(2...4).textFieldStyle(.roundedBorder)
             }
         }

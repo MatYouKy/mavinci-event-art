@@ -203,7 +203,7 @@ async function drivers(ctx: NativeContext, eventId: string, params: URLSearchPar
   } else {
     const { data: event } = await ctx.supabase.from('events').select('event_date').eq('id', eventId).maybeSingle();
     const date = new Date((event as any)?.event_date || '');
-    if (!Number.isFinite(date.getTime())) return { state: 'waiting', drivers: [], message: 'Uzupełnij datę wydarzenia lub wybierz fazy odbioru i zwrotu.' };
+    if (!Number.isFinite(date.getTime())) return { state: 'waiting', drivers: [], message: 'Uzupełnij datę eventu lub wybierz fazy odbioru i zwrotu.' };
     const day = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
     result = await ctx.supabase.rpc('qualified_vehicle_drivers', { ...scope, p_date: day });
   }
@@ -222,9 +222,9 @@ async function drivers(ctx: NativeContext, eventId: string, params: URLSearchPar
     drivers: list,
     message: list.length
       ? complete ? 'Dostępni w całym terminie rezerwacji, z ważnymi wymaganymi kategoriami.'
-        : 'Możesz przypisać kierowcę już teraz. Uprawnienia sprawdzono na dzień wydarzenia; dostępność czasową sprawdzimy po ustaleniu godzin w Timeline.'
+        : 'Możesz przypisać kierowcę już teraz. Uprawnienia sprawdzono na dzień eventu; dostępność czasową sprawdzimy po ustaleniu godzin w Timeline.'
       : complete ? 'Brak kierowców wolnych w tym terminie z ważnymi wymaganymi kategoriami.'
-        : 'Brak aktywnych pracowników z wymaganymi kategoriami ważnymi w dniu wydarzenia. Kategorie uzupełnisz w Kwalifikacje → Prawa jazdy.',
+        : 'Brak aktywnych pracowników z wymaganymi kategoriami ważnymi w dniu eventu. Kategorie uzupełnisz w Kwalifikacje → Prawa jazdy.',
   };
 }
 
@@ -239,7 +239,7 @@ async function availability(ctx: NativeContext, eventId: string, params: URLSear
   if (error) return { conflicts: [] };
   return {
     conflicts: (data || []).map((c: any) => ({
-      eventId: c.conflicting_event_id, name: c.event_name || 'Wydarzenie', date: c.event_date ?? null, location: c.event_location || '',
+      eventId: c.conflicting_event_id, name: c.event_name || 'Event', date: c.event_date ?? null, location: c.event_location || '',
     })),
   };
 }
@@ -286,11 +286,11 @@ async function route(ctx: NativeContext, eventId: string, params: URLSearchParam
   const roundTrip = params.get('roundTrip') === '1';
   if (!origin || origin.length > 500) fail('Podaj adres startu i wybierz kierunek przejazdu.');
   const { data: event, error: eventError } = await ctx.supabase.from('events').select('id,location_id').eq('id', eventId).maybeSingle();
-  if (eventError || !event) fail('Brak dostępu do wydarzenia.');
-  if (!(event as any).location_id) fail('Najpierw zapisz lokalizację wydarzenia w zakładce Przegląd.');
+  if (eventError || !event) fail('Brak dostępu do eventu.');
+  if (!(event as any).location_id) fail('Najpierw zapisz lokalizację eventu w zakładce Przegląd.');
   const { data: location, error } = await ctx.supabase.from('locations')
     .select('name,formatted_address,address,city,postal_code,google_place_id,latitude,longitude').eq('id', (event as any).location_id).single();
-  if (error || !location) fail('Nie udało się odczytać lokalizacji wydarzenia.');
+  if (error || !location) fail('Nie udało się odczytać lokalizacji eventu.');
   const l = location as any;
   const address = l.formatted_address || [l.address, l.postal_code, l.city].filter(Boolean).join(', ');
   const destination = l.google_place_id ? `place_id:${l.google_place_id}` : l.latitude != null && l.longitude != null ? `${l.latitude},${l.longitude}` : address;
@@ -448,12 +448,12 @@ async function lastOdometer(ctx: NativeContext, _eventId: string, params: URLSea
 
 async function handover(ctx: NativeContext, eventId: string, body: Record<string, any>) {
   const id = text(body.rowId);
-  if (!uuid.test(id)) fail('Brak identyfikatora przypisania pojazdu do wydarzenia');
+  if (!uuid.test(id)) fail('Brak identyfikatora przypisania pojazdu do eventu');
   const mileage = parseInt(text(body.odometer), 10);
   if (!Number.isFinite(mileage)) fail('Podaj prawidłowy stan licznika');
   const { data: row, error: rowError } = await ctx.supabase.from('event_vehicles').select('id, event_id, vehicle_id, is_in_use, driver_id').eq('id', id).maybeSingle();
   if (rowError) throw rowError;
-  if (!row || (row as any).event_id !== eventId) fail('Nie znaleziono rekordu przypisania pojazdu do wydarzenia');
+  if (!row || (row as any).event_id !== eventId) fail('Nie znaleziono rekordu przypisania pojazdu do eventu');
   const fleetId = (row as any).vehicle_id as string | null;
   if (!fleetId) fail('Brak identyfikatora pojazdu');
   const last = (await lastOdometer(ctx, eventId, new URLSearchParams({ vehicleId: fleetId }))).value;

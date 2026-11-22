@@ -92,11 +92,11 @@ enum ArrangementArea {
             add("Start", ArrangementText.when(offer.startsAt))
             add("Koniec", ArrangementText.when(offer.endsAt))
             add("Demontaż", ArrangementText.when(offer.teardownAt))
-            add("Dni wydarzenia", days)
+            add("Dni eventu", days)
         case .agenda:
             add("Start", ArrangementText.when(offer.startsAt))
             add("Koniec", ArrangementText.when(offer.endsAt))
-            add("Dni wydarzenia", days)
+            add("Dni eventu", days)
             add("Sala", offer.room ?? offer.venue?.room)
             add("Liczba osób", offer.participants.map { String(Int($0)) })
         case .equipment:
@@ -257,7 +257,7 @@ enum ArrangementArea {
     private func facts(_ offer: EventArrangementsData.Offer) -> some View {
         let rows: [(String, String?)] = [
             ("Montaż", ArrangementText.when(offer.setupAt)),
-            ("Wydarzenie", [ArrangementText.when(offer.startsAt), ArrangementText.when(offer.endsAt)].compactMap { $0 }.joined(separator: " – ").nonEmpty),
+            ("Event", [ArrangementText.when(offer.startsAt), ArrangementText.when(offer.endsAt)].compactMap { $0 }.joined(separator: " – ").nonEmpty),
             ("Demontaż", ArrangementText.when(offer.teardownAt)),
             ("Sala", offer.room ?? offer.venue?.room),
             ("Osoby", offer.participants.map { String(Int($0)) }),

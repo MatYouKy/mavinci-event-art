@@ -69,7 +69,7 @@ import SwiftUI
 
     private var toolbar: some View {
         HStack(spacing: 10) {
-            TextField("Szukaj umowy, klienta, wydarzenia", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 320)
+            TextField("Szukaj umowy, klienta, eventu", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 320)
             Picker("Pokaż", selection: $filter) {
                 Text("Bez anulowanych (\(store.contracts.filter { $0.status != "cancelled" }.count))").tag("active")
                 Text("Wszystkie (\(store.contracts.count))").tag("all")
@@ -100,7 +100,7 @@ import SwiftUI
                     if let client = item.client { Text(client).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                 }.padding(.vertical, 3)
             }.width(min: 200, ideal: 300)
-            TableColumn("Wydarzenie", value: \.sortEvent) { item in
+            TableColumn("Event", value: \.sortEvent) { item in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.event?.name ?? "—").lineLimit(1)
                     if let date = item.event?.date { Text(ContractText.day(date)).font(.caption).foregroundStyle(.secondary).monospacedDigit() }
@@ -121,7 +121,7 @@ import SwiftUI
         .contextMenu(forSelectionType: String.self) { ids in
             if let id = ids.first, let item = store.contract(id) {
                 if let eventId = item.eventId {
-                    Button("Otwórz umowę w wydarzeniu") { state.showEvent(eventId, cardTab: "contract") }
+                    Button("Otwórz umowę w evencie") { state.showEvent(eventId, cardTab: "contract") }
                 }
                 Button("Otwórz w CRM") { state.openCRM(crmHref(item)) }
             }
@@ -134,7 +134,7 @@ import SwiftUI
                 if !store.loaded { ProgressView("Ładowanie umów…") }
                 else {
                     ContentUnavailableView(store.contracts.isEmpty ? "Brak umów" : "Brak umów w tym widoku", systemImage: "signature",
-                                           description: Text(store.contracts.isEmpty ? "Umowy powstają w zakładce „Umowa” wydarzenia." : "Zmień wyszukiwanie lub filtr."))
+                                           description: Text(store.contracts.isEmpty ? "Umowy powstają w zakładce „Umowa” eventu." : "Zmień wyszukiwanie lub filtr."))
                 }
             }
         }
@@ -173,7 +173,7 @@ import SwiftUI
                 }
                 HStack(spacing: 8) {
                     if let eventId = item.eventId {
-                        Button { state.showEvent(eventId, cardTab: "contract") } label: { Label("Otwórz umowę w wydarzeniu", systemImage: "sparkles") }
+                        Button { state.showEvent(eventId, cardTab: "contract") } label: { Label("Otwórz umowę w evencie", systemImage: "sparkles") }
                             .buttonStyle(.borderedProminent)
                     } else {
                         Button { state.openCRM("/crm/contracts/\(item.id)") } label: { Label("Otwórz w CRM", systemImage: "safari") }
@@ -192,8 +192,8 @@ import SwiftUI
 
     private var details: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
-            row("Wydarzenie", item.event?.name ?? "—")
-            if let date = item.event?.date { row("Data wydarzenia", ContractText.day(date)) }
+            row("Event", item.event?.name ?? "—")
+            if let date = item.event?.date { row("Data eventu", ContractText.day(date)) }
             row("Szablon", item.template ?? "—")
             row("Wersja", "\(item.version)")
             if let date = item.statusAt { row("Zmiana statusu", ContractText.date(date)) }
@@ -229,7 +229,7 @@ import SwiftUI
                 }
             }
             if !item.pdf {
-                Text("PDF nie został jeszcze wygenerowany. Wygenerujesz go w zakładce „Umowa” wydarzenia.").font(.callout).foregroundStyle(.secondary)
+                Text("PDF nie został jeszcze wygenerowany. Wygenerujesz go w zakładce „Umowa” eventu.").font(.callout).foregroundStyle(.secondary)
             } else {
                 Text("Wygenerowano: " + ContractText.date(item.pdfAt)).font(.caption).foregroundStyle(.secondary)
                 if item.modified && item.status != "cancelled" {

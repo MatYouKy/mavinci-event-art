@@ -32,7 +32,7 @@ const failure = (error: unknown, fallback: string) => {
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
-  if (!UUID.test(params.id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator wydarzenia.' }, { status: 400 });
+  if (!UUID.test(params.id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator eventu.' }, { status: 400 });
   try {
     const print = await loadChecklistPrint(ctx.supabase, params.id, ctx.employee.id, resolvedOf(new URL(request.url).searchParams.get('resolved')));
     const job = checklistPrintJob(print);
@@ -58,13 +58,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
-  if (!UUID.test(params.id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator wydarzenia.' }, { status: 400 });
+  if (!UUID.test(params.id)) return NextResponse.json({ error: 'Nieprawidłowy identyfikator eventu.' }, { status: 400 });
   if (!finalizeRequested(request)) return NextResponse.json({ error: 'Nieobsługiwana operacja.' }, { status: 400 });
   try {
     const { pdf } = await readFinalizedPdf(request);
     const { data: event, error } = await ctx.supabase.from('events').select('name').eq('id', params.id).maybeSingle();
-    if (error || !event) throw new ChecklistPrintError('Nie znaleziono wydarzenia albo nie masz do niego dostępu.', 404);
-    const stored = await storeChecklistPdf(ctx.supabase, params.id, ctx.employee.id, (event as any).name || 'wydarzenie', pdf);
+    if (error || !event) throw new ChecklistPrintError('Nie znaleziono eventu albo nie masz do niego dostępu.', 404);
+    const stored = await storeChecklistPdf(ctx.supabase, params.id, ctx.employee.id, (event as any).name || 'event', pdf);
     invalidateEvents();
     return NextResponse.json({ ok: true, ...stored }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {

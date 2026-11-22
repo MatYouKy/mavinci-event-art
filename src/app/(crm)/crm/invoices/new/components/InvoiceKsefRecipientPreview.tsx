@@ -49,7 +49,7 @@ export default function InvoiceKsefRecipientPreview({
   }
   if (result.error || !result.data) {
     return <p className="rounded-xl bg-[#d3bb73]/10 p-4 text-sm text-[#d3bb73]" role="alert">
-      Nie udało się odczytać odbiorcy wydarzenia. Sprawdź jego dane przed wystawieniem faktury.
+      Nie udało się odczytać odbiorcy eventu. Sprawdź jego dane przed wystawieniem faktury.
     </p>;
   }
   const recipient = result.data;

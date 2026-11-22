@@ -81,7 +81,7 @@ export function parseSalesColleagueEvents(data: unknown): SalesColleagueEvent[] 
     return [
       {
         id,
-        name: text(raw.name) || 'Wydarzenie',
+        name: text(raw.name) || 'Event',
         event_date: eventDate,
         event_end_date: text(raw.event_end_date),
         location: text(raw.location),

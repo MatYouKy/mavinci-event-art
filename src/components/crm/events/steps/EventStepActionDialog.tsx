@@ -108,7 +108,7 @@ export default function EventStepActionDialog({
         )}
         {action === 'problem' && (
           <p className="text-sm text-[#e5e4e2]/65">
-            Kierownik realizacji i prowadzący wydarzenie dostaną powiadomienie, a krok zostanie oznaczony na czerwono.
+            Kierownik realizacji i prowadzący event dostaną powiadomienie, a krok zostanie oznaczony na czerwono.
           </p>
         )}
 

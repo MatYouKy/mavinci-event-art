@@ -66,7 +66,7 @@ private struct OfferTravelLocations: Decodable {
     private static let fuelTypes: [(id: String, label: String)] = [
         ("benzyna95", "Benzyna 95"), ("benzyna98", "Benzyna 98"), ("diesel", "Olej napędowy"), ("LPG", "LPG"),
     ]
-    private static let sourceLabels = ["event": "Z wydarzenia", "offer": "Ze szczegółów oferty", "catalog": "Z katalogu lokalizacji"]
+    private static let sourceLabels = ["event": "Z eventu", "offer": "Ze szczegółów oferty", "catalog": "Z katalogu lokalizacji"]
 
     @State private var prepared = false
     @State private var destination: OfferTravelPlace?
@@ -214,7 +214,7 @@ private struct OfferTravelLocations: Decodable {
             HStack(spacing: 8) {
                 Button(searchOpen ? "Zamknij lokalizacje" : "Wybierz z naszych lokalizacji") { searchOpen.toggle() }.disabled(routeLoading)
                 if override != nil {
-                    Button("Użyj miejsca z wydarzenia / oferty") { override = nil }.disabled(routeLoading)
+                    Button("Użyj miejsca z eventu / oferty") { override = nil }.disabled(routeLoading)
                 }
             }
             .controlSize(.small)
@@ -246,7 +246,7 @@ private struct OfferTravelLocations: Decodable {
                     }
                 }
                 .frame(maxHeight: 176)
-                Text("Do 20 wyników. Wybór dotyczy tej kalkulacji i nie zmienia wydarzenia.").font(.caption2).foregroundStyle(.tertiary)
+                Text("Do 20 wyników. Wybór dotyczy tej kalkulacji i nie zmienia eventu.").font(.caption2).foregroundStyle(.tertiary)
             }
             if !error.isEmpty {
                 HStack(spacing: 6) {

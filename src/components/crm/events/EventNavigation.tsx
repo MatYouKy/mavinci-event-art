@@ -49,7 +49,7 @@ export default function EventNavigation({
   activeTab,
   onChange,
   scrollRef,
-  ariaLabel = 'Zakładki wydarzenia',
+  ariaLabel = 'Zakładki eventu',
   idPrefix,
   panelId,
 }: {

@@ -31,8 +31,8 @@ export interface ContractConditionDialogProps {
 }
 
 const KINDS: Array<{ id: Kind; label: string; hint: string; icon: typeof Building2 }> = [
-  { id: 'client', label: 'Klient', hint: 'firma albo osoba prywatna — z danych wydarzenia', icon: Building2 },
-  { id: 'category', label: 'Rodzaj wydarzenia', hint: 'kategoria wydarzenia, np. Wesele', icon: CalendarDays },
+  { id: 'client', label: 'Klient', hint: 'firma albo osoba prywatna — z danych eventu', icon: Building2 },
+  { id: 'category', label: 'Rodzaj eventu', hint: 'kategoria eventu, np. Wesele', icon: CalendarDays },
   { id: 'option', label: 'Opcja umowy', hint: 'włączana przy każdej umowie, np. nocleg', icon: ListChecks },
   { id: 'filled', label: 'Pole wypełnione', hint: 'np. numer zamówienia klienta', icon: TextCursorInput },
 ];
@@ -137,7 +137,7 @@ export default function ContractConditionDialog({ initial, scopeLabel, options, 
 
           {kind === 'category' && (
             <div>
-              <div className="mb-1 text-xs text-[#e5e4e2]/60">Pokaż dla wydarzeń z kategorii (można kilka):</div>
+              <div className="mb-1 text-xs text-[#e5e4e2]/60">Pokaż dla eventów z kategorii (można kilka):</div>
               <div className="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
                 {categoryChoices.map((name) => {
                   const active = selectedCategories.includes(name);
@@ -153,7 +153,7 @@ export default function ContractConditionDialog({ initial, scopeLabel, options, 
                     </button>
                   );
                 })}
-                {!categoryChoices.length && <span className="text-xs text-[#e5e4e2]/50">Brak kategorii wydarzeń.</span>}
+                {!categoryChoices.length && <span className="text-xs text-[#e5e4e2]/50">Brak kategorii eventów.</span>}
               </div>
             </div>
           )}
@@ -197,7 +197,7 @@ export default function ContractConditionDialog({ initial, scopeLabel, options, 
           {kind !== 'client' && (
             <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/80">
               <input type="checkbox" checked={negate} onChange={(event) => setNegate(event.target.checked)} className="accent-[#d3bb73]" />
-              {kind === 'category' ? 'Odwrotnie — dla wszystkich innych wydarzeń'
+              {kind === 'category' ? 'Odwrotnie — dla wszystkich innych eventów'
                 : kind === 'option' ? 'Odwrotnie — gdy opcja jest wyłączona'
                   : 'Odwrotnie — gdy pole jest puste'}
             </label>

@@ -111,7 +111,7 @@ extension EventsStore {
     /// „Utwórz event” / „Zapisz zmiany” w kreatorze — identyfikator wydarzenia i uwaga (np. brak przypisania do zespołu).
     func createEvent(_ body: [String: JSONValue]) async throws -> (id: String, notice: String?) {
         struct Reply: Decodable { var id: String; var notice: String? }
-        let reply = try JSONDecoder().decode(Reply.self, from: try await eventsPost("create", body, pending: "Zapisywanie wydarzenia…"))
+        let reply = try JSONDecoder().decode(Reply.self, from: try await eventsPost("create", body, pending: "Zapisywanie eventu…"))
         return (reply.id, reply.notice)
     }
 
@@ -411,7 +411,7 @@ struct EventFormField<Content: View>: View {
             VStack(alignment: .leading, spacing: 14) {
                 if !errors.filter({ $0.key != "save-error" }).isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Popraw poniższe pola przed zapisem wydarzenia:").font(.callout.weight(.medium))
+                        Text("Popraw poniższe pola przed zapisem eventu:").font(.callout.weight(.medium))
                         ForEach(errors.filter { $0.key != "save-error" }.sorted(by: { $0.key < $1.key }), id: \.key) { item in
                             Text("• " + item.value).font(.callout)
                         }
@@ -696,12 +696,12 @@ struct EventFormField<Content: View>: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "shippingbox").foregroundStyle(theme.accent)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Sprzęt wydarzenia").font(.headline)
+                    Text("Sprzęt eventu").font(.headline)
                     Text(offerCreated
-                         ? "Sprzęt z produktów oferty został dodany do wydarzenia automatycznie. Pozostały sprzęt dodasz w karcie wydarzenia — „Zarządzaj sprzętem”."
-                         : "Sprzęt dodasz w karcie wydarzenia — „Zarządzaj sprzętem” (z rezerwacją i kontrolą dostępności). Sprzęt z produktów oferty dodaje się automatycznie.")
+                         ? "Sprzęt z produktów oferty został dodany do eventu automatycznie. Pozostały sprzęt dodasz w karcie eventu — „Zarządzaj sprzętem”."
+                         : "Sprzęt dodasz w karcie eventu — „Zarządzaj sprzętem” (z rezerwacją i kontrolą dostępności). Sprzęt z produktów oferty dodaje się automatycznie.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Button("Otwórz sprzęt wydarzenia", systemImage: "shippingbox") {
+                    Button("Otwórz sprzęt eventu", systemImage: "shippingbox") {
                         if let createdID {
                             dismiss()
                             state.showEvent(createdID, cardTab: "equipment")
@@ -760,7 +760,7 @@ struct EventFormField<Content: View>: View {
         loadError = nil
         do {
             let next = try await store.createSetup()
-            guard next.canCreate else { throw NativeFailure(status: 403, message: "Nie masz uprawnień do tworzenia wydarzeń.", fieldErrors: [:]) }
+            guard next.canCreate else { throw NativeFailure(status: 403, message: "Nie masz uprawnień do tworzenia eventów.", fieldErrors: [:]) }
             setup = next
             // `CompanySelector` bez opcji „wszystkie”: domyślna działalność albo pierwsza z listy.
             if companyID.isEmpty { companyID = next.companies.first(where: \.isDefault)?.id ?? next.companies.first?.id ?? "" }
@@ -848,8 +848,8 @@ struct EventFormField<Content: View>: View {
         saveDetails = nil
         var local: [String: String] = [:]
         if pendingContact { local["contact_person_id"] = "Zapisz nową osobę przyciskiem „Dodaj osobę kontaktową” albo zamknij jej formularz." }
-        if !hasStart { local["event_date"] = "Podaj datę i godzinę rozpoczęcia wydarzenia." }
-        if hasStart && hasEnd && end <= start { local["event_end_date"] = "Zakończenie musi być późniejsze niż rozpoczęcie wydarzenia." }
+        if !hasStart { local["event_date"] = "Podaj datę i godzinę rozpoczęcia eventu." }
+        if hasStart && hasEnd && end <= start { local["event_end_date"] = "Zakończenie musi być późniejsze niż rozpoczęcie eventu." }
         var body: [String: JSONValue] = [
             "name": .string(name), "clientType": .string(clientType), "my_company_id": .string(companyID),
             "organization_id": .string(clientType == "business" ? organizationID : ""), "contact_person_id": .string(contactID),
@@ -884,7 +884,7 @@ struct EventFormField<Content: View>: View {
             errors = fields
             if fields.isEmpty { saveError = failure.message }
         } catch {
-            saveError = store.failureText(error, "Serwer nie zapisał wydarzenia. Dane formularza zostały zachowane.")
+            saveError = store.failureText(error, "Serwer nie zapisał eventu. Dane formularza zostały zachowane.")
         }
     }
 

@@ -527,7 +527,7 @@ struct UnitEditorRequest: Identifiable {
                 TeamCard(title: "Sprawdzenie przed wydaniem") {
                     if editing {
                         Toggle("Tak — sprawdzić stan przed każdym wydaniem.", isOn: $draft.requiresPreCheck)
-                        Text("Każde wydarzenie z tym sprzętem dostanie krok dla magazynu.").font(.caption).foregroundStyle(.secondary)
+                        Text("Każdy event z tym sprzętem dostanie krok dla magazynu.").font(.caption).foregroundStyle(.secondary)
                         if draft.requiresPreCheck { input("Instrukcja sprawdzenia", $draft.preCheckInstructions, vertical: true) }
                     } else {
                         Text(d.requiresPreCheck ? "Tak — sprawdzić stan przed każdym wydaniem." : "Nie wymaga sprawdzenia przed wydaniem.")

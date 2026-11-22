@@ -952,7 +952,7 @@ struct ShowcaseOfferAddButton: View {
                     Text("Termin, miejsce i ustalenia z zapytania „\(selected?.title ?? (draft.inquiryTitle.isEmpty ? "klienta" : draft.inquiryTitle))”\(place.isEmpty ? "" : " (\(place))").")
                         .font(.callout).foregroundStyle(.secondary)
                 } else {
-                    TextField("Nazwa wydarzenia (np. Gala firmowa 2027)", text: binding(\.event.name)).textFieldStyle(.roundedBorder)
+                    TextField("Nazwa eventu (np. Gala firmowa 2027)", text: binding(\.event.name)).textFieldStyle(.roundedBorder)
                     HStack(spacing: 8) {
                         Toggle("Termin", isOn: hasDate).toggleStyle(.checkbox)
                         if hasDate.wrappedValue {
@@ -979,7 +979,7 @@ struct ShowcaseOfferAddButton: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(4)
-        } label: { Label("Wydarzenie", systemImage: "calendar") }
+        } label: { Label("Event", systemImage: "calendar") }
     }
 
     private static let dayFormat: DateFormatter = {

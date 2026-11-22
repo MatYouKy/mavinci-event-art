@@ -114,10 +114,10 @@ export default function OfferLinkModal({ offer, onClose, onSaved }: {
             aria-selected={tab === kind} disabled={kind === 'event' ? !!offer.event_id : !!offer.inquiry_id}
             onClick={() => { setTab(kind); setSelected(''); setSearch(''); }}
             className={`rounded-lg px-4 py-2 disabled:opacity-40 ${tab === kind ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'bg-black/10'}`}>
-            {kind === 'event' ? 'Wydarzenia' : 'Moje zapytania'}
+            {kind === 'event' ? 'Eventy' : 'Moje zapytania'}
           </button>)}
         </div>
-        <input type="search" aria-label="Wyszukaj powiązanie" placeholder={tab === 'event' ? 'Wyszukaj wydarzenie…' : 'Wyszukaj moje zapytanie…'}
+        <input type="search" aria-label="Wyszukaj powiązanie" placeholder={tab === 'event' ? 'Wyszukaj event…' : 'Wyszukaj moje zapytanie…'}
           value={search} onChange={event => { setSelected(''); setSearch(event.target.value); }}
           className="w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2" />
         <div className="max-h-72 space-y-2 overflow-y-auto" aria-busy={loading}>

@@ -87,7 +87,7 @@ export default function LinkEventFileModal({
       setFiles(data || []);
     } catch (error) {
       console.error('Error fetching event files:', error);
-      showSnackbar('Błąd podczas ładowania plików wydarzenia', 'error');
+      showSnackbar('Błąd podczas ładowania plików eventu', 'error');
     } finally {
       setLoading(false);
     }
@@ -162,7 +162,7 @@ export default function LinkEventFileModal({
               <LinkIcon className="h-5 w-5 text-[#d3bb73]" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-[#e5e4e2]">Dodaj pliki z wydarzenia</h2>
+              <h2 className="text-lg font-semibold text-[#e5e4e2]">Dodaj pliki z eventu</h2>
               <p className="text-sm text-[#e5e4e2]/60">
                 Wybierz pliki które chcesz podlinkować do zadania
               </p>
@@ -204,7 +204,7 @@ export default function LinkEventFileModal({
           ) : filteredFiles.length === 0 ? (
             <div className="flex h-32 flex-col items-center justify-center text-[#e5e4e2]/60">
               <File className="mb-2 h-12 w-12 opacity-40" />
-              <p className="text-sm">Brak plików w wydarzeniu</p>
+              <p className="text-sm">Brak plików w evencie</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-2">

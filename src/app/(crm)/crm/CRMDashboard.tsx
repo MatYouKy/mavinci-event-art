@@ -322,7 +322,7 @@ export default function CRMDashboard({
         <div>
           <h2 className="text-2xl font-light text-[#e5e4e2]">Witaj w systemie CRM</h2>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
-            {companyDashboard ? 'Przegląd działalności agencji eventowej Mavinci' : 'Twoje zadania, oferty i wydarzenia, do których jesteś przypisany'}
+            {companyDashboard ? 'Przegląd działalności agencji eventowej Mavinci' : 'Twoje zadania, oferty i eventy, do których jesteś przypisany'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -359,7 +359,7 @@ export default function CRMDashboard({
                 series={[
                   { key: 'inquiries', label: 'Zapytania', color: '#f59e0b' },
                   { key: 'offers', label: 'Oferty', color: '#60a5fa' },
-                  { key: 'events', label: 'Wydarzenia', color: '#d3bb73' },
+                  { key: 'events', label: 'Eventy', color: '#d3bb73' },
                 ]}
               />
             </div>
@@ -393,7 +393,7 @@ export default function CRMDashboard({
                 href="/crm/events"
                 className="text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
               >
-                Zobacz wszystkie wydarzenia
+                Zobacz wszystkie eventy
               </Link>
             )}
           </div>

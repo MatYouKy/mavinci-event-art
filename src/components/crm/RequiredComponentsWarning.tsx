@@ -306,7 +306,7 @@ export function RequiredComponentsWarning({
         return [{
           reservationId: row.id,
           eventId: row.event_id,
-          eventName: event.name || 'Wydarzenie bez nazwy',
+          eventName: event.name || 'Event bez nazwy',
           start: event.event_date,
           end: event.event_end_date || new Date(conflictEnd).toISOString(),
           quantity: Number(row.quantity || 1),
@@ -398,8 +398,8 @@ export function RequiredComponentsWarning({
     setComponentGroups(nextGroups);
     showSnackbar(
       group.isRequired
-        ? 'Wymaganie zostało świadomie pominięte dla tego wydarzenia'
-        : 'Rekomendacja została pominięta dla tego wydarzenia',
+        ? 'Wymaganie zostało świadomie pominięte dla tego eventu'
+        : 'Rekomendacja została pominięta dla tego eventu',
       'success',
     );
     if (nextGroups.length === 0) {
@@ -710,7 +710,7 @@ export function RequiredComponentsWarning({
             if (selectedComponent.compatibility_type === 'optional' && getSelectedQuantity(selectedComponent) <= 0) continue;
             const availability = getAvailability(selectedComponent);
             if (availability && !availability.isAvailable) {
-              showSnackbar('Wybrany komponent nie jest dostępny w terminie wydarzenia', 'warning');
+              showSnackbar('Wybrany komponent nie jest dostępny w terminie eventu', 'warning');
               return;
             }
             const quantityToAdd = getSelectedQuantity(selectedComponent);
@@ -748,7 +748,7 @@ export function RequiredComponentsWarning({
           const availability = getAvailability(component);
           if (availability && !availability.isAvailable) {
             showSnackbar(
-              `${component.compatible_equipment?.name || component.compatible_kit?.name || component.compatible_cable?.name || 'Komponent'} nie jest dostępny w terminie wydarzenia`,
+              `${component.compatible_equipment?.name || component.compatible_kit?.name || component.compatible_cable?.name || 'Komponent'} nie jest dostępny w terminie eventu`,
               'warning',
             );
             return;
@@ -803,7 +803,7 @@ export function RequiredComponentsWarning({
         }, { onConflict: 'event_id,equipment_id' });
         if (saveError) throw saveError;
       }
-      showSnackbar('Zaktualizowano komponenty wydarzenia', 'success');
+      showSnackbar('Zaktualizowano komponenty eventu', 'success');
       setShowModal(false);
       setComponentGroups([]);
       setSelectedAlternatives({});
@@ -959,7 +959,7 @@ export function RequiredComponentsWarning({
                           </div>
                           <p className="ml-7 mt-1 text-xs text-[#e5e4e2]/60">
                             {group.isRequired
-                              ? 'Wybierz jeden z poniższych komponentów albo świadomie pomiń wymaganie dla tego wydarzenia'
+                              ? 'Wybierz jeden z poniższych komponentów albo świadomie pomiń wymaganie dla tego eventu'
                               : 'Możesz wybrać jeden z poniższych wariantów'}
                           </p>
                         </div>
@@ -1152,7 +1152,7 @@ export function RequiredComponentsWarning({
                             >
                               <MinusCircle className="h-3.5 w-3.5" />
                               {group.isRequired
-                                ? 'Pomiń wymaganie w tym wydarzeniu'
+                                ? 'Pomiń wymaganie w tym evencie'
                                 : 'Nie używamy w tym rozwiązaniu'}
                             </button>
                             {renderConflictDetails(component)}

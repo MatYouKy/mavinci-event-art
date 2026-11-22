@@ -732,7 +732,7 @@ export const offerWizardApi = createApi({
           } = args;
 
           if (!eventId?.trim()) {
-            return { error: toRtkError({ message: 'Brak ID wydarzenia' }) as any };
+            return { error: toRtkError({ message: 'Brak ID eventu' }) as any };
           }
           if (!createdByEmployeeId?.trim()) {
             return { error: toRtkError({ message: 'Brak createdByEmployeeId' }) as any };

@@ -362,7 +362,7 @@ export default function NewInquiryModal({
           </View>
 
           {/* Event date section */}
-          <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Data wydarzenia</Text>
+          <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Data eventu</Text>
           {initialDate ? (
             <View style={styles.dateInfo}>
               <Feather name="calendar" size={16} color={colors.primary.gold} />
@@ -370,7 +370,7 @@ export default function NewInquiryModal({
             </View>
           ) : (
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Termin wydarzenia</Text>
+              <Text style={styles.label}>Termin eventu</Text>
               <TouchableOpacity
                 style={styles.datePickerButton}
                 onPress={openDatePicker}

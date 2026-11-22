@@ -403,7 +403,7 @@ import UniformTypeIdentifiers
                 Text("Sprzęt i obsada pakietu").font(.title3.weight(.semibold))
                 Text(packageName.isEmpty ? "Nowy pakiet" : packageName).font(.caption).foregroundStyle(.secondary)
             }
-            Text("Zakres na 1 pakiet. Sprzęt i obsada są niezależne od produktu bazowego oraz innych pakietów. Role określają wymagania — konkretne osoby przypiszesz do wydarzenia.")
+            Text("Zakres na 1 pakiet. Sprzęt i obsada są niezależne od produktu bazowego oraz innych pakietów. Role określają wymagania — konkretne osoby przypiszesz do eventu.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Picker("", selection: $tab) {
                 Text("Sprzęt (\(draft.equipment.count))").tag("equipment")

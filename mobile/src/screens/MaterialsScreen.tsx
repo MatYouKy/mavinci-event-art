@@ -565,7 +565,7 @@ export default function MaterialsScreen() {
       )}
       <View style={styles.searchRow}>
         <Feather name="search" size={16} color={colors.text.tertiary} />
-        <TextInput style={styles.searchInput} value={query} onChangeText={setQuery} placeholder={scope === 'events' ? 'Szukaj w plikach wydarzeń' : 'Szukaj w Materiałach'}
+        <TextInput style={styles.searchInput} value={query} onChangeText={setQuery} placeholder={scope === 'events' ? 'Szukaj w plikach eventów' : 'Szukaj w Materiałach'}
           placeholderTextColor={colors.text.tertiary} returnKeyType="search" />
         {searching ? <ActivityIndicator size="small" color={colors.primary.gold} /> : !!query && (
           <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}><Feather name="x-circle" size={16} color={colors.text.tertiary} /></TouchableOpacity>
@@ -575,7 +575,7 @@ export default function MaterialsScreen() {
         <View style={{ flexDirection: 'row', gap: 6 }}>
           {(['materials', 'events'] as const).map((value) => (
             <TouchableOpacity key={value} onPress={() => setScope(value)} style={[styles.chip, scope === value && styles.chipActive]}>
-              <Text style={[styles.chipText, scope === value && { color: colors.primary.gold }]}>{value === 'materials' ? 'Materiały' : 'Pliki wydarzeń'}</Text>
+              <Text style={[styles.chipText, scope === value && { color: colors.primary.gold }]}>{value === 'materials' ? 'Materiały' : 'Pliki eventów'}</Text>
             </TouchableOpacity>
           ))}
         </View>

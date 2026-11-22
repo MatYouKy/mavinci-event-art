@@ -369,9 +369,9 @@ export function buildEventCardHtml(data: EventCardData): string {
     </div>` : '')}
 
   ${section('Harmonogram', scheduleRows ? `<table><colgroup><col style="width:16%"/><col style="width:58%"/><col style="width:26%"/></colgroup>
-    <thead><tr><th>Godzina</th><th>Co</th><th>Kto</th></tr></thead><tbody>${scheduleRows}</tbody></table>` : '<div class="missing">Brak harmonogramu — uzupełnij agendę lub etapy wydarzenia.</div>')}
+    <thead><tr><th>Godzina</th><th>Co</th><th>Kto</th></tr></thead><tbody>${scheduleRows}</tbody></table>` : '<div class="missing">Brak harmonogramu — uzupełnij agendę lub etapy eventu.</div>')}
 
-  ${section('Transport i trasy', vehiclesHtml || '<div class="missing">Nie przypisano aut do wydarzenia.</div>')}
+  ${section('Transport i trasy', vehiclesHtml || '<div class="missing">Nie przypisano aut do eventu.</div>')}
 
   ${section('Zespół', data.team.length ? `<table><colgroup><col style="width:30%"/><col style="width:30%"/><col style="width:20%"/><col style="width:20%"/></colgroup>
     <thead><tr><th>Osoba</th><th>Rola / zadanie</th><th>Telefon</th><th>Uwagi</th></tr></thead><tbody>

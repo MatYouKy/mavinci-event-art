@@ -44,7 +44,7 @@ export default function OfferWizard(props: OfferWizardProps) {
           client_type, organization_id, contact_person_id,
           locations(name, city, postal_code, formatted_address, address), event_categories(name)
         `).eq('id', props.eventId).single();
-        if (error || !data) throw error || new Error('Nie znaleziono wydarzenia.');
+        if (error || !data) throw error || new Error('Nie znaleziono eventu.');
         const venue = Array.isArray(data.locations) ? data.locations[0] : data.locations;
         const category = Array.isArray(data.event_categories) ? data.event_categories[0] : data.event_categories;
         const locationText = venue
@@ -66,7 +66,7 @@ export default function OfferWizard(props: OfferWizardProps) {
           },
         });
       } catch {
-        if (active) setLoadError('Nie udało się pobrać danych wydarzenia. Spróbuj ponownie, aby uzupełnić ofertę zapisanymi informacjami.');
+        if (active) setLoadError('Nie udało się pobrać danych eventu. Spróbuj ponownie, aby uzupełnić ofertę zapisanymi informacjami.');
       }
     })();
     return () => { active = false; };
@@ -77,7 +77,7 @@ export default function OfferWizard(props: OfferWizardProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div role="dialog" aria-modal="true" aria-label="Kreator oferty" className="w-full max-w-lg rounded-xl bg-[#0f1119] p-6">
         <div className="flex items-center justify-between gap-4"><h2 className="text-xl">Kreator oferty</h2><button type="button" onClick={props.onClose} aria-label="Zamknij kreator" className="rounded-lg p-2 text-white/60 hover:bg-white/5"><X className="h-5 w-5" /></button></div>
-        <p role={loadError ? 'alert' : 'status'} className="mt-4 text-sm text-white/65">{loadError || 'Uzupełniam dane z wydarzenia…'}</p>
+        <p role={loadError ? 'alert' : 'status'} className="mt-4 text-sm text-white/65">{loadError || 'Uzupełniam dane z eventu…'}</p>
         {loadError && <button type="button" onClick={() => setAttempt(value => value + 1)} className="mt-4 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#250914]">Spróbuj ponownie</button>}
       </div>
     </div>
@@ -295,8 +295,8 @@ function OfferWizardContent({
             <div className="space-y-4">
               <div className="mx-auto max-w-2xl rounded-lg bg-white/5 p-4 text-sm">
                 <p className="font-medium">{eventDefaults.name}</p>
-                {eventDefaults.startsAt && <p className="mt-1 text-white/65">Termin wydarzenia: {formatEventDate(eventDefaults.startsAt)}{eventDefaults.endsAt ? ` – ${formatEventDate(eventDefaults.endsAt)}` : ''}</p>}
-                <p className="mt-2 text-xs text-white/50">Dostępne dane zostały uzupełnione z wydarzenia. Możesz je dostosować do tej oferty.</p>
+                {eventDefaults.startsAt && <p className="mt-1 text-white/65">Termin eventu: {formatEventDate(eventDefaults.startsAt)}{eventDefaults.endsAt ? ` – ${formatEventDate(eventDefaults.endsAt)}` : ''}</p>}
+                <p className="mt-2 text-xs text-white/50">Dostępne dane zostały uzupełnione z eventu. Możesz je dostosować do tej oferty.</p>
               </div>
             <OfferStep2
               needsTables={offerNeedsTables({ offer_items: offerItems })}

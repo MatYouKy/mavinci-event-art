@@ -115,7 +115,7 @@ struct EventsIndex: Codable {
                 .sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }.map(\.id)
             if !upcoming.isEmpty { Task { await workspace?.eventCards.prefetch(upcoming) } }
         } catch {
-            if index.list.items.isEmpty { loadError = failureText(error, "Nie udało się pobrać wydarzeń.") }
+            if index.list.items.isEmpty { loadError = failureText(error, "Nie udało się pobrać eventów.") }
         }
     }
 
@@ -141,7 +141,7 @@ struct EventsIndex: Codable {
         return ok
     }
     func changeStatus(_ item: EventListItem, to status: String) async -> Bool {
-        await run("Zapisywanie…", "status", ["id": .string(item.id), "status": .string(status)], success: "Status wydarzenia został zmieniony")
+        await run("Zapisywanie…", "status", ["id": .string(item.id), "status": .string(status)], success: "Status eventu został zmieniony")
     }
     func delete(_ item: EventListItem) async -> Bool {
         let ok = await run("Usuwanie…", "delete", ["id": .string(item.id)], success: "Event został usunięty")

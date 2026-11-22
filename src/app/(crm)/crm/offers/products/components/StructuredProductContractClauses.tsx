@@ -55,9 +55,9 @@ interface Props {
 
 const formats = ['header', 'bold', 'italic', 'underline', 'blockquote', 'list', 'bullet', 'indent', 'align'];
 const placeholders = [
-  ['{{event_name}}', 'Nazwa wydarzenia'],
+  ['{{event_name}}', 'Nazwa eventu'],
   ['{{termin_dostarczenia_materialow}}', 'Wspólny termin materiałów'],
-  ['{{event_schedule_contract}}', 'Termin wydarzenia'],
+  ['{{event_schedule_contract}}', 'Termin eventu'],
   ['{{planned_technical_schedule}}', 'Montaż i demontaż'],
   ['{{location_full}}', 'Lokalizacja'],
   ['{{organization_name}}', 'Organizacja klienta'],

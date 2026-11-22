@@ -28,7 +28,7 @@ type Row = Record<string, any>;
 const SOURCES = ['offer', 'event', 'inquiry', 'organization'] as const;
 const SOURCE_LABELS: Record<OfferVenueSource, string> = {
   offer: 'miejsce wybrane w ofercie',
-  event: 'miejsce wydarzenia',
+  event: 'miejsce eventu',
   inquiry: 'miejsce z zapytania',
   organization: 'lokalizacja organizacji klienta',
 };
@@ -124,7 +124,7 @@ export function offerVenueHint(offer: Row | null | undefined, venue: OfferVenue 
     return `Lokalizacja „${venue.name}” (${SOURCE_LABELS[venue.source]}) nie ma „Tła ofert” — dodaj zdjęcie na karcie lokalizacji, a okładka oferty pokaże to miejsce.`;
   }
   if (!venue && placeText.trim()) {
-    return `Miejsce „${placeText.trim()}” nie jest powiązane z lokalizacją z bazy — wybierz je z listy w polu „Miejsce wydarzenia”, żeby okładka mogła użyć „Tła ofert” tego miejsca.`;
+    return `Miejsce „${placeText.trim()}” nie jest powiązane z lokalizacją z bazy — wybierz je z listy w polu „Miejsce eventu”, żeby okładka mogła użyć „Tła ofert” tego miejsca.`;
   }
   return null;
 }

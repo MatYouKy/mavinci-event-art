@@ -140,7 +140,7 @@ struct RecordInspector: View {
                     field("Klient", row.details["client_text"]?.text ?? "")
                     field("Miejsce", row.details["location_text"]?.text ?? "")
                     field("Zakres", row.details["scope"]?.text ?? "")
-                    if let raw = row.details["termin"]?.text { field("Data wydarzenia", Labels.date(raw)) }
+                    if let raw = row.details["termin"]?.text { field("Data eventu", Labels.date(raw)) }
                     field("Kolejne działanie", Labels.date(row["next_action_at"]))
                     if row["inquiry_owner_id"].isEmpty {
                         Button("Przypisz do mnie", systemImage: "person.badge.plus") { Task { await state.perform("claim_inquiry", row: row) } }
@@ -157,7 +157,7 @@ struct RecordInspector: View {
                     Button("Edytuj zadanie", systemImage: "square.and.pencil", action: editTask)
                         .disabled(!state.canWrite || !state.allowed("task_update", row: row))
                 }
-                if module == .events { field("Miejsce", row["location"]); field("Koniec wydarzenia", Labels.date(row["event_end_date"])) }
+                if module == .events { field("Miejsce", row["location"]); field("Koniec eventu", Labels.date(row["event_end_date"])) }
                 if module == .offers { field("Numer oferty", row["offer_number"]); related(.inquiries, key: "inquiry_id", label: "Otwórz zapytanie") }
                 if module == .notifications {
                     Button("Oznacz jako przeczytane", systemImage: "envelope.open") { Task { await state.perform("notification_read", row: row) } }
@@ -170,7 +170,7 @@ struct RecordInspector: View {
                     }
                 }
                 if module == .tenders { related(.inquiries, key: "inquiry_id", label: "Otwórz zapytanie") }
-                if [.tasks, .inquiries, .offers].contains(module) { related(.events, key: "event_id", label: "Otwórz wydarzenie") }
+                if [.tasks, .inquiries, .offers].contains(module) { related(.events, key: "event_id", label: "Otwórz event") }
                 if module == .inquiries { related(.offers, key: "linked_offer_id", label: "Otwórz ofertę") }
             }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
         }.sheet(isPresented: $followupSheet) { FollowupEditor(row: row) }

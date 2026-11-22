@@ -84,12 +84,12 @@ enum SettlementText {
         "revenue": "Liczy się do przychodu netto.",
         "subcontractor": "Zespoły, atrakcje, podwykonawcy, na których nie mamy marży — pomniejsza podstawę prowizji sprzedawców zewnętrznych i zysk.",
         "direct_cost": "Wynajem, zakupy, transport, materiały — pomniejsza zysk (prowizja pracownika).",
-        "team": "Wynagrodzenie ekipy za to wydarzenie — pomniejsza zysk.",
+        "team": "Wynagrodzenie ekipy za ten event — pomniejsza zysk.",
         "external_commission": "Prowizja lub narzut sprzedawcy zewnętrznego — pomniejsza zysk.",
     ]
     static let sources = [
         "manual": "Dopisane ręcznie", "invoice": "Faktura sprzedaży", "offer": "Oferta (prognoza)", "cash": "Gotówka", "forecast": "Prognoza",
-        "event_cost": "Koszt wydarzenia", "subcontractor_task": "Zlecenie podwykonawcy", "team": "Ewidencja czasu", "markup": "Narzut sprzedawcy",
+        "event_cost": "Koszt eventu", "subcontractor_task": "Zlecenie podwykonawcy", "team": "Ewidencja czasu", "markup": "Narzut sprzedawcy",
         "commission": "Prowizja wpisana ręcznie",
     ]
     static let versionActions = ["submitted": "Wysłane do zatwierdzenia", "returned": "Zwrócone do poprawy", "approved": "Zatwierdzone", "reopened": "Otwarte ponownie"]
@@ -97,13 +97,13 @@ enum SettlementText {
     static let entryKinds = ["accrual": "Naliczenie", "correction": "Dopłata", "deduction": "Do potrącenia"]
     static let payments = ["cash_dividend": "Gotówka z zysku spółki", "invoice": "Faktura / rachunek", "payroll": "Wynagrodzenie pracownicze", "other": "Inny sposób"]
     static let commissionSources = [
-        "sales_share": "Sprzedawca wydarzenia", "seller_portal": "Oferta z portalu sprzedawcy", "event_referral": "Polecenie",
+        "sales_share": "Sprzedawca eventu", "seller_portal": "Oferta z portalu sprzedawcy", "event_referral": "Polecenie",
         "billing_contact": "Kontakt rozliczeniowy (hotel / agencja)", "partner_arrangement": "Pośrednik (Ustalenia ze sprzedawcą)", "manual_partner": "Wskazany w podsumowaniu",
         "seller_markup": "Narzut sprzedawcy (oferta z narzutem)",
     ]
     static let shareSources = [
         "offer_author": "Autor zaakceptowanej oferty", "seller_portal_owner": "Opiekun sprzedawcy z portalu", "inquiry_owner": "Prowadzący zapytanie",
-        "event_creator": "Twórca wydarzenia", "manual": "Ustawione przez administratora",
+        "event_creator": "Twórca eventu", "manual": "Ustawione przez administratora",
     ]
     static let sections: [(String, String)] = [
         ("revenue", "Przychody netto"), ("subcontractor", "Wykonawcy zewnętrzni"), ("direct_cost", "Koszty bezpośrednie"), ("team", "Ekipa"),
@@ -220,15 +220,15 @@ struct SettlementConfirm: Identifiable {
                 }
             } else if let error = store.tabErrors["\(eventID)|summary"] {
                 ContentUnavailableView {
-                    Label("Nie udało się wczytać podsumowania wydarzenia.", systemImage: "sum")
+                    Label("Nie udało się wczytać podsumowania eventu.", systemImage: "sum")
                 } description: { Text(error) } actions: { Button("Spróbuj ponownie") { Task { await store.loadTab(eventID, "summary") } } }
                 .frame(maxWidth: .infinity)
             } else if part != nil {
-                ProgressView("Wczytuję podsumowanie wydarzenia…").controlSize(.small).frame(maxWidth: .infinity).padding(20)
+                ProgressView("Wczytuję podsumowanie eventu…").controlSize(.small).frame(maxWidth: .infinity).padding(20)
             } else {
                 VStack(spacing: 8) {
                     ProgressView()
-                    Text("Wczytuję podsumowanie wydarzenia…").foregroundStyle(.secondary)
+                    Text("Wczytuję podsumowanie eventu…").foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -261,7 +261,7 @@ struct SettlementConfirm: Identifiable {
     private func notice(_ data: SettlementTabData) -> some View {
         VStack(spacing: 10) {
             Image(systemName: data.state == "forbidden" ? "lock" : "exclamationmark.triangle").font(.system(size: 36)).foregroundStyle(.secondary)
-            Text(data.message ?? (data.state == "forbidden" ? "Podsumowanie wydarzenia widzi osoba z dostępem do kwot tego wydarzenia." : "Nie udało się wczytać podsumowania wydarzenia."))
+            Text(data.message ?? (data.state == "forbidden" ? "Podsumowanie eventu widzi osoba z dostępem do kwot tego eventu." : "Nie udało się wczytać podsumowania eventu."))
                 .multilineTextAlignment(.center).foregroundStyle(.secondary).frame(maxWidth: 480)
             if data.state == "error" { Button("Spróbuj ponownie") { Task { await store.loadTab(eventID, "summary") } } }
         }
@@ -330,12 +330,12 @@ struct SettlementConfirm: Identifiable {
 
     private func header(_ s: Settlement) -> some View {
         let statusColor: Color = s.status == "approved" ? CrmTheme.rgb(0x6ee7b7) : (s.status == "submitted" ? CrmTheme.rgb(0xfcd34d) : Color.secondary)
-        let warnings = s.clawback ? s.warnings.filter { !$0.hasPrefix("Wydarzenie anulowane po zatwierdzeniu") } : s.warnings
+        let warnings = s.clawback ? s.warnings.filter { !$0.hasPrefix("Event anulowany po zatwierdzeniu") && !$0.hasPrefix("Wydarzenie anulowane po zatwierdzeniu") } : s.warnings
         return card {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
-                        Text("Podsumowanie wydarzenia").font(.title2.weight(.light))
+                        Text("Podsumowanie eventu").font(.title2.weight(.light))
                         chip(SettlementText.statuses[s.status] ?? s.status, statusColor)
                         if s.revision > 0 { Text("wersja \(s.revision)").font(.caption).foregroundStyle(.secondary) }
                     }
@@ -349,7 +349,7 @@ struct SettlementConfirm: Identifiable {
             if let approved = s.approved { stamp("Zatwierdzone", approved) }
             if let returned = s.returned, s.status == "draft" { stamp("Zwrócone do poprawy", returned) }
             if s.clawback {
-                banner("Wydarzenie anulowano po zatwierdzeniu podsumowania. Ponowne zatwierdzenie wyzeruje prowizje: niewypłacone zostaną anulowane, a wypłacone zamienią się w potrącenia.",
+                banner("Event anulowano po zatwierdzeniu podsumowania. Ponowne zatwierdzenie wyzeruje prowizje: niewypłacone zostaną anulowane, a wypłacone zamienią się w potrącenia.",
                        "exclamationmark.triangle", CrmTheme.rgb(0xf87171))
             }
             if s.stale { banner("Dane zmieniły się po zatwierdzeniu — otwórz ponownie, aby przeliczyć.", "exclamationmark.triangle", CrmTheme.rgb(0xfcd34d)) }
@@ -359,7 +359,7 @@ struct SettlementConfirm: Identifiable {
                        "info.circle", CrmTheme.rgb(0x93c5fd))
             }
             if !s.finished && s.status == "draft" {
-                banner("Wydarzenie jeszcze się nie zakończyło — prowizje są prognozą. Podsumowanie wyślesz po zakończeniu.", "info.circle", CrmTheme.rgb(0x93c5fd))
+                banner("Event jeszcze się nie zakończył — prowizje są prognozą. Podsumowanie wyślesz po zakończeniu.", "info.circle", CrmTheme.rgb(0x93c5fd))
             }
             if !s.issues.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -426,7 +426,7 @@ struct SettlementConfirm: Identifiable {
     private func approve(_ s: Settlement) {
         let key = s.source_key
         confirm = SettlementConfirm(title: "Zatwierdzić podsumowanie?",
-                                    description: s.clawback ? "Wydarzenie jest anulowane — zatwierdzenie wyzeruje prowizje." : "Prowizje staną się „do wypłaty” z zamrożoną podstawą. Późniejsza zmiana wymaga ponownego otwarcia.",
+                                    description: s.clawback ? "Event jest anulowany — zatwierdzenie wyzeruje prowizje." : "Prowizje staną się „do wypłaty” z zamrożoną podstawą. Późniejsza zmiana wymaga ponownego otwarcia.",
                                     body: s.clawback ? "Niewypłacone prowizje zostaną anulowane, a wypłacone zamienią się w potrącenia z kolejnych prowizji tych osób." : nil,
                                     showTotals: true, confirmLabel: "Zatwierdź") { _, _ in
             await mutate("approve", "approve_event_settlement", ["p_expected_source_key": .string(key)], "Podsumowanie zatwierdzone — prowizje są do wypłaty.")
@@ -447,7 +447,7 @@ struct SettlementConfirm: Identifiable {
                                     confirmLabel: "Otwórz ponownie", danger: true,
                                     note: .init(label: "Powód ponownego otwarcia", required: true, placeholder: "Np. doszła faktura kosztowa po zatwierdzeniu"),
                                     option: (label: "Przelicz stawki według aktualnych warunków",
-                                             hint: "Zwykle zatwierdzona prowizja zachowuje swoją stawkę. Zaznacz, gdy stawka była ustawiona błędnie i została już poprawiona przy pracowniku lub w kartotece sprzedawców. Dotyczy wszystkich osób w wydarzeniu — kogo zmiana obejmie, pokażą ostrzeżenia podsumowania.")) { note, refresh in
+                                             hint: "Zwykle zatwierdzona prowizja zachowuje swoją stawkę. Zaznacz, gdy stawka była ustawiona błędnie i została już poprawiona przy pracowniku lub w kartotece sprzedawców. Dotyczy wszystkich osób w evencie — kogo zmiana obejmie, pokażą ostrzeżenia podsumowania.")) { note, refresh in
             await mutate("reopen", "reopen_event_settlement", ["p_reason": .string(note), "p_refresh_rates": .bool(refresh)],
                          refresh ? "Podsumowanie otwarte ponownie — stawki zostaną przeliczone." : "Podsumowanie otwarte ponownie.")
         }
@@ -531,7 +531,7 @@ struct SettlementConfirm: Identifiable {
 
     private func totals(_ s: Settlement) -> some View {
         card {
-            Text("Wynik wydarzenia").font(.headline)
+            Text("Wynik eventu").font(.headline)
             if s.forecast { Text("Prognoza — przychód z oferty lub kalkulacji.").font(.caption).foregroundStyle(CrmTheme.rgb(0x93c5fd)) }
             ForEach(SettlementText.totalRows, id: \.label) { row in
                 VStack(alignment: .leading, spacing: 2) {
@@ -570,10 +570,10 @@ struct SettlementConfirm: Identifiable {
     private func commissions(_ s: Settlement) -> some View {
         card {
             Text("Prowizje").font(.headline)
-            Text("Wszystkie prowizje liczymy od zysku netto — po kosztach i po koszcie prowizji sprzedawców zewnętrznych (gotówka z zysku razem z podatkiem). Pracownik: 5%, 10% gdy w dniu akceptacji oferty był opiekunem klienta. Sprzedawca zewnętrzny: % od zysku z jego karty albo ustalony dla tego wydarzenia.")
+            Text("Wszystkie prowizje liczymy od zysku netto — po kosztach i po koszcie prowizji sprzedawców zewnętrznych (gotówka z zysku razem z podatkiem). Pracownik: 5%, 10% gdy w dniu akceptacji oferty był opiekunem klienta. Sprzedawca zewnętrzny: % od zysku z jego karty albo ustalony dla tego eventu.")
                 .font(.caption).foregroundStyle(.secondary)
-            Text("Sprzedawcy wydarzenia (pracownicy)").font(.callout.weight(.semibold)).padding(.top, 4)
-            if s.internal.isEmpty { Text("Nie zapisano sprzedawcy wydarzenia.").font(.callout).foregroundStyle(.secondary) }
+            Text("Sprzedawcy eventu (pracownicy)").font(.callout.weight(.semibold)).padding(.top, 4)
+            if s.internal.isEmpty { Text("Nie zapisano sprzedawcy eventu.").font(.callout).foregroundStyle(.secondary) }
             ForEach(s.internal) { item in internalRow(item) }
             HStack {
                 Text("Sprzedawcy zewnętrzni").font(.callout.weight(.semibold))
@@ -582,7 +582,7 @@ struct SettlementConfirm: Identifiable {
             }
             .padding(.top, 4)
             if s.external.isEmpty {
-                Text("Brak sprzedawców zewnętrznych w tym wydarzeniu." + (s.can_edit ? " Hotel lub agencja, która sprzedała wydarzenie? Dodaj jej sprzedawcę — prowizja będzie kosztem w podsumowaniu." : ""))
+                Text("Brak sprzedawców zewnętrznych w tym evencie." + (s.can_edit ? " Hotel lub agencja, która sprzedała event? Dodaj jej sprzedawcę — prowizja będzie kosztem w podsumowaniu." : ""))
                     .font(.callout).foregroundStyle(.secondary)
             }
             ForEach(s.external) { item in externalRow(item, s) }
@@ -622,7 +622,7 @@ struct SettlementConfirm: Identifiable {
     }
 
     private func externalRow(_ item: Settlement.External, _ s: Settlement) -> some View {
-        let rateTitle: String = item.rate_override ? "Zmień stawkę dla wydarzenia" : "Inna stawka dla wydarzenia"
+        let rateTitle: String = item.rate_override ? "Zmień stawkę dla eventu" : "Inna stawka dla eventu"
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -656,7 +656,7 @@ struct SettlementConfirm: Identifiable {
 
     private func askRemove(_ item: Settlement.External) {
         confirm = SettlementConfirm(title: "Usunąć \(item.name) z podsumowania?",
-                                    description: "Prowizja tego sprzedawcy w wydarzeniu zostanie anulowana z powodem (historia zostaje). Możesz go dodać ponownie.",
+                                    description: "Prowizja tego sprzedawcy w evencie zostanie anulowana z powodem (historia zostaje). Możesz go dodać ponownie.",
                                     confirmLabel: "Usuń z podsumowania", danger: true,
                                     note: .init(label: "Powód", required: true, placeholder: "np. sprzedawca nie brał udziału w sprzedaży")) { note, _ in
             await mutate("seller-remove", "remove_event_settlement_seller", ["p_sales_partner_id": .string(item.partner_id), "p_reason": .string(note)],
@@ -778,7 +778,7 @@ struct SettlementConfirm: Identifiable {
     private func toggleIncluded(_ next: Bool) {
         if !next && !manual && line.auto_included {
             ask(SettlementConfirm(title: "Wyłącz pozycję z podsumowania", description: line.name, confirmLabel: "Wyłącz pozycję",
-                                  note: .init(label: "Powód wyłączenia", required: true, placeholder: "Np. faktura dotyczy innego wydarzenia", initial: line.note ?? "")) { note, _ in
+                                  note: .init(label: "Powód wyłączenia", required: true, placeholder: "Np. faktura dotyczy innego eventu", initial: line.note ?? "")) { note, _ in
                 await save(["included": .bool(false), "note": .string(note)], "Pozycja wyłączona z podsumowania.")
             })
             return
@@ -1128,8 +1128,8 @@ struct SettlementConfirm: Identifiable {
     var body: some View {
         let card: String = seller.card_rate.map { SettlementText.percent($0) + " od zysku" } ?? "brak stawki"
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Stawka dla wydarzenia — " + seller.name).font(.title3.bold())
-            Text("Karta sprzedawcy: " + card + ". Zmiana dotyczy tylko tego wydarzenia.").font(.callout).foregroundStyle(.secondary)
+            Text("Stawka dla eventu — " + seller.name).font(.title3.bold())
+            Text("Karta sprzedawcy: " + card + ". Zmiana dotyczy tylko tego eventu.").font(.callout).foregroundStyle(.secondary)
             TextField("Stawka (% od zysku)", text: $rate).textFieldStyle(.roundedBorder).frame(width: 200)
             TextField("Powód * — np. uzgodnione z hotelem dla tej konferencji", text: $reason).textFieldStyle(.roundedBorder)
             if !error.isEmpty { Text(error).font(.callout).foregroundStyle(.red) }
@@ -1139,7 +1139,7 @@ struct SettlementConfirm: Identifiable {
                 Button("Anuluj") { dismiss() }.disabled(saving)
                 Button("Zapisz stawkę") {
                     guard let value = SettlementText.percentInput(rate), value > 0 else { error = "Podaj stawkę większą od 0% (najwyżej 100%, do 0,01)."; return }
-                    guard reason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else { error = "Podaj powód stawki dla tego wydarzenia (widoczny w historii prowizji)."; return }
+                    guard reason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else { error = "Podaj powód stawki dla tego eventu (widoczny w historii prowizji)."; return }
                     error = ""
                     Task { await save(value) }
                 }
@@ -1158,7 +1158,7 @@ struct SettlementConfirm: Identifiable {
             "p_reason": value == nil ? JSONValue.null : JSONValue.string(reason.trimmingCharacters(in: .whitespacesAndNewlines)),
         ]
         if await mutate("seller-rate", "set_event_settlement_seller_rate", params,
-                        value == nil ? "Przywrócono stawkę z karty sprzedawcy." : "Stawka dla wydarzenia zapisana — prowizja przeliczona.") { dismiss() }
+                        value == nil ? "Przywrócono stawkę z karty sprzedawcy." : "Stawka dla eventu zapisana — prowizja przeliczona.") { dismiss() }
     }
 }
 
@@ -1194,7 +1194,7 @@ private struct SellerCandidates: Decodable {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Dodaj sprzedawcę zewnętrznego").font(.title3.bold())
-            Text("Prowizja sprzedawcy to % od zysku netto wydarzenia — po kosztach i po koszcie samej prowizji. Sprzedawca zobaczy podsumowanie w portalu, gdy ma widoczne wynagrodzenie.")
+            Text("Prowizja sprzedawcy to % od zysku netto eventu — po kosztach i po koszcie samej prowizji. Sprzedawca zobaczy podsumowanie w portalu, gdy ma widoczne wynagrodzenie.")
                 .font(.callout).foregroundStyle(.secondary)
             if let selected { form(selected) } else { picker }
         }
@@ -1216,14 +1216,14 @@ private struct SellerCandidates: Decodable {
         VStack(alignment: .leading, spacing: 8) {
             TextField("Imię, nazwisko albo hotel / agencja…", text: $search).textFieldStyle(.roundedBorder)
             if search.trimmingCharacters(in: .whitespaces).isEmpty {
-                Text("Podpowiedzi: osoba kontaktowa, kontakt rozliczeniowy i pracownicy klienta tego wydarzenia.").font(.caption).foregroundStyle(.secondary)
+                Text("Podpowiedzi: osoba kontaktowa, kontakt rozliczeniowy i pracownicy klienta tego eventu.").font(.caption).foregroundStyle(.secondary)
             }
             if !listError.isEmpty { Text(listError).font(.callout).foregroundStyle(.red) }
             if loading && candidates.isEmpty {
                 ProgressView("Szukam sprzedawców…")
             } else if candidates.isEmpty && listError.isEmpty {
                 Text(search.trimmingCharacters(in: .whitespaces).isEmpty
-                     ? "Nikt z osób związanych z wydarzeniem nie jest sprzedawcą. Wyszukaj sprzedawcę albo mianuj kontakt sprzedawcą na jego karcie."
+                     ? "Nikt z osób związanych z eventem nie jest sprzedawcą. Wyszukaj sprzedawcę albo mianuj kontakt sprzedawcą na jego karcie."
                      : "Brak aktywnych sprzedawców pasujących do wyszukiwania.").font(.callout).foregroundStyle(.secondary)
             }
             ScrollView {
@@ -1260,7 +1260,7 @@ private struct SellerCandidates: Decodable {
                             Text(rateText).font(.caption)
                             if let method = candidate.paymentMethod { Text(SettlementText.payments[method] ?? method).font(.caption2).foregroundStyle(.secondary) }
                         } else {
-                            Text("Brak prowizji dla marki wydarzenia").font(.caption).foregroundStyle(CrmTheme.rgb(0xfcd34d))
+                            Text("Brak prowizji dla marki eventu").font(.caption).foregroundStyle(CrmTheme.rgb(0xfcd34d))
                         }
                     }
                 }
@@ -1290,7 +1290,7 @@ private struct SellerCandidates: Decodable {
             if hasCardRate {
                 Toggle(isOn: $customRate) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Inna stawka dla tego wydarzenia")
+                        Text("Inna stawka dla tego eventu")
                         Text("Karta sprzedawcy zostaje bez zmian.").font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -1313,7 +1313,7 @@ private struct SellerCandidates: Decodable {
         var value: Double?
         if needsRate {
             guard let parsed = SettlementText.percentInput(rate), parsed > 0 else { error = "Podaj stawkę większą od 0% (najwyżej 100%, do 0,01)."; return }
-            guard reason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else { error = "Podaj powód stawki dla tego wydarzenia (widoczny w historii prowizji)."; return }
+            guard reason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else { error = "Podaj powód stawki dla tego eventu (widoczny w historii prowizji)."; return }
             value = parsed
         }
         error = ""
@@ -1362,7 +1362,7 @@ private struct InvoiceCandidates: Decodable {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Dodaj fakturę kosztową").font(.title3.bold())
-            Text("Faktury kosztowe marki wydarzenia, najbliższe dacie wydarzenia i jeszcze nie w pełni przypisane.").font(.callout).foregroundStyle(.secondary)
+            Text("Faktury kosztowe marki eventu, najbliższe dacie eventu i jeszcze nie w pełni przypisane.").font(.callout).foregroundStyle(.secondary)
             if !forbidden.isEmpty {
                 Text(forbidden).font(.callout).foregroundStyle(CrmTheme.rgb(0xfcd34d))
                 HStack { Spacer(); Button("Zamknij") { dismiss() } }
@@ -1415,7 +1415,7 @@ private struct InvoiceCandidates: Decodable {
                                         if candidate.allocated > 0 { Text("do przypisania: " + SettlementText.pln(candidate.remainingGross)).font(.caption).foregroundStyle(CrmTheme.rgb(0xfcd34d)) }
                                     }
                                 }
-                                if candidate.linkedToEvent { Text("Część tej faktury jest już przypisana do tego wydarzenia").font(.caption).foregroundStyle(theme.accent) }
+                                if candidate.linkedToEvent { Text("Część tej faktury jest już przypisana do tego eventu").font(.caption).foregroundStyle(theme.accent) }
                             }
                             .padding(10).contentShape(Rectangle())
                         }
@@ -1434,7 +1434,7 @@ private struct InvoiceCandidates: Decodable {
             Text((candidate.sellerName ?? "Sprzedawca nieznany") + " · " + (candidate.number ?? "bez numeru")).font(.headline)
             Text(SettlementText.pln(candidate.gross) + " brutto · " + SettlementText.pln(candidate.net) + " netto · " + SettlementText.date(candidate.issueDate)).font(.callout).foregroundStyle(.secondary)
             Text("Pozostało do przypisania: " + SettlementText.pln(candidate.remainingGross) + " brutto").font(.callout)
-            Text("Część brutto dla tego wydarzenia (opcjonalnie)").font(.caption.weight(.semibold))
+            Text("Część brutto dla tego eventu (opcjonalnie)").font(.caption.weight(.semibold))
             TextField("Cała pozostała kwota (" + SettlementText.pln(candidate.remainingGross) + ")", text: $part).textFieldStyle(.roundedBorder).frame(width: 300)
             Text("Puste pole = cała pozostała kwota. Netto pozycji wyliczy baza z faktury.").font(.caption).foregroundStyle(.secondary)
             Text("Rodzaj kosztu").font(.caption.weight(.semibold))
@@ -1480,7 +1480,7 @@ private struct InvoiceCandidates: Decodable {
             "p_source": .string(candidate.source), "p_invoice_id": .string(candidate.id), "p_gross_amount": gross.map { JSONValue.number($0) } ?? JSONValue.null,
             "p_category": .string(category), "p_name": trimmed.isEmpty ? JSONValue.null : JSONValue.string(trimmed),
         ]
-        if await mutate("link-invoice", "link_event_cost_invoice", params, "Faktura kosztowa przypisana do wydarzenia.") { dismiss() }
+        if await mutate("link-invoice", "link_event_cost_invoice", params, "Faktura kosztowa przypisana do eventu.") { dismiss() }
     }
 }
 
@@ -1513,7 +1513,7 @@ private struct ShareEmployees: Decodable { struct Employee: Decodable, Hashable 
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Label("Sprzedawca wydarzenia", systemImage: "person.crop.circle.badge.checkmark").font(.headline)
+                    Label("Sprzedawca eventu", systemImage: "person.crop.circle.badge.checkmark").font(.headline)
                     Text("Zapisuje się przy akceptacji oferty. Możesz zmienić osobę albo podzielić udziały (razem 100%) — zmiana trafia do historii.").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -1572,7 +1572,7 @@ private struct ShareEmployees: Decodable { struct Employee: Decodable, Hashable 
                 else { Text("Razem: " + SettlementText.percent(Double(hundredths) / 100) + (sumOk ? "" : " — musi być 100%")).font(.caption).foregroundStyle(sumOk ? Color.secondary : Color.red) }
             }
             if rows.isEmpty {
-                Text("Zapisanie pustej listy oznacza świadomie wydarzenie bez sprzedawcy — prowizja pracownika nie zostanie naliczona, a system nie przywróci sprzedawcy automatycznie.")
+                Text("Zapisanie pustej listy oznacza świadomie event bez sprzedawcy — prowizja pracownika nie zostanie naliczona, a system nie przywróci sprzedawcy automatycznie.")
                     .font(.caption).foregroundStyle(CrmTheme.rgb(0xfcd34d))
             }
             TextField("Powód zmiany * — np. sprzedaż prowadzona wspólnie z…", text: $reason, axis: .vertical).lineLimit(2...4).textFieldStyle(.roundedBorder)
@@ -1611,7 +1611,7 @@ private struct ShareEmployees: Decodable { struct Employee: Decodable, Hashable 
         saving = true
         defer { saving = false }
         if await mutate("shares", "set_event_sales_shares", ["p_shares": .array(shares), "p_reason": .string(reason.trimmingCharacters(in: .whitespacesAndNewlines))],
-                        rows.isEmpty ? "Zapisano: wydarzenie bez sprzedawcy." : "Sprzedawca wydarzenia zapisany — prowizje przeliczone.") {
+                        rows.isEmpty ? "Zapisano: event bez sprzedawcy." : "Sprzedawca eventu zapisany — prowizje przeliczone.") {
             open = false
         }
     }

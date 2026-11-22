@@ -128,7 +128,7 @@ export default function PortfolioAssistantCard({ itemId, content, eventId, onSit
           ))}
         </View>
       )}
-      <Text style={styles.muted}>Do AI trafia treść realizacji, rodzaj, miejsce i data wydarzenia oraz — gdy zaznaczysz — zdjęcia ze strony. Bez danych osobowych.</Text>
+      <Text style={styles.muted}>Do AI trafia treść realizacji, rodzaj, miejsce i data eventu oraz — gdy zaznaczysz — zdjęcia ze strony. Bez danych osobowych.</Text>
     </View>
   );
 }

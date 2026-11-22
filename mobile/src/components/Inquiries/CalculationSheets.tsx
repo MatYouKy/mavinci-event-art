@@ -134,7 +134,7 @@ export function CalculationImportSheet({ inquiryId, existingRefs, onClose, onImp
         sources.vehicles.length ? sources.vehicles.map((row) => check(row.ref, row.vehicleName,
           [row.role, row.driverName ? `kierowca: ${row.driverName}` : '', row.estimatedDistance ? `${calcPlain(row.estimatedDistance)} km` : '',
             row.fuelCost || row.tollCost ? `${calcMoney((row.fuelCost || 0) + (row.tollCost || 0))} zł` : ''].filter(Boolean).join(' · ')))
-          : <Text style={kit.muted}>Brak pojazdów przypisanych do wydarzenia zapytania.</Text>
+          : <Text style={kit.muted}>Brak pojazdów przypisanych do eventu zapytania.</Text>
       )}
     </Sheet>
   );
@@ -251,7 +251,7 @@ export function CalculationEmailSheet({ inquiryId, calculationId, name, hasEvent
               {includeFiles ? (
                 <>
                   <Text style={kit.muted}>Zobaczysz tylko pliki, do których masz dostęp zgodnie z uprawnieniami. Wybierz pliki, które chcesz dołączyć do wiadomości.</Text>
-                  {!setup.files.length ? <Text style={kit.muted}>Brak plików w wydarzeniu.</Text> : null}
+                  {!setup.files.length ? <Text style={kit.muted}>Brak plików w evencie.</Text> : null}
                   {setup.files.map((file) => {
                     const on = fileIds.includes(file.id);
                     return (

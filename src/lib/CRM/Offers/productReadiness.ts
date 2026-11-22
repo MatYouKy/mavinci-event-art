@@ -289,7 +289,7 @@ export function productReadiness(product: ReadinessProduct, resources: Readiness
   add({
     key: 'clauses', group: 'clauses', label: 'Klauzule umowy', anchor: PRODUCT_SECTION_ANCHORS.clauses, exemptionKey: 'clauses',
     state: clauseCount ? 'ok' : 'missing',
-    detail: clauseCount ? `${plural(clauseCount, 'klauzula', 'klauzule', 'klauzul')}.` : 'Dodaj klauzule, które trafią do umowy wydarzenia.',
+    detail: clauseCount ? `${plural(clauseCount, 'klauzula', 'klauzule', 'klauzul')}.` : 'Dodaj klauzule, które trafią do umowy eventu.',
   });
 
   const groups = READINESS_GROUPS.map((group) => {

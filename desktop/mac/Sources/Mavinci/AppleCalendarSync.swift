@@ -197,7 +197,7 @@ struct CalendarRemoval:Identifiable {
         }
         return (items,skipped)
     }
-    private var notes:String {"\(Self.marker)\(account)\nDane pochodzą z CRM. Zmiany w tej kopii nie zmieniają wydarzenia w CRM."}
+    private var notes:String {"\(Self.marker)\(account)\nDane pochodzą z CRM. Zmiany w tej kopii nie zmieniają eventu w CRM."}
     /// Zapis pól kopii — tylko gdy coś się zmieniło (bez zbędnych zmian w iCloud).
     private func apply(_ entry:Entry,to event:EKEvent,calendar:EKCalendar) -> Bool {
         let zone=CalendarDates.calendar.timeZone
@@ -331,7 +331,7 @@ struct CalendarRemoval:Identifiable {
         if let link {try? persist(link)}
         publish(link)
         signature=""
-        summary="Usunięto \(Self.count(removed)) z kalendarza „\(calendar.title)”. Wydarzenia w CRM i inne wpisy tego kalendarza zostały bez zmian."
+        summary="Usunięto \(Self.count(removed)) z kalendarza „\(calendar.title)”. Eventy w CRM i inne wpisy tego kalendarza zostały bez zmian."
     }
     private func remove(from calendar:EKCalendar,link:CalendarLink?) -> Int? {
         busy=true;error=nil;summary=nil
@@ -392,7 +392,7 @@ extension Workspace {
     var body:some View {
         VStack(alignment:.leading,spacing:16) {
             Text("Kalendarz Apple").font(.title2.bold())
-            Text("Aplikacja kopiuje nazwy, terminy i miejsca wydarzeń oraz Twoich spotkań z CRM do wybranego kalendarza. Kopia jest tylko do odczytu — zmiany w Kalendarzu Apple nie trafiają do CRM, a prywatne wpisy z Maca nie są przesyłane.")
+            Text("Aplikacja kopiuje nazwy, terminy i miejsca eventów oraz Twoich spotkań z CRM do wybranego kalendarza. Kopia jest tylko do odczytu — zmiany w Kalendarzu Apple nie trafiają do CRM, a prywatne wpisy z Maca nie są przesyłane.")
                 .font(.callout).fixedSize(horizontal:false,vertical:true)
             if !apple.authorized || apple.calendars.isEmpty {
                 Button("Zezwól na połączenie z Kalendarzem") {
@@ -424,7 +424,7 @@ extension Workspace {
             Button("Usuń \(AppleCalendarLink.count(request.count))",role:.destructive) {apple.removeCopies(request)}
             Button("Anuluj",role:.cancel) {apple.removal=nil}
         } message: {request in
-            Text("Zostaną usunięte tylko wpisy utworzone przez aplikację Mavinci (\(AppleCalendarLink.count(request.count))). Wydarzenia w CRM i pozostałe wpisy tego kalendarza zostają bez zmian. Automatyczna aktualizacja zostanie wyłączona.")
+            Text("Zostaną usunięte tylko wpisy utworzone przez aplikację Mavinci (\(AppleCalendarLink.count(request.count))). Eventy w CRM i pozostałe wpisy tego kalendarza zostają bez zmian. Automatyczna aktualizacja zostanie wyłączona.")
         }
     }
 
@@ -459,7 +459,7 @@ extension Workspace {
             VStack(alignment:.leading,spacing:6) {
                 Label("Uwaga na podwójne wpisy na iPhonie i w zegarku",systemImage:"exclamationmark.triangle.fill").font(.callout.weight(.semibold)).foregroundStyle(.orange)
                 Text(duplicateReason).font(.caption).fixedSize(horizontal:false,vertical:true)
-                Text("Jeśli kalendarz CRM jest subskrybowany na iPhonie, każde wydarzenie widać tam (i w Apple Watch) dwa razy: z subskrypcji i z tej kopii. Zostaw jedno źródło — trzymaj kopię w kalendarzu tylko na tym Macu albo usuń kopię i korzystaj z subskrypcji.")
+                Text("Jeśli kalendarz CRM jest subskrybowany na iPhonie, każdy event widać tam (i w Apple Watch) dwa razy: z subskrypcji i z tej kopii. Zostaw jedno źródło — trzymaj kopię w kalendarzu tylko na tym Macu albo usuń kopię i korzystaj z subskrypcji.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
             }
             .padding(10).frame(maxWidth:.infinity,alignment:.leading)
@@ -497,7 +497,7 @@ extension Workspace {
             }
             Toggle("Aktualizuj kopię automatycznie po każdym odświeżeniu danych",isOn:Binding(get:{apple.automatic},set:{apple.setAutomatic($0)}))
                 .disabled(!apple.hasCopy || apple.busy)
-                .help("Nowe, przesunięte i odwołane wydarzenia zmieniają się w kopii bez klikania „Synchronizuj teraz”.")
+                .help("Nowe, przesunięte i odwołane eventy zmieniają się w kopii bez klikania „Synchronizuj teraz”.")
             HStack {
                 if moving {
                     Button("Przenieś kopię do „\(selected?.title ?? "")”") {apple.move(rows:workspace.rows(.calendar))}
@@ -510,7 +510,7 @@ extension Workspace {
                     Button("Usuń kopię z kalendarza…",role:.destructive) {apple.askRemoval()}.disabled(apple.busy)
                 }
             }
-            Text("Ponowna synchronizacja aktualizuje tę samą kopię (jeden wpis na wydarzenie). Usuwane są wyłącznie wpisy utworzone przez Mavinci.")
+            Text("Ponowna synchronizacja aktualizuje tę samą kopię (jeden wpis na event). Usuwane są wyłącznie wpisy utworzone przez Mavinci.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
         }
     }

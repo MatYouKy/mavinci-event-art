@@ -5,7 +5,6 @@ import { useOperationalStages } from '../hooks/useOperationalStages';
 import { OPERATIONAL_LABELS, usesOperationalStages } from '../lib/operationalStages';
 import RealizationWorkspace from '../components/Events/RealizationWorkspace';
 import EventCardButton from '../components/Events/EventCardButton';
-import SocialEventPhotoButton from '../components/Social/SocialEventPhotoButton';
 import { respondToAssignment } from '../services/assignmentResponse';
 import WarehouseHandoffPanel from '../components/Events/WarehouseHandoffPanel';
 import EventStepsPanel, { type EventStepRowLink } from '../components/Events/EventStepsPanel';
@@ -66,7 +65,11 @@ import type { EventStep } from '../lib/eventSteps';
 import { type EventSummaryState, SummaryTab } from '@/components/Events/EventDetailScreen/SummaryTab';
 import { fetchEventSettlement } from '../lib/eventSettlementApi';
 
-type TabKey = 'warehouse' | 'details' | 'agenda' | 'wedding' | 'checklist' | 'team' | 'fleet' | 'files' | 'summary';
+/*
+ * Zakładki eventu: „Szczegóły” — same dane eventu (termin, miejsce, klient, kontakty, opis); „Kroki realizacji” — przygotowanie
+ * i realizacja (kroki: zezwolenia, sprawdzenia, potwierdzenia; przejęcie i zakończenie realizacji; karta imprezy PDF).
+ */
+type TabKey = 'warehouse' | 'details' | 'steps' | 'agenda' | 'wedding' | 'checklist' | 'team' | 'fleet' | 'files' | 'summary';
 
 interface Props {
   eventId: string;
@@ -185,7 +188,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
   const handleAccept = () => {
     Alert.alert(
       'Akceptacja zaproszenia',
-      'Czy na pewno chcesz zaakceptować zaproszenie do tego wydarzenia?',
+      'Czy na pewno chcesz zaakceptować zaproszenie do tego eventu?',
       [
         { text: 'Anuluj', style: 'cancel' },
         { text: 'Akceptuj', onPress: () => respondToInvitation('accepted') },
@@ -196,7 +199,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
   const handleReject = () => {
     Alert.alert(
       'Odrzucenie zaproszenia',
-      'Czy na pewno chcesz odrzucić zaproszenie do tego wydarzenia?',
+      'Czy na pewno chcesz odrzucić zaproszenie do tego eventu?',
       [
         { text: 'Anuluj', style: 'cancel' },
         { text: 'Odrzuć', style: 'destructive', onPress: () => respondToInvitation('rejected') },
@@ -781,7 +784,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
         setMyAssignment(assignment);
       } catch (err) {
         console.error('Error loading event detail:', err);
-        setLoadError('Nie udało się pobrać aktualnych danych wydarzenia.');
+        setLoadError('Nie udało się pobrać aktualnych danych eventu.');
       } finally {
         setIsLoading(false);
         setRefreshing(false);
@@ -1036,7 +1039,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
     return (
       <View style={styles.centered}>
         <Feather name="alert-circle" size={48} color={colors.text.tertiary} />
-        <Text style={styles.errorText}>{loadError || 'Nie znaleziono wydarzenia'}</Text>
+        <Text style={styles.errorText}>{loadError || 'Nie znaleziono eventu'}</Text>
         <View style={styles.errorActions}>
           <TouchableOpacity style={styles.retryBtn} onPress={() => void loadAll(true)}>
             <Feather name="refresh-cw" size={15} color={colors.background.primary} />
@@ -1052,6 +1055,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
 
   const tabs: { key: TabKey; label: string; icon: string; count?: number }[] = [
     { key: 'details', label: 'Szczegóły', icon: 'info' },
+    { key: 'steps', label: 'Kroki realizacji', icon: 'check-circle' },
     ...(isWeddingEvent
       ? ([
           {
@@ -1139,7 +1143,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
           <Text
             style={[styles.headerStatusText, { color: STATUS_COLORS[displayStatus({id:eventId,status:event.status})] || '#6b7280' }]}
           >
-            {(operational ? OPERATIONAL_LABELS : STATUS_LABELS)[displayStatus({id:eventId,status:event.status})] || 'Nowe wydarzenie'}
+            {(operational ? OPERATIONAL_LABELS : STATUS_LABELS)[displayStatus({id:eventId,status:event.status})] || 'Nowy event'}
           </Text>
         </View>
       </View>
@@ -1150,7 +1154,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
           <View style={styles.invitationTextWrap}>
             <Feather name="mail" size={18} color="#f59e0b" />
             <Text style={styles.invitationText}>
-              Masz oczekujące zaproszenie do tego wydarzenia
+              Masz oczekujące zaproszenie do tego eventu
             </Text>
           </View>
           <View style={styles.invitationButtons}>
@@ -1244,19 +1248,18 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
           />
         }
       >
-        {activeTab === 'details' && isEventOrganizer(event.created_by, employee?.id, session?.user?.id) && <TouchableOpacity onPress={() => openInCrmWeb('/crm/events/actions')} style={{ margin: 16, padding: 12, borderRadius: 10, backgroundColor: colors.background.secondary }}><Text style={{ color: colors.primary.gold }}>Moje wydarzenia — następne kroki i przypomnienia →</Text></TouchableOpacity>}
-        {activeTab === 'details' && canPrintCard && <EventCardButton eventId={eventId} />}
-        {activeTab === 'details' && <SocialEventPhotoButton eventId={eventId} />}
-        {activeTab === 'details' && <RealizationActions eventId={eventId} onChanged={() => void loadAll(true)} />}
+        {activeTab === 'steps' && <RealizationActions eventId={eventId} onChanged={() => void loadAll(true)} />}
+        {activeTab === 'steps' && canPrintCard && <EventCardButton eventId={eventId} />}
+        {activeTab === 'steps' && <EventStepsPanel eventId={eventId} refreshKey={stepsRefreshKey} onChanged={() => void refreshEventState()} stepLink={stepLink} />}
+        {activeTab === 'steps' && isEventOrganizer(event.created_by, employee?.id, session?.user?.id) && <TouchableOpacity onPress={() => openInCrmWeb('/crm/events/actions')} style={{ margin: 16, padding: 12, borderRadius: 10, backgroundColor: colors.background.secondary }}><Text style={{ color: colors.primary.gold }}>Moje eventy — następne kroki i przypomnienia →</Text></TouchableOpacity>}
         {activeTab === 'details' && accessResult?.mode === 'error' && (
           <View style={styles.accessNotice} accessibilityRole="alert">
             <Feather name="shield" size={16} color={colors.primary.gold} />
             <Text style={styles.accessNoticeText}>
-              Nie udało się sprawdzić Twojego zakresu danych tego wydarzenia. Dane klienta i kwoty są ukryte — pociągnij ekran w dół, aby odświeżyć.
+              Nie udało się sprawdzić Twojego zakresu danych tego eventu. Dane klienta i kwoty są ukryte — pociągnij ekran w dół, aby odświeżyć.
             </Text>
           </View>
         )}
-        {activeTab === 'details' && <EventStepsPanel eventId={eventId} refreshKey={stepsRefreshKey} onChanged={() => void refreshEventState()} stepLink={stepLink} />}
         {activeTab === 'warehouse' && showWarehouseTab && <WarehouseHandoffPanel key={eventId} eventId={eventId} status={event.status} onAccepted={() => { void loadAll(true); }} />}
         {activeTab === 'warehouse' && showWarehouseTab && <EventStepsPanel eventId={eventId} refreshKey={stepsRefreshKey} onChanged={() => void refreshEventState()} stepLink={stepLink} />}
         {activeTab === 'details' && (

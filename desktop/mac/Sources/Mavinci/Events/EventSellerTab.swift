@@ -119,7 +119,7 @@ private struct SellerMessages: Decodable {
             if let error = data.error { Text(error).foregroundStyle(.red).padding(.horizontal, 18) }
             if data.error == nil && data.offers.isEmpty {
                 ContentUnavailableView("Brak powiązanych ofert sprzedawców", systemImage: "bubble.left.and.bubble.right",
-                                       description: Text("Po powiązaniu oferty sprzedawcy z wydarzeniem jej ustalenia i korespondencja pojawią się tutaj automatycznie."))
+                                       description: Text("Po powiązaniu oferty sprzedawcy z eventem jej ustalenia i korespondencja pojawią się tutaj automatycznie."))
             } else {
                 HStack(spacing: 0) {
                     if data.offers.count > 1 {
@@ -198,7 +198,7 @@ private struct SellerMessages: Decodable {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(offer.partnerName + " · " + offer.brandName).font(.callout).foregroundStyle(.secondary)
                     Button("Oferta źródłowa: " + offer.label) { openOffer(offer.id) }.buttonStyle(.link).linkCursor()
-                    Text("Ustalenia są wspólne z ofertą — nie tworzymy osobnej kopii. Ich zapis nie cofa akceptacji i nie zmienia automatycznie harmonogramu wydarzenia.")
+                    Text("Ustalenia są wspólne z ofertą — nie tworzymy osobnej kopii. Ich zapis nie cofa akceptacji i nie zmienia automatycznie harmonogramu eventu.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading)
@@ -233,8 +233,8 @@ private struct SellerMessages: Decodable {
                 .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Prowizja opiekuna", systemImage: "function").font(.headline)
-                    Text("Prowizję opiekuna liczy teraz zakładka Podsumowanie w wydarzeniu (udział sprzedawcy, 5% / 10% od zysku).").font(.caption).foregroundStyle(.secondary)
-                    Button { go("summary") } label: { Label("Otwórz podsumowanie wydarzenia", systemImage: "arrow.right") }.buttonStyle(.link).linkCursor()
+                    Text("Prowizję opiekuna liczy teraz zakładka Podsumowanie w evencie (udział sprzedawcy, 5% / 10% od zysku).").font(.caption).foregroundStyle(.secondary)
+                    Button { go("summary") } label: { Label("Otwórz podsumowanie eventu", systemImage: "arrow.right") }.buttonStyle(.link).linkCursor()
                 }
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 .background(theme.card.opacity(theme == .light ? 1 : 0.9), in: RoundedRectangle(cornerRadius: 12))
@@ -247,7 +247,7 @@ private struct SellerMessages: Decodable {
     @ViewBuilder private func conversation(_ offer: SellerTabData.Offer) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Rozmowa o realizacji", systemImage: "message").font(.headline)
-            Text("Kontynuujcie ten sam wątek — cała historia oferty pozostaje tutaj. Wiadomości nie zmieniają decyzji o akceptacji ani potwierdzeniu wydarzenia.")
+            Text("Kontynuujcie ten sam wątek — cała historia oferty pozostaje tutaj. Wiadomości nie zmieniają decyzji o akceptacji ani potwierdzeniu eventu.")
                 .font(.caption).foregroundStyle(.secondary)
             if let conversation = offer.conversation {
                 SellerConversationView(store: store, eventID: eventID, conversation: conversation).id(conversation.id)

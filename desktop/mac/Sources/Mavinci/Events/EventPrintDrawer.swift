@@ -82,7 +82,7 @@ struct EventPrintDocument: Decodable, Identifiable {
                     Image(systemName: "doc.text.image").frame(width: 22).foregroundStyle(theme.accent)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Karta imprezy").font(.callout.weight(.medium))
-                        Text("Aktualne dane wydarzenia — podgląd, druk, zapis").font(.caption).foregroundStyle(.secondary)
+                        Text("Aktualne dane eventu — podgląd, druk, zapis").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)

@@ -153,7 +153,7 @@ enum DriveText {
     static func recordLabel(_ record: DriveRecord) -> String {
         switch record.type {
         case "offer": return "Otwórz ofertę"
-        case "event": return "Otwórz wydarzenie"
+        case "event": return "Otwórz event"
         case "inquiry": return "Otwórz zapytanie"
         case "contract": return "Otwórz umowę"
         case "equipment": return "Otwórz sprzęt"

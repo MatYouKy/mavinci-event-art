@@ -193,7 +193,7 @@ export default function CrmSellerWorkspace({ partnerId, contactId }: { partnerId
         </section>}
         <section className="min-w-0 rounded-xl bg-black/10 p-4">
           <h3 className="text-sm font-medium">Statusy realizacji</h3>
-          <p className="mt-1 mb-3 text-xs text-white/40">Powiązane wydarzenia dostępne dla Ciebie w wybranych markach.</p>
+          <p className="mt-1 mb-3 text-xs text-white/40">Powiązane eventy dostępne dla Ciebie w wybranych markach.</p>
           <CrmCartesianChart
             data={eventStatusData}
             categoryKey="status"

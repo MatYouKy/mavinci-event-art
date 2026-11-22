@@ -18,7 +18,7 @@ const BUCKET_LABELS: Record<string, string> = {
   'employee-assets': 'Pliki pracowników',
   'equipment-files': 'Dokumenty sprzętu',
   'equipment-images': 'Zdjęcia sprzętu',
-  'event-files': 'Pliki wydarzeń',
+  'event-files': 'Pliki eventów',
   'fuel-receipts': 'Paragony i faktury za paliwo',
   'generated-offers': 'Wygenerowane oferty',
   'offer-product-pages': 'Strony produktów ofertowych',

@@ -407,7 +407,7 @@ import UniformTypeIdentifiers
             Spacer(minLength: 8)
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField(store.scope == .events ? "Szukaj w plikach wydarzeń" : "Szukaj w Materiałach", text: $store.query)
+                TextField(store.scope == .events ? "Szukaj w plikach eventów" : "Szukaj w Materiałach", text: $store.query)
                     .textFieldStyle(.plain).frame(minWidth: 140, maxWidth: 260)
                 if store.searching { ProgressView().controlSize(.mini) }
                 if !store.query.isEmpty {

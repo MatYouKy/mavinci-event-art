@@ -171,7 +171,7 @@ async function contact360(ctx: NativeContext, id: string) {
       date: str(offer.created_at), target: { type: 'offer', id: str(offer.id) }, status: badge(offer.status),
     })),
     ...events.map((event) => ({
-      id: `event-${str(event.id)}`, kind: 'event', title: str(event.name) || 'Wydarzenie', description: '', eventDate: str(event.event_date),
+      id: `event-${str(event.id)}`, kind: 'event', title: str(event.name) || 'Event', description: '', eventDate: str(event.event_date),
       date: str(event.event_date) || str(event.created_at), target: { type: 'event', id: str(event.id) }, status: badge(event.status),
     })),
   ].filter((item) => item.date).sort(byDate);
@@ -234,7 +234,7 @@ async function organization360(ctx: NativeContext, id: string) {
       target: { type: 'offer', id: str(item.id) }, status: badge(item.status),
     })),
     ...eventRows.map((item) => ({
-      id: `event-${str(item.id)}`, kind: 'event', title: str(item.name) || 'Wydarzenie', description: '', date: str(item.event_date),
+      id: `event-${str(item.id)}`, kind: 'event', title: str(item.name) || 'Event', description: '', date: str(item.event_date),
       target: { type: 'event', id: str(item.id) }, status: badge(item.status),
     })),
     ...rows(invoices.data).map((item) => {

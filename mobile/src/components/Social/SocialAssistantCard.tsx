@@ -95,7 +95,7 @@ export default function SocialAssistantCard({ detail, draft, onBusy, onUse, onHa
         </View>
         {detail.access.approve && (
           <TouchableOpacity style={styles.button} onPress={() => Alert.alert('Włączyć asystenta AI?',
-            'Do OpenAI trafią: temat i opis wpisane w karcie, rodzaj wydarzenia, miejsce, miesiąc i opis realizacji; nazwa wydarzenia i klient — tylko przy zgodzie klienta na publikację; zdjęcie — tylko gdy włączysz „Uwzględnij zdjęcie” i ma ono zgodę klienta. Zgoda zostanie zapisana z Twoim nazwiskiem i datą; wyłączysz ją w CRM („Szablony i AI”).', [
+            'Do OpenAI trafią: temat i opis wpisane w karcie, rodzaj eventu, miejsce, miesiąc i opis realizacji; nazwa eventu i klient — tylko przy zgodzie klienta na publikację; zdjęcie — tylko gdy włączysz „Uwzględnij zdjęcie” i ma ono zgodę klienta. Zgoda zostanie zapisana z Twoim nazwiskiem i datą; wyłączysz ją w CRM („Szablony i AI”).', [
               { text: 'Anuluj', style: 'cancel' },
               {
                 text: 'Włącz asystenta',
@@ -243,7 +243,7 @@ export default function SocialAssistantCard({ detail, draft, onBusy, onUse, onHa
       ))}
 
       <Text style={styles.footnote}>
-        Do AI trafia temat i opis z karty, rodzaj wydarzenia, miejsce, miesiąc i opis realizacji; nazwa wydarzenia i klient — tylko przy zgodzie
+        Do AI trafia temat i opis z karty, rodzaj eventu, miejsce, miesiąc i opis realizacji; nazwa eventu i klient — tylko przy zgodzie
         klienta; zdjęcie — tylko gdy je uwzględnisz i ma zgodę klienta na publikację. Propozycje nie zmieniają posta, dopóki ich nie użyjesz.
         {reply?.usedPhoto ? ' Ta odpowiedź uwzględnia zdjęcie.' : ''}
       </Text>

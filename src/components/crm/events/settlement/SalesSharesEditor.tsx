@@ -139,7 +139,7 @@ export default function SalesSharesEditor({
       'shares',
       'set_event_sales_shares',
       { p_event_id: eventId, p_shares: shares, p_reason: reason.trim() },
-      noSeller ? 'Zapisano: wydarzenie bez sprzedawcy.' : 'Sprzedawca wydarzenia zapisany — prowizje przeliczone.',
+      noSeller ? 'Zapisano: event bez sprzedawcy.' : 'Sprzedawca eventu zapisany — prowizje przeliczone.',
     );
     if (ok) setOpen(false);
   };
@@ -150,7 +150,7 @@ export default function SalesSharesEditor({
         <div>
           <h3 id={`${id}-heading`} className="flex items-center gap-2 font-medium text-[#e5e4e2]">
             <UserCog className="h-4 w-4 text-[#d3bb73]" aria-hidden />
-            Sprzedawca wydarzenia
+            Sprzedawca eventu
           </h3>
           <p className="mt-0.5 text-xs text-[#e5e4e2]/55">
             Zapisuje się przy akceptacji oferty. Możesz zmienić osobę albo podzielić udziały (razem 100%) — zmiana trafia do historii.
@@ -267,7 +267,7 @@ export default function SalesSharesEditor({
           </div>
           {noSeller && (
             <p className="rounded-lg bg-amber-400/10 px-3 py-2 text-xs text-amber-100/90">
-              Zapisanie pustej listy oznacza świadomie wydarzenie bez sprzedawcy — prowizja pracownika nie zostanie naliczona, a system nie
+              Zapisanie pustej listy oznacza świadomie event bez sprzedawcy — prowizja pracownika nie zostanie naliczona, a system nie
               przywróci sprzedawcy automatycznie.
             </p>
           )}

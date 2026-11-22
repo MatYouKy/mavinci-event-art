@@ -491,7 +491,7 @@ enum WarehouseLabels {
         }
     }
     static let quantityModes: [InquiryOption] = [
-        .init(value: "per_item", label: "Na każdą sztukę sprzętu"), .init(value: "fixed", label: "Stała liczba dla całego wydarzenia"),
+        .init(value: "per_item", label: "Na każdą sztukę sprzętu"), .init(value: "fixed", label: "Stała liczba dla całego eventu"),
     ]
     static func quantityMode(_ value: String) -> String { value == "fixed" ? "łącznie" : "na sztukę" }
     /// Rozmiar pliku jak `formatBytes` w CRM (B, KB, MB, GB, do dwóch miejsc po przecinku).

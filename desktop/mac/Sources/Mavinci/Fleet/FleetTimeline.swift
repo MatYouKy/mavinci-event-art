@@ -79,7 +79,7 @@ import SwiftUI
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(vehicleID == nil ? "Timeline wykorzystania pojazdów" : "Timeline wykorzystania").font(.headline)
-                Text(vehicleID == nil ? "Widok wykorzystania \(rows.count) pojazdów" : "Widok wykorzystania pojazdu na wydarzeniach i w serwisie")
+                Text(vehicleID == nil ? "Widok wykorzystania \(rows.count) pojazdów" : "Widok wykorzystania pojazdu na eventach i w serwisie")
                     .font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
@@ -151,7 +151,7 @@ import SwiftUI
                             lane(entries, columns: columns, column: column, total: total, scale: s, stacked: true)
                                 .frame(width: total, height: 200)
                                 .overlay {
-                                    if entries.isEmpty { Text("Brak wydarzeń w wybranym okresie czasu").foregroundStyle(.secondary) }
+                                    if entries.isEmpty { Text("Brak eventów w wybranym okresie czasu").foregroundStyle(.secondary) }
                                 }
                         }
                     }
@@ -234,8 +234,8 @@ import SwiftUI
 
     private var legend: some View {
         HStack(spacing: 16) {
-            legendItem(CrmTheme.rgb(0x3b82f6), "Wydarzenie zaplanowane")
-            legendItem(CrmTheme.rgb(0x22c55e), "Wydarzenie potwierdzone")
+            legendItem(CrmTheme.rgb(0x3b82f6), "Event zaplanowany")
+            legendItem(CrmTheme.rgb(0x22c55e), "Event potwierdzony")
             legendItem(CrmTheme.rgb(0xf97316), "Serwis w trakcie")
             legendItem(CrmTheme.rgb(0xef4444), "Anulowane/Niepomyślne")
         }

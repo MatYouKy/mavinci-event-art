@@ -170,7 +170,7 @@ enum ProductPreparationText {
         ("venue_confirmation", "Potwierdzenie z klientem / obiektem"), ("task", "Zadanie"),
     ]
     static let roles: [(key: String, label: String)] = [("warehouse", "Magazyn"), ("sales", "Sprzedawca"), ("manager", "Kierownik realizacji")]
-    static let anchors: [(key: String, label: String)] = [("event", "przed wydarzeniem"), ("loading", "przed załadunkiem")]
+    static let anchors: [(key: String, label: String)] = [("event", "przed eventem"), ("loading", "przed załadunkiem")]
 
     static func kind(_ key: String) -> String { kinds.first { $0.key == key }?.label ?? key }
     static func role(_ key: String) -> String { roles.first { $0.key == key }?.label ?? key }
@@ -180,12 +180,12 @@ enum ProductPreparationText {
         let name = title.trimmingCharacters(in: .whitespaces).isEmpty ? "…" : title.trimmingCharacters(in: .whitespaces)
         let when: String
         if let days = leadDays, (0...90).contains(days) {
-            if days == 0 { when = anchor == "loading" ? "w dniu załadunku" : "w dniu wydarzenia" }
+            if days == 0 { when = anchor == "loading" ? "w dniu załadunku" : "w dniu eventu" }
             else { when = "\(days) \(days == 1 ? "dzień" : "dni") \(anchors.first { $0.key == anchor }?.label ?? "")" }
         } else {
             when = "…"
         }
-        return "Każde wydarzenie z tą usługą dostanie krok: \(name) — \(when), odpowiada \(Self.role(role).lowercased())."
+        return "Każdy event z tą usługą dostanie krok: \(name) — \(when), odpowiada \(Self.role(role).lowercased())."
     }
 }
 

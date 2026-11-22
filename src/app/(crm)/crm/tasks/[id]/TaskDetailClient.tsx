@@ -1461,7 +1461,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
               <button
                 onClick={() => setShowLinkFileModal(true)}
                 className={`${isMobile ? 'p-2' : 'p-3'} rounded-lg transition-colors hover:bg-[#d3bb73]/10`}
-                title="Dodaj z wydarzenia"
+                title="Dodaj z eventu"
               >
                 <LinkIcon className={`${isMobile ? 'h-4 w-4' : 'h-5 w-5'} text-blue-400`} />
               </button>

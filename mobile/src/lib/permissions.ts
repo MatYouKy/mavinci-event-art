@@ -111,7 +111,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { icon: 'message-circle', label: 'Komunikator', screen: 'Messages', module: 'chat' },
   { icon: 'inbox', label: 'Wiadomości', screen: 'Inbox', module: 'messages' },
   { icon: 'book-open', label: 'Kontakty', screen: 'Clients', module: 'contacts' },
-  { icon: 'star', label: 'Wydarzenia', screen: 'Events', module: 'events' },
+  { icon: 'star', label: 'Eventy', screen: 'Events', module: 'events' },
   { icon: 'hard-drive', label: 'Dysk', screen: 'Drive', anyPermissions: DRIVE_PERMISSIONS },
   { icon: 'check-square', label: 'Zadania', screen: 'Tasks', module: 'tasks' },
   { icon: 'phone-call', label: 'Zapytania', screen: 'Inquiries', module: 'inquiries' },

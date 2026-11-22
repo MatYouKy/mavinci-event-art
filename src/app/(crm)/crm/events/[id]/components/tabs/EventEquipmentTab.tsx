@@ -1023,10 +1023,10 @@ export const EventEquipmentTab: React.FC<{
   const totalCount = equipment.filter((r: any) => !r.removed_from_offer).length;
 
   const checklistFileName = (suffix = '') => {
-    const name = String(event?.name || 'wydarzenie').normalize('NFC')
+    const name = String(event?.name || 'event').normalize('NFC')
       .replace(/[^\p{L}\p{N}._ -]/gu, '-')
       .replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^[. -]+|[. -]+$/g, '')
-      .slice(0, 100) || 'wydarzenie';
+      .slice(0, 100) || 'event';
     return `checklista-sprzętu-${name}${suffix ? `-${suffix}` : ''}.pdf`;
   };
 
@@ -1106,7 +1106,7 @@ export const EventEquipmentTab: React.FC<{
           || logos?.find((logo) => normalizeLogoKey(logo.variant) === 'logo-horizontal-black');
         const rawLogo = printLogo?.url;
         if (!rawLogo) {
-          throw new Error('W brandbooku Mavinci dodaj logo o nazwie logo-horizontal-black. Checklista zawsze używa marki Mavinci, niezależnie od marki wydarzenia.');
+          throw new Error('W brandbooku Mavinci dodaj logo o nazwie logo-horizontal-black. Checklista zawsze używa marki Mavinci, niezależnie od marki eventu.');
         }
 
         const publicUrl = /^https?:\/\//i.test(rawLogo) || rawLogo.startsWith('data:')
@@ -1145,7 +1145,7 @@ export const EventEquipmentTab: React.FC<{
       const html = buildEquipmentChecklistHtml({
         checklistNotes: checklistNotesRow?.equipment_checklist_notes,
         checklistNoteItems: checklistNotesRow?.equipment_checklist_note_items,
-        eventName: event?.name || 'Wydarzenie',
+        eventName: event?.name || 'Event',
         eventDate: eventDateFormatted,
         location: location,
         equipmentItems: equipmentData,
@@ -2103,7 +2103,7 @@ export const EventEquipmentTab: React.FC<{
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/40" />
           <input
             type="search"
-            aria-label="Wyszukaj sprzęt dodany do wydarzenia"
+            aria-label="Wyszukaj sprzęt dodany do eventu"
             placeholder="Szukaj sprzętu: nazwa, model, producent…"
             value={equipmentSearch}
             onChange={event => setEquipmentSearch(event.target.value)}
@@ -2401,7 +2401,7 @@ export const EventEquipmentTab: React.FC<{
                 <div>
                   <h3 className="text-sm font-medium text-[#e5e4e2]">Pojedynczy sprzęt</h3>
                   <p className="mt-0.5 text-xs text-[#e5e4e2]/45">
-                    Samodzielne urządzenia rezerwowane na wydarzenie
+                    Samodzielne urządzenia rezerwowane na event
                   </p>
                 </div>
                 <span className="rounded-full bg-[#e5e4e2]/5 px-2.5 py-1 text-xs text-[#e5e4e2]/50">

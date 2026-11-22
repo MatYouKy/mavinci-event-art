@@ -161,7 +161,7 @@ export default function PortfolioWorkspace() {
           ) : (
             <div className={`${cardClass} flex min-h-[320px] flex-col items-center justify-center gap-3 p-8 text-center text-sm text-[#e5e4e2]/55`}>
               <Images className="h-10 w-10 text-[#d3bb73]/40" />
-              Wybierz realizację z listy albo utwórz nową — z wydarzenia albo od zera.
+              Wybierz realizację z listy albo utwórz nową — z eventu albo od zera.
               <button type="button" className={primaryButton} onClick={() => setCreating(true)}><Plus className="h-4 w-4" />Nowa realizacja</button>
             </div>
           )}
@@ -172,8 +172,8 @@ export default function PortfolioWorkspace() {
         <Modal open onClose={() => setCreating(false)} title="Nowa realizacja" scrollBody>
           <div className="space-y-4">
             <div className="space-y-2">
-              <div className="text-sm">Z wydarzenia w CRM <span className="text-xs text-[#e5e4e2]/40">(tytuł, data, miejsce i zdjęcia z plików wydarzenia)</span></div>
-              <input value={eventQuery} onChange={(event) => setEventQuery(event.target.value)} placeholder="Szukaj wydarzenia" className={inputClass} autoFocus />
+              <div className="text-sm">Z eventu w CRM <span className="text-xs text-[#e5e4e2]/40">(tytuł, data, miejsce i zdjęcia z plików eventu)</span></div>
+              <input value={eventQuery} onChange={(event) => setEventQuery(event.target.value)} placeholder="Szukaj eventu" className={inputClass} autoFocus />
               <div className="max-h-64 space-y-1 overflow-y-auto">
                 {events.map((event) => (
                   <button key={event.id} type="button" className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-[#d3bb73]/10" onClick={() => void create({ eventId: event.id })}>

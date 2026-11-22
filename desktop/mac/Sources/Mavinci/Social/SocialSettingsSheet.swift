@@ -62,7 +62,7 @@ import SwiftUI
             Toggle(isOn: $ai) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Opisy AI z danych realizacji")
-                    Text("Do usługi AI (OpenAI, konfiguracja marketingu) trafia rodzaj wydarzenia, miejsce, miesiąc, opis realizacji ze strony i robocza treść posta. Nazwa wydarzenia i klient — tylko przy zgodzie klienta. Bez danych osobowych i kontaktowych.")
+                    Text("Do usługi AI (OpenAI, konfiguracja marketingu) trafia rodzaj eventu, miejsce, miesiąc, opis realizacji ze strony i robocza treść posta. Nazwa eventu i klient — tylko przy zgodzie klienta. Bez danych osobowych i kontaktowych.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     if let at = store.home?.settings.aiConsentAt { Text("Włączone: \(SocialDates.dateTime(at))").font(.caption2).foregroundStyle(.secondary) }
                 }

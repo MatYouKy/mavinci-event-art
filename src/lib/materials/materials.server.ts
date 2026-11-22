@@ -348,7 +348,7 @@ export async function materialsSearch(ctx: NativeContext, params: URLSearchParam
 
   if (scope === 'events') {
     const { data, error } = await ctx.supabase.rpc('materials_search_event_files', { p_query: q, p_limit: 80 });
-    if (error) dbFail(error, 'Nie udało się przeszukać plików wydarzeń.');
+    if (error) dbFail(error, 'Nie udało się przeszukać plików eventów.');
     const rows = (data || []) as Row[];
     const thumbs = await signedUrls(ctx, EVENT_BUCKET,
       rows.filter((r) => materialKind(r.mime_type, r.name) === 'image').map((r) => r.file_path));
@@ -359,7 +359,7 @@ export async function materialsSearch(ctx: NativeContext, params: URLSearchParam
       events: rows.map((r) => ({
         id: r.id as string,
         eventId: r.event_id as string,
-        eventName: text(r.event_name) || 'Wydarzenie',
+        eventName: text(r.event_name) || 'Event',
         eventDate: r.event_date ?? null,
         folderId: r.folder_id ?? null,
         folderName: r.folder_name ?? null,
@@ -420,7 +420,7 @@ export async function materialsFile(ctx: NativeContext, idValue: string) {
     file: item,
     access,
     path: folderPath(byId, row.folder_id ?? null),
-    event: ev ? { id: ev.id as string, name: text(ev.name) || 'Wydarzenie', date: ev.event_date ?? null } : null,
+    event: ev ? { id: ev.id as string, name: text(ev.name) || 'Event', date: ev.event_date ?? null } : null,
     versions: versionRows.map((v) => ({
       id: v.id as string,
       contentVersion: Number(v.content_version || 1),
@@ -446,8 +446,8 @@ export async function materialsUrl(ctx: NativeContext, params: URLSearchParams) 
   let size = 0;
   if (kind === 'event') {
     const { data, error } = await ctx.supabase.from('event_files').select('id,name,original_name,file_path,file_size,mime_type').eq('id', id).maybeSingle();
-    if (error) dbFail(error, 'Nie udało się odczytać pliku wydarzenia.');
-    if (!data) fail('Nie znaleziono pliku wydarzenia.', 404);
+    if (error) dbFail(error, 'Nie udało się odczytać pliku eventu.');
+    if (!data) fail('Nie znaleziono pliku eventu.', 404);
     const r = data as Row;
     bucket = EVENT_BUCKET;
     path = text(r.file_path);
@@ -905,16 +905,16 @@ export async function materialsCancelUpload(ctx: NativeContext, body: Row) {
  * i pliku źródłowego, kopia obiektu w magazynie (bez pobierania przez przeglądarkę). Ten sam plik w tej marce — bez duplikatu.
  */
 export async function materialsCopyFromEvent(ctx: NativeContext, body: Row) {
-  const eventFileId = uuidOf(body.eventFileId, 'Nieprawidłowy plik wydarzenia.');
+  const eventFileId = uuidOf(body.eventFileId, 'Nieprawidłowy plik eventu.');
   const companyId = uuidOf(body.companyId, 'Wybierz markę.');
   await requireAccess(ctx, companyId, 'manage');
   const folderId = await targetFolder(ctx, companyId, body.folderId);
   const { data: source, error } = await ctx.supabase.from('event_files')
     .select('id,event_id,name,original_name,file_path,file_size,mime_type').eq('id', eventFileId).maybeSingle();
-  if (error) dbFail(error, 'Nie udało się odczytać pliku wydarzenia.');
-  if (!source) fail('Nie znaleziono pliku wydarzenia.', 404);
+  if (error) dbFail(error, 'Nie udało się odczytać pliku eventu.');
+  if (!source) fail('Nie znaleziono pliku eventu.', 404);
   const src = source as Row;
-  if (!text(src.file_path)) fail('Pliku wydarzenia nie ma w magazynie.', 410);
+  if (!text(src.file_path)) fail('Pliku eventu nie ma w magazynie.', 410);
   if (Number(src.file_size || 0) > MATERIALS_MAX_FILE_BYTES) fail('Plik jest większy niż 2 GB.', 413);
 
   const { data: existing } = await ctx.supabase.from('material_files').select(FILE_COLUMNS)
@@ -945,7 +945,7 @@ export async function materialsCopyFromEvent(ctx: NativeContext, body: Row) {
     console.error('[materials] copy from event', eventFileId, (copyFailure as Error)?.message);
     await ctx.supabase.from('material_files').delete().eq('id', row.id).eq('status', 'uploading');
     await removeUnused(ctx, [row.storage_path]);
-    fail('Nie udało się skopiować pliku wydarzenia do Materiałów.', 502);
+    fail('Nie udało się skopiować pliku eventu do Materiałów.', 502);
   }
   return { ...(await materialsCompleteUpload(ctx, { fileId: row.id, path: row.storage_path })), existing: false };
 }

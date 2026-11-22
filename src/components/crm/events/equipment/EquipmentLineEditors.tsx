@@ -243,7 +243,7 @@ export function LoadbackEditor({ line, busy, save, onClose }: EditorProps) {
 
   return (
     <div className="space-y-2.5">
-      <p className="text-xs text-[#e5e4e2]/60">Wraca po wydarzeniu (wydano {shipped})</p>
+      <p className="text-xs text-[#e5e4e2]/60">Wraca po evencie (wydano {shipped})</p>
       <QtyStepper value={qty} max={shipped} onChange={value => { setQty(value); setError(''); }} onSubmit={onSave} disabled={busy} label={`Wraca: ${line.name}`} />
       {qty < shipped && (
         <div>

@@ -148,15 +148,15 @@ enum EventSchema {
         .init(id:"amount",label:"Kwota (zł)",kind:.decimal,required:true),.init(id:"cost_date",label:"Data kosztu",kind:.day,required:true),
         .init(id:"category_id",label:"Kategoria",kind:.lookup("event_cost_categories"),required:true),.init(id:"payment_method",label:"Sposób płatności",kind:.choice(["transfer","cash","card","other"]),required:true)
     ]
-    static let teamFields: [EventField] = [.init(id:"employee_id",label:"Pracownik",kind:.lookup("employees"),required:true),.init(id:"role",label:"Rola w wydarzeniu"),.init(id:"responsibilities",label:"Obowiązki",kind:.multiline)]
-    static let assignmentFields: [EventField] = [.init(id:"role",label:"Rola w wydarzeniu"),.init(id:"responsibilities",label:"Obowiązki",kind:.multiline)]
+    static let teamFields: [EventField] = [.init(id:"employee_id",label:"Pracownik",kind:.lookup("employees"),required:true),.init(id:"role",label:"Rola w evencie"),.init(id:"responsibilities",label:"Obowiązki",kind:.multiline)]
+    static let assignmentFields: [EventField] = [.init(id:"role",label:"Rola w evencie"),.init(id:"responsibilities",label:"Obowiązki",kind:.multiline)]
     static func editForm(section: String, row: Row, page: EventPageCache) -> EventForm? {
         guard page.access.manage || (section == "event_costs" && page.access.canManageCosts) else { return nil }
         switch section {
         case "event_phases": return EventForm(title:"Edytuj etap",table:section,fields:phaseFields,record:row)
         case "event_agenda_items": return EventForm(title:"Edytuj punkt agendy",table:section,fields:agendaFields,record:row)
         case "event_agenda_notes": return EventForm(title:"Edytuj notatkę agendy",table:section,fields:noteFields,record:row)
-        case "tasks": return EventForm(title:"Edytuj zadanie wydarzenia",table:section,fields:taskFields,record:row)
+        case "tasks": return EventForm(title:"Edytuj zadanie eventu",table:section,fields:taskFields,record:row)
         case "employee_assignments": return EventForm(title:"Edytuj obowiązki",table:section,fields:assignmentFields,record:row)
         case "event_costs" where page.access.canManageCosts && row["status"] == "pending": return EventForm(title:"Edytuj planowany koszt",table:section,fields:costFields,record:row)
         default: return nil
@@ -166,7 +166,7 @@ enum EventSchema {
         "realization":"Realizacja","handoff":"Przygotowanie magazynowe","manager_name":"Kierownik realizacji","started_at":"Przejęto realizację","completed_at":"Zakończono realizację","completion_notes":"Uwagi po realizacji","accepted_by_name":"Magazynier","accepted_at":"Przejęto przygotowanie","ready_at":"Gotowość","ready_by_name":"Gotowość potwierdził(a)",
         "expected_profit":"Planowany zysk","actual_profit":"Rzeczywisty zysk","actual_revenue":"Rzeczywisty przychód","estimated_costs":"Planowane koszty","actual_costs":"Rzeczywiste koszty","profit_margin_expected":"Planowana marża (%)","profit_margin_actual":"Rzeczywista marża (%)","invoices_count":"Liczba faktur","invoices_paid_count":"Opłacone faktury","invoices_total":"Wartość faktur","costs_count":"Liczba kosztów","costs_paid_count":"Opłacone koszty","costs_total":"Wartość kosztów","cash_budget":"Budżet gotówkowy","actual_cash_revenue":"Przychód gotówkowy","is_cash_only":"Rozliczenie gotówkowe",
         "enabled":"Włączono","order_reference":"Numer zamówienia partnera","include_contract":"Dołącz umowę","partner_name":"Sprzedawca","brand_name":"Marka","task_name":"Nazwa zlecenia","name":"Nazwa","title":"Tytuł","description":"Opis","content":"Treść","notes":"Uwagi","status":"Stan","role":"Rola","responsibilities":"Obowiązki",
-        "event_date":"Początek wydarzenia","event_end_date":"Koniec wydarzenia","start_time":"Początek","end_time":"Koniec","time":"Godzina","order_index":"Kolejność","sequence_order":"Kolejność",
+        "event_date":"Początek eventu","event_end_date":"Koniec eventu","start_time":"Początek","end_time":"Koniec","time":"Godzina","order_index":"Kolejność","sequence_order":"Kolejność",
         "created_at":"Utworzono","updated_at":"Zmieniono","due_date":"Termin","priority":"Priorytet","board_column":"Etap","location":"Miejsce","location_text":"Adres miejsca",
         "planned_setup_at":"Planowany montaż","planned_teardown_at":"Planowany demontaż","purchase_order_number":"Numer zamówienia klienta","billing_arrangement":"Sposób rozliczenia",
         "first_name":"Imię","last_name":"Nazwisko","surname":"Nazwisko","phone":"Telefon","phone_number":"Telefon","mobile":"Telefon komórkowy","email":"E-mail","company_name":"Firma","alias":"Nazwa skrócona","nip":"NIP","address":"Adres","city":"Miejscowość","formatted_address":"Adres",

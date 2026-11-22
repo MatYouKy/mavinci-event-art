@@ -51,7 +51,7 @@ export default function EventSalesColleagueView({
 }) {
   const router = useRouter();
   const event = overview?.event ?? null;
-  const name = event?.name || fallbackEvent?.name || 'Wydarzenie';
+  const name = event?.name || fallbackEvent?.name || 'Event';
   const start = event?.event_date ?? fallbackEvent?.event_date ?? null;
   const end = event?.event_end_date ?? fallbackEvent?.event_end_date ?? null;
   const place = locationName || event?.location || fallbackEvent?.location || null;
@@ -113,7 +113,7 @@ export default function EventSalesColleagueView({
         <section aria-labelledby={`colleague-${eventId}-heading`} className="rounded-xl bg-white/5 p-4 sm:p-6">
           <div className="flex flex-wrap items-center gap-2">
             <h2 id={`colleague-${eventId}-heading`} className="text-lg font-light text-[#e5e4e2]">
-              Wydarzenie innego sprzedawcy
+              Event innego sprzedawcy
             </h2>
             {status && <SystemBadge value={status} />}
           </div>

@@ -422,7 +422,7 @@ export default function EventDetailPageClient({
     const eventName = searchParams.get('event');
 
     if (success === 'invitation_accepted') {
-      showSnackbar(`Zaproszenie do wydarzenia "${eventName}" zostało zaakceptowane`, 'success');
+      showSnackbar(`Zaproszenie do eventu "${eventName}" zostało zaakceptowane`, 'success');
       router.replace(`/crm/events/${eventId}`);
     } else if (error === 'invalid_token') {
       showSnackbar('Nieprawidłowy lub nieważny token zaproszenia', 'error');
@@ -618,8 +618,8 @@ export default function EventDetailPageClient({
     if (!event || deletingEvent) return;
 
     const confirmed = await showConfirm(
-      'Czy na pewno chcesz usunąć to wydarzenie?',
-      `Wydarzenie "${event.name}" zostanie trwale usunięte wraz z całą historią, przypisaniami i plikami. Tej operacji nie można cofnąć.`,
+      'Czy na pewno chcesz usunąć ten event?',
+      `Event "${event.name}" zostanie trwale usunięty wraz z całą historią, przypisaniami i plikami. Tej operacji nie można cofnąć.`,
     );
 
     if (!confirmed) return;
@@ -628,7 +628,7 @@ export default function EventDetailPageClient({
     try {
       await deleteEventSafely(eventId);
 
-      showSnackbar('Wydarzenie zostało usunięte', 'success');
+      showSnackbar('Event został usunięty', 'success');
       router.push('/crm/events');
     } catch (err: any) {
       console.error('Error:', err);
@@ -644,15 +644,15 @@ export default function EventDetailPageClient({
     if (!event) return;
 
     const confirmed = await showConfirm(
-      'Duplikuj wydarzenie',
-      `Czy chcesz zduplikować wydarzenie "${event.name}"? Zostaną skopiowane wszystkie dane podstawowe, ale NIE zostaną skopiowane: przypisani ludzie, pliki i dokumenty.`,
+      'Duplikuj event',
+      `Czy chcesz zduplikować event "${event.name}"? Zostaną skopiowane wszystkie dane podstawowe, ale NIE zostaną skopiowane: przypisani ludzie, pliki i dokumenty.`,
     );
 
     if (!confirmed) return;
 
     try {
       if (!currentEmployee?.id) {
-        throw new Error('Nie można ustalić autora kopii wydarzenia. Odśwież stronę i spróbuj ponownie.');
+        throw new Error('Nie można ustalić autora kopii eventu. Odśwież stronę i spróbuj ponownie.');
       }
       const duplicatedEvent: Record<string, unknown> = {
         created_by: currentEmployee.id,
@@ -675,7 +675,7 @@ export default function EventDetailPageClient({
 
       const result = await createEvent(duplicatedEvent as Partial<IEvent>).unwrap();
 
-      showSnackbar('Wydarzenie zostało zduplikowane', 'success');
+      showSnackbar('Event został zduplikowany', 'success');
       router.push(`/crm/events/${result.id}`);
     } catch (err) {
       console.error('Error duplicating event:', err);
@@ -999,9 +999,9 @@ export default function EventDetailPageClient({
       </div>
 
       {event.seller_confirmation_required && canViewSellerCorrespondence && event.status !== 'cancelled' && <section className="mb-5 space-y-3 rounded-xl bg-amber-300/10 p-4">
-        <h2 className="text-sm uppercase text-amber-200">Oferta sprzedawcy przyjęta — wydarzenie do przygotowania</h2>
-        <p className="text-sm text-white/65">Wydarzenie zostało utworzone przy akceptacji oferty. Uzupełnij harmonogram, zespół, agendę i logistykę, a następnie osobno potwierdź realizację.</p>
-        {event.seller_schedule_pending && <p className="text-xs text-amber-200">Godziny są do ustalenia. Godzina 00:00 w kalendarzu jest wyłącznie oznaczeniem daty, nie ustalonym początkiem wydarzenia.</p>}
+        <h2 className="text-sm uppercase text-amber-200">Oferta sprzedawcy przyjęta — event do przygotowania</h2>
+        <p className="text-sm text-white/65">Event został utworzony przy akceptacji oferty. Uzupełnij harmonogram, zespół, agendę i logistykę, a następnie osobno potwierdź realizację.</p>
+        {event.seller_schedule_pending && <p className="text-xs text-amber-200">Godziny są do ustalenia. Godzina 00:00 w kalendarzu jest wyłącznie oznaczeniem daty, nie ustalonym początkiem eventu.</p>}
         <button type="button" onClick={() => navigateToTab('seller-arrangements')} className="rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/25">Przygotowanie i potwierdzenie realizacji</button>
       </section>}
 
@@ -1017,8 +1017,8 @@ export default function EventDetailPageClient({
         <section role="alert" className="flex items-start gap-3 rounded-xl bg-white/5 p-5 text-sm text-[#e5e4e2]/75">
           <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-[#d3bb73]" aria-hidden />
           <div>
-            <p className="font-medium text-[#e5e4e2]">Brak dostępu do danych tego wydarzenia</p>
-            <p className="mt-1 text-[#e5e4e2]/60">Twój zakres nie obejmuje danych tego wydarzenia. Jeśli to pomyłka, poproś administratora o dostęp.</p>
+            <p className="font-medium text-[#e5e4e2]">Brak dostępu do danych tego eventu</p>
+            <p className="mt-1 text-[#e5e4e2]/60">Twój zakres nie obejmuje danych tego eventu. Jeśli to pomyłka, poproś administratora o dostęp.</p>
           </div>
         </section>
       )}
@@ -1040,11 +1040,11 @@ export default function EventDetailPageClient({
                   <AlertCircle className="mt-0.5 h-6 w-6 flex-shrink-0 text-blue-400" />
                   <div className="flex-1">
                     <h3 className="mb-2 text-lg font-medium text-blue-400">
-                      Zaproszenie do zespołu wydarzenia
+                      Zaproszenie do zespołu eventu
                     </h3>
                     <p className="mb-4 text-[#e5e4e2]/80">
-                      Zostałeś zaproszony do udziału w tym wydarzeniu. Po akceptacji zaproszenia
-                      uzyskasz dostęp do pełnych szczegółów wydarzenia, w tym sprzętu, zadań i
+                      Zostałeś zaproszony do udziału w tym evencie. Po akceptacji zaproszenia
+                      uzyskasz dostęp do pełnych szczegółów eventu, w tym sprzętu, zadań i
                       plików.
                     </p>
                     <div className="flex gap-3">
@@ -1218,7 +1218,7 @@ export default function EventDetailPageClient({
                             ? 'Aktualizuję…'
                             : latestOffer
                               ? 'Źródło: oferta'
-                              : event?.financial_source === 'calculation' ? 'Źródło: kalkulacja' : 'Źródło: wydarzenie'}
+                              : event?.financial_source === 'calculation' ? 'Źródło: kalkulacja' : 'Źródło: event'}
                         </div>
                       </div>
 
@@ -1400,7 +1400,7 @@ export default function EventDetailPageClient({
       {effectiveTab === 'mavinci-live' && (
         <EventMavinciLiveTab
           eventId={eventId}
-          eventName={event?.name || 'Wydarzenie'}
+          eventName={event?.name || 'Event'}
           canManage={Boolean(canEventManage)}
           employees={employees}
           requiredModules={requiredMavinciLiveModules}
@@ -1833,7 +1833,7 @@ export default function EventDetailPageClient({
               );
 
               setShowEditEventModal(false);
-              showSnackbar('Wydarzenie zaktualizowane', 'success');
+              showSnackbar('Event zaktualizowany', 'success');
             } catch (err) {
               console.error('Error:', err);
               showSnackbar('Wystąpił błąd', 'error');

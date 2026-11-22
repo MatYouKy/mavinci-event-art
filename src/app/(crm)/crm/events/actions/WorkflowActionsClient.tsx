@@ -12,7 +12,7 @@ export default function WorkflowActionsClient() {
       <header>
         <h1 className="text-xl text-[#e5e4e2]">Moje kroki</h1>
         <p className="mt-1 text-sm text-[#e5e4e2]/60">
-          Wszystko, co masz teraz do zrobienia w wydarzeniach: kroki realizacji Twojej roli — od formalności, przez
+          Wszystko, co masz teraz do zrobienia w eventach: kroki realizacji Twojej roli — od formalności, przez
           przygotowanie i wyjazd, po rozliczenie.
         </p>
       </header>

@@ -453,7 +453,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const resourceFilters: { value: ResourceFilter; label: string }[] = [
     { value: 'all', label: 'Wszystkie zasoby' },
     { value: 'selected', label: 'Tylko wybrane' },
-    { value: 'event', label: 'Z tego wydarzenia' },
+    { value: 'event', label: 'Z tego eventu' },
   ];
 
   const hasConflicts = Object.values(phaseConflicts).some((c) => c);
@@ -510,7 +510,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d3bb73]/10 bg-[#1c1f33] p-4">
         <div className="flex flex-wrap items-center gap-3">
           <Clock className="h-5 w-5 text-[#d3bb73]" />
-          <h2 className="text-lg font-semibold text-[#e5e4e2]">Fazy Wydarzenia</h2>
+          <h2 className="text-lg font-semibold text-[#e5e4e2]">Fazy Eventu</h2>
           <span className="rounded-full bg-[#d3bb73]/20 px-3 py-1 text-xs font-medium text-[#d3bb73]">
             {phases.length}
           </span>
@@ -750,7 +750,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
               Brak faz o stałych terminach
             </h3>
             <p className="mb-4 text-sm text-[#e5e4e2]/60">
-              Podziel wydarzenie na fazy (montaż, realizacja, demontaż)
+              Podziel event na fazy (montaż, realizacja, demontaż)
             </p>
             <button
               onClick={() => setShowAddModal(true)}
@@ -815,7 +815,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
               {/* Resource Timeline */}
               <div className="mb-2 px-6">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
-                  Zasoby Wydarzenia
+                  Zasoby Eventu
                 </h3>
               </div>
               <div className="mt-2">

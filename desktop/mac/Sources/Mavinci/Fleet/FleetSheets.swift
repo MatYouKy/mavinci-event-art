@@ -459,7 +459,7 @@ private func addingYear(_ date: Date) -> Date { Calendar.current.date(byAdding: 
             if detail.usage.source == "ad_hoc" && !detail.usage.purpose.isEmpty {
                 Section("Cel wyjazdu") { Text(detail.usage.purpose) }
             } else if !detail.usage.event.isEmpty {
-                Section("Wydarzenie") { Text(detail.usage.event) }
+                Section("Event") { Text(detail.usage.event) }
             }
             Section {
                 TextField("Stan licznika (km)", text: $odometer, prompt: Text("np. 125000"))

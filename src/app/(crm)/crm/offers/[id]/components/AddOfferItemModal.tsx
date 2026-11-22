@@ -277,7 +277,7 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, onAddRe
       const proposal = (current.recommended_items || []).find((r: OfferRecommendation)=>r.product_id===selectedProduct.id) as OfferRecommendation | undefined;
       const moving = Boolean(proposal);
       if(proposal && JSON.stringify(proposal) !== JSON.stringify(recommendations.find(r=>r.product_id===selectedProduct.id))) throw new Error('Propozycja została zmieniona. Zamknij i otwórz ponownie dodawanie, aby wczytać jej aktualne dane.');
-      if(moving && !await showConfirm({title:'Przenieść produkt do oferty?',message:`„${selectedProduct.name}” jest już w sekcji „Zobacz, co warto dobrać do takiego wydarzenia”. Przenieść go do głównej listy? Zniknie z propozycji i będzie uwzględniony w wycenie.`,confirmText:'Przenieś do oferty',cancelText:'Anuluj'})) return;
+      if(moving && !await showConfirm({title:'Przenieść produkt do oferty?',message:`„${selectedProduct.name}” jest już w sekcji „Zobacz, co warto dobrać do takiego eventu”. Przenieść go do głównej listy? Zniknie z propozycji i będzie uwzględniony w wycenie.`,confirmText:'Przenieś do oferty',cancelText:'Anuluj'})) return;
       const { error } = await supabase.rpc('add_offer_item_without_duplicate', {p_offer_id:offerId,p_move_recommendation:moving,p_expected_recommendations:current.recommended_items,p_item:{
         offer_id: offerId,
         product_id: selectedProduct.id,

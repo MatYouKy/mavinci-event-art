@@ -69,7 +69,7 @@ export default function Client360Modal({
       const merged: Activity[] = [
         ...(callsResult.data || []).map((call: any) => ({ id: `call-${call.id}`, type: 'call' as const, title: call.outcome === 'connected' ? 'Rozmowa odbyta' : 'Próba połączenia', subtitle: call.notes || call.outcome || call.status, date: call.started_at })),
         ...inquiries.map((inquiry: any) => ({ id: `inquiry-${inquiry.id}`, type: 'inquiry' as const, title: inquiry.title, subtitle: inquiry.inquiry_stage || inquiry.status, date: inquiry.created_at })),
-        ...[...eventMap.values()].map((event: any) => ({ id: `event-${event.id}`, type: 'event' as const, title: event.name || 'Wydarzenie', subtitle: event.status, date: event.event_date })),
+        ...[...eventMap.values()].map((event: any) => ({ id: `event-${event.id}`, type: 'event' as const, title: event.name || 'Event', subtitle: event.status, date: event.event_date })),
       ].filter((item) => item.date).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       if (active) {
@@ -106,7 +106,7 @@ export default function Client360Modal({
             <TouchableOpacity disabled={!client.email} onPress={() => client.email && Linking.openURL(`mailto:${client.email}`)} style={[styles.action, styles.actionSecondary, !client.email && styles.disabled]}><Feather name="mail" size={19} color={colors.primary.gold} /><Text style={[styles.actionText, styles.actionTextSecondary]}>E-mail</Text></TouchableOpacity>
           </View>
 
-          <View style={styles.metrics}><View style={styles.metric}><Text style={styles.metricValue}>{summary.openInquiries}</Text><Text style={styles.metricLabel}>Otwarte zapytania</Text></View><View style={styles.metric}><Text style={styles.metricValue}>{summary.upcomingEvents}</Text><Text style={styles.metricLabel}>Nadchodzące wydarzenia</Text></View></View>
+          <View style={styles.metrics}><View style={styles.metric}><Text style={styles.metricValue}>{summary.openInquiries}</Text><Text style={styles.metricLabel}>Otwarte zapytania</Text></View><View style={styles.metric}><Text style={styles.metricValue}>{summary.upcomingEvents}</Text><Text style={styles.metricLabel}>Nadchodzące eventy</Text></View></View>
 
           <View style={styles.contactCard}>{phone && <View style={styles.contactRow}><Feather name="phone" size={15} color={colors.primary.gold} /><Text style={styles.contactText}>{phone}</Text></View>}{client.email && <View style={styles.contactRow}><Feather name="mail" size={15} color={colors.primary.gold} /><Text style={styles.contactText}>{client.email}</Text></View>}{client.last_contact_date && <View style={styles.contactRow}><Feather name="clock" size={15} color={colors.primary.gold} /><Text style={styles.contactText}>Ostatni kontakt: {new Date(client.last_contact_date).toLocaleDateString('pl-PL')}</Text></View>}</View>
 

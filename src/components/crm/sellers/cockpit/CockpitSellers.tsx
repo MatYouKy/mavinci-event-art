@@ -74,7 +74,7 @@ function SellerRow({ seller, isAdmin, onManage, onChanged }: { seller: SellerCoc
       </div>
       <div className="grid grid-cols-3 gap-3 rounded-xl bg-[#0f1119]/60 p-3">
         <Stat label="Oferty" value={offers.total} />
-        <Stat label="Wydarzenia" value={seller.upcoming_events} />
+        <Stat label="Eventy" value={seller.upcoming_events} />
         <Stat label="Do sprawdzenia" value={offers.review} tone={offers.review ? 'text-amber-200' : undefined} />
         <Stat label="Do wypłaty" value={sellerPln(seller.payable)} tone="text-violet-200" />
         <Stat label="Prognoza" value={sellerPln(seller.forecast)} tone="text-white/70" />

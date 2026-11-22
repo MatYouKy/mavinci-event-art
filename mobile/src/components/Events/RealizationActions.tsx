@@ -166,7 +166,7 @@ export default function RealizationActions({
               Podsumowanie realizacji
             </Text>
             <Text style={{ color: colors.text.secondary, marginVertical: 12 }}>
-              Zostaw „Wszystko OK.” albo wpisz uwagi dotyczące wydarzenia.
+              Zostaw „Wszystko OK.” albo wpisz uwagi dotyczące eventu.
             </Text>
             <TextInput
               accessibilityLabel="Notatka z realizacji"

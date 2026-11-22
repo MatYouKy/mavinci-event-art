@@ -114,7 +114,7 @@ export function sellerReadinessSteps(facts: SellerReadinessFacts): SellerReadine
       key: 'first', label: 'Pierwsza oferta lub zapytanie', required: false,
       state: facts.activity.offers > 0 || facts.activity.inquiries > 0 ? 'done' : account === 'active' ? 'waiting' : 'optional',
       detail: facts.activity.offers > 0
-        ? `Ofert: ${facts.activity.offers}${facts.activity.events ? ` · wydarzeń: ${facts.activity.events}` : ''}${facts.activity.first_offer_at ? ` · pierwsza ${dateLabel(facts.activity.first_offer_at)}` : ''}.`
+        ? `Ofert: ${facts.activity.offers}${facts.activity.events ? ` · eventów: ${facts.activity.events}` : ''}${facts.activity.first_offer_at ? ` · pierwsza ${dateLabel(facts.activity.first_offer_at)}` : ''}.`
         : facts.activity.inquiries > 0 ? `Zapytań o termin: ${facts.activity.inquiries}. Oferty jeszcze nie ma.`
         : account === 'active' ? 'Hotel jeszcze nic nie wysłał. Zadzwoń i przygotujcie razem pierwszą ofertę.'
         : 'Pojawi się po pierwszym logowaniu hotelu.',

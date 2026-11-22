@@ -132,7 +132,7 @@ export default function SellerChatScreen({ conversationId, onBack }: { conversat
       <Text style={styles.label}>{sellerConversationLabel(conversation)}</Text>
       <Text style={styles.contextText}>{[conversation.brand_name, conversation.title].filter(Boolean).join(' · ')}</Text>
       {conversation.offer_id && <Text style={styles.contextText}>Ustalenia ze sprzedawcą · wspólna historia oferty i realizacji</Text>}
-      {conversation.can_view_event && conversation.event_id && <TouchableOpacity onPress={() => navigateToEvent(conversation.event_id!)}><Text style={styles.link}>Otwórz wydarzenie →</Text></TouchableOpacity>}
+      {conversation.can_view_event && conversation.event_id && <TouchableOpacity onPress={() => navigateToEvent(conversation.event_id!)}><Text style={styles.link}>Otwórz event →</Text></TouchableOpacity>}
     </View>}
     {loading ? <ActivityIndicator style={styles.loading} color={colors.primary.gold} /> : <FlatList
       style={styles.messageList}

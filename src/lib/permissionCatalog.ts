@@ -14,19 +14,19 @@ export interface PermissionScopeGroup {
 export const PERMISSION_SCOPE_GROUPS: PermissionScopeGroup[] = [
   {
     key: 'events',
-    label: 'Wydarzenia i realizacja',
-    description: 'Planowanie wydarzeń, kalendarz, zadania, oferty i umowy.',
+    label: 'Eventy i realizacja',
+    description: 'Planowanie eventów, kalendarz, zadania, oferty i umowy.',
     scopes: [
-      { key: 'events_own_only', label: 'Tylko własne wydarzenia', description: 'Ogranicza dostęp do spraw utworzonych przez pracownika lub przypisanych mu jako opiekun/sprzedawca. Sam zakres nie nadaje uprawnień do sekcji.' },
-      { key: 'events_view', label: 'Podgląd wydarzeń', description: 'Widzi listę i dostępne szczegóły wydarzeń.' },
-      { key: 'events_view_planning', label: 'Planowanie wydarzeń', description: 'Widzi wydarzenia od wysłania oferty, także przed jej akceptacją, bez dostępu handlowego.' },
-      { key: 'events_view_operational', label: 'Wydarzenia operacyjne', description: 'Widzi wszystkie potwierdzone, realizowane i zakończone wydarzenia przypisanych marek.' },
-      { key: 'events_manage', label: 'Zarządzanie wydarzeniami', description: 'Może edytować wydarzenia i ich dane operacyjne.' },
-      { key: 'events_create', label: 'Tworzenie wydarzeń', description: 'Może dodawać nowe wydarzenia.' },
-      { key: 'event_categories_manage', label: 'Kategorie wydarzeń', description: 'Może zarządzać kategoriami wydarzeń.' },
-      { key: 'calendar_view', label: 'Podgląd kalendarza', description: 'Widzi kalendarz wydarzeń i spotkań.' },
+      { key: 'events_own_only', label: 'Tylko własne eventy', description: 'Ogranicza dostęp do spraw utworzonych przez pracownika lub przypisanych mu jako opiekun/sprzedawca. Sam zakres nie nadaje uprawnień do sekcji.' },
+      { key: 'events_view', label: 'Podgląd eventów', description: 'Widzi listę i dostępne szczegóły eventów.' },
+      { key: 'events_view_planning', label: 'Planowanie eventów', description: 'Widzi eventy od wysłania oferty, także przed jej akceptacją, bez dostępu handlowego.' },
+      { key: 'events_view_operational', label: 'Eventy operacyjne', description: 'Widzi wszystkie potwierdzone, realizowane i zakończone eventy przypisanych marek.' },
+      { key: 'events_manage', label: 'Zarządzanie eventami', description: 'Może edytować eventy i ich dane operacyjne.' },
+      { key: 'events_create', label: 'Tworzenie eventów', description: 'Może dodawać nowe eventy.' },
+      { key: 'event_categories_manage', label: 'Kategorie eventów', description: 'Może zarządzać kategoriami eventów.' },
+      { key: 'calendar_view', label: 'Podgląd kalendarza', description: 'Widzi kalendarz eventów i spotkań.' },
       { key: 'calendar_manage', label: 'Zarządzanie kalendarzem', description: 'Może tworzyć i edytować wpisy kalendarza.' },
-      { key: 'calendar_view_accepted_only', label: 'Potwierdzone wydarzenia', description: 'W kalendarzu widzi wydarzenia od akceptacji oferty przez całą realizację i archiwum.' },
+      { key: 'calendar_view_accepted_only', label: 'Potwierdzone eventy', description: 'W kalendarzu widzi eventy od akceptacji oferty przez całą realizację i archiwum.' },
       { key: 'tasks_view', label: 'Podgląd zadań', description: 'Widzi zadania dostępne dla pracownika.' },
       { key: 'tasks_manage', label: 'Zarządzanie zadaniami', description: 'Może edytować i przenosić zadania.' },
       { key: 'tasks_create', label: 'Tworzenie zadań', description: 'Może dodawać nowe zadania.' },
@@ -90,8 +90,8 @@ export const PERMISSION_SCOPE_GROUPS: PermissionScopeGroup[] = [
     label: 'Zasoby i operacje',
     description: 'Materiały firmy, magazyn, flota, lokalizacje, podwykonawcy i czas pracy.',
     scopes: [
-      { key: 'materials_view', label: 'Materiały — podgląd', description: 'Przegląda, podgląda i pobiera materiały przypisanych marek (logotypy, zdjęcia, wideo, prezentacje, dokumenty). W wyszukiwaniu widzi też pliki wydarzeń, do których ma dostęp.' },
-      { key: 'materials_manage', label: 'Materiały — zarządzanie', description: 'Wgrywa i podmienia pliki, tworzy foldery, zmienia nazwy, przenosi, opisuje i usuwa materiały przypisanych marek, obsługuje kosz; zapisuje pliki wydarzeń w Materiałach. Obejmuje podgląd.' },
+      { key: 'materials_view', label: 'Materiały — podgląd', description: 'Przegląda, podgląda i pobiera materiały przypisanych marek (logotypy, zdjęcia, wideo, prezentacje, dokumenty). W wyszukiwaniu widzi też pliki eventów, do których ma dostęp.' },
+      { key: 'materials_manage', label: 'Materiały — zarządzanie', description: 'Wgrywa i podmienia pliki, tworzy foldery, zmienia nazwy, przenosi, opisuje i usuwa materiały przypisanych marek, obsługuje kosz; zapisuje pliki eventów w Materiałach. Obejmuje podgląd.' },
       { key: 'equipment_view', label: 'Podgląd magazynu', description: 'Widzi sprzęt, zestawy, przewody i dostępność.' },
       { key: 'equipment_manage', label: 'Zarządzanie magazynem', description: 'Może edytować sprzęt i operacje magazynowe oraz przyjmować zaakceptowane realizacje do przygotowania.' },
       { key: 'equipment_create', label: 'Dodawanie sprzętu', description: 'Może dodawać nowe pozycje magazynowe.' },
@@ -124,12 +124,12 @@ export const PERMISSION_SCOPE_GROUPS: PermissionScopeGroup[] = [
   {
     key: 'finance',
     label: 'Finanse i dane',
-    description: 'Wartości finansowe wydarzeń, bazy danych i przetargi. Finanse działalności — w sekcji „Finanse według działalności”.',
+    description: 'Wartości finansowe eventów, bazy danych i przetargi. Finanse działalności — w sekcji „Finanse według działalności”.',
     scopes: [
       // Faktury, KSeF, bank, deklaracje i dokumenty działalności nadaje wyłącznie „Finanse według działalności”
       // (employees.finance_company_access). Stare invoices_view / invoices_manage / ksef_manage nic już nie nadają.
-      { key: 'finances_view', label: 'Wartości finansowe wydarzeń (budżet, koszty)', description: 'Widzi budżet, przychód, koszty i prowizje wydarzeń, które widzi, w dostępnych działalnościach. Nie obejmuje banku, faktur ani dokumentów działalności.' },
-      { key: 'finances_manage', label: 'Wartości finansowe wydarzeń (budżet, koszty) — edycja', description: 'Może edytować budżety, koszty i prowizje widocznych wydarzeń w dostępnych działalnościach. Nie obejmuje banku, faktur ani dokumentów działalności.' },
+      { key: 'finances_view', label: 'Wartości finansowe eventów (budżet, koszty)', description: 'Widzi budżet, przychód, koszty i prowizje eventów, które widzi, w dostępnych działalnościach. Nie obejmuje banku, faktur ani dokumentów działalności.' },
+      { key: 'finances_manage', label: 'Wartości finansowe eventów (budżet, koszty) — edycja', description: 'Może edytować budżety, koszty i prowizje widocznych eventów w dostępnych działalnościach. Nie obejmuje banku, faktur ani dokumentów działalności.' },
       { key: 'databases_view', label: 'Podgląd baz danych', description: 'Widzi udostępnione bazy danych.' },
       { key: 'databases_manage', label: 'Zarządzanie bazami danych', description: 'Może tworzyć, edytować i udostępniać bazy.' },
       { key: 'tenders_view', label: 'Podgląd przetargów', description: 'Widzi przetargi i wyniki dopasowania.' },

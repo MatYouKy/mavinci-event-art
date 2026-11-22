@@ -218,7 +218,7 @@ struct SellerArrangementDraft: Equatable {
             SellerDateField(label: "Termin dostarczenia materiałów", value: $draft.materialsDue, fallback: data.offer.eventDate.map { String($0.prefix(10)) } ?? "")
             DisclosureGroup("Dodatkowe wymagania techniczne i logistyczne\(draft.technical.isEmpty && draft.logistics.isEmpty ? " · opcjonalnie" : " · uzupełnione")") {
                 VStack(alignment: .leading, spacing: 8) {
-                    textArea("Wymagania techniczne", "Wymagania dotyczące tego wydarzenia, poza opisem wybranej sali", $draft.technical)
+                    textArea("Wymagania techniczne", "Wymagania dotyczące tego eventu, poza opisem wybranej sali", $draft.technical)
                     textArea("Logistyka i wymagania organizacyjne", "Np. wjazd, rozładunek, parking, nocleg", $draft.logistics)
                 }
                 .padding(.top, 6)
@@ -333,11 +333,11 @@ struct SellerArrangementDraft: Equatable {
     @ViewBuilder private func daysEditor(_ days: [SellerDay]) -> some View {
         let built = SellerSchedule.build(days)
         VStack(alignment: .leading, spacing: 8) {
-            Text("Termin i godziny wydarzenia").font(.callout.weight(.medium))
+            Text("Termin i godziny eventu").font(.callout.weight(.medium))
             ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 10) {
-                        SellerDateField(label: index == 0 ? "Data wydarzenia" : "Dzień \(index + 1)", value: dayBinding(days, index, \.date),
+                        SellerDateField(label: index == 0 ? "Data eventu" : "Dzień \(index + 1)", value: dayBinding(days, index, \.date),
                                         fallback: index > 0 ? SellerSchedule.nextDay(days[index - 1].date) : "")
                         Text("Od").foregroundStyle(.secondary)
                         SellerTimeField(label: "Dzień \(index + 1) — początek", value: dayBinding(days, index, \.startTime))
@@ -425,7 +425,7 @@ struct SellerArrangementDraft: Equatable {
                         Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
                             GridRow {
                                 contactField(index, "Imię i nazwisko *", \.name, 160)
-                                contactField(index, "Rola przy wydarzeniu", \.role, 100)
+                                contactField(index, "Rola przy evencie", \.role, 100)
                             }
                             GridRow {
                                 contactField(index, "E-mail", \.email, 254)

@@ -53,7 +53,7 @@ export async function fetchEquipmentChecklist(eventId: string, signal?: AbortSig
     if (error) {
       if (isRpcMissing(error)) return { status: 'missing' };
       if (error.code === '42501') {
-        return { status: 'denied', message: error.message || 'Brak dostępu do sprzętu wydarzenia.' };
+        return { status: 'denied', message: error.message || 'Brak dostępu do sprzętu eventu.' };
       }
       return { status: 'error', message: equipmentErrorMessage(error, 'Nie udało się pobrać checklisty sprzętu.') };
     }

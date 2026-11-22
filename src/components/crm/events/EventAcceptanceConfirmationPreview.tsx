@@ -52,7 +52,7 @@ export default function EventAcceptanceConfirmationPreview({
     <p className="mt-1 text-xs">{dateLabel}</p>
     {preview.recipientEmail
       ? <p className="mt-2 break-words">Odbiorca: <span className="text-[#e5e4e2]">{preview.recipientEmail}</span>{preview.recipientName ? ` · ${preview.recipientName}` : ''}</p>
-      : <p className="mt-2 text-amber-200">Brak e-maila kontaktu i organizacji wydarzenia. Akceptacja jest możliwa bez wiadomości.</p>}
-    <p className="mt-2 text-xs">Potwierdzenie realizacji korzysta z danych wydarzenia: terminu, miejsca, harmonogramu i zaakceptowanej oferty. To ten sam szablon co przy zmianie statusu wydarzenia. Nie wystawia ani nie wysyła faktury.</p>
+      : <p className="mt-2 text-amber-200">Brak e-maila kontaktu i organizacji eventu. Akceptacja jest możliwa bez wiadomości.</p>}
+    <p className="mt-2 text-xs">Potwierdzenie realizacji korzysta z danych eventu: terminu, miejsca, harmonogramu i zaakceptowanej oferty. To ten sam szablon co przy zmianie statusu eventu. Nie wystawia ani nie wysyła faktury.</p>
   </div>;
 }

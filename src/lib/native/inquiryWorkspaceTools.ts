@@ -700,14 +700,14 @@ export async function convertInquiry(ctx: NativeContext, body: Row) {
   const inquiry = await requireManage(ctx, id, true);
   if (!inquiry.contact_id && !inquiry.organization_id) fail('Najpierw powiąż klienta z zapytaniem.');
   const name = text(body.name).trim();
-  if (!name) fail('Podaj nazwę wydarzenia.');
+  if (!name) fail('Podaj nazwę eventu.');
   const date = new Date(text(body.date));
-  if (!text(body.date) || Number.isNaN(date.getTime())) fail('Uzupełnij poprawny termin wydarzenia.');
+  if (!text(body.date) || Number.isNaN(date.getTime())) fail('Uzupełnij poprawny termin eventu.');
   const category = uuidOrNull(body.categoryId, 'Nieprawidłowa kategoria.');
   const company = uuidOrNull(body.companyId, 'Nieprawidłowa działalność.');
   const { data, error } = await ctx.supabase.rpc(inquiry.accepted_offer_id ? 'prepare_inquiry_realization' : 'convert_inquiry_to_event', {
     p_inquiry_id: id, p_event_name: name, p_event_date: date.toISOString(), p_category_id: category, p_my_company_id: company,
   });
-  if (error) fail(error.message || 'Nie udało się utworzyć wydarzenia.');
+  if (error) fail(error.message || 'Nie udało się utworzyć eventu.');
   return { ok: true, eventId: text(data) };
 }

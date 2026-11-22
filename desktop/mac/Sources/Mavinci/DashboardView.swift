@@ -175,7 +175,7 @@ struct DashboardView: View {
             HStack(alignment: .top, spacing: 20) {
                 if trends {
                     TrendChartView(title: "Trend sprzedażowy", description: "Nowe rekordy · zakres \(months.count >= 12 ? "12 miesięcy" : "6 miesięcy")", months: months,
-                                   series: [ChartSeries(key: "inquiries", label: "Zapytania", color: Color(red: 0.96, green: 0.62, blue: 0.04)), ChartSeries(key: "offers", label: "Oferty", color: Color(red: 0.38, green: 0.65, blue: 0.98)), ChartSeries(key: "events", label: "Wydarzenia", color: CrmTheme.rgb(0xd3bb73))], money: false)
+                                   series: [ChartSeries(key: "inquiries", label: "Zapytania", color: Color(red: 0.96, green: 0.62, blue: 0.04)), ChartSeries(key: "offers", label: "Oferty", color: Color(red: 0.38, green: 0.65, blue: 0.98)), ChartSeries(key: "events", label: "Eventy", color: CrmTheme.rgb(0xd3bb73))], money: false)
                         .frame(minWidth: 360, maxWidth: .infinity)
                 }
                 if funnel, let f = data.funnel {
@@ -324,10 +324,10 @@ struct SalesFunnelView: View {
     struct Step: Identifiable { let label: String; let value: Double; let color: Color; var id: String { label } }
     private var steps: [Step] {
         [Step(label: "Zapytania", value: funnel.inquiries, color: Color(red: 0.96, green: 0.62, blue: 0.04)), Step(label: "Zapytania z ofertą", value: funnel.offers, color: Color(red: 0.38, green: 0.65, blue: 0.98)),
-         Step(label: "Wygrane zapytania", value: funnel.acceptedOffers, color: Color(red: 0.20, green: 0.83, blue: 0.60)), Step(label: "Powiązane wydarzenia", value: funnel.events, color: CrmTheme.rgb(0xd3bb73))]
+         Step(label: "Wygrane zapytania", value: funnel.acceptedOffers, color: Color(red: 0.20, green: 0.83, blue: 0.60)), Step(label: "Powiązane eventy", value: funnel.events, color: CrmTheme.rgb(0xd3bb73))]
     }
     var body: some View {
-        DashboardPanel(title: "Lejek sprzedaży", subtitle: "Zapytania utworzone w ostatnich 12 miesiącach: od etapu oferty do wygranej i powiązanego wydarzenia. Liczby dotyczą zapytań, nie liczby dokumentów ofertowych.") {
+        DashboardPanel(title: "Lejek sprzedaży", subtitle: "Zapytania utworzone w ostatnich 12 miesiącach: od etapu oferty do wygranej i powiązanego eventu. Liczby dotyczą zapytań, nie liczby dokumentów ofertowych.") {
             Chart {
                 ForEach(steps) { step in
                     BarMark(x: .value("Liczba zapytań", step.value), y: .value("Etap", step.label))
@@ -369,13 +369,13 @@ struct AttentionView: View {
     }
     struct Item: Identifiable { let label: String; let value: Double; let href: String; let symbol: String; let color: Color; var id: String { label } }
     private var items: [Item] {
-        [Item(label: "Procesy wydarzeń po terminie", value: attention.workflowRisks, href: "/crm/events", symbol: "flowchart", color: .red),
+        [Item(label: "Procesy eventów po terminie", value: attention.workflowRisks, href: "/crm/events", symbol: "flowchart", color: .red),
          Item(label: "Klienci bez opiekuna", value: attention.unownedCustomers, href: "/crm/contacts", symbol: "person.crop.circle.badge.xmark", color: .pink),
          Item(label: "Zaniedbane szanse sprzedażowe", value: attention.neglectedOpportunities, href: "/crm/inquiries", symbol: "waveform.path.ecg", color: .purple),
          Item(label: "Zaległe kontakty z zapytań", value: attention.overdueInquiries, href: "/crm/inquiries", symbol: "tray", color: .orange),
          Item(label: "Zadania po terminie", value: attention.overdueTasks, href: "/crm/tasks", symbol: "exclamationmark.triangle", color: .red),
          Item(label: "Faktury po terminie", value: attention.overdueInvoices, href: "/crm/invoices", symbol: "doc.text", color: .orange),
-         Item(label: "Wydarzenia w ciągu 30 dni", value: attention.eventsNext30Days, href: "/crm/events", symbol: "calendar.badge.clock", color: CrmTheme.rgb(0xd3bb73))]
+         Item(label: "Eventy w ciągu 30 dni", value: attention.eventsNext30Days, href: "/crm/events", symbol: "calendar.badge.clock", color: CrmTheme.rgb(0xd3bb73))]
     }
     private func open(_ href: String) {
         // Faktury po terminie → Finanse na Macu: „Terminy i monity”, lista należności.

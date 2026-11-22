@@ -107,29 +107,29 @@ export default function WarehouseHandoffPanel({ eventId, status, onAccepted }: {
 
   return <View style={{ padding: spacing.md, margin: spacing.md, borderRadius: 12, backgroundColor: colors.background.secondary }}>
     <Text style={{ color: colors.primary.gold, fontWeight: '600' }}>Odpowiedzialność magazynu</Text>
-    <Text style={{ color: colors.text.secondary, marginTop: 8 }}>{OPERATIONAL_LABELS[currentStage] || 'Przygotowanie wydarzenia'}</Text>
+    <Text style={{ color: colors.text.secondary, marginTop: 8 }}>{OPERATIONAL_LABELS[currentStage] || 'Przygotowanie eventu'}</Text>
     {loading ? <ActivityIndicator style={{ marginTop: 12 }} color={colors.primary.gold} /> : <>
       <Text style={{ color: colors.text.primary, marginTop: 8 }}>
         {record?.accepted_at
           ? `${warehouseOwnerLabel(record, employee?.id)}\nPrzejęto: ${new Date(record.accepted_at).toLocaleString('pl-PL')}`
           : canAcceptWarehouseHandoff(status, record)
-            ? 'Wydarzenie oczekuje na przejęcie przygotowania przez magazyn.'
-            : 'Wydarzenie nie oczekuje na przejęcie przez magazyn.'}
+            ? 'Event oczekuje na przejęcie przygotowania przez magazyn.'
+            : 'Event nie oczekuje na przejęcie przez magazyn.'}
       </Text>
       <Text style={{ color: colors.text.secondary, marginTop: 10, lineHeight: 20 }}>
         Zakres przygotowania: sprawdzenie sprzętu i braków, zamówienia, kompletacja oraz potwierdzenie gotowości. Przejęcie zapisuje osobę odpowiedzialną za przygotowanie magazynowe.
       </Text>
-      {allowed && canAcceptWarehouseHandoff(status, record) && action('Przejmij przygotowanie wydarzenia', 'accept')}
+      {allowed && canAcceptWarehouseHandoff(status, record) && action('Przejmij przygotowanie eventu', 'accept')}
       {record?.ready_at && <Text style={{ color: colors.text.primary, marginTop: 10 }}>Gotowość potwierdził(a): {record.ready_by_name} · {new Date(record.ready_at).toLocaleString('pl-PL')}</Text>}
       {allowed && record?.accepted_at && !record.ready_at && currentStage === 'in_preparation' && action('Potwierdź gotowość do realizacji', 'ready')}
-      {allowed && record?.accepted_at && !record.ready_at && <Text style={{ color: colors.text.secondary, marginTop: 8 }}>Przed potwierdzeniem gotowości autor wydarzenia musi wyznaczyć kierownika realizacji.</Text>}
+      {allowed && record?.accepted_at && !record.ready_at && <Text style={{ color: colors.text.secondary, marginTop: 8 }}>Przed potwierdzeniem gotowości autor eventu musi wyznaczyć kierownika realizacji.</Text>}
     </>}
     {managerRequired && !record?.ready_at && <View style={{ marginTop: 12 }}>
       {canView(employee, 'chat') ? <TouchableOpacity accessibilityRole="button"
         disabled={openingChat || busy} onPress={() => void contactAuthor()}
         style={{ backgroundColor: colors.primary.gold, padding: 12, borderRadius: 8, opacity: openingChat ? 0.6 : 1 }}>
         {openingChat ? <ActivityIndicator color={colors.background.primary} /> : <Text style={{ color: colors.background.primary, fontWeight: '600' }}>Napisz do autora</Text>}
-      </TouchableOpacity> : <Text style={{ color: colors.text.secondary }}>Skontaktuj się z autorem wydarzenia w sprawie kierownika. Twoje konto nie ma dostępu do komunikatora.</Text>}
+      </TouchableOpacity> : <Text style={{ color: colors.text.secondary }}>Skontaktuj się z autorem eventu w sprawie kierownika. Twoje konto nie ma dostępu do komunikatora.</Text>}
       {!!chatError && <Text accessibilityRole="alert" style={{ color: tone('#ff9999'), marginTop: 8 }}>{chatError}</Text>}
     </View>}
     {!!error && <View style={{ marginTop: 10 }}><Text accessibilityRole="alert" style={{ color: tone('#ff9999') }}>{error}</Text><TouchableOpacity disabled={busy} onPress={() => void load()}><Text style={{ color: colors.primary.gold, paddingVertical: 10 }}>Odśwież</Text></TouchableOpacity></View>}

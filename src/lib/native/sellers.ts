@@ -15,7 +15,7 @@ import {
   type SellerCockpit,
   type SellerCockpitSeller,
 } from '@/lib/seller/sellerCockpit';
-import { SELLER_JOURNEY_ACTOR_LABELS, SELLER_JOURNEY_STAGES, sellerJourney, sellerWorkspaceJourneyInput, type SellerWorkspaceOfferFacts } from '@/lib/seller/offerJourney';
+import { SELLER_JOURNEY_ACTOR_LABELS, SELLER_JOURNEY_STAGES_TEAM, sellerJourney, sellerWorkspaceJourneyInput, type SellerWorkspaceOfferFacts } from '@/lib/seller/offerJourney';
 import { SELLER_READINESS_MIGRATION, sellerReadinessSteps, sellerReadinessSummary, type SellerReadinessFacts } from '@/lib/seller/readiness';
 import { MANAGER_HELP } from '@/lib/help/managerHelp';
 
@@ -101,7 +101,7 @@ function todayGroups(cockpit: SellerCockpit): SellerCockpitGroup[] {
     })),
   });
   groups.push({
-    key: 'events', title: 'Wydarzenia do potwierdzenia', symbol: 'calendar.badge.checkmark', tone: 'warning', empty: 'Brak wydarzeń czekających na potwierdzenie.',
+    key: 'events', title: 'Eventy do potwierdzenia', symbol: 'calendar.badge.checkmark', tone: 'warning', empty: 'Brak eventów czekających na potwierdzenie.',
     items: today.events_pending.map((event) => ({
       id: event.event_id, title: event.name, meta: [`${event.seller_name} · ${plDate(event.event_date) || 'bez terminu'}`],
       at: event.event_date, atStyle: 'until',
@@ -125,7 +125,7 @@ function todayGroups(cockpit: SellerCockpit): SellerCockpitGroup[] {
     items: today.inquiries.map((inquiry) => ({
       id: inquiry.id, title: inquiry.guest_name,
       meta: [
-        [inquiry.event_type ? SELLER_EVENT_TYPE_LABELS[inquiry.event_type] || 'Wydarzenie' : null,
+        [inquiry.event_type ? SELLER_EVENT_TYPE_LABELS[inquiry.event_type] || 'Event' : null,
           inquiry.event_date ? plDate(inquiry.event_date) : 'termin do ustalenia',
           inquiry.guest_count ? `${inquiry.guest_count} os.` : null].filter(Boolean).join(' · '),
         `${inquiry.seller_name} · ${inquiry.source === 'qr' ? 'z kodu QR' : 'z portalu'}`,
@@ -200,7 +200,7 @@ export async function sellersCockpit(ctx: NativeContext, managerFilter: string |
       { key: 'sellers', label: isAdmin ? 'Sprzedawcy' : 'Moi sprzedawcy', value: String(sellers.length),
         helper: `${sellers.filter((s) => s.status === 'active').length} aktywnych · ${sellers.filter((s) => s.portal_account === 'active').length} w portalu` },
       { key: 'offers', label: 'Oferty w toku', value: String(pipeline.draft + pipeline.pdf + pipeline.review), helper: `${pipeline.review} do sprawdzenia` },
-      { key: 'upcoming', label: 'Wydarzenia w 14 dni', value: String(cockpit.upcoming.length), helper: 'najbliższe realizacje' },
+      { key: 'upcoming', label: 'Eventy w 14 dni', value: String(cockpit.upcoming.length), helper: 'najbliższe realizacje' },
       { key: 'money', label: 'Do wypłaty', value: pln(payable), helper: `prognoza ${pln(forecast)}` },
     ],
     groups: todayGroups(cockpit),
@@ -310,6 +310,6 @@ export async function sellerCard(ctx: NativeContext, partnerId: string) {
 /** Instrukcja opiekuna — ta sama treść co panel „?” w CRM. */
 export const sellersHelp = () => ({
   title: MANAGER_HELP.title,
-  stages: SELLER_JOURNEY_STAGES.map((stage) => ({ key: stage.key, label: stage.label, hint: stage.hint })),
+  stages: SELLER_JOURNEY_STAGES_TEAM.map((stage) => ({ key: stage.key, label: stage.label, hint: stage.hint })),
   chapters: MANAGER_HELP.chapters,
 });

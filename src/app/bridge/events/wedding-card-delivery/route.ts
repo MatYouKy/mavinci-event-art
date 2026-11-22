@@ -57,7 +57,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => null);
-    if (!body || typeof body.eventId !== 'string') throw new WeddingDocumentError('Brak wydarzenia.');
+    if (!body || typeof body.eventId !== 'string') throw new WeddingDocumentError('Brak eventu.');
     const { eventId } = body;
     const access = await authorizeWeddingDocument(request, eventId);
     const { admin, employeeId, userId, actor } = access;

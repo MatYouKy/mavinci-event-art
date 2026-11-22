@@ -31,7 +31,7 @@ import AppKit
                     Button { expanded.toggle() } label: {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Kontrola przed wydarzeniem").font(.headline)
+                                Text("Kontrola przed eventem").font(.headline)
                                 Text("\(daysText) · \(summary)").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
@@ -40,7 +40,7 @@ import AppKit
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    Button(action: onRefresh) { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless).help("Odśwież kontrolę przed wydarzeniem")
+                    Button(action: onRefresh) { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless).help("Odśwież kontrolę przed eventem")
                 }
                 if expanded {
                     if issues.isEmpty {
@@ -56,7 +56,7 @@ import AppKit
                         Button { onNavigate("team") } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: "checkmark.shield").foregroundStyle(CrmTheme.rgb(0x93c5fd))
-                                Text("Zaakceptowane nakładanie pracy między wydarzeniami: \(conflicts). Decyzje mają zapisane uzasadnienie i osobę akceptującą.")
+                                Text("Zaakceptowane nakładanie pracy między eventami: \(conflicts). Decyzje mają zapisane uzasadnienie i osobę akceptującą.")
                                     .font(.caption).foregroundStyle(CrmTheme.rgb(0xdbeafe).opacity(0.75))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 Image(systemName: "chevron.right").font(.caption).foregroundStyle(CrmTheme.rgb(0xbfdbfe).opacity(0.35))
@@ -77,8 +77,8 @@ import AppKit
         guard let date = preflight.event_date.flatMap(MeetingDates.parse) else { return "Termin nieznany" }
         let calendar = Calendar.current
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: date)).day ?? 0
-        if days < 0 { return "\(abs(days)) dni po wydarzeniu" }
-        return days == 0 ? "Wydarzenie jest dzisiaj" : "Do wydarzenia: \(days) dni"
+        if days < 0 { return "\(abs(days)) dni po evencie" }
+        return days == 0 ? "Event jest dzisiaj" : "Do eventu: \(days) dni"
     }
 
     @ViewBuilder private func issueRow(_ issue: EventPreflightIssue) -> some View {
@@ -122,7 +122,7 @@ import AppKit
         "warehouse": "Magazyn", "driver": "Kierowca", "team": "Zespół", "colleague": "Inny sprzedawca",
     ]
     static let operationalLabels: [String: String] = [
-        "inquiry": "Nowe wydarzenie", "offer_accepted": "Do potwierdzenia", "in_preparation": "W przygotowaniu",
+        "inquiry": "Nowy event", "offer_accepted": "Do potwierdzenia", "in_preparation": "W przygotowaniu",
         "ready_for_live": "Gotowe do realizacji", "in_progress": "W trakcie realizacji", "completed": "Zrealizowane",
         "settled": "Zakończone", "cancelled": "Anulowane",
     ]
@@ -385,7 +385,7 @@ private struct WarehouseMessageMode: Identifiable { let request: Bool; var id: B
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(request ? "Poproś magazyn o podjęcie akcji" : "Napisz do magazynu").font(.title3.weight(.light))
-            Text("Pracownik otrzyma powiadomienie z treścią i odnośnikiem do tego wydarzenia.").font(.callout).foregroundStyle(.secondary)
+            Text("Pracownik otrzyma powiadomienie z treścią i odnośnikiem do tego eventu.").font(.callout).foregroundStyle(.secondary)
             Picker("Pracownik magazynu", selection: $recipient) {
                 Text("Wybierz osobę").tag("")
                 ForEach(recipients) { Text($0.name).tag($0.id) }
@@ -405,7 +405,7 @@ private struct WarehouseMessageMode: Identifiable { let request: Bool; var id: B
             }
             if loading { Text("Ładowanie pracowników…").font(.callout).foregroundStyle(.secondary) }
             if !loading && error == nil && recipients.isEmpty {
-                Text("Brak dostępnych pracowników magazynu dla tego wydarzenia.").font(.callout).foregroundStyle(.secondary)
+                Text("Brak dostępnych pracowników magazynu dla tego eventu.").font(.callout).foregroundStyle(.secondary)
             }
             if let error { Text(error).font(.callout).foregroundStyle(CrmTheme.rgb(0xfca5a5)) }
             HStack {
@@ -418,7 +418,7 @@ private struct WarehouseMessageMode: Identifiable { let request: Bool; var id: B
         }
         .padding(20).frame(width: 520)
         .task {
-            if request { message = "Proszę o przyjęcie wydarzenia do przygotowania oraz sprawdzenie dostępności sprzętu i brakujących zasobów." }
+            if request { message = "Proszę o przyjęcie eventu do przygotowania oraz sprawdzenie dostępności sprzętu i brakujących zasobów." }
             do {
                 let data = try await store.rpc("get_event_warehouse_recipients", ["p_event_id": .string(eventID)])
                 recipients = (try? JSONDecoder().decode([Recipient].self, from: data)) ?? []

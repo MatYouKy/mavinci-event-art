@@ -75,7 +75,7 @@ export function isAutomaticCommission(row: { automatic_source?: string | null; e
   return (row.entry_kind != null && row.entry_kind !== 'accrual') || AUTOMATIC_COMMISSION_SOURCES.includes(row.automatic_source ?? '');
 }
 
-export const AUTOMATIC_COMMISSION_HINT = 'Do wypłaty po zatwierdzeniu podsumowania wydarzenia';
+export const AUTOMATIC_COMMISSION_HINT = 'Do wypłaty po zatwierdzeniu podsumowania eventu';
 
 export type CommissionSettlementsResponse = {
   mode: CommissionSettlementMode;

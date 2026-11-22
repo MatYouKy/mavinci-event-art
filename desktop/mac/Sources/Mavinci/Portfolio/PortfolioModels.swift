@@ -421,14 +421,14 @@ enum PortfolioPhotoSource: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .event: return "Pliki wydarzenia"
+        case .event: return "Pliki eventu"
         case .material: return "Materiały"
         case .social: return "Biblioteka social media"
         }
     }
     var button: String {
         switch self {
-        case .event: return "Z wydarzenia"
+        case .event: return "Z eventu"
         case .material: return "Z Materiałów"
         case .social: return "Z biblioteki social"
         }

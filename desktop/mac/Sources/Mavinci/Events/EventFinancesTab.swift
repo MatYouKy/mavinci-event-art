@@ -316,7 +316,7 @@ enum FinanceText {
         return card {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Label("Rentowność wydarzenia", systemImage: "chart.bar").font(.headline)
+                    Label("Rentowność eventu", systemImage: "chart.bar").font(.headline)
                     Text("Plan korzysta z zaakceptowanej oferty i kosztów przewidywanych. Wykonanie korzysta z zatwierdzonych kosztów, czasu pracy, zakończonych zleceń podwykonawców i faktycznych wpływów.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -404,7 +404,7 @@ enum FinanceText {
             }
             if showAddCommission && d.commissionsAvailable {
                 FinanceCommissionForm(canApprove: d.access.canApproveCommissions) { body in
-                    if await act("addCommission", body, "Prowizja została dodana do rentowności wydarzenia", "Nie udało się zapisać prowizji") { showAddCommission = false }
+                    if await act("addCommission", body, "Prowizja została dodana do rentowności eventu", "Nie udało się zapisać prowizji") { showAddCommission = false }
                 }
             }
             if !d.hasSalesCommission, let salesperson = d.salesperson {
@@ -433,7 +433,7 @@ enum FinanceText {
         return VStack(alignment: .leading, spacing: 4) {
             if c.automatic {
                 HStack(spacing: 6) {
-                    Text("Z podsumowania wydarzenia · " + d.automaticHint.lowercased() + " ·").font(.caption2).foregroundStyle(.secondary)
+                    Text("Z podsumowania eventu · " + d.automaticHint.lowercased() + " ·").font(.caption2).foregroundStyle(.secondary)
                     Button("Wyliczenie: zakładka Podsumowanie") { if let navigate { navigate("summary") } else { state.showEvent(eventID, cardTab: "summary") } }.buttonStyle(.link).linkCursor().font(.caption2)
                     Spacer()
                     if approve && (c.status == "planned" || c.status == "approved") { Button("Anuluj") { cancelReason = ""; cancelling = c }.controlSize(.small) }
@@ -492,7 +492,7 @@ enum FinanceText {
                 Spacer()
                 if d.invoices.contains(where: { $0.type == "advance" }) {
                     Button { finalInvoice = FinalInvoiceRequest(eventID: eventID) } label: { Label("Wystaw fakturę końcową", systemImage: "doc.text") }
-                        .help("Faktura na całe zamówienie wydarzenia, rozliczająca jego zaliczki.")
+                        .help("Faktura na całe zamówienie eventu, rozliczająca jego zaliczki.")
                 }
                 Button { invoiceForm = .new(type: "vat", eventID: eventID) } label: { Label("Wystaw fakturę", systemImage: "plus") }.buttonStyle(.borderedProminent)
             }
@@ -513,7 +513,7 @@ enum FinanceText {
         let status = FinanceText.costStatus[invoice.status] ?? FinanceText.costStatus["pending"]!
         let payer: String? = invoice.arrangement == nil || invoice.arrangement == "direct" ? nil
             : (invoice.arrangement == "hotel" ? "Płatność przez hotel" : (invoice.arrangement == "agency" ? "Płatność przez agencję" : "Płatność przez inną organizację"))
-        let shared: String? = invoice.shared > 1 ? "Wspólna · \(Int(invoice.shared)) wydarzenia · udział wydarzenia: " + FinanceText.money(invoice.allocated) : nil
+        let shared: String? = invoice.shared > 1 ? "Wspólna · \(Int(invoice.shared)) eventy · udział eventu: " + FinanceText.money(invoice.allocated) : nil
         return HStack(spacing: 10) {
             Text("\(index + 1)").monospacedDigit().foregroundStyle(.secondary).frame(width: 28, alignment: .trailing)
             HStack(spacing: 6) {
@@ -559,7 +559,7 @@ enum FinanceText {
                 } cancel: { showAddCost = false }
             }
             if d.costs.isEmpty {
-                Text(d.access.canViewCosts ? "Brak kosztów dla tego eventu" : "Koszty tego wydarzenia widzi księgowość i opiekun sprzedaży. Marża poniżej może nie uwzględniać wszystkich kosztów.")
+                Text(d.access.canViewCosts ? "Brak kosztów dla tego eventu" : "Koszty tego eventu widzi księgowość i opiekun sprzedaży. Marża poniżej może nie uwzględniać wszystkich kosztów.")
                     .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(20)
             }
             if !d.costs.isEmpty {
@@ -818,7 +818,7 @@ enum FinanceText {
                 Text("Rozliczenie ma już wpłatę lub powiązaną fakturę. Zmiana całego schematu jest zablokowana, aby zachować historię.").font(.caption).foregroundStyle(.secondary)
             }
             if controls.milestones.contains(where: { $0.planMode == "earnest_event" && $0.type == "balance" && $0.dueDate != controls.eventDay }) {
-                Text("Termin wydarzenia zmienił się po zapisaniu rozliczenia. Zaktualizuj termin dopłaty.").font(.caption).foregroundStyle(CrmTheme.rgb(0xfcd34d))
+                Text("Termin eventu zmienił się po zapisaniu rozliczenia. Zaktualizuj termin dopłaty.").font(.caption).foregroundStyle(CrmTheme.rgb(0xfcd34d))
             }
             if planOpen { planEditor }
             if showForm { milestoneForm }
@@ -828,7 +828,7 @@ enum FinanceText {
                 total("Po terminie", FinanceText.money(overdue, fraction: false))
             }
             if controls.milestones.isEmpty {
-                Text("Nie ustalono sposobu rozliczenia. Nie blokuje to przygotowania wydarzenia.").font(.callout).foregroundStyle(.secondary)
+                Text("Nie ustalono sposobu rozliczenia. Nie blokuje to przygotowania eventu.").font(.callout).foregroundStyle(.secondary)
             }
             ForEach(controls.milestones) { item in milestoneRow(item) }
         }
@@ -862,7 +862,7 @@ enum FinanceText {
         let total = controls.acceptedTotal ?? 0
         let earnest = planMode == "earnest_event"
         let rest = max(0, ((total - (planMode == "final_only" ? 0 : firstValue)) * 100).rounded() / 100)
-        let eventDay: String = controls.eventDay.isEmpty ? "Ustal datę wydarzenia" : FinanceText.day(controls.eventDay)
+        let eventDay: String = controls.eventDay.isEmpty ? "Ustal datę eventu" : FinanceText.day(controls.eventDay)
         return VStack(alignment: .leading, spacing: 8) {
             Picker("Sposób rozliczenia", selection: $planMode) { ForEach(FinanceText.planModes, id: \.0) { Text($0.1).tag($0.0) } }.frame(width: 420)
             if planMode != "final_only" {
@@ -893,7 +893,7 @@ enum FinanceText {
                 Text("0 oznacza płatność w dniu wystawienia faktury. Data zostanie wyliczona po powiązaniu wystawionej faktury.").font(.caption2).foregroundStyle(.secondary)
             }
             Text((planMode == "final_only" ? "Do zapłaty" : "Dopłata") + ": " + FinanceText.money(rest) + " brutto").font(.callout.weight(.semibold))
-            Text((earnest ? "Dopłata przypada w dniu rozpoczęcia wydarzenia. " : "") + "Wystawiona faktura zostanie powiązana automatycznie, jeśli jej typ i kwota jednoznacznie pasują do płatności. Zapis zastępuje dotychczasowe nieopłacone terminy bez faktur.")
+            Text((earnest ? "Dopłata przypada w dniu rozpoczęcia eventu. " : "") + "Wystawiona faktura zostanie powiązana automatycznie, jeśli jej typ i kwota jednoznacznie pasują do płatności. Zapis zastępuje dotychczasowe nieopłacone terminy bez faktur.")
                 .font(.caption2).foregroundStyle(.secondary)
             HStack {
                 Button("Zapisz rozliczenie") {
@@ -1009,7 +1009,7 @@ enum FinanceText {
             Button { open.toggle() } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Label("Zamknięcie wydarzenia", systemImage: "checkmark.circle").font(.headline)
+                        Label("Zamknięcie eventu", systemImage: "checkmark.circle").font(.headline)
                         Text("Rozliczenie ludzi, zasobów, dokumentów i wyniku.").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -1039,7 +1039,7 @@ enum FinanceText {
                     .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
                 }
                 if let completed = data.controls.closeout?.completedAt, let date = MeetingDates.parse(completed) {
-                    Text("Wydarzenie zostało operacyjnie zamknięte " + MeetingDates.format(date, "dd.MM.yyyy, HH:mm") + ".").font(.caption).foregroundStyle(CrmTheme.rgb(0x4ade80))
+                    Text("Event został operacyjnie zamknięty " + MeetingDates.format(date, "dd.MM.yyyy, HH:mm") + ".").font(.caption).foregroundStyle(CrmTheme.rgb(0x4ade80))
                 }
             }
         }

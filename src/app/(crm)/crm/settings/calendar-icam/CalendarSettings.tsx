@@ -120,7 +120,7 @@ export const CalendarSettings = () => {
               Subskrypcja kalendarza (iPhone / Google)
             </p>
             <p className="text-xs text-[#e5e4e2]/60">
-              Jeden link – zawsze aktualny kalendarz wydarzeń i spotkań.
+              Jeden link – zawsze aktualny kalendarz eventów i spotkań.
             </p>
           </div>
 
@@ -167,8 +167,8 @@ export const CalendarSettings = () => {
           </p>
 
           <p className="mt-2 text-xs text-[#e5e4e2]/60">
-            Jeśli aplikacja Mavinci na Macu kopiuje wydarzenia do kalendarza iCloud (Kalendarz → „Połącz z Kalendarzem
-            Apple”), nie dodawaj tej subskrypcji na iPhonie — każde wydarzenie będzie widoczne dwa razy, także w Apple
+            Jeśli aplikacja Mavinci na Macu kopiuje eventy do kalendarza iCloud (Kalendarz → „Połącz z Kalendarzem
+            Apple”), nie dodawaj tej subskrypcji na iPhonie — każdy event będzie widoczny dwa razy, także w Apple
             Watch. Zostaw jedno źródło: subskrypcję albo kopię z Maca (w aplikacji można trzymać ją tylko na Macu lub ją
             usunąć).
           </p>

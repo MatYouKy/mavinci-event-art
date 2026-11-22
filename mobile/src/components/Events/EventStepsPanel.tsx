@@ -225,7 +225,7 @@ export function EventStepRow({
       {!!eventLabel && (
         <TouchableOpacity
           accessibilityRole={onOpenEvent ? 'link' : undefined}
-          accessibilityLabel={onOpenEvent ? `Otwórz wydarzenie: ${eventLabel}` : undefined}
+          accessibilityLabel={onOpenEvent ? `Otwórz event: ${eventLabel}` : undefined}
           disabled={!onOpenEvent}
           onPress={onOpenEvent}
         >

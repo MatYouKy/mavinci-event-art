@@ -20,16 +20,16 @@ import SwiftUI
 
     private static let sections: [(String, String, String)] = [
         ("phases", "Timeline", "Godziny i etapy pracy"), ("team", "Zespół", "Pracownicy i zaproszenia"), ("equipment", "Sprzęt", "Plan, braki i rezerwacje"),
-        ("agenda", "Agenda", "Program wydarzenia"), ("logistics", "Logistyka", "Transport, kierowcy i przejazdy"), ("finances", "Finanse i prowizje", "Planowane rozliczenia i wypłaty"),
+        ("agenda", "Agenda", "Program eventu"), ("logistics", "Logistyka", "Transport, kierowcy i przejazdy"), ("finances", "Finanse i prowizje", "Planowane rozliczenia i wypłaty"),
     ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Przygotowanie wydarzenia z oferty", systemImage: "calendar").font(.headline)
+                Label("Przygotowanie eventu z oferty", systemImage: "calendar").font(.headline)
                 Spacer()
                 Button { refresh += 1 } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless).help("Odśwież przygotowanie wydarzenia").disabled(loading)
+                    .buttonStyle(.borderless).help("Odśwież przygotowanie eventu").disabled(loading)
             }
             if loading && data == nil {
                 HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Wczytywanie stanu realizacji…").foregroundStyle(.secondary) }
@@ -37,9 +37,9 @@ import SwiftUI
             if !error.isEmpty { Text(error).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
             if let data, data.matching {
                 let pending = data.stage == "awaiting_crm_confirmation"
-                Text(pending ? "Oferta przyjęta — wydarzenie istnieje i oczekuje na potwierdzenie realizacji. Możesz już przygotować plan."
-                     : data.stage == "cancelled" ? "Wydarzenie anulowane. Zachowano dokumenty i historię przygotowań."
-                     : "Wydarzenie jest powiązane z ofertą. Dalsze przygotowanie prowadzisz w standardowych sekcjach CRM.")
+                Text(pending ? "Oferta przyjęta — event istnieje i oczekuje na potwierdzenie realizacji. Możesz już przygotować plan."
+                     : data.stage == "cancelled" ? "Event anulowany. Zachowano dokumenty i historię przygotowań."
+                     : "Event jest powiązany z ofertą. Dalsze przygotowanie prowadzisz w standardowych sekcjach CRM.")
                     .font(.callout).foregroundStyle(pending ? Color.orange : Color.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 let seller = [data.sellerName ?? "", data.sellerOrganization ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
@@ -67,7 +67,7 @@ import SwiftUI
                 }
             }
             if !loading && error.isEmpty && data?.matching != true {
-                Text("Nie potwierdzono dostępu do tej relacji oferty i wydarzenia. Odśwież dane lub wróć do oferty źródłowej.")
+                Text("Nie potwierdzono dostępu do tej relacji oferty i eventu. Odśwież dane lub wróć do oferty źródłowej.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -122,7 +122,7 @@ import SwiftUI
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
                 Label("Potwierdź realizację", systemImage: "calendar").font(.title2.bold())
-                Text("Wydarzenie powstaje już przy akceptacji oferty. Tutaj sprawdzasz jego dane i potwierdzasz realizację — bez tworzenia kolejnej kopii.")
+                Text("Event powstaje już przy akceptacji oferty. Tutaj sprawdzasz jego dane i potwierdzasz realizację — bez tworzenia kolejnej kopii.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .padding(20)
@@ -133,8 +133,8 @@ import SwiftUI
                     if let problem { Text(problem).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
                     if let draft {
                         if let id = draft.eventId, draft.alreadyConfirmed {
-                            Text("To wydarzenie zostało już potwierdzone. Jego dalsze przygotowanie prowadzisz w CRM.")
-                            Button("Przejdź do wydarzenia") { dismiss(); state.showEvent(id, cardTab: nil) }.buttonStyle(.borderedProminent)
+                            Text("Ten event został już potwierdzony. Jego dalsze przygotowanie prowadzisz w CRM.")
+                            Button("Przejdź do eventu") { dismiss(); state.showEvent(id, cardTab: nil) }.buttonStyle(.borderedProminent)
                         } else {
                             form(draft)
                         }
@@ -162,13 +162,13 @@ import SwiftUI
     @ViewBuilder private func form(_ draft: SellerEventDraft) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("\(draft.brandName) · \(draft.offerNumber)")
-            Text("Wydarzenie oczekuje na Twoje potwierdzenie. Oferta, sprzedawca i plan przygotowania pozostają powiązane.").foregroundStyle(.orange)
+            Text("Event oczekuje na Twoje potwierdzenie. Oferta, sprzedawca i plan przygotowania pozostają powiązane.").foregroundStyle(.orange)
         }
         .font(.callout).padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
         VStack(alignment: .leading, spacing: 4) {
-            Text("Nazwa wydarzenia *").font(.callout.weight(.medium))
-            TextField("Nazwa wydarzenia", text: Binding(get: { name }, set: { name = String($0.prefix(250)) })).textFieldStyle(.roundedBorder).disabled(saving)
+            Text("Nazwa eventu *").font(.callout.weight(.medium))
+            TextField("Nazwa eventu", text: Binding(get: { name }, set: { name = String($0.prefix(250)) })).textFieldStyle(.roundedBorder).disabled(saving)
         }
         SellerEventDaysSummary(days: draft.eventDays)
         VStack(alignment: .leading, spacing: 8) {
@@ -183,7 +183,7 @@ import SwiftUI
         locationPicker(draft)
         VStack(alignment: .leading, spacing: 4) {
             Text("Kategoria (opcjonalnie)").font(.callout.weight(.medium))
-            Picker("Kategoria wydarzenia", selection: $categoryID) {
+            Picker("Kategoria eventu", selection: $categoryID) {
                 Text("Bez kategorii").tag("")
                 ForEach(draft.categories, id: \.id) { category in Text(category.name).tag(category.id) }
             }
@@ -217,13 +217,13 @@ import SwiftUI
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
         VStack(alignment: .leading, spacing: 4) {
-            Text("Opis wydarzenia").font(.callout.weight(.medium))
+            Text("Opis eventu").font(.callout.weight(.medium))
             TextEditor(text: Binding(get: { description }, set: { description = String($0.prefix(max(10000, draft.description.count))) }))
                 .font(.body).frame(minHeight: 90).scrollContentBackground(.hidden)
                 .padding(4).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6)).disabled(saving)
         }
         Toggle(isOn: $confirmed) {
-            Text("Potwierdzam realizację po sprawdzeniu terminu, zasobów i ustaleń. Potwierdzę to wydarzenie w CRM, a sprzedawca otrzyma osobne powiadomienie.")
+            Text("Potwierdzam realizację po sprawdzeniu terminu, zasobów i ustaleń. Potwierdzę ten event w CRM, a sprzedawca otrzyma osobne powiadomienie.")
                 .fixedSize(horizontal: false, vertical: true)
         }
         .toggleStyle(.checkbox).padding(12).frame(maxWidth: .infinity, alignment: .leading)
@@ -236,7 +236,7 @@ import SwiftUI
         let sellerSelected = locationID == nil && !location.isEmpty
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Miejsce wydarzenia").font(.callout.weight(.medium))
+                Text("Miejsce eventu").font(.callout.weight(.medium))
                 Spacer()
                 if locationID != nil || !location.isEmpty {
                     Button("Wyczyść") { locationID = nil; location = "" }.buttonStyle(.link).font(.caption).disabled(saving)
@@ -268,7 +268,7 @@ import SwiftUI
             .disabled(saving)
             if let error = draft.locationsError { Text(error).font(.caption).foregroundStyle(.orange) }
             if !location.isEmpty { Text("Wybrane: \(location)").font(.caption).foregroundStyle(.secondary) }
-            if locationID != nil { Text("Wydarzenie zostanie powiązane z wybranym obiektem w bazie CRM.").font(.caption).foregroundStyle(.secondary) }
+            if locationID != nil { Text("Event zostanie powiązany z wybranym obiektem w bazie CRM.").font(.caption).foregroundStyle(.secondary) }
         }
     }
 
@@ -305,14 +305,14 @@ import SwiftUI
             for item in SellerText.schedule { values[item.key] = SellerSlot(next.slot(item.key)) }
             slots = values
         } catch {
-            problem = store.failureText(error, "Nie udało się wczytać danych wydarzenia.")
+            problem = store.failureText(error, "Nie udało się wczytać danych eventu.")
         }
     }
 
     private func submit() async {
         guard let draft, !saving else { return }
         problem = nil
-        guard confirmed else { problem = "Zaznacz osobne potwierdzenie realizacji po sprawdzeniu danych wydarzenia."; return }
+        guard confirmed else { problem = "Zaznacz osobne potwierdzenie realizacji po sprawdzeniu danych eventu."; return }
         var schedule: [String: JSONValue] = [:]
         var values: [String: String] = [:]
         for item in SellerText.schedule {
@@ -324,9 +324,9 @@ import SwiftUI
         }
         let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, let start = values["starts_at"], let end = values["ends_at"] else {
-            problem = "Uzupełnij nazwę oraz daty i godziny rozpoczęcia i zakończenia wydarzenia."; return
+            problem = "Uzupełnij nazwę oraz daty i godziny rozpoczęcia i zakończenia eventu."; return
         }
-        guard end > start else { problem = "Koniec musi być późniejszy niż początek wydarzenia."; return }
+        guard end > start else { problem = "Koniec musi być późniejszy niż początek eventu."; return }
         saving = true
         defer { saving = false }
         let body: [String: JSONValue] = [
@@ -343,7 +343,7 @@ import SwiftUI
             await created()
             dismiss()
         } catch {
-            problem = store.failureText(error, "Nie udało się zapisać wydarzenia. Formularz pozostaje otwarty.")
+            problem = store.failureText(error, "Nie udało się zapisać eventu. Formularz pozostaje otwarty.")
         }
     }
 }
@@ -354,7 +354,7 @@ struct SellerEventDaysSummary: View {
     var body: some View {
         if let days, !days.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Dni i godziny wydarzenia · ustalenia oferty").font(.callout.weight(.medium))
+                Text("Dni i godziny eventu · ustalenia oferty").font(.callout.weight(.medium))
                 ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                     (Text("Dzień \(index + 1)  ").foregroundColor(.secondary) + Text(SellerSchedule.eventDayLabel(day))).font(.callout)
                 }

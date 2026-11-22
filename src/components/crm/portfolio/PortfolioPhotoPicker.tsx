@@ -12,7 +12,7 @@ import { errorMessage, portfolioGet, type PortfolioPhotoOption, type PortfolioPh
  */
 
 const SOURCES: Array<[PortfolioPhotoSource, string, typeof Images]> = [
-  ['event', 'Pliki wydarzenia', FolderOpen],
+  ['event', 'Pliki eventu', FolderOpen],
   ['material', 'Materiały', Images],
   ['social', 'Biblioteka social media', Sparkles],
 ];
@@ -32,7 +32,7 @@ export default function PortfolioPhotoPicker({ eventId, eventName, initialSource
   const [selected, setSelected] = useState<string[]>([]);
 
   useEffect(() => {
-    if (source === 'event' && !eventId) { setPhotos([]); setProblem('Powiąż realizację z wydarzeniem, żeby wybrać zdjęcia z jego plików.'); return; }
+    if (source === 'event' && !eventId) { setPhotos([]); setProblem('Powiąż realizację z eventem, żeby wybrać zdjęcia z jego plików.'); return; }
     let active = true;
     const timer = window.setTimeout(async () => {
       setLoading(true);
@@ -40,7 +40,7 @@ export default function PortfolioPhotoPicker({ eventId, eventName, initialSource
         const data = await portfolioGet<{ photos: PortfolioPhotoOption[]; problem?: string }>('photos', { source, event: eventId, q: source === 'event' ? null : query });
         if (!active) return;
         setPhotos(data.photos);
-        setProblem(data.problem || (data.photos.length ? '' : source === 'event' ? 'Wydarzenie nie ma zdjęć w plikach (JPEG, PNG, WebP).' : 'Brak zdjęć.'));
+        setProblem(data.problem || (data.photos.length ? '' : source === 'event' ? 'Event nie ma zdjęć w plikach (JPEG, PNG, WebP).' : 'Brak zdjęć.'));
       } catch (cause) {
         if (active) { setPhotos([]); setProblem(errorMessage(cause, 'Nie udało się pobrać zdjęć.')); }
       } finally {
@@ -69,7 +69,7 @@ export default function PortfolioPhotoPicker({ eventId, eventName, initialSource
             </label>
           )}
         </div>
-        {source === 'event' && eventName && <p className="text-xs text-[#e5e4e2]/50">Wydarzenie: {eventName}</p>}
+        {source === 'event' && eventName && <p className="text-xs text-[#e5e4e2]/50">Event: {eventName}</p>}
         {problem && !loading && <p className={`${cardClass} p-4 text-sm text-[#e5e4e2]/60`}>{problem}</p>}
         {loading && <p className="p-4 text-sm text-[#e5e4e2]/50">Ładowanie zdjęć…</p>}
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">

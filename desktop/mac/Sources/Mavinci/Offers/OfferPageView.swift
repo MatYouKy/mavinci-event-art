@@ -90,7 +90,7 @@ import SwiftUI
                 HStack(spacing: 6) {
                     Text("Oferta \(detail?.offer.number ?? item?.number ?? "")").font(.headline).lineLimit(1)
                     if let source = detail?.source {
-                        Text(source.kind == "event" ? "Wydarzenie" : "Zapytanie").font(.caption2.weight(.semibold))
+                        Text(source.kind == "event" ? "Event" : "Zapytanie").font(.caption2.weight(.semibold))
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(theme.accent.opacity(0.15), in: Capsule()).foregroundStyle(theme.accent)
                     }
@@ -217,7 +217,7 @@ struct OfferInfoField<Content: View>: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), alignment: .topLeading)], alignment: .leading, spacing: 14) {
                 OfferInfoField(symbol: "doc.text", label: "Tytuł oferty") {
                     Text(basic.title).font(.callout.weight(.medium)).textSelection(.enabled)
-                    if basic.titleInherited { Text("Pobrany z wydarzenia lub zapytania").font(.caption2).foregroundStyle(.secondary) }
+                    if basic.titleInherited { Text("Pobrany z eventu lub zapytania").font(.caption2).foregroundStyle(.secondary) }
                 }
                 if basic.clientType == "business" {
                     OfferInfoField(symbol: "building.2", label: "Organizacja") {
@@ -239,7 +239,7 @@ struct OfferInfoField<Content: View>: View {
                 if let description = basic.sellerDescription {
                     OfferInfoField(symbol: "text.quote", label: "Opis od sprzedawcy") { Text(description).font(.callout).textSelection(.enabled) }
                 }
-                OfferInfoField(symbol: "doc.text", label: "Wydarzenie / zapytanie") {
+                OfferInfoField(symbol: "doc.text", label: "Event / zapytanie") {
                     Text(basic.eventLabel).font(.callout).textSelection(.enabled)
                 }
                 OfferInfoField(symbol: "person.3", label: "Uczestnicy") {
@@ -275,12 +275,12 @@ struct OfferInfoField<Content: View>: View {
                         }
                     }
                 }
-                OfferInfoField(symbol: "calendar", label: "Początek wydarzenia") {
+                OfferInfoField(symbol: "calendar", label: "Początek eventu") {
                     Text(basic.start).font(.callout)
-                    Text("Koniec wydarzenia").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
+                    Text("Koniec eventu").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
                     Text(basic.end).font(.callout)
                 }
-                OfferInfoField(symbol: "mappin.and.ellipse", label: "Miejsce wydarzenia") { Text(basic.location).font(.callout).textSelection(.enabled) }
+                OfferInfoField(symbol: "mappin.and.ellipse", label: "Miejsce eventu") { Text(basic.location).font(.callout).textSelection(.enabled) }
                 OfferInfoField(symbol: "calendar.badge.clock", label: "Ważna do") {
                     Text(detail.offer.validUntil.flatMap(OfferText.day) ?? "-").font(.callout)
                 }
@@ -323,7 +323,7 @@ struct OfferAssumptionsCard: View {
     @Environment(\.crmTheme) private var theme
 
     var body: some View {
-        OfferCard(title: "Założenia wydarzenia", trailing: onEdit.map { edit in AnyView(Button(action: edit) { Label("Edytuj", systemImage: "pencil") }) }) {
+        OfferCard(title: "Założenia eventu", trailing: onEdit.map { edit in AnyView(Button(action: edit) { Label("Edytuj", systemImage: "pencil") }) }) {
             if let note = assumptions.guestNote { Text(note).font(.caption).foregroundStyle(.secondary) }
             if !assumptions.items.isEmpty {
                 // Jak strona „Założenia” w PDF: trzy poziome bloki jeden pod drugim, z burgundowym znacznikiem.
@@ -335,7 +335,7 @@ struct OfferAssumptionsCard: View {
             }
             if !assumptions.goal.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("CEL WYDARZENIA").font(.caption.weight(.semibold)).foregroundStyle(theme.accent).tracking(0.6)
+                    Text("CEL EVENTU").font(.caption.weight(.semibold)).foregroundStyle(theme.accent).tracking(0.6)
                     Text(assumptions.goal).font(.body).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.top, 4)
@@ -782,14 +782,14 @@ struct OfferHistoryCard: View {
                 }
                 if detail.canManage && detail.offer.status == "accepted" && detail.offer.eventId == nil && detail.offer.inquiryId != nil {
                     Button { Task { await openEventCreation() } } label: {
-                        Label(loadingEvent ? "Wczytywanie…" : "Utwórz wydarzenie", systemImage: "calendar.badge.plus").frame(maxWidth: .infinity, alignment: .leading)
+                        Label(loadingEvent ? "Wczytywanie…" : "Utwórz event", systemImage: "calendar.badge.plus").frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(loadingEvent || !state.canWrite)
                 }
                 if detail.canManage && (detail.offer.eventId == nil || detail.offer.inquiryId == nil) {
                     Button { linkOpen = true } label: {
-                        Label(detail.offer.eventId == nil ? "Powiąż z wydarzeniem lub zapytaniem" : "Powiąż z zapytaniem", systemImage: "link")
+                        Label(detail.offer.eventId == nil ? "Powiąż z eventem lub zapytaniem" : "Powiąż z zapytaniem", systemImage: "link")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .disabled(!state.canWrite)
@@ -953,7 +953,7 @@ struct OfferHistoryCard: View {
             let setup = try await store.eventSetup(detail.offer.id)
             if let eventId = setup.eventId { state.showEvent(eventId) } else { eventRoute = OfferEventRoute(setup: setup) }
         } catch {
-            state.error = store.failureText(error, "Nie udało się otworzyć formularza wydarzenia")
+            state.error = store.failureText(error, "Nie udało się otworzyć formularza eventu")
         }
     }
 

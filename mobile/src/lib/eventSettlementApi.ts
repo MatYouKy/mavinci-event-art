@@ -38,7 +38,7 @@ export type SettlementRpcResult<T> =
 
 /** Podsumowanie wydarzenia; wymaga obszaru „kwoty” wydarzenia (inaczej 42501). */
 export async function fetchEventSettlement(eventId: string): Promise<SettlementRpcResult<EventSettlement>> {
-  const fallback = 'Nie udało się pobrać podsumowania wydarzenia.';
+  const fallback = 'Nie udało się pobrać podsumowania eventu.';
   try {
     const { data, error } = await supabase.rpc('get_event_settlement', { p_event_id: eventId });
     if (error) {

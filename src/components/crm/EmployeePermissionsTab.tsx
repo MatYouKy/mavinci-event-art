@@ -609,7 +609,7 @@ export default function EmployeePermissionsTab({
       {targetIsAdmin && (
         <div className="rounded-lg border border-[#d3bb73]/25 bg-[#d3bb73]/10 p-4">
           <p className="text-sm font-medium text-[#e5e4e2]">Administrator ma nieograniczony dostęp do Mavinci LIVE.</p>
-          <p className="mt-1 text-xs text-[#e5e4e2]/60">Rola <code>admin</code> automatycznie udostępnia wszystkie sekcje, wydarzenia, presety i funkcje zarządzania — niezależnie od zapisanych checkboxów.</p>
+          <p className="mt-1 text-xs text-[#e5e4e2]/60">Rola <code>admin</code> automatycznie udostępnia wszystkie sekcje, eventy, presety i funkcje zarządzania — niezależnie od zapisanych checkboxów.</p>
         </div>
       )}
 
@@ -676,7 +676,7 @@ export default function EmployeePermissionsTab({
           <div>
             <h4 className="font-medium text-[#e5e4e2]">Marki i spółki</h4>
             <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/60">
-              To ograniczenie działa niezależnie od roli. Obejmuje wydarzenia, kalendarz, oferty, umowy i dane finansowe powiązane z marką.
+              To ograniczenie działa niezależnie od roli. Obejmuje eventy, kalendarz, oferty, umowy i dane finansowe powiązane z marką.
             </p>
           </div>
         </div>
@@ -779,8 +779,8 @@ export default function EmployeePermissionsTab({
               );
             })}
             <p className="pt-1 text-xs text-[#e5e4e2]/50">
-              Finanse tej działalności: poziom wyższy obejmuje niższe. Uprawnienie „Wartości finansowe wydarzeń” w sekcji
-              poniżej dotyczy tylko budżetów i kosztów widocznych wydarzeń, nie banku ani faktur.
+              Finanse tej działalności: poziom wyższy obejmuje niższe. Uprawnienie „Wartości finansowe eventów” w sekcji
+              poniżej dotyczy tylko budżetów i kosztów widocznych eventów, nie banku ani faktur.
             </p>
           </div>
         )}
@@ -982,7 +982,7 @@ export default function EmployeePermissionsTab({
                     <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 p-3">
                       <p className="text-xs leading-relaxed text-[#e5e4e2]/75">
                         Dostęp działa dwustopniowo: tutaj wybierasz dostępne sekcje aplikacji,
-                        a na karcie wydarzenia określasz projekty, poziom obsługi i okres dostępu.
+                        a na karcie eventu określasz projekty, poziom obsługi i okres dostępu.
                         Light Magic pozostaje zawsze dostępny jako moduł podstawowy.
                       </p>
                     </div>
@@ -991,7 +991,7 @@ export default function EmployeePermissionsTab({
                   {category.key === 'events' && level !== 'none' && (
                     <div className="space-y-3 border-t border-[#d3bb73]/10 pt-3">
                       <div className="mb-2 text-sm font-medium text-[#e5e4e2]/80">
-                        Dostępne zakładki w wydarzeniach
+                        Dostępne zakładki w eventach
                         <span className="mt-1 block text-xs font-normal text-[#e5e4e2]/60">
                           Wybierz zakładki, które będą widoczne dla tego pracownika
                         </span>

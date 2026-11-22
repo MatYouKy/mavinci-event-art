@@ -297,7 +297,7 @@ async function commissionRow(ctx: NativeContext, eventId: string, id: string) {
 
 async function deleteCommission(ctx: NativeContext, eventId: string, body: Row) {
   const row = await commissionRow(ctx, eventId, String(body.id || ''));
-  if (isAutomaticCommission(row as any)) fail('Prowizji z podsumowania wydarzenia nie usuwa się — możesz ją anulować.');
+  if (isAutomaticCommission(row as any)) fail('Prowizji z podsumowania eventu nie usuwa się — możesz ją anulować.');
   const { error } = await ctx.supabase.from('event_commissions').delete().eq('id', row.id);
   if (error) fail(error.message || 'Nie udało się usunąć prowizji');
   return { ok: true };
@@ -324,7 +324,7 @@ async function commissionStatus(ctx: NativeContext, eventId: string, body: Row) 
 
 async function requireManage(ctx: NativeContext, eventId: string) {
   const access = await financeAccess(ctx, eventId);
-  if (!access.canApproveCosts) fail('Nie masz uprawnień do rozliczeń tego wydarzenia.');
+  if (!access.canApproveCosts) fail('Nie masz uprawnień do rozliczeń tego eventu.');
 }
 
 /** `savePlan` → `set_event_payment_plan` (zaakceptowana kwota liczona tutaj, jak w CRM). */

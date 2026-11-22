@@ -411,7 +411,7 @@ export default function SocialPostScreen() {
           </View>
           <Text style={styles.title}>{detail.post.title || 'Post bez tytułu'}</Text>
           <Text style={styles.muted}>{detail.post.channels.map((channel) => SOCIAL_CHANNEL_LABELS[channel]).join(' · ')}{detail.post.authorName ? ` · autor: ${detail.post.authorName}` : ''}</Text>
-          {detail.event && <Text style={styles.muted}>Wydarzenie: {detail.event.name}{detail.event.location ? ` · ${detail.event.location}` : ''}</Text>}
+          {detail.event && <Text style={styles.muted}>Event: {detail.event.name}{detail.event.location ? ` · ${detail.event.location}` : ''}</Text>}
         </View>
 
         {detail.post.reviewNote && (detail.post.status === 'changes_requested' || detail.post.status === 'approved') && (

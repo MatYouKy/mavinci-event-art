@@ -396,7 +396,7 @@ fileprivate extension View {
                     VStack(spacing: 10) {
                         Image(systemName: "doc.text").font(.system(size: 40)).foregroundStyle(.tertiary)
                         Text("Umowa nie została jeszcze utworzona").font(.headline)
-                        Text("Szkic powstaje z szablonu, oferty i danych wydarzenia — tym samym kodem co w CRM.").font(.callout).foregroundStyle(.secondary)
+                        Text("Szkic powstaje z szablonu, oferty i danych eventu — tym samym kodem co w CRM.").font(.callout).foregroundStyle(.secondary)
                         if data.canManage && nativeAssembly {
                             HStack(spacing: 10) {
                                 Button { Task { await prepareContract() } } label: { Label("Przygotuj umowę", systemImage: "doc.badge.plus") }
@@ -677,8 +677,8 @@ fileprivate extension View {
         }
         if let summary = data.summary {
             checks.append(summary.individuallyEdited
-                ? ReviewCheck(id: "content", level: .info, title: "Treść zmieniona indywidualnie dla tego wydarzenia", detail: nil)
-                : ReviewCheck(id: "content", level: .ok, title: "Treść z szablonu, danych wydarzenia i oferty", detail: nil))
+                ? ReviewCheck(id: "content", level: .info, title: "Treść zmieniona indywidualnie dla tego eventu", detail: nil)
+                : ReviewCheck(id: "content", level: .ok, title: "Treść z szablonu, danych eventu i oferty", detail: nil))
         }
         if !draft && !cancelled {
             if contract.companySignedAt != nil {
@@ -796,8 +796,8 @@ fileprivate extension View {
         let cancelled = contract.status == "cancelled"
         let conditions: String = (summary?.conditions ?? []).map { "\($0.label): \($0.value)" }.joined(separator: " · ")
         let contentText: String = summary?.individuallyEdited == true
-            ? "Zmieniona indywidualnie dla tego wydarzenia."
-            : "Wygenerowana z szablonu, danych wydarzenia i oferty."
+            ? "Zmieniona indywidualnie dla tego eventu."
+            : "Wygenerowana z szablonu, danych eventu i oferty."
         let pdfText: String = contract.pdf == nil
             ? "Jeszcze nie wygenerowany."
             : contract.modified && !cancelled ? "Treść zmieniła się po wygenerowaniu — wygeneruj ponownie." : "Aktualny."
@@ -927,7 +927,7 @@ fileprivate extension View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Dane klienta i osoby podpisujące umowę").font(.headline)
                     infoRow("Klient", client)
-                    infoRow("Kategoria wydarzenia", summary.category ?? "—")
+                    infoRow("Kategoria eventu", summary.category ?? "—")
                     if summary.client?.company == true { infoRow("Osoby podpisujące", signers) }
                 }
                 .contractCard()
@@ -943,7 +943,7 @@ fileprivate extension View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Pola zmienione dla tej umowy").font(.headline)
                     if summary.changedFields.isEmpty {
-                        Text("Brak — pola pochodzą z danych wydarzenia i oferty.").font(.callout).foregroundStyle(.secondary)
+                        Text("Brak — pola pochodzą z danych eventu i oferty.").font(.callout).foregroundStyle(.secondary)
                     } else {
                         Text(summary.changedFields.joined(separator: " · ")).font(.callout).textSelection(.enabled)
                     }
@@ -974,8 +974,8 @@ fileprivate extension View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Klauzule produktów w umowie").font(.headline)
                     Text(editable && nativeAssembly
-                         ? "Edytuj lub wyłącz automatyczne klauzule i dodaj ustalenia klienta tylko dla tego wydarzenia. Tu wybierzesz też wersję rozbieżnych wspólnych ustaleń."
-                         : "Edytujesz lub wyłączasz automatyczne klauzule i dodajesz ustalenia klienta tylko dla tego wydarzenia w CRM.")
+                         ? "Edytuj lub wyłącz automatyczne klauzule i dodaj ustalenia klienta tylko dla tego eventu. Tu wybierzesz też wersję rozbieżnych wspólnych ustaleń."
+                         : "Edytujesz lub wyłączasz automatyczne klauzule i dodajesz ustalenia klienta tylko dla tego eventu w CRM.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -1056,7 +1056,7 @@ fileprivate extension View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Pełne sprawdzenie w CRM", systemImage: "checklist").font(.headline)
-                    Text("Uwagi przed wystawieniem, zgodność treści z aktualnymi danymi wydarzenia i oferty (odświeżenie szablonu i danych), rozbieżne wersje wspólnych ustaleń i audyt AI sprawdza edytor umowy w CRM — na Macu wymagają przeglądarki Chromium i dostępu do kwot.")
+                    Text("Uwagi przed wystawieniem, zgodność treści z aktualnymi danymi eventu i oferty (odświeżenie szablonu i danych), rozbieżne wersje wspólnych ustaleń i audyt AI sprawdza edytor umowy w CRM — na Macu wymagają przeglądarki Chromium i dostępu do kwot.")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Button { state.openCRM(crmPath(.review)) } label: { Label("Sprawdź w CRM", systemImage: "safari") }
                 }

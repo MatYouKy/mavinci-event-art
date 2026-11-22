@@ -75,7 +75,7 @@ private struct EventEditSetup: Decodable {
                 if let setup { form(setup) }
                 else if let loadError {
                     ContentUnavailableView {
-                        Label("Nie można edytować wydarzenia", systemImage: "calendar.badge.exclamationmark")
+                        Label("Nie można edytować eventu", systemImage: "calendar.badge.exclamationmark")
                     } description: { Text(loadError) } actions: { Button("Spróbuj ponownie") { Task { await load() } } }
                 } else {
                     ProgressView("Ładowanie…")
@@ -195,7 +195,7 @@ private struct EventEditSetup: Decodable {
             setup = next
             if let id = next.event.locationId { await loadRooms(id) }
         } catch {
-            loadError = store.failureText(error, "Nie udało się wczytać danych wydarzenia.")
+            loadError = store.failureText(error, "Nie udało się wczytać danych eventu.")
         }
     }
 
@@ -257,7 +257,7 @@ private struct EventEditSetup: Decodable {
         var local: [String: String] = [:]
         if name.trimmingCharacters(in: .whitespaces).isEmpty { local["name"] = "Nazwa eventu jest wymagana" }
         if locationText.trimmingCharacters(in: .whitespaces).isEmpty { local["location"] = "Lokalizacja jest wymagana" }
-        if hasEnd && end <= start { local["event_end_date"] = "Zakończenie musi być późniejsze niż rozpoczęcie wydarzenia." }
+        if hasEnd && end <= start { local["event_end_date"] = "Zakończenie musi być późniejsze niż rozpoczęcie eventu." }
         guard local.isEmpty else { errors = local; return }
         saving = true
         defer { saving = false }
@@ -269,7 +269,7 @@ private struct EventEditSetup: Decodable {
             "budget": .string(budget), "status": .string(status),
         ]
         do {
-            try await store.tabAction(eventID, "details", "editEvent", body, reload: [], success: "Wydarzenie zaktualizowane", pending: "Zapisywanie…")
+            try await store.tabAction(eventID, "details", "editEvent", body, reload: [], success: "Event zaktualizowany", pending: "Zapisywanie…")
             errors = [:]
             await store.load(eventID)
             await store.loadDetails(eventID)

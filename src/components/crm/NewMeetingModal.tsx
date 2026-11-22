@@ -560,7 +560,7 @@ export default function NewMeetingModal({
               onChange={(event) => setIsAllDay(event.target.checked)}
               className="h-4 w-4"
             />
-            <span className="text-[#e5e4e2]">Wydarzenie całodniowe</span>
+            <span className="text-[#e5e4e2]">Event całodniowy</span>
           </label>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -741,13 +741,13 @@ export default function NewMeetingModal({
 
           <div>
             <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-              Powiązane wydarzenia
+              Powiązane eventy
             </label>
 
             <RelatedEventsSelector
               value={relatedEventIds}
               onChange={setRelatedEventIds}
-              placeholder="Wyszukaj wydarzenia..."
+              placeholder="Wyszukaj eventy..."
             />
           </div>
 

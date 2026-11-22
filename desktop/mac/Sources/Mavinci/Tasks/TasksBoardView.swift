@@ -479,7 +479,7 @@ struct TaskEditRequest: Identifiable {
                         Button("Otwórz zapytanie", systemImage: "tray") { state.open(.inquiries, id: inquiry) }
                     }
                     if let event = task.eventId, state.employee?.canView(.events) == true {
-                        Button("Otwórz wydarzenie", systemImage: "sparkles") { state.showEvent(event) }
+                        Button("Otwórz event", systemImage: "sparkles") { state.showEvent(event) }
                     }
                 }.buttonStyle(.link).linkCursor()
             }

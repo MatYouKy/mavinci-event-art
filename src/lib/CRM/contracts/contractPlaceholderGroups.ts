@@ -57,9 +57,9 @@ export const CONTRACT_PLACEHOLDER_GROUPS = [
     ],
   },
   {
-    label: 'Wydarzenie',
+    label: 'Event',
     items: [
-      { key: '{{event_name}}', label: 'Nazwa wydarzenia' },
+      { key: '{{event_name}}', label: 'Nazwa eventu' },
       { key: '{{event_date}}', label: 'Data i czas rozpoczęcia' },
       { key: '{{event_end_date}}', label: 'Data i czas zakończenia' },
       { key: '{{event_date_only}}', label: 'Data rozpoczęcia' },

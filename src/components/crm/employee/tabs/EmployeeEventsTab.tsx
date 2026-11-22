@@ -24,12 +24,12 @@ export default function EmployeeEventsTab({
 }: EmployeeEventsTabProps) {
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-      <h3 className="mb-6 text-lg font-light text-[#e5e4e2]">Wydarzenia</h3>
+      <h3 className="mb-6 text-lg font-light text-[#e5e4e2]">Eventy</h3>
 
       {events.length === 0 ? (
         <div className="py-12 text-center">
           <Calendar className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
-          <p className="text-[#e5e4e2]/60">Brak przypisanych wydarzeń</p>
+          <p className="text-[#e5e4e2]/60">Brak przypisanych eventów</p>
         </div>
       ) : (
         <div className="space-y-3">

@@ -418,7 +418,7 @@ export function ProductOfferCardPreview({ product, imageUrl, variantImageUrls = 
           </p>
         </div>
         <div className="w-full min-w-0">
-          <label className="mb-1 block text-xs text-[#e5e4e2]/50">Kategoria wydarzenia</label>
+          <label className="mb-1 block text-xs text-[#e5e4e2]/50">Kategoria eventu</label>
           <select
             value={selectedCategoryId}
             onChange={(event) => setSelectedCategoryId(event.target.value)}

@@ -336,7 +336,7 @@ export default function NewEventModal({
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 m-4 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#1c1f33] px-6 py-4">
-          <h2 className="text-xl font-light text-[#e5e4e2]">Nowe wydarzenie</h2>
+          <h2 className="text-xl font-light text-[#e5e4e2]">Nowy event</h2>
           <button
             onClick={onClose}
             className="text-[#e5e4e2]/70 transition-colors hover:text-[#e5e4e2]"
@@ -348,7 +348,7 @@ export default function NewEventModal({
         <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-4">
             <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/70">Nazwa wydarzenia *</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/70">Nazwa eventu *</label>
               <input
                 type="text"
                 required
@@ -663,7 +663,7 @@ export default function NewEventModal({
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={4}
                 className="w-full resize-none rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
-                placeholder="Dodatkowe informacje o wydarzeniu..."
+                placeholder="Dodatkowe informacje o evencie..."
               />
             </div>
           </div>
@@ -680,7 +680,7 @@ export default function NewEventModal({
               type="submit"
               className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#0f1119] transition-colors hover:bg-[#d3bb73]/80"
             >
-              Utwórz wydarzenie
+              Utwórz event
             </button>
           </div>
         </form>

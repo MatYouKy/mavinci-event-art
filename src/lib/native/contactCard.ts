@@ -215,7 +215,7 @@ export async function contactCard(ctx: NativeContext, kind: string, id: string) 
         gross: Number(row.total_gross || 0), net: Number(row.total_net || 0),
       })),
       events: soft(events, 'realizacje').map((row) => ({
-        id: text(row.id), name: text(row.name) || 'Wydarzenie', date: text(row.event_date), status: text(row.status),
+        id: text(row.id), name: text(row.name) || 'Event', date: text(row.event_date), status: text(row.status),
       })),
       units: soft(units, 'jednostki rozliczane na organizację').map((row) => ({
         id: text(row.id), name: text(row.alias) || text(row.name), role: Number(row.invoice_recipient_role) === 2 ? 2 : 8,

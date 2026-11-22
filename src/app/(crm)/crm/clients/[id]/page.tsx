@@ -391,7 +391,7 @@ export default function ClientDetailPage() {
                   </span>
                   <span className="flex items-center gap-1">
                     <Calendar className="h-4 w-4" />
-                    {client.total_events} wydarzeń
+                    {client.total_events} eventów
                   </span>
                   {client.total_revenue > 0 && (
                     <span className="flex items-center gap-1">
@@ -463,7 +463,7 @@ export default function ClientDetailPage() {
                 : 'bg-[#1c1f33] text-[#e5e4e2] hover:bg-[#1c1f33]/80'
             }`}
           >
-            Wydarzenia ({events.length})
+            Eventy ({events.length})
           </button>
           <button data-crm-tab-active={activeTab === 'offers'}
             onClick={() => setActiveTab('offers')}
@@ -744,9 +744,9 @@ export default function ClientDetailPage() {
 
         {activeTab === 'events' && (
           <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
-            <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Wydarzenia klienta</h2>
+            <h2 className="mb-4 text-xl font-bold text-[#e5e4e2]">Eventy klienta</h2>
             {events.length === 0 ? (
-              <p className="text-[#e5e4e2]/60">Brak wydarzeń</p>
+              <p className="text-[#e5e4e2]/60">Brak eventów</p>
             ) : (
               <div className="space-y-3">
                 {events.map((event) => (

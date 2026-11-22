@@ -188,7 +188,7 @@ export const buildEquipmentChecklistHtml = ({
                 <div class="left">
                   <h1>Checklista sprzętu – Nota załadunkowa</h1>
                   <div class="meta">
-                    <div class="meta-row"><strong>Wydarzenie:</strong> ${esc(eventName)}</div>
+                    <div class="meta-row"><strong>Event:</strong> ${esc(eventName)}</div>
                     <div class="meta-row"><strong>Data:</strong> ${esc(eventDate || '-')}</div>
                     <div class="meta-row"><strong>Lokalizacja:</strong> ${esc(locText)}</div>
                     ${contactName && contactName !== '-' ? `<div class="meta-row"><strong>Kontakt:</strong> ${esc(contactName)}</div>` : ''}

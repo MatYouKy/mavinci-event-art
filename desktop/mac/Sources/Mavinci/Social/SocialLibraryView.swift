@@ -78,15 +78,15 @@ import UniformTypeIdentifiers
                 Text("Użyte w postach").tag("used")
             }
             .labelsHidden().frame(width: 160)
-            Button { eventPickerShown = true } label: { Label(store.libraryFilter.eventName ?? "Wydarzenie", systemImage: "calendar") }
+            Button { eventPickerShown = true } label: { Label(store.libraryFilter.eventName ?? "Event", systemImage: "calendar") }
             if store.libraryFilter.eventID != nil {
-                Button { store.libraryFilter.eventID = nil; store.libraryFilter.eventName = nil } label: { Image(systemName: "xmark") }.help("Wszystkie wydarzenia")
+                Button { store.libraryFilter.eventID = nil; store.libraryFilter.eventName = nil } label: { Image(systemName: "xmark") }.help("Wszystkie eventy")
             }
             TextField("Szukaj w opisach i nazwach", text: $store.libraryFilter.query).textFieldStyle(.roundedBorder).frame(maxWidth: 240)
             Spacer(minLength: 8)
             if canUpload {
                 Button { choose() } label: { Label("Wgraj z dysku", systemImage: "square.and.arrow.up") }.buttonStyle(.borderedProminent)
-                Button { importer = .event } label: { Label("Z plików wydarzenia", systemImage: "folder") }
+                Button { importer = .event } label: { Label("Z plików eventu", systemImage: "folder") }
                 Button { importer = .portfolio } label: { Label("Z realizacji", systemImage: "photo.stack") }
             }
         }
@@ -201,10 +201,10 @@ enum SocialImportKind: String, Identifiable {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Wybierz wydarzenie").font(.title3.weight(.semibold))
-            TextField("Nazwa wydarzenia", text: $query).textFieldStyle(.roundedBorder)
+            Text("Wybierz event").font(.title3.weight(.semibold))
+            TextField("Nazwa eventu", text: $query).textFieldStyle(.roundedBorder)
             if let events {
-                if events.isEmpty { Text("Brak wydarzeń.").foregroundStyle(.secondary) }
+                if events.isEmpty { Text("Brak eventów.").foregroundStyle(.secondary) }
                 List(events) { event in
                     Button {
                         onPick(event)
@@ -267,14 +267,14 @@ enum SocialImportKind: String, Identifiable {
     }
 
     private var title: String {
-        if kind == .event { return event.map { "Zdjęcia z wydarzenia „\($0.name)”" } ?? "Zdjęcia z plików wydarzenia" }
+        if kind == .event { return event.map { "Zdjęcia z eventu „\($0.name)”" } ?? "Zdjęcia z plików eventu" }
         return project?.title ?? "Realizacje na stronie"
     }
 
     @ViewBuilder private var eventContent: some View {
-        Button { eventPickerShown = true } label: { Label(event == nil ? "Wybierz wydarzenie" : "Inne wydarzenie", systemImage: "calendar") }
+        Button { eventPickerShown = true } label: { Label(event == nil ? "Wybierz event" : "Inny event", systemImage: "calendar") }
         if let files {
-            if files.isEmpty { Text("To wydarzenie nie ma zdjęć w plikach.").foregroundStyle(.secondary) }
+            if files.isEmpty { Text("Ten event nie ma zdjęć w plikach.").foregroundStyle(.secondary) }
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
                     ForEach(files) { file in
@@ -398,7 +398,7 @@ enum SocialImportKind: String, Identifiable {
         }
         .sheet(isPresented: $eventPickerShown) {
             SocialEventPickerSheet(store: store) { event in
-                Task { await update(["eventId": .string(event.id)], "Powiązano zdjęcie z wydarzeniem") }
+                Task { await update(["eventId": .string(event.id)], "Powiązano zdjęcie z eventem") }
             }
         }
         .sheet(item: $levelTarget) { target in
@@ -434,8 +434,8 @@ enum SocialImportKind: String, Identifiable {
                 GridRow { Text("Notatka"); TextField("", text: $note, axis: .vertical).lineLimit(2...4).textFieldStyle(.roundedBorder) }
             }
             HStack {
-                Button { eventPickerShown = true } label: { Label(asset.eventName.map { "Wydarzenie: \($0)" } ?? "Powiąż z wydarzeniem", systemImage: "calendar") }
-                if asset.eventId != nil { Button { Task { await update(["eventId": .null], "Usunięto powiązanie z wydarzeniem") } } label: { Label("Bez wydarzenia", systemImage: "xmark") } }
+                Button { eventPickerShown = true } label: { Label(asset.eventName.map { "Event: \($0)" } ?? "Powiąż z eventem", systemImage: "calendar") }
+                if asset.eventId != nil { Button { Task { await update(["eventId": .null], "Usunięto powiązanie z eventem") } } label: { Label("Bez eventu", systemImage: "xmark") } }
                 Spacer()
                 Button("Zapisz opis") {
                     let list = brands.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -449,11 +449,11 @@ enum SocialImportKind: String, Identifiable {
     private var consentBox: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Zgoda klienta na publikację").font(.headline)
-            Text("Obowiązuje: \(asset.consent.label) (\(asset.consent.sourceLabel)). Kolejność: zdjęcie → wydarzenie → klient.").font(.caption).foregroundStyle(.secondary)
+            Text("Obowiązuje: \(asset.consent.label) (\(asset.consent.sourceLabel)). Kolejność: zdjęcie → event → klient.").font(.caption).foregroundStyle(.secondary)
             if access?.consent == true {
                 Picker("Dla zdjęcia", selection: $consent) {
                     ForEach(SocialConsentStatus.allCases) { status in
-                        Text(status == .inherit ? "Jak wydarzenie i klient" : status.label).tag(status)
+                        Text(status == .inherit ? "Jak event i klient" : status.label).tag(status)
                     }
                 }
                 .frame(maxWidth: 360)
@@ -475,7 +475,7 @@ enum SocialImportKind: String, Identifiable {
                     }
                     .buttonStyle(.borderedProminent)
                     if let eventID = asset.eventId {
-                        Button("Zgoda dla całego wydarzenia") { levelTarget = SocialConsentTarget(eventID: eventID, organizationID: nil, label: "wydarzenia „\(asset.eventName ?? "")”") }
+                        Button("Zgoda dla całego eventu") { levelTarget = SocialConsentTarget(eventID: eventID, organizationID: nil, label: "eventu „\(asset.eventName ?? "")”") }
                     }
                     if let organizationID = asset.organizationId {
                         Button("Zgoda dla klienta") { levelTarget = SocialConsentTarget(eventID: nil, organizationID: organizationID, label: "klienta „\(asset.organizationName ?? "")”") }

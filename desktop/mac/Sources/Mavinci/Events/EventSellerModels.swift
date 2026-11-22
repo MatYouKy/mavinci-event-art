@@ -259,7 +259,7 @@ struct SellerSlot: Equatable {
 enum SellerText {
     /// `arrangementSchedule` — kolejność i etykiety terminów.
     static let schedule: [(key: String, label: String)] = [
-        ("setup_at", "Montaż"), ("starts_at", "Początek wydarzenia"), ("ends_at", "Koniec wydarzenia"), ("teardown_at", "Demontaż"),
+        ("setup_at", "Montaż"), ("starts_at", "Początek eventu"), ("ends_at", "Koniec eventu"), ("teardown_at", "Demontaż"),
     ]
     static let timePattern = #"^([01]\d|2[0-3]):[0-5]\d$"#
     static func validTime(_ value: String) -> Bool { value.range(of: timePattern, options: .regularExpression) != nil }
@@ -295,7 +295,7 @@ enum SellerText {
         return roles[text.lowercased()] ?? text
     }
     private static let roles: [String: String] = [
-        "admin": "Administrator", "administrator": "Administrator", "manager": "Menedżer", "event_manager": "Kierownik wydarzenia",
+        "admin": "Administrator", "administrator": "Administrator", "manager": "Menedżer", "event_manager": "Kierownik eventu",
         "sales": "Sprzedaż", "salesperson": "Sprzedawca", "seller": "Sprzedawca", "sales_manager": "Kierownik sprzedaży",
         "logistics": "Logistyka", "technician": "Technik", "support": "Wsparcie", "freelancer": "Współpracownik",
         "dj": "DJ", "mc": "Konferansjer", "host": "Prowadzący", "assistant": "Asystent", "unassigned": "Nieprzypisany",
@@ -359,7 +359,7 @@ enum SellerSchedule {
         var error = ""
         var previousDate = "", previousEnd = ""
         var startsAt: String?, endsAt: String?
-        if days.count > maxDays { error = "Możesz dodać do \(maxDays) dni wydarzenia." }
+        if days.count > maxDays { error = "Możesz dodać do \(maxDays) dni eventu." }
         var index = 0
         while index < days.count && error.isEmpty {
             let day = days[index]
@@ -373,7 +373,7 @@ enum SellerSchedule {
             if endDate.isEmpty { error = prefix + "data zakończenia wykracza poza obsługiwany zakres."; break }
             let start: String? = day.startTime.isEmpty ? nil : day.date + "T" + day.startTime
             let end: String? = day.endTime.isEmpty ? nil : endDate + "T" + day.endTime
-            if let start, !previousEnd.isEmpty, start < previousEnd { error = prefix + "godziny nakładają się na poprzedni dzień wydarzenia."; break }
+            if let start, !previousEnd.isEmpty, start < previousEnd { error = prefix + "godziny nakładają się na poprzedni dzień eventu."; break }
             if index == 0 { startsAt = start }
             if index == days.count - 1 { endsAt = end }
             previousDate = day.date
@@ -428,7 +428,7 @@ enum SellerWizardText {
         ("timeline", "Timeline i godziny montażu / demontażu", "phases"),
         ("team", "Zespół i odpowiedzialności", "team"),
         ("equipment", "Sprzęt, dostępność i rezerwacje", "equipment"),
-        ("agenda", "Agenda wydarzenia", "agenda"),
+        ("agenda", "Agenda eventu", "agenda"),
         ("logistics", "Logistyka, transport i noclegi", "logistics"),
     ]
     static let actions: [String: String] = [

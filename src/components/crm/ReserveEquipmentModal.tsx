@@ -886,7 +886,7 @@ export default function ReserveEquipmentModal({
                         </div>
                         <p className="text-sm text-blue-300/90">
                           Nie zaznaczono żadnego sprzętu. Oferta zostanie zaakceptowana bez rezerwacji — sprzęt z produktów tej oferty
-                          nie trafi do wydarzenia. W razie potrzeby dodasz go później w zakładce Sprzęt wydarzenia.
+                          nie trafi do eventu. W razie potrzeby dodasz go później w zakładce Sprzęt eventu.
                         </p>
                       </div>
                     )}

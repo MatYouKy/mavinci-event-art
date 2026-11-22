@@ -18,7 +18,7 @@ export function PersonnelLegalFields({value,onChange,kind}:{value:PersonnelPayro
  </div>
  <p className="text-xs leading-5 opacity-65">PIT: limit ulgi dla młodych to 85 528 zł rocznie, łącznie u wszystkich płatników i z innymi ulgami objętymi wspólnym limitem. Liczy się data uzyskania przychodu. {kind==='specific_work'?'Umowa o dzieło nie korzysta z tej ulgi.':'Student nie jest warunkiem ulgi PIT.'}</p>
  {kind==='employment'&&<p className="text-xs leading-5 text-amber-100/80">Umowa o pracę: ulga PIT nie zwalnia ze składek ZUS. Rozliczenie wymaga także wymiaru etatu, czasu pracy, absencji, dodatków i innych składników listy płac.</p>}
- {kind==='specific_work'&&<p className="text-xs leading-5 text-amber-100/80">Dzieło wymaga określonego rezultatu. Sama powtarzalna obsługa wydarzenia nie staje się dziełem przez wybór nazwy. Zweryfikuj również obowiązek zgłoszenia RUD.</p>}
+ {kind==='specific_work'&&<p className="text-xs leading-5 text-amber-100/80">Dzieło wymaga określonego rezultatu. Sama powtarzalna obsługa eventu nie staje się dziełem przez wybór nazwy. Zweryfikuj również obowiązek zgłoszenia RUD.</p>}
  <p className="text-xs opacity-60"><a className="underline" href="https://www.podatki.gov.pl/ulgi-i-odliczenia/ulga-dla-mlodych-pit" target="_blank" rel="noreferrer">Zasady PIT — MF</a> · <a className="underline" href="https://www.zus.pl/-/studencki-portfel-w-wakacje.-kiedy-praca-sezonowa-zasili-twoje-konto-w-zus-a-kiedy-do-twojego-portfela-trafi-%E2%80%9Eca%C5%82a-pensja-" target="_blank" rel="noreferrer">Status studenta — ZUS</a></p>
  </details>;
 }

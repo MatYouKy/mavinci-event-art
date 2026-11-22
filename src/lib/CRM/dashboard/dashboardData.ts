@@ -198,7 +198,7 @@ const fetchOperationalDashboard = requestCached(async () => {
   result.analytics.attention.overdueInquiries = inquiries.filter((task) => !['won', 'lost'].includes(task.inquiry_stage || '') && task.next_action_at && new Date(task.next_action_at) < now).length;
   result.analytics.attention.eventsNext30Days = events.filter((event) => event.status !== 'cancelled' && new Date(event.event_date) >= now && new Date(event.event_date) <= next30).length;
   result.recentActivity = [
-    ...events.map((event) => ({ id: event.id, type: 'event' as const, title: `Wydarzenie: ${event.name}`, created_at: event.created_at, time: new Date(event.created_at).toLocaleDateString('pl-PL'), icon: 'Calendar', color: 'text-[#d3bb73]' })),
+    ...events.map((event) => ({ id: event.id, type: 'event' as const, title: `Event: ${event.name}`, created_at: event.created_at, time: new Date(event.created_at).toLocaleDateString('pl-PL'), icon: 'Calendar', color: 'text-[#d3bb73]' })),
     ...tasks.map((task) => ({ id: task.id, type: 'task' as const, title: task.title, created_at: task.created_at, time: new Date(task.created_at).toLocaleDateString('pl-PL'), icon: 'Clock', color: 'text-[#d3bb73]' })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
   return result;

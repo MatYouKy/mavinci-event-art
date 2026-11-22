@@ -2,6 +2,7 @@ import { normalizeEventTabId } from './eventAccess';
 
 export type EventNotificationTab =
   | 'details'
+  | 'steps'
   | 'warehouse'
   | 'fleet'
   | 'team'
@@ -10,7 +11,7 @@ export type EventNotificationTab =
   | 'files'
   | 'wedding'
   | 'summary';
-const tabs: string[] = ['details', 'warehouse', 'fleet', 'team', 'agenda', 'checklist', 'files', 'wedding', 'summary'];
+const tabs: string[] = ['details', 'steps', 'warehouse', 'fleet', 'team', 'agenda', 'checklist', 'files', 'wedding', 'summary'];
 export function getEventNotificationTab(target: {
   initial_tab?: string; metadata?: Record<string, any> | null; action_url?: string | null; workflow?: string;
 }): EventNotificationTab | undefined {
@@ -26,8 +27,8 @@ export function getEventNotificationTab(target: {
   ) {
     return 'checklist';
   }
-  // CRM „Przegląd” (powiadomienia kroków realizacji: ?tab=overview) = zakładka Szczegóły z panelem „Kroki realizacji”.
-  if (tab === 'overview') return 'details';
+  // CRM „Przegląd” (powiadomienia kroków realizacji: ?tab=overview) = zakładka „Kroki realizacji” (osobna od „Szczegółów”).
+  if (tab === 'overview') return 'steps';
   // Podsumowanie wydarzenia (powiadomienia o wysłaniu / zatwierdzeniu: ?tab=summary, metadata.initial_tab='summary').
   // Ekran wydarzenia wraca do „Szczegółów”, gdy osoba nie ma obszaru „kwoty”.
   if (normalizeEventTabId(tab) === 'summary') return 'summary';

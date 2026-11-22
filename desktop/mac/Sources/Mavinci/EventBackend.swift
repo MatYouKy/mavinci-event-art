@@ -93,7 +93,7 @@ extension HTTPBackend {
         switch tab {
         case .overview: return []
         case .phases:
-            let phases = try await section("event_phases","Etapy wydarzenia")
+            let phases = try await section("event_phases","Etapy eventu")
             let ids = phases.rows.map(\.id)
             return [phases,
                 try await children("event_phase_assignments","Zespół etapów",parentKey:"phase_id",ids:ids,select:"*,employee:employees!event_phase_assignments_employee_id_fkey(id,name,surname)"),
@@ -116,7 +116,7 @@ extension HTTPBackend {
         case .team:
             let members = try await rpc("get_event_responsibility_team",["p_event_id":.string(eventID)])
             let responsibility = members.array.enumerated().map { i,v -> Row in var f=v.object; if f["id"] == nil { f["id"] = .string(f["employee_id"]?.text ?? "person-\(i)") }; return Row(f) }
-            return [EventSection(id:"responsibility",title:"Zespół odpowiedzialny za wydarzenie",rows:responsibility),
+            return [EventSection(id:"responsibility",title:"Zespół odpowiedzialny za event",rows:responsibility),
                 try await section("employee_assignments","Przypisania i zaproszenia",select:"id,event_id,employee_id,role,responsibilities,status,responded_at,employee:employees!employee_assignments_employee_id_fkey(id,name,surname,phone_number,email)")]
         case .equipment:
             return [try await section("event_equipment","Sprzęt i zestawy",select:"id,event_id,equipment_id,kit_id,quantity,status,is_loaded,notes,removed_from_offer,equipment:equipment_items(name,brand,model),kit:equipment_kits(name)",filters:["or":"(removed_from_offer.is.null,removed_from_offer.eq.false)"]),
@@ -124,7 +124,7 @@ extension HTTPBackend {
         case .logistics:
             return [try await section("event_vehicles","Pojazdy i kierowcy",select:"*,vehicle:vehicles!event_vehicles_vehicle_id_fkey(name,registration_number,brand,model),driver:employees!event_vehicles_driver_id_fkey(name,surname)"),
                 try await section("event_logistics_timeline","Plan logistyki")]
-        case .tasks: return [try await section("tasks","Zadania wydarzenia",select:Self.taskFields,filters:["deleted_at":"is.null"])]
+        case .tasks: return [try await section("tasks","Zadania eventu",select:Self.taskFields,filters:["deleted_at":"is.null"])]
         case .files: return [try await section("event_folders","Foldery"),try await section("event_files","Pliki i dokumenty")]
         case .offer:
             let offers = try await section("offers","Oferty",select:"id,event_id,title,offer_number,status,subtotal,total_amount,tax_amount,tax_percent,discount_percent,discount_amount,valid_until,guest_count,created_at,updated_at,pdf_url")
@@ -259,7 +259,7 @@ extension HTTPBackend {
     }
 }
 enum EventSectionTitles {
-    static func title(_ key:String) -> String { ["event_phases":"Etapy","event_agendas":"Agenda","event_agenda_items":"Punkty agendy","event_agenda_notes":"Notatki agendy","employee_assignments":"Przypisania","event_equipment":"Sprzęt","event_loading_checklist":"Załadunek","event_vehicles":"Pojazdy","event_logistics_timeline":"Plan logistyki","tasks":"Zadania","event_files":"Pliki","event_folders":"Foldery","offers":"Oferty","offer_items":"Pozycje oferty","event_calculations":"Kalkulacje","event_calculation_items":"Pozycje kalkulacji","event_costs":"Koszty","event_commissions":"Prowizje","event_cash_transactions":"Gotówka","event_invoice_settlements":"Faktury","contracts":"Umowy","subcontractor_tasks":"Zlecenia podwykonawców","subcontractor_contracts":"Dokumenty podwykonawców","event_audit_log":"Historia","mavinci_event_projects":"Mavinci LIVE"][key] ?? "Dane wydarzenia" }
+    static func title(_ key:String) -> String { ["event_phases":"Etapy","event_agendas":"Agenda","event_agenda_items":"Punkty agendy","event_agenda_notes":"Notatki agendy","employee_assignments":"Przypisania","event_equipment":"Sprzęt","event_loading_checklist":"Załadunek","event_vehicles":"Pojazdy","event_logistics_timeline":"Plan logistyki","tasks":"Zadania","event_files":"Pliki","event_folders":"Foldery","offers":"Oferty","offer_items":"Pozycje oferty","event_calculations":"Kalkulacje","event_calculation_items":"Pozycje kalkulacji","event_costs":"Koszty","event_commissions":"Prowizje","event_cash_transactions":"Gotówka","event_invoice_settlements":"Faktury","contracts":"Umowy","subcontractor_tasks":"Zlecenia podwykonawców","subcontractor_contracts":"Dokumenty podwykonawców","event_audit_log":"Historia","mavinci_event_projects":"Mavinci LIVE"][key] ?? "Dane eventu" }
 }
 
 extension HTTPBackend {

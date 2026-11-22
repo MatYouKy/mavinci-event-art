@@ -335,7 +335,7 @@ function countLabel(folder: DriveFolder) {
 
 function emptyText(node: DriveFolder) {
   if (node.id.startsWith('offers')) return 'Brak ofert z PDF-em. PDF oferty powstaje w CRM, w ofercie.';
-  if (node.id.startsWith('calculations')) return 'Brak kalkulacji z PDF-em. PDF powstaje w kalkulacji wydarzenia albo zapytania.';
+  if (node.id.startsWith('calculations')) return 'Brak kalkulacji z PDF-em. PDF powstaje w kalkulacji eventu albo zapytania.';
   if (node.id.startsWith('contracts')) return 'Brak umów z PDF-em. PDF umowy powstaje w CRM, w umowie.';
   if (node.kind === 'equipment') return 'Ten sprzęt nie ma jeszcze zdjęć ani plików.';
   if (node.id.startsWith('employees:') && node.id.endsWith(':photos')) return 'Pracownik nie ma jeszcze zdjęcia profilowego ani zdjęcia w tle.';

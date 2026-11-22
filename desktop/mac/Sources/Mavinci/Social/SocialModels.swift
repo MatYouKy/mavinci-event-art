@@ -142,7 +142,7 @@ enum SocialConsentStatus: String, Codable, CaseIterable, Identifiable, Hashable 
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .inherit: return "Jak dla wydarzenia i klienta"
+        case .inherit: return "Jak dla eventu i klienta"
         case .unknown: return "Nieustalona"
         case .requested: return "Czeka na odpowiedź klienta"
         case .granted: return "Jest zgoda"
@@ -409,7 +409,7 @@ struct SocialConsentState: Codable, Hashable {
     var sourceLabel: String {
         switch source {
         case "asset": return "ustawiona dla zdjęcia"
-        case "event": return "z wydarzenia"
+        case "event": return "z eventu"
         case "organization": return "z klienta"
         default: return "brak ustaleń"
         }
@@ -461,7 +461,7 @@ struct SocialAsset: Codable, Identifiable, Hashable {
     }
     var sourceLabel: String {
         switch source {
-        case "event_file": return "Z plików wydarzenia"
+        case "event_file": return "Z plików eventu"
         case "portfolio": return "Z realizacji na stronie"
         case "camera": return "Z telefonu"
         case "mac": return "Z Maca"

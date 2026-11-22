@@ -40,7 +40,7 @@ const metadataLabels: Record<string, string> = {
   email: 'E-mail',
   phone: 'Telefon',
   company: 'Firma',
-  event_type: 'Rodzaj wydarzenia',
+  event_type: 'Rodzaj eventu',
   guests: 'Liczba gości',
   preferred_date: 'Preferowany termin',
   source_page: 'Strona formularza',

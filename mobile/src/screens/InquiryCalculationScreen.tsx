@@ -157,7 +157,7 @@ export default function InquiryCalculationScreen() {
     try {
       if (!(await save())) return;
       const reply = await run('Generuję PDF kalkulacji na serwerze…', () => generateCalcPdf(inquiryId, calculationId),
-        eventId ? 'PDF kalkulacji zapisany w plikach wydarzenia' : 'PDF kalkulacji zapisany przy zapytaniu');
+        eventId ? 'PDF kalkulacji zapisany w plikach eventu' : 'PDF kalkulacji zapisany przy zapytaniu');
       if (reply) setPdfReady(true);
     } finally {
       setGenerating(false);

@@ -39,7 +39,7 @@ const KIND = {
   email: { label: 'E-mail', icon: Mail, color: 'text-sky-300 bg-sky-500/15' },
   inquiry: { label: 'Zapytanie', icon: Target, color: 'text-amber-300 bg-amber-500/15' },
   offer: { label: 'Oferta', icon: FileText, color: 'text-[#d3bb73] bg-[#d3bb73]/15' },
-  event: { label: 'Wydarzenie', icon: Calendar, color: 'text-violet-300 bg-violet-500/15' },
+  event: { label: 'Event', icon: Calendar, color: 'text-violet-300 bg-violet-500/15' },
   invoice: { label: 'Faktura', icon: CircleDollarSign, color: 'text-fuchsia-300 bg-fuchsia-500/15' },
 };
 
@@ -146,7 +146,7 @@ export default function Organization360Panel({ organization }: { organization: O
       ...(calls.data || []).map((item: any) => ({ id: `call-${item.id}`, kind: 'call' as const, title: item.outcome === 'connected' ? 'Rozmowa odbyta' : 'Próba kontaktu', date: item.started_at, status: item.outcome || item.status })),
       ...inquiryRows.map((item: any) => ({ id: `inquiry-${item.id}`, kind: 'inquiry' as const, title: formatSystemSubject(item.title), date: item.created_at, status: item.inquiry_stage || item.status, href: `/crm/inquiries/${item.id}` })),
       ...(offers.data || []).map((item: any) => ({ id: `offer-${item.id}`, kind: 'offer' as const, title: `Oferta ${item.offer_number || ''}`.trim(), date: item.created_at, status: item.status, href: `/crm/offers/${item.id}` })),
-      ...eventRows.map((item: any) => ({ id: `event-${item.id}`, kind: 'event' as const, title: item.name || 'Wydarzenie', date: item.event_date, status: item.status, href: `/crm/events/${item.id}` })),
+      ...eventRows.map((item: any) => ({ id: `event-${item.id}`, kind: 'event' as const, title: item.name || 'Event', date: item.event_date, status: item.status, href: `/crm/events/${item.id}` })),
       ...(invoices.data || []).map((item: any) => ({
         id: `invoice-${item.id}`,
         kind: 'invoice' as const,

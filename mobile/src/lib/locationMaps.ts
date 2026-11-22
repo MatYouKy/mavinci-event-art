@@ -53,7 +53,7 @@ const openMapUrl = async (url: string, fallback?: string) => {
 export const showLocationDirections = (location: MapLocation) => {
   const links = getLocationMapLinks(location);
   if (!links) {
-    Alert.alert('Brak lokalizacji', 'Najpierw uzupełnij adres lub pinezkę wydarzenia w CRM.');
+    Alert.alert('Brak lokalizacji', 'Najpierw uzupełnij adres lub pinezkę eventu w CRM.');
     return;
   }
   Alert.alert(

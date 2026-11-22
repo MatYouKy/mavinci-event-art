@@ -47,7 +47,7 @@ export default function DriveEvents({ events, eventsError, year, eventId, folder
     let active = true;
     eventFilesGet<EventListing>('list', { event: eventId })
       .then((data) => { if (active) setListing(data); })
-      .catch((cause) => { if (active) setError(errorMessage(cause, 'Nie udało się otworzyć plików wydarzenia.')); });
+      .catch((cause) => { if (active) setError(errorMessage(cause, 'Nie udało się otworzyć plików eventu.')); });
     return () => { active = false; };
   }, [eventId]);
 
@@ -156,7 +156,7 @@ export default function DriveEvents({ events, eventsError, year, eventId, folder
               className="absolute right-2 top-1/2 -translate-y-1/2 text-[#e5e4e2]/40 hover:text-[#e5e4e2]"><X className="h-4 w-4" /></button>
           )}
         </div>
-        {event && <Link href={`/crm/events/${event.id}`} className={secondaryButton}><ExternalLink className="h-4 w-4" />Otwórz wydarzenie</Link>}
+        {event && <Link href={`/crm/events/${event.id}`} className={secondaryButton}><ExternalLink className="h-4 w-4" />Otwórz event</Link>}
       </div>
 
       {!events ? (
@@ -164,22 +164,22 @@ export default function DriveEvents({ events, eventsError, year, eventId, folder
       ) : !currentYear ? (
         years.length ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">
-            {years.map(([label, count]) => tile(label, label, `${count} ${count === 1 ? 'wydarzenie' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'wydarzenia' : 'wydarzeń'}`,
+            {years.map(([label, count]) => tile(label, label, `${count} ${count === 1 ? 'event' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'eventy' : 'eventów'}`,
               () => onNavigate({ year: label, eventId: null, folderId: null }), CalendarDays))}
           </div>
-        ) : <p className="py-24 text-center text-sm text-[#e5e4e2]/50">Nie masz dostępu do żadnego wydarzenia.</p>
+        ) : <p className="py-24 text-center text-sm text-[#e5e4e2]/50">Nie masz dostępu do żadnego eventu.</p>
       ) : !event ? (
         yearEvents.length ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-2">
             {yearEvents.map((entry) => tile(entry.id, eventFolderName(entry), '', () => onNavigate({ year: currentYear, eventId: entry.id, folderId: null })))}
           </div>
-        ) : <p className="py-24 text-center text-sm text-[#e5e4e2]/50">{needle ? 'Nic nie pasuje do filtra.' : 'Brak wydarzeń w tym roku.'}</p>
+        ) : <p className="py-24 text-center text-sm text-[#e5e4e2]/50">{needle ? 'Nic nie pasuje do filtra.' : 'Brak eventów w tym roku.'}</p>
       ) : error ? (
         <div className={`${cardClass} p-8 text-center text-sm text-[#e5e4e2]/80`}>{error}</div>
       ) : !listing ? (
         <div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-[#d3bb73]" /></div>
       ) : !childFolders.length && !files.length ? (
-        <p className="py-24 text-center text-sm text-[#e5e4e2]/50">{needle ? 'Nic nie pasuje do filtra.' : 'Ten folder jest pusty. Pliki dodasz w zakładce Pliki wydarzenia albo w Finderze.'}</p>
+        <p className="py-24 text-center text-sm text-[#e5e4e2]/50">{needle ? 'Nic nie pasuje do filtra.' : 'Ten folder jest pusty. Pliki dodasz w zakładce Pliki eventu albo w Finderze.'}</p>
       ) : (
         <div className="space-y-4">
           {!!childFolders.length && (

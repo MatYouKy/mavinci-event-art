@@ -86,7 +86,7 @@ struct EventCategoriesData: Decodable {
             denied = false
         } catch {
             denied = (error as? NativeFailure)?.status == 403
-            loadError = Self.message(error, "Nie udało się pobrać kategorii wydarzeń.")
+            loadError = Self.message(error, "Nie udało się pobrać kategorii eventów.")
         }
     }
 
@@ -133,8 +133,8 @@ struct EventCategoriesData: Decodable {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Kategorie wydarzeń").font(.title2.bold())
-                    Text("Zarządzaj kategoriami i ikonami dla wydarzeń").foregroundStyle(.secondary)
+                    Text("Kategorie eventów").font(.title2.bold())
+                    Text("Zarządzaj kategoriami i ikonami dla eventów").foregroundStyle(.secondary)
                 }
                 Spacer()
                 if model.data != nil {
@@ -169,7 +169,7 @@ struct EventCategoriesData: Decodable {
                 if let category = removing { Task { _ = await model.post(["op": .string("delete"), "id": .string(category.id)], fallback: "Nie udało się usunąć kategorii.") } }
             }
             Button("Anuluj", role: .cancel) { removing = nil }
-        } message: { Text("Wydarzenia i produkty z tą kategorią zostaną bez kategorii.") }
+        } message: { Text("Eventy i produkty z tą kategorią zostaną bez kategorii.") }
     }
 
     @ViewBuilder private var content: some View {

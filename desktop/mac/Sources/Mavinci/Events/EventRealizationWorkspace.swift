@@ -31,7 +31,7 @@ import AppKit
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                Text((data["name"]?.text ?? "Wydarzenie").uppercased()).font(.title2.weight(.light)).textSelection(.enabled)
+                Text((data["name"]?.text ?? "Event").uppercased()).font(.title2.weight(.light)).textSelection(.enabled)
                 Text("\(Self.date(data["event_date"])) – \(Self.date(data["event_end_date"]))").font(.callout).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 4)
@@ -159,7 +159,7 @@ import AppKit
                     .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
                 }
             }
-            card("Kontakt na wydarzeniu") {
+            card("Kontakt na evencie") {
                 optionalText(contact["name"])
                 if let phone = contact["phone"]?.text.nonEmpty {
                     if let url = EventStepRules.telURL(phone) { Button(phone, systemImage: "phone") { NSWorkspace.shared.open(url) }.buttonStyle(.link).linkCursor() }
@@ -207,8 +207,8 @@ import AppKit
     private var team: some View {
         let list = members
         return VStack(alignment: .leading, spacing: 10) {
-            Text("ZESPÓŁ WYDARZENIA").font(.title3.weight(.light))
-            if list.isEmpty { Text("Brak osób przypisanych do wydarzenia.").font(.callout).foregroundStyle(.secondary) }
+            Text("ZESPÓŁ EVENTU").font(.title3.weight(.light))
+            if list.isEmpty { Text("Brak osób przypisanych do eventu.").font(.callout).foregroundStyle(.secondary) }
             ForEach(Array(list.enumerated()), id: \.offset) { _, member in memberRow(member) }
         }
         .padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -337,7 +337,7 @@ import AppKit
 /// Role w zespole (`systemLabel(role, 'role', { preserveCustom: true })`).
 enum EventRoleLabels {
     static let roles: [String: String] = [
-        "admin": "Administrator", "administrator": "Administrator", "manager": "Menedżer", "event_manager": "Kierownik wydarzenia",
+        "admin": "Administrator", "administrator": "Administrator", "manager": "Menedżer", "event_manager": "Kierownik eventu",
         "sales": "Sprzedaż", "salesperson": "Sprzedawca", "seller": "Sprzedawca", "sales_manager": "Kierownik sprzedaży",
         "logistics": "Logistyka", "technician": "Technik", "support": "Wsparcie", "freelancer": "Współpracownik",
         "dj": "DJ", "mc": "Konferansjer", "host": "Prowadzący", "assistant": "Asystent", "unassigned": "Nieprzypisany",
@@ -374,7 +374,7 @@ enum EventRoleLabels {
                     let realization = data?["realization"]?.object ?? [:]
                     let status = data?["status"]?.text.nonEmpty
                     Text((realization["manager_name"]?.text.nonEmpty ?? "Nie wyznaczono kierownika")
-                         + (status.map { " · \(EventKeyFactsView.operationalLabels[$0] ?? "Nowe wydarzenie")" } ?? "")).font(.callout)
+                         + (status.map { " · \(EventKeyFactsView.operationalLabels[$0] ?? "Nowy event")" } ?? "")).font(.callout)
                     let isManager = data?["is_manager"]?.flag == true
                     let started = realization["started_at"]?.text.nonEmpty
                     let completed = realization["completed_at"]?.text.nonEmpty

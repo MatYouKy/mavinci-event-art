@@ -259,7 +259,7 @@ extension OffersStore {
             setup = next
             schedulePreview()
         } catch {
-            loadError = store.failureText(error, "Nie udało się pobrać danych wydarzenia. Spróbuj ponownie, aby uzupełnić ofertę zapisanymi informacjami.")
+            loadError = store.failureText(error, "Nie udało się pobrać danych eventu. Spróbuj ponownie, aby uzupełnić ofertę zapisanymi informacjami.")
         }
     }
 

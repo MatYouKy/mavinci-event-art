@@ -599,12 +599,12 @@ export default function SubcontractorDetailPage() {
                         </h3>
                         {task.event_id && (
                           <div className="text-sm text-[#e5e4e2]/60">
-                            Wydarzenie:{' '}
+                            Event:{' '}
                             <Link
                               href={`/crm/events/${task.event_id}?tab=subcontractors`}
                               className="inline-flex items-center gap-1 text-[#d3bb73] underline-offset-4 hover:underline"
                             >
-                              {task.events?.name || 'Przejdź do wydarzenia'}
+                              {task.events?.name || 'Przejdź do eventu'}
                               <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0" />
                             </Link>
                           </div>
@@ -708,7 +708,7 @@ export default function SubcontractorDetailPage() {
                         <div className="text-sm text-[#e5e4e2]/60">{contract.contract_number}</div>
                         {contract.events && (
                           <div className="text-sm text-[#e5e4e2]/60">
-                            Wydarzenie: {contract.events.name}
+                            Event: {contract.events.name}
                           </div>
                         )}
                       </div>

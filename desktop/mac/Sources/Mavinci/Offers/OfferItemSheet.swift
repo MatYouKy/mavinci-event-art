@@ -118,7 +118,7 @@ import SwiftUI
             Button("Przenieś") { Task { await save(move: true) } }
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text("„\(product?.name ?? "")” jest już w sekcji „Zobacz, co warto dobrać do takiego wydarzenia”. Przenieść go do głównej listy? Zniknie z propozycji i będzie uwzględniony w wycenie.")
+            Text("„\(product?.name ?? "")” jest już w sekcji „Zobacz, co warto dobrać do takiego eventu”. Przenieść go do głównej listy? Zniknie z propozycji i będzie uwzględniony w wycenie.")
         }
     }
 

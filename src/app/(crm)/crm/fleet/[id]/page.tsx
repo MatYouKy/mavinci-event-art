@@ -453,7 +453,7 @@ export default function VehicleDetailPage() {
     }
 
     if (!isAdHocUsage && !vehicle.in_use_event_vehicle_id) {
-      return showSnackbar('Nie znaleziono aktywnego przypisania pojazdu do wydarzenia', 'error');
+      return showSnackbar('Nie znaleziono aktywnego przypisania pojazdu do eventu', 'error');
     }
     setHandoverModalOpen(true);
   };

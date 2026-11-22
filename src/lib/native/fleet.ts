@@ -728,7 +728,7 @@ export async function endUsage(ctx: NativeContext, vehicleId: string, data: Row)
     return { ok: true, message: 'Pojazd został zdany' };
   }
   if (!fleetAccess(ctx).canManage) fail('Nie masz uprawnień do zakończenia użytkowania pojazdu.', 403);
-  if (!usage.eventVehicleId) fail('Nie znaleziono aktywnego przypisania pojazdu do wydarzenia');
+  if (!usage.eventVehicleId) fail('Nie znaleziono aktywnego przypisania pojazdu do eventu');
   const now = new Date().toISOString();
   const { error: handoverError } = await s.from('vehicle_handovers').insert({
     event_vehicle_id: usage.eventVehicleId, driver_id: ctx.employee.id, handover_type: 'return', odometer_reading: mileage, timestamp: now, notes,

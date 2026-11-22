@@ -74,7 +74,7 @@ const BILLING_ARRANGEMENT_LABELS: Record<EventBillingArrangement, string> = {
 
 const ONSITE_SOURCE_LABELS: Record<EventOnsiteContact['source'], string> = {
   client: 'Osoba kontaktowa klienta',
-  event: 'Kontakt wydarzenia',
+  event: 'Kontakt eventu',
   venue: 'Obiekt',
 };
 
@@ -232,7 +232,7 @@ export function DetailsTab({
       {/* Autor wydarzenia, gdy sekcja klienta jest ukryta */}
       {!showClient && Boolean(event.creator_name) && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Wydarzenie</Text>
+          <Text style={styles.sectionTitle}>Event</Text>
           <View style={styles.infoGrid}>
             <InfoRow icon="edit-3" label="Autor" value={event.creator_name} />
           </View>
@@ -241,7 +241,7 @@ export function DetailsTab({
 
       {canViewBilling && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Rozliczenie wydarzenia</Text>
+          <Text style={styles.sectionTitle}>Rozliczenie eventu</Text>
           <View style={styles.infoGrid}>
             <InfoRow
               icon="credit-card"
@@ -264,7 +264,7 @@ export function DetailsTab({
               <InfoRow
                 icon="home"
                 label="Odbiorca na fakturze"
-                value={`${event.organization_name || 'Klient wydarzenia'}${
+                value={`${event.organization_name || 'Klient eventu'}${
                   event.client_invoice_recipient_role === 8 ? ' — jednostka podrzędna JST' : ''
                 }`}
               />

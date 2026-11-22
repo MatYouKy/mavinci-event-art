@@ -132,7 +132,7 @@ import UniformTypeIdentifiers
                         Text("Oba (służbowy + osobisty)").tag("both")
                         Text("Brak emaili (tylko powiadomienia w systemie)").tag("none")
                     }
-                    Text("Wybierz na jaki adres wysyłać powiadomienia o wydarzeniach i zadaniach").font(.caption).foregroundStyle(.secondary)
+                    Text("Wybierz na jaki adres wysyłać powiadomienia o eventach i zadaniach").font(.caption).foregroundStyle(.secondary)
                     HStack {
                         Button("Anuluj") { editingPersonalEmail = false; personalEmail = data.personalEmail; preference = data.notificationPreference }
                         Button("Zapisz") {

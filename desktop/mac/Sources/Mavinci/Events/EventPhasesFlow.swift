@@ -130,7 +130,7 @@ import SwiftUI
         if failed.isEmpty {
             state.succeed("Zespół przypisany do faz (\(people.count))")
         } else {
-            state.error = "Nie przypisano: " + failed.joined(separator: ", ") + " — prawdopodobnie konflikt z innym wydarzeniem lub nieobecność. Przypisz te osoby ręcznie („Dodaj do timeline”)."
+            state.error = "Nie przypisano: " + failed.joined(separator: ", ") + " — prawdopodobnie konflikt z innym eventem lub nieobecność. Przypisz te osoby ręcznie („Dodaj do timeline”)."
         }
     }
 
@@ -177,8 +177,8 @@ import SwiftUI
 
     /// Opis etapu pod przyciskiem „?”: co robi i po co.
     static let help: [Int: String] = [
-        1: "Fazy dzielą wydarzenie na etapy pracy: montaż, realizację i demontaż (oraz załadunek, dojazd, powrót i rozładunek).\n\n„Utwórz z umowy i ustaleń” bierze godziny montażu i demontażu z ustaleń sprzedawcy albo z umowy, a realizację z terminu wydarzenia. Brakujący czas uzupełnia domyślną długością typu fazy. Przed zapisem pokazuje godziny do potwierdzenia, a fazy możesz potem przesuwać na osi.\n\nPo co: z faz wynikają godziny pracy zespołu, wyjazdy aut i terminy montażu i demontażu w umowie.",
-        2: "Każda osoba z zakładki Zespół powinna mieć godziny pracy, czyli przypisanie do faz.\n\n„Dopasuj do faz” przypisuje osoby bez godzin do wszystkich faz pracy — bez załadunku i rozładunku, które robi magazyn. Osoby z konfliktem z innym wydarzeniem albo nieobecnością są pomijane: przypisz je ręcznie przyciskiem „Dodaj do timeline”, gdzie widać konflikt i można go świadomie zaakceptować.\n\nPo co: godziny trafiają do zaproszeń, timeline'u wysyłanego zespołowi i do rozliczenia ekipy.",
+        1: "Fazy dzielą event na etapy pracy: montaż, realizację i demontaż (oraz załadunek, dojazd, powrót i rozładunek).\n\n„Utwórz z umowy i ustaleń” bierze godziny montażu i demontażu z ustaleń sprzedawcy albo z umowy, a realizację z terminu eventu. Brakujący czas uzupełnia domyślną długością typu fazy. Przed zapisem pokazuje godziny do potwierdzenia, a fazy możesz potem przesuwać na osi.\n\nPo co: z faz wynikają godziny pracy zespołu, wyjazdy aut i terminy montażu i demontażu w umowie.",
+        2: "Każda osoba z zakładki Zespół powinna mieć godziny pracy, czyli przypisanie do faz.\n\n„Dopasuj do faz” przypisuje osoby bez godzin do wszystkich faz pracy — bez załadunku i rozładunku, które robi magazyn. Osoby z konfliktem z innym eventem albo nieobecnością są pomijane: przypisz je ręcznie przyciskiem „Dodaj do timeline”, gdzie widać konflikt i można go świadomie zaakceptować.\n\nPo co: godziny trafiają do zaproszeń, timeline'u wysyłanego zespołowi i do rozliczenia ekipy.",
         3: "Auta dodajesz w zakładce Logistyka (pojazd, kierowca, trasa). Tutaj widzisz, czy każde auto jest przypięte do faz.\n\n„Czasy przejazdu” przenosi wyliczone w Logistyce czasy dojazdu i powrotu do faz przejazdu.\n\nPo co: wyjazd aut i praca kierowców wynikają z faz, a konflikty pojazdów widać na osi.",
         4: "Kontrola zbiera, co trzeba poprawić przed wysłaniem harmonogramu: nakładające się fazy (czerwone — do poprawy), osoby bez godzin i auta bez fazy (żółte — warto uzupełnić).\n\nGdy wszystkie kropki są zielone, harmonogram jest spójny i można go wysłać.",
         5: "„Wyślij zespołowi” wysyła każdej osobie przypisanej do faz e-mail z aktualnym harmonogramem — tak jak „Wyślij aktualny timeline” w zakładce Zespół.\n\nPrzycisk jest zablokowany, dopóki fazy się nakładają. Wysyłaj po każdej istotnej zmianie godzin, żeby zespół miał aktualny plan.",
@@ -258,7 +258,7 @@ import SwiftUI
             Button("Anuluj", role: .cancel) {}
         } message: {
             Text(plans.map { $0.name + ": " + Self.range($0.start, $0.end) }.joined(separator: "\n")
-                 + "\n\nGodziny z ustaleń sprzedawcy i terminów wydarzenia — możesz je potem przesunąć na osi.")
+                 + "\n\nGodziny z ustaleń sprzedawcy i terminów eventu — możesz je potem przesunąć na osi.")
         }
         .confirmationDialog("Przypisać osoby bez godzin do faz?", isPresented: $confirmTeam, titleVisibility: .visible) {
             Button("Przypisz") { Task { await assignTeam() } }

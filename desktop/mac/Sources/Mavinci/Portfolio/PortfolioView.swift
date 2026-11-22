@@ -142,7 +142,7 @@ import AppKit
     private var placeholder: some View {
         VStack(spacing: 12) {
             Image(systemName: "photo.on.rectangle.angled").font(.system(size: 40)).foregroundStyle(theme.accent.opacity(0.5))
-            Text("Wybierz realizację z listy albo utwórz nową — z wydarzenia albo od zera.").font(.callout).foregroundStyle(.secondary)
+            Text("Wybierz realizację z listy albo utwórz nową — z eventu albo od zera.").font(.callout).foregroundStyle(.secondary)
             Button { store.creating = true } label: { Label("Nowa realizacja", systemImage: "plus") }.buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, minHeight: 320)
@@ -177,9 +177,9 @@ struct PortfolioStatusBadge: View {
                 Spacer()
                 Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            Text("Z wydarzenia w CRM").font(.headline)
-            Text("Tytuł, data, miejsce i rodzaj z wydarzenia; zdjęcia dodasz z jego plików.").font(.caption).foregroundStyle(.secondary)
-            TextField("Szukaj wydarzenia", text: $query).textFieldStyle(.roundedBorder)
+            Text("Z eventu w CRM").font(.headline)
+            Text("Tytuł, data, miejsce i rodzaj z eventu; zdjęcia dodasz z jego plików.").font(.caption).foregroundStyle(.secondary)
+            TextField("Szukaj eventu", text: $query).textFieldStyle(.roundedBorder)
             List(events) { event in
                 Button { Task { await store.create(title: nil, eventID: event.id) } } label: {
                     HStack {
@@ -193,7 +193,7 @@ struct PortfolioStatusBadge: View {
                 .buttonStyle(.plain)
             }
             .frame(minHeight: 220)
-            .overlay { if let problem { Text(problem).font(.callout).foregroundStyle(.secondary) } else if events.isEmpty { Text("Brak wydarzeń.").font(.callout).foregroundStyle(.secondary) } }
+            .overlay { if let problem { Text(problem).font(.callout).foregroundStyle(.secondary) } else if events.isEmpty { Text("Brak eventów.").font(.callout).foregroundStyle(.secondary) } }
             Divider()
             Text("Albo od zera").font(.headline)
             HStack {
@@ -209,7 +209,7 @@ struct PortfolioStatusBadge: View {
             if !query.isEmpty { try? await Task.sleep(for: .milliseconds(250)) }
             if Task.isCancelled { return }
             do { events = try await store.events(query: query); problem = nil }
-            catch { if !Task.isCancelled { events = []; problem = store.failureText(error, "Nie udało się pobrać wydarzeń.") } }
+            catch { if !Task.isCancelled { events = []; problem = store.failureText(error, "Nie udało się pobrać eventów.") } }
         }
     }
 
@@ -232,11 +232,11 @@ struct PortfolioStatusBadge: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Powiąż z wydarzeniem").font(.title3.weight(.semibold))
+                Text("Powiąż z eventem").font(.title3.weight(.semibold))
                 Spacer()
                 Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            TextField("Szukaj wydarzenia", text: $query).textFieldStyle(.roundedBorder)
+            TextField("Szukaj eventu", text: $query).textFieldStyle(.roundedBorder)
             List(events) { event in
                 Button { onPick(event); dismiss() } label: {
                     VStack(alignment: .leading, spacing: 2) {
@@ -248,7 +248,7 @@ struct PortfolioStatusBadge: View {
                 }
                 .buttonStyle(.plain)
             }
-            .overlay { if let problem { Text(problem).font(.callout).foregroundStyle(.secondary) } else if events.isEmpty { Text("Brak wydarzeń.").font(.callout).foregroundStyle(.secondary) } }
+            .overlay { if let problem { Text(problem).font(.callout).foregroundStyle(.secondary) } else if events.isEmpty { Text("Brak eventów.").font(.callout).foregroundStyle(.secondary) } }
         }
         .padding(20)
         .frame(width: 560, height: 520)
@@ -256,7 +256,7 @@ struct PortfolioStatusBadge: View {
             if !query.isEmpty { try? await Task.sleep(for: .milliseconds(250)) }
             if Task.isCancelled { return }
             do { events = try await store.events(query: query); problem = nil }
-            catch { if !Task.isCancelled { events = []; problem = store.failureText(error, "Nie udało się pobrać wydarzeń.") } }
+            catch { if !Task.isCancelled { events = []; problem = store.failureText(error, "Nie udało się pobrać eventów.") } }
         }
     }
 }
@@ -287,7 +287,7 @@ struct PortfolioStatusBadge: View {
                 .pickerStyle(.segmented).labelsHidden().frame(width: 460)
             }
             if source == .event {
-                if let eventName { Text("Wydarzenie: \(eventName)").font(.caption).foregroundStyle(.secondary) }
+                if let eventName { Text("Event: \(eventName)").font(.caption).foregroundStyle(.secondary) }
             } else {
                 TextField("Szukaj po nazwie", text: $query).textFieldStyle(.roundedBorder).frame(maxWidth: 320)
             }
@@ -345,7 +345,7 @@ struct PortfolioStatusBadge: View {
     private func reload() async {
         if source == .event && eventID == nil {
             photos = []; loading = false
-            problem = "Powiąż realizację z wydarzeniem, żeby wybrać zdjęcia z jego plików."
+            problem = "Powiąż realizację z eventem, żeby wybrać zdjęcia z jego plików."
             return
         }
         if source != .event && !query.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
@@ -356,7 +356,7 @@ struct PortfolioStatusBadge: View {
             let reply = try await store.photos(source: source, eventID: eventID, query: query)
             if Task.isCancelled { return }
             photos = reply.photos
-            problem = reply.problem ?? (reply.photos.isEmpty ? (source == .event ? "Wydarzenie nie ma zdjęć w plikach (JPEG, PNG, WebP)." : "Brak zdjęć.") : nil)
+            problem = reply.problem ?? (reply.photos.isEmpty ? (source == .event ? "Event nie ma zdjęć w plikach (JPEG, PNG, WebP)." : "Brak zdjęć.") : nil)
         } catch {
             if Task.isCancelled { return }
             photos = []

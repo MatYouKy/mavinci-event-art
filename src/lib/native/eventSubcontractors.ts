@@ -300,7 +300,7 @@ async function generate(ctx: NativeContext, eventId: string, body: Record<string
   }
   return {
     scopeOfWork: draft.scope_of_work, deliverables: draft.deliverables, guidelines: draft.guidelines,
-    source: ((data as any).sourceOffers || []).map((offer: { name: string }) => offer.name).join(', ') || 'Dane wydarzenia, zlecenie i dodatkowe wskazówki',
+    source: ((data as any).sourceOffers || []).map((offer: { name: string }) => offer.name).join(', ') || 'Dane eventu, zlecenie i dodatkowe wskazówki',
   };
 }
 

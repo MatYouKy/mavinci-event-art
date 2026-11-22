@@ -423,7 +423,7 @@ private struct BrandingLine: Identifiable { let label: String; let value: String
             }
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Hotel nie ma jeszcze powiązanej lokalizacji. Opiekun CRM powinien wybrać lub utworzyć lokalizację w szczegółach organizacji. Sale i materiały zapisujemy w tej samej bazie co wydarzenia.")
+                Text("Hotel nie ma jeszcze powiązanej lokalizacji. Opiekun CRM powinien wybrać lub utworzyć lokalizację w szczegółach organizacji. Sale i materiały zapisujemy w tej samej bazie co eventy.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if let openOrganization {
                     Button("Powiąż lokalizację hotelu") { openOrganization(organization.id, .details) }.buttonStyle(.link).linkCursor()

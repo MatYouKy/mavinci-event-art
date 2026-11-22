@@ -94,7 +94,7 @@ function getEntityTypeLabel(entityType: string | null): string | null {
   if (!entityType) return null;
 
   const labels: Record<string, string> = {
-    events: 'Wydarzenie',
+    events: 'Event',
     tasks: 'Zadanie',
     employee_assignments: 'Przypisanie pracownika',
     event_vehicles: 'Pojazd',
@@ -106,7 +106,7 @@ function getEntityTypeLabel(entityType: string | null): string | null {
     event_files: 'Plik',
     contracts: 'Umowa',
     offers: 'Oferta',
-    event_phases: 'Faza wydarzenia',
+    event_phases: 'Faza eventu',
   };
 
   return labels[entityType] || entityType;
@@ -272,7 +272,7 @@ export function useEventAuditLog(eventId: string, options?: { skip?: boolean }) 
           name: 'Nazwa',
           title: 'Tytuł',
           description: 'Opis',
-          event_date: 'Data wydarzenia',
+          event_date: 'Data eventu',
           location: 'Lokalizacja',
           status: 'Status',
           budget: 'Budżet',

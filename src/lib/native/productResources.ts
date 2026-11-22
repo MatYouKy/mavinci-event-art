@@ -58,9 +58,9 @@ const VARIANT_SELECT = 'id, name, is_active, display_order, overrides_equipment,
 
 /** Zmienne do wstawienia w klauzuli (jak lista „Wstaw zmienną…” w CRM). */
 const CLAUSE_PLACEHOLDERS: Array<[string, string]> = [
-  ['{{event_name}}', 'Nazwa wydarzenia'],
+  ['{{event_name}}', 'Nazwa eventu'],
   ['{{termin_dostarczenia_materialow}}', 'Wspólny termin materiałów'],
-  ['{{event_schedule_contract}}', 'Termin wydarzenia'],
+  ['{{event_schedule_contract}}', 'Termin eventu'],
   ['{{planned_technical_schedule}}', 'Montaż i demontaż'],
   ['{{location_full}}', 'Lokalizacja'],
   ['{{organization_name}}', 'Organizacja klienta'],
@@ -438,7 +438,7 @@ async function ownEquipmentRow(ctx: NativeContext, productId: string, rowValue: 
   if (error || !data) fail('Nie znaleziono pozycji sprzętu.');
   const row = data as Row;
   await editableScope(ctx, productId, row.product_variant_id, 'equipment');
-  if (row.is_rental) fail('Sprzęt z wynajmu zmienisz w kalkulacji wydarzenia.');
+  if (row.is_rental) fail('Sprzęt z wynajmu zmienisz w kalkulacji eventu.');
   return row;
 }
 

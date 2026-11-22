@@ -50,10 +50,10 @@ export function SalesColleagueEventView({
   onBack: () => void;
 }) {
   const event = overview?.event ?? null;
-  const name = event?.name?.trim() || fallbackName || 'Wydarzenie';
+  const name = event?.name?.trim() || fallbackName || 'Event';
   const status = event?.status ? String(event.status).trim().toLowerCase() : '';
   const statusColor = STATUS_COLORS[status] || '#6b7280';
-  const statusLabel = STATUS_LABELS[status] || 'Wydarzenie';
+  const statusLabel = STATUS_LABELS[status] || 'Event';
   const start = formatDateTime(event?.event_date);
   const end = formatDateTime(event?.event_end_date);
   const soldBy = overview?.sold_by ?? [];
@@ -102,7 +102,7 @@ export function SalesColleagueEventView({
         {!overview ? (
           <View style={styles.errorBox}>
             <Text accessibilityRole="alert" style={styles.errorText}>
-              Nie udało się pobrać podglądu wydarzenia.
+              Nie udało się pobrać podglądu eventu.
             </Text>
             <TouchableOpacity accessibilityRole="button" onPress={onRefresh} disabled={refreshing}>
               <Text style={styles.link}>{refreshing ? 'Odświeżanie…' : 'Spróbuj ponownie'}</Text>

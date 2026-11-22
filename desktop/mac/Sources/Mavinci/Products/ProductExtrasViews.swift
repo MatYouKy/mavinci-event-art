@@ -63,7 +63,7 @@ import SwiftUI
             let preparation = extras.preparation
             let manage = preparation.canManage && state.canWrite
             ProductPanel(title: "Przygotowanie i zamówienia",
-                         subtitle: "Co trzeba zamówić, sprawdzić lub potwierdzić przed każdym wydarzeniem z tą usługą. Kroki pojawią się na wydarzeniu po akceptacji oferty, z terminem i osobą odpowiedzialną.") {
+                         subtitle: "Co trzeba zamówić, sprawdzić lub potwierdzić przed każdym eventem z tą usługą. Kroki pojawią się na evencie po akceptacji oferty, z terminem i osobą odpowiedzialną.") {
                 if manage {
                     Button { form = PreparationForm() } label: { Label("Dodaj krok", systemImage: "plus") }.buttonStyle(.borderedProminent)
                 }
@@ -90,7 +90,7 @@ import SwiftUI
                 }
                 Button("Anuluj", role: .cancel) { removing = nil }
             } message: {
-                Text("Wydarzenia z tą usługą przestaną dostawać ten krok. Aby tylko wstrzymać krok, użyj „Wyłącz”.")
+                Text("Eventy z tą usługą przestaną dostawać ten krok. Aby tylko wstrzymać krok, użyj „Wyłącz”.")
             }
         }
     }
@@ -124,8 +124,8 @@ import SwiftUI
                     Button(item.active ? "Wyłącz" : "Włącz", systemImage: "power") {
                         Task {
                             await store.changeExtras(productID, "preparationToggle", ["itemId": .string(item.id)],
-                                                     success: item.active ? "Krok wyłączony — nie pojawi się w wydarzeniach (otwarte kroki z tej usługi zostaną zarchiwizowane)."
-                                                        : "Krok włączony — pojawi się w bieżących wydarzeniach z tą usługą.", english: false)
+                                                     success: item.active ? "Krok wyłączony — nie pojawi się w eventach (otwarte kroki z tej usługi zostaną zarchiwizowane)."
+                                                        : "Krok włączony — pojawi się w bieżących eventach z tą usługą.", english: false)
                         }
                     }
                     Divider()
@@ -164,7 +164,7 @@ import SwiftUI
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(form.itemId == nil ? "Dodaj krok przygotowania" : "Edytuj krok przygotowania").font(.title3.weight(.semibold))
-                Text("Krok powstanie na każdym wydarzeniu z tą usługą po akceptacji oferty.").font(.caption).foregroundStyle(.secondary)
+                Text("Krok powstanie na każdym evencie z tą usługą po akceptacji oferty.").font(.caption).foregroundStyle(.secondary)
             }
             HStack(alignment: .top, spacing: 10) {
                 ProductField(label: "Rodzaj") {
@@ -193,14 +193,14 @@ import SwiftUI
                     TextField("", text: Binding(get: { form.unit }, set: { form.unit = String($0.prefix(30)) }), prompt: Text("Np. kg")).textFieldStyle(.roundedBorder)
                 }
             }
-            Text("Ilość na wydarzeniu = ilość na sztukę × liczba sztuk usługi w zaakceptowanej ofercie.").font(.caption).foregroundStyle(.secondary)
+            Text("Ilość na evencie = ilość na sztukę × liczba sztuk usługi w zaakceptowanej ofercie.").font(.caption).foregroundStyle(.secondary)
             ProductField(label: "Opis / instrukcja (opcjonalnie)") {
                 ProductTextArea(text: Binding(get: { form.details }, set: { form.details = String($0.prefix(2000)) }),
                                 prompt: "Np. zamówienie telefonicznie, odbiór w magazynie dostawcy, termobox z magazynu", lines: 3...5)
             }
             Toggle("Wymagane przed gotowością magazynu", isOn: $form.blocksReady).toggleStyle(.checkbox)
             Text("Magazyn nie oznaczy „Gotowe do wydania”, dopóki ten krok nie zostanie zamknięty.").font(.caption).foregroundStyle(.secondary)
-            if form.itemId != nil { Toggle("Aktywny — dodawaj ten krok do wydarzeń", isOn: $form.active).toggleStyle(.checkbox) }
+            if form.itemId != nil { Toggle("Aktywny — dodawaj ten krok do eventów", isOn: $form.active).toggleStyle(.checkbox) }
             Text(ProductPreparationText.preview(title: form.title, leadDays: form.leadDays.flatMap { $0 == $0.rounded() ? Int($0) : nil },
                                                 anchor: form.anchor, role: form.ownerRole))
                 .font(.callout).padding(8).frame(maxWidth: .infinity, alignment: .leading)

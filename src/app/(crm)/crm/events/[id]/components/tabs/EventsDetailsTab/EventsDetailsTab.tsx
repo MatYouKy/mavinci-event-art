@@ -153,7 +153,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
       return;
     }
     if (end && new Date(end).getTime() <= new Date(start).getTime()) {
-      setDateError('Zakończenie musi być późniejsze niż rozpoczęcie wydarzenia.');
+      setDateError('Zakończenie musi być późniejsze niż rozpoczęcie eventu.');
       return;
     }
     dateSaveRef.current = true;
@@ -341,7 +341,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="text-sm text-[#e5e4e2]/60">Data rozpoczęcia</p>
-                    {canEditEventDetails && <button type="button" onClick={beginDateEdit} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline" aria-label="Edytuj termin wydarzenia"><Edit className="h-3 w-3" /> Edytuj</button>}
+                    {canEditEventDetails && <button type="button" onClick={beginDateEdit} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline" aria-label="Edytuj termin eventu"><Edit className="h-3 w-3" /> Edytuj</button>}
                   </div>
                   <p className="text-[#e5e4e2]">{new Date(event.event_date).toLocaleString('pl-PL', { dateStyle: 'full', timeStyle: 'short' })}</p>
                 </div>
@@ -368,7 +368,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                     setLocationDraft({ label: location?.name || '', id: event.location_id || null });
                     setLocationError('');
                     setEditingLocation(true);
-                  }} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline" aria-label="Edytuj lokalizację wydarzenia">
+                  }} className="inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline" aria-label="Edytuj lokalizację eventu">
                     <Edit className="h-3 w-3" /> Edytuj
                   </button>
                 )}

@@ -97,7 +97,7 @@ export default function SalesCommissionSettingsSection({ className = '' }: { cla
       'defaults',
       'set_sales_commission_defaults',
       { p_standard_rate: standardRate, p_own_client_rate: ownRate },
-      'Stawki globalne zapisane — prognozy otwartych wydarzeń przeliczone.',
+      'Stawki globalne zapisane — prognozy otwartych eventów przeliczone.',
     );
   };
 
@@ -135,9 +135,9 @@ export default function SalesCommissionSettingsSection({ className = '' }: { cla
             Prowizja pracowników od sprzedaży
           </h2>
           <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/50">
-            Sprzedawca wydarzenia dostaje procent od zysku netto (przychód − wykonawcy zewnętrzni − koszty bezpośrednie − ekipa −
+            Sprzedawca eventu dostaje procent od zysku netto (przychód − wykonawcy zewnętrzni − koszty bezpośrednie − ekipa −
             prowizje zewnętrzne). Wyższa stawka, gdy w dniu akceptacji oferty był opiekunem klienta. Wyliczenie widać w zakładce
-            Podsumowanie wydarzenia.
+            Podsumowanie eventu.
           </p>
         </div>
       </div>

@@ -312,7 +312,7 @@ export default function EventContractClausesModal({
           <div>
             <h2 className="text-xl font-medium text-[#f2eee2]">Klauzule tej umowy</h2>
             <p className="mt-1 max-w-3xl text-sm leading-5 text-[#e5e4e2]/55">
-              Zmiany dotyczą wyłącznie tego wydarzenia. Nie zmienią klauzul zapisanych przy produktach ani w ofercie.
+              Zmiany dotyczą wyłącznie tego eventu. Nie zmienią klauzul zapisanych przy produktach ani w ofercie.
             </p>
           </div>
           <button
@@ -407,7 +407,7 @@ export default function EventContractClausesModal({
             <section className="mb-5 rounded-xl border border-[#d3bb73]/30 bg-[#d3bb73]/[0.06] p-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-[#e7cf86]">
                 <FilePlus2 className="h-4 w-4" />
-                Nowe ustalenie dla tego wydarzenia
+                Nowe ustalenie dla tego eventu
               </div>
               <div className="mt-3 grid gap-3">
                 <label>
@@ -471,7 +471,7 @@ export default function EventContractClausesModal({
                             ? 'bg-blue-400/10 text-blue-200'
                             : 'bg-[#d3bb73]/10 text-[#d3bb73]'
                         }`}>
-                          {item.source === 'custom' ? 'Dodana do wydarzenia' : 'Automatyczna'}
+                          {item.source === 'custom' ? 'Dodana do eventu' : 'Automatyczna'}
                         </span>
                         {isEdited && (
                           <span className="rounded bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
@@ -552,7 +552,7 @@ export default function EventContractClausesModal({
 
         <footer className="flex flex-col gap-3 border-t border-white/10 bg-[#11131f] px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-7">
           <p className="text-xs text-[#e5e4e2]/50">
-            {activeCount} aktywnych klauzul · {changedCount} zmian dla tego wydarzenia
+            {activeCount} aktywnych klauzul · {changedCount} zmian dla tego eventu
           </p>
           <div className="flex justify-end gap-2">
             <button

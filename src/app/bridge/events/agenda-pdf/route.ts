@@ -112,7 +112,7 @@ export async function POST(req: Request) {
     }
 
     if (!(await canManageEvent(access.client, eventId))) {
-      return NextResponse.json({ error: 'Brak uprawnień do agendy tego wydarzenia.' }, { status: 403 });
+      return NextResponse.json({ error: 'Brak uprawnień do agendy tego eventu.' }, { status: 403 });
     }
 
     const supabase = getSupabaseAdmin();
@@ -124,7 +124,7 @@ export async function POST(req: Request) {
       .eq('id', agendaId)
       .maybeSingle();
     if (!agenda || agenda.event_id !== eventId) {
-      return NextResponse.json({ error: 'Nie znaleziono agendy wydarzenia.' }, { status: 404 });
+      return NextResponse.json({ error: 'Nie znaleziono agendy eventu.' }, { status: 404 });
     }
     const agendaFolderPrefix = `${eventId}/documents/agenda/`;
     const previousPdfPath =

@@ -74,7 +74,7 @@ export function LocationRooms({ locationId, readOnly = false }: { locationId: st
     if (
       !(await showConfirm({
         title: 'Usuń salę',
-        message: `Czy usunąć salę „${room.name}”? Sali przypisanej do wydarzenia nie można usunąć.`,
+        message: `Czy usunąć salę „${room.name}”? Sali przypisanej do eventu nie można usunąć.`,
         confirmText: 'Usuń salę',
       }))
     )
@@ -105,7 +105,7 @@ export function LocationRooms({ locationId, readOnly = false }: { locationId: st
         )}
       </div>
       <p className="mb-4 text-sm text-white/60">
-        Dodaj sale oraz tereny na zewnątrz, np. ogród lub miejsce teambuildingu. Ta sama baza jest dostępna w wydarzeniach i ofertach sprzedawcy hotelowego.
+        Dodaj sale oraz tereny na zewnątrz, np. ogród lub miejsce teambuildingu. Ta sama baza jest dostępna w eventach i ofertach sprzedawcy hotelowego.
       </p>
       {error && (
         <p role="alert" className="mb-3 text-sm text-red-300">

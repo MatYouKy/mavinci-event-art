@@ -325,8 +325,8 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
  if(!realization?.migration_ready)decisionBlockers.push('Obsługa akceptacji wymaga aktualizacji przez administratora.');
  if(directReview && !realization?.crm_review_ready)decisionBlockers.push('Bezpośrednia ocena wymaga aktualizacji przez administratora.');
  const approvalBlockers=[...decisionBlockers];
- if(!realization?.auto_event_ready)approvalBlockers.push('Automatyczne tworzenie wydarzenia wymaga migracji 20261028170000_seller_acceptance_event_handoff.sql.');
- if(!realization?.can_create_event)approvalBlockers.push('Akceptacja tworzy wydarzenie — potrzebujesz uprawnień do ofert i wydarzeń tej marki.');
+ if(!realization?.auto_event_ready)approvalBlockers.push('Automatyczne tworzenie eventu wymaga migracji 20261028170000_seller_acceptance_event_handoff.sql.');
+ if(!realization?.can_create_event)approvalBlockers.push('Akceptacja tworzy event — potrzebujesz uprawnień do ofert i eventów tej marki.');
  if(state?.review_context?.date_error)approvalBlockers.push(state.review_context.date_error);
  if(!state?.offer_summary)approvalBlockers.push('Odśwież status — nie udało się wczytać zakresu oferty.');
  else if(!state.offer_summary.items.length)approvalBlockers.push('Sprzedawca musi uzupełnić pozycje oferty.');
@@ -367,7 +367,7 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
        throw error;
      }
      setResponse('');
-     await refreshDecision(decision==='approved' ? 'Oferta zaakceptowana i powiązana z wydarzeniem w CRM. Możesz przygotować Timeline, zespół, agendę i logistykę. Realizacja nadal oczekuje na potwierdzenie.' : 'Decyzja i wiadomość dla sprzedawcy zostały zapisane.');
+     await refreshDecision(decision==='approved' ? 'Oferta zaakceptowana i powiązana z eventem w CRM. Możesz przygotować Timeline, zespół, agendę i logistykę. Realizacja nadal oczekuje na potwierdzenie.' : 'Decyzja i wiadomość dla sprzedawcy zostały zapisane.');
    });
  };
  const statuses:Record<string,string>={pending:'Oczekuje na ocenę opiekuna',approved:'Oferta zaakceptowana przez opiekuna',changes_requested:'Opiekun prosi o zmiany',rejected:'Brak akceptacji'};
@@ -380,7 +380,7 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
    <div className={`grid min-w-0 grid-cols-1 items-start gap-6 text-[#e5e4e2] ${hasSidebar ? 'lg:grid-cols-3' : ''}`}>
    <div className={`min-w-0 space-y-6 ${hasSidebar ? 'lg:col-span-2' : ''}`}>
    <section className="min-w-0 space-y-4 rounded-xl bg-[#1c1f33] p-4 sm:p-5">
-   <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-1 text-lg uppercase">{accepted || confirmed ? 'Realizacja — dokumenty i ustalenia' : crm ? 'Ocena oferty sprzedawcy' : state?.title || 'Twoja oferta'}{crm && <HelpButton audience="manager" chapter={accepted || confirmed ? 'potwierdzenie' : 'ocena'} />}</h2><p className="mt-1 text-xs text-white/45">{crm ? 'Sprawdź zakres i PDF, porozmawiaj ze sprzedawcą i zapisz decyzję. Potwierdzenie wydarzenia to następny krok.' : 'Zakres oferty, decyzja klienta i jedna rozmowa z opiekunem.'}</p></div>
+   <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="flex items-center gap-1 text-lg uppercase">{accepted || confirmed ? 'Realizacja — dokumenty i ustalenia' : crm ? 'Ocena oferty sprzedawcy' : state?.title || 'Twoja oferta'}{crm && <HelpButton audience="manager" chapter={accepted || confirmed ? 'potwierdzenie' : 'ocena'} />}</h2><p className="mt-1 text-xs text-white/45">{crm ? 'Sprawdź zakres i PDF, porozmawiaj ze sprzedawcą i zapisz decyzję. Potwierdzenie eventu to następny krok.' : 'Zakres oferty, decyzja klienta i jedna rozmowa z opiekunem.'}</p></div>
      <button type="button" className={button} onClick={()=>void run('Odświeżanie',async()=>{await reload();setArrangementsRefresh((value)=>value+1);})}><RefreshCw className="h-4 w-4"/> Odśwież status</button>
    </div>
    {message && <p role="alert" className="rounded-lg bg-[#d3bb73]/10 p-3 text-sm text-[#e5e4e2]">{message}</p>}
@@ -427,11 +427,11 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
        <SellerOfferSummary state={state} />
      </>}
      {(accepted || confirmed) && <div role="status" className={`space-y-3 rounded-lg p-4 text-sm ${cancelled ? 'bg-rose-300/10 text-rose-200' : confirmed ? 'bg-emerald-300/10 text-emerald-200' : 'bg-amber-300/10 text-amber-100'}`}>
-       <p className="font-medium">{cancelled ? 'Powiązane wydarzenie zostało anulowane.' : confirmed ? 'Realizacja potwierdzona przez CRM — wydarzenie jest zapisane.' : 'Oferta zaakceptowana — realizacja oczekuje na osobne potwierdzenie CRM.'}</p>
-       {!confirmed && !cancelled && <p className="text-xs">{crm ? 'Oferta jest już w Realizacjach sprzedawcy' : 'Oferta jest już w zakładce „Wydarzenia”'}, ale nie stanowi jeszcze potwierdzenia wydarzenia.{crm ? ' Następny krok: uzupełnij wydarzenie i zatwierdź realizację poniżej.' : ' O ostatecznym potwierdzeniu poinformujemy Cię osobno.'}</p>}
-       {crm && realization?.event_id && realization.can_view_event && <Link href={`/crm/events/${realization.event_id}`} className={button}>Przejdź do wydarzenia</Link>}
+       <p className="font-medium">{cancelled ? (crm ? 'Powiązany event został anulowany.' : 'Powiązane wydarzenie zostało anulowane.') : confirmed ? (crm ? 'Realizacja potwierdzona przez CRM — event jest zapisany.' : 'Realizacja potwierdzona przez CRM — wydarzenie jest zapisane.') : 'Oferta zaakceptowana — realizacja oczekuje na osobne potwierdzenie CRM.'}</p>
+       {!confirmed && !cancelled && <p className="text-xs">{crm ? 'Oferta jest już w Realizacjach sprzedawcy, ale nie stanowi jeszcze potwierdzenia eventu. Następny krok: uzupełnij event i zatwierdź realizację poniżej.' : 'Oferta jest już w zakładce „Wydarzenia”, ale nie stanowi jeszcze potwierdzenia wydarzenia. O ostatecznym potwierdzeniu poinformujemy Cię osobno.'}</p>}
+       {crm && realization?.event_id && realization.can_view_event && <Link href={`/crm/events/${realization.event_id}`} className={button}>Przejdź do eventu</Link>}
        {crm && realization?.event_id && realization.can_view_event && <Link href={`/crm/events/${realization.event_id}?tab=seller-arrangements&offer=${offerId}`} className={button}><MessageSquare className="h-4 w-4"/>Kontynuuj rozmowę i ustalenia w realizacji</Link>}
-       {crm && !confirmed && !cancelled && <a href="#seller-offer-review" className={button}>Przejdź do potwierdzenia wydarzenia</a>}
+       {crm && !confirmed && !cancelled && <a href="#seller-offer-review" className={button}>Przejdź do potwierdzenia eventu</a>}
        {!crm && <Link href={`/seller/realizations/${offerId}#seller-offer-conversation`} className={button}><MessageSquare className="h-4 w-4"/>Kontynuuj rozmowę w realizacji</Link>}
        {!crm && <Link href="/seller/realizations" className={button}>Przejdź do wydarzeń</Link>}
      </div>}
@@ -439,7 +439,7 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
        <SellerOfferReviewBrief state={state} managerName={state.manager?.manager_name}
          sellerHref={state.source?.seller_contact_id ? `/crm/contacts/${state.source.seller_contact_id}?tab=seller` : state.source ? `/crm/salespeople?seller=${state.source.sales_partner_id}` : undefined}/>
        {state.review_context?.date_error && <p role="alert" className="rounded-lg bg-rose-300/10 p-3 text-sm text-rose-200">{state.review_context.date_error}</p>}
-       {state.review_context?.past_date && <p role="alert" className="rounded-lg bg-amber-300/10 p-3 text-sm text-amber-100">Uwaga: termin wydarzenia jest w przeszłości. Sprawdź rok i poproś sprzedawcę o poprawkę, jeśli to pomyłka. Nie zmieniamy daty automatycznie.</p>}
+       {state.review_context?.past_date && <p role="alert" className="rounded-lg bg-amber-300/10 p-3 text-sm text-amber-100">Uwaga: termin eventu jest w przeszłości. Sprawdź rok i poproś sprzedawcę o poprawkę, jeśli to pomyłka. Nie zmieniamy daty automatycznie.</p>}
      </>}
      <div id="seller-offer-documents" className="scroll-mt-6 space-y-3">
      <h3 className="flex items-center gap-1 text-sm uppercase">{crm ? 'PDF wysłany do oceny' : 'PDF dla klienta'}{!crm && <HelpTip audience="seller" tip="pdfVersions" label="wersje PDF" />}</h3>
@@ -484,7 +484,7 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
        disabled={!['draft','sent','viewed'].includes(realization?.offer_status || '')} />}
      {crm && <div id="seller-offer-review" className="scroll-mt-6 rounded-lg bg-[#0f1119]/70 p-4">
        <h3 className="text-sm uppercase">{accepted ? 'Oferta zaakceptowana — następny krok' : 'Decyzja opiekuna'}</h3>
-       <p className="mt-2 text-xs text-white/55">Akceptujesz zakres i możliwość obsługi. Nie zmieniasz ceny klienta, treści ani brandingu. Akceptacja tworzy wydarzenie w CRM do przygotowania. Nie potwierdza jeszcze realizacji ani rezerwacji sprzętu.</p>
+       <p className="mt-2 text-xs text-white/55">Akceptujesz zakres i możliwość obsługi. Nie zmieniasz ceny klienta, treści ani brandingu. Akceptacja tworzy event w CRM do przygotowania. Nie potwierdza jeszcze realizacji ani rezerwacji sprzętu.</p>
        {realization?.migration_ready===false && <p role="alert" className="mt-3 rounded-lg bg-amber-300/10 p-3 text-sm text-amber-200">{crm ? 'Akceptacja jest wyłączona do uruchomienia migracji 20260917150000 (po migracjach 20260911234500 i 20260911235000). Nic nie zostało zapisane przez ten przycisk.' : 'Administrator aktualizuje obsługę akceptacji. PDF i rozmowa pozostają dostępne.'}</p>}
        {crm && state.can_manage && currentReview?.status==='approved' && !accepted && !cancelled && <div className="mt-3 space-y-2 rounded-lg bg-amber-300/10 p-3 text-sm">
          <p>Wcześniejsza zgoda jest zapisana, ale oferta nie została jeszcze przeniesiona do Realizacji.</p>
@@ -494,22 +494,22 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
          })}>Zapisz akceptację i przenieś do Realizacji</button>
        </div>}
        {accepted && <div className={`mt-4 space-y-3 rounded-lg p-4 text-sm ${cancelled ? 'bg-rose-300/10' : confirmed ? 'bg-emerald-300/10' : 'bg-amber-300/10'}`}>
-         <h4 className="text-sm uppercase">{cancelled ? 'Wydarzenie anulowane' : confirmed ? '2. Realizacja potwierdzona przez CRM' : '2. Oczekuje na potwierdzenie realizacji przez CRM'}</h4>
+         <h4 className="text-sm uppercase">{cancelled ? 'Event anulowany' : confirmed ? '2. Realizacja potwierdzona przez CRM' : '2. Oczekuje na potwierdzenie realizacji przez CRM'}</h4>
          {!confirmed && !cancelled && <>
-           <p>{realization?.event_id ? 'Wydarzenie w CRM już istnieje. Przygotuj harmonogram, zespół i logistykę, a następnie potwierdź realizację.' : 'Ta wcześniej zaakceptowana oferta nie ma jeszcze wydarzenia w CRM.'}</p>
-           {crm && !realization?.can_create_event && <p className="text-xs text-white/60">Ten krok wykonuje pracownik z uprawnieniami do ofert i wydarzeń tej marki.</p>}
-           {crm && realization?.can_create_event && realization.event_id && !realization.can_view_event && <p className="text-xs text-amber-200">Nie masz dostępu do powiązanego wydarzenia. Jego potwierdzenie wymaga pracownika z dostępem do tej realizacji.</p>}
+           <p>{realization?.event_id ? 'Event w CRM już istnieje. Przygotuj harmonogram, zespół i logistykę, a następnie potwierdź realizację.' : 'Ta wcześniej zaakceptowana oferta nie ma jeszcze eventu w CRM.'}</p>
+           {crm && !realization?.can_create_event && <p className="text-xs text-white/60">Ten krok wykonuje pracownik z uprawnieniami do ofert i eventów tej marki.</p>}
+           {crm && realization?.can_create_event && realization.event_id && !realization.can_view_event && <p className="text-xs text-amber-200">Nie masz dostępu do powiązanego eventu. Jego potwierdzenie wymaga pracownika z dostępem do tej realizacji.</p>}
            {crm && realization?.can_create_event && currentReview?.status==='approved' && (!realization.event_id || realization.can_view_event) && <>
              {realization.event_id ? <button type="button" className={button} disabled={arrangementsDirty || !realization.auto_event_ready} onClick={()=>setEventModalOpen(true)}>Sprawdź dane i potwierdź realizację</button>
-               : <button type="button" className={button} disabled={arrangementsDirty || !realization.auto_event_ready} onClick={()=>void run('Tworzenie wydarzenia do przygotowania',async()=>{
+               : <button type="button" className={button} disabled={arrangementsDirty || !realization.auto_event_ready} onClick={()=>void run('Tworzenie eventu do przygotowania',async()=>{
                  await api({action:'accept_offer',documentId:currentReview.document_id});
-                 await refreshDecision('Wydarzenie w CRM zostało utworzone. Realizacja nadal oczekuje na potwierdzenie.');
-               })}>Utwórz wydarzenie do przygotowania</button>}
+                 await refreshDecision('Event w CRM został utworzony. Realizacja nadal oczekuje na potwierdzenie.');
+               })}>Utwórz event do przygotowania</button>}
            </>}
            {!crm && <p className="text-xs text-white/60">Po decyzji CRM otrzymasz kolejne powiadomienie. Ustalenia możesz omówić z opiekunem na czacie.</p>}
          </>}
          {crm && realization?.event_id && realization.can_view_event && <div className="flex flex-wrap gap-2">
-           <Link href={`/crm/events/${realization.event_id}?tab=seller-arrangements&offer=${offerId}`} className={button}>Przygotuj wydarzenie w CRM</Link>
+           <Link href={`/crm/events/${realization.event_id}?tab=seller-arrangements&offer=${offerId}`} className={button}>Przygotuj event w CRM</Link>
            <Link href={`/crm/events/${realization.event_id}?tab=phases`} className={button}>Timeline</Link>
            <Link href={`/crm/events/${realization.event_id}?tab=team`} className={button}>Zespół</Link>
            <Link href={`/crm/events/${realization.event_id}?tab=agenda`} className={button}>Agenda</Link>
@@ -544,7 +544,7 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
          <p className="mt-2 text-xs text-white/50">Termin i zespół potwierdza opiekun, sprzęt sprawdza system. To nie tworzy rezerwacji. Montaż, demontaż i organizację ustalicie po akceptacji.</p>
          {state.review_context?.past_date && <label className="mt-3 flex items-start gap-2 rounded-lg bg-amber-300/10 p-3 text-sm text-amber-100">
            <input type="checkbox" disabled={Boolean(busy)} checked={confirmPastDate} onChange={event=>setConfirmPastDate(event.target.checked)} className="mt-1"/>
-           Sprawdziłem datę i rok. Świadomie oceniam wydarzenie z przeszłości. Jeśli to pomyłka, zamiast akceptacji poproszę o zmianę.
+           Sprawdziłem datę i rok. Świadomie oceniam event z przeszłości. Jeśli to pomyłka, zamiast akceptacji poproszę o zmianę.
          </label>}
        </>}
        <section aria-labelledby="seller-review-messages-title" className="mt-5 space-y-3">
@@ -579,7 +579,7 @@ export default function SellerOfferWorkflow({offerId,crm=false,onChanged,onReali
        <SellerRealizationWizard key={`wizard:${offerId}`} offerId={offerId} crm refreshKey={externalRefresh + arrangementsRefresh} blocked={arrangementsDirty}/>}
      {crm && accepted && !cancelled && <details className="rounded-lg bg-white/[0.03] p-4" onToggle={event=>{if(event.currentTarget.open)setArrangementsMounted(true);}}>
        <summary className="cursor-pointer text-sm text-[#d3bb73]">Dodatkowe ustalenia CRM — terminy techniczne</summary>
-       <p className="mt-3 text-xs text-white/55">Kolejny etap po akceptacji oferty. Te ustalenia nie zastępują osobnego potwierdzenia wydarzenia.</p>
+       <p className="mt-3 text-xs text-white/55">Kolejny etap po akceptacji oferty. Te ustalenia nie zastępują osobnego potwierdzenia eventu.</p>
        <div className="mt-4">{arrangementsMounted && <SellerOfferArrangements key={offerId} offerId={offerId} crm refreshKey={arrangementsRefresh}
          reviewedAt={state.review?.reviewed_at} onDirtyChange={setArrangementsDirty}
          onSaved={async()=>{setArrangementsRefresh(value=>value+1);await reload();onChanged?.();}}/>}</div>

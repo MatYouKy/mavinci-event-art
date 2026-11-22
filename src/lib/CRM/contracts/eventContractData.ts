@@ -519,7 +519,7 @@ export async function fetchEventContractData(
         .single();
 
       if (eventError) throw eventError;
-      if (!event) throw new Error('Nie znaleziono wydarzenia');
+      if (!event) throw new Error('Nie znaleziono eventu');
       // Budżet z event_financials (events.budget jest po migracji puste; bez obszaru „kwoty” — brak wartości).
       const eventFinancials = await fetchEventFinancials(supabase, event.id);
 
@@ -1848,14 +1848,14 @@ export const CONTRACT_VARIABLE_LABELS: Record<string, string> = {
   zamiownienie: 'Numer PO / zamówienia klienta',
   zamowienie: 'Numer PO / zamówienia klienta',
   termin_dostarczenia_materialow: 'Termin dostarczenia materiałów',
-  event_name: 'Nazwa wydarzenia',
-  event_date: 'Data rozpoczęcia wydarzenia',
-  event_end_date: 'Data zakończenia wydarzenia',
-  event_date_only: 'Dzień rozpoczęcia wydarzenia',
-  event_end_date_only: 'Dzień zakończenia wydarzenia',
-  event_time_start: 'Godzina rozpoczęcia wydarzenia',
-  event_time_end: 'Godzina zakończenia wydarzenia',
-  event_schedule_contract: 'Termin wydarzenia do umowy',
+  event_name: 'Nazwa eventu',
+  event_date: 'Data rozpoczęcia eventu',
+  event_end_date: 'Data zakończenia eventu',
+  event_date_only: 'Dzień rozpoczęcia eventu',
+  event_end_date_only: 'Dzień zakończenia eventu',
+  event_time_start: 'Godzina rozpoczęcia eventu',
+  event_time_end: 'Godzina zakończenia eventu',
+  event_schedule_contract: 'Termin eventu do umowy',
   planned_setup_at: 'Planowany montaż – data i godzina',
   planned_setup_date: 'Planowany montaż – data',
   planned_setup_time: 'Planowany montaż – godzina',
@@ -2037,7 +2037,7 @@ export function eventContractPreflightIssues({
   ) {
     issues.push({
       key: 'executor-representative',
-      label: 'Uzupełnij reprezentanta firmy realizującej wydarzenie w danych tej firmy.',
+      label: 'Uzupełnij reprezentanta firmy realizującej event w danych tej firmy.',
       severity: 'blocker',
     });
   }

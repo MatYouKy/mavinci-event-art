@@ -34,7 +34,7 @@ export default function CommissionEarningsChart({
     paid: month.paidCents / 100,
   })), [months]);
   const cards = [
-    { label: 'Zarobione / zatwierdzone', value: summary.earnedCents, detail: 'Nominalne prowizje za wydarzenia', color: 'text-[#d3bb73]' },
+    { label: 'Zarobione / zatwierdzone', value: summary.earnedCents, detail: 'Nominalne prowizje za eventy', color: 'text-[#d3bb73]' },
     { label: 'Wypłacone', value: summary.paidCents, detail: 'Przelewy i wypłaty, także częściowe (bez potrąceń)', color: 'text-emerald-300' },
     { label: 'Pozostało do wypłaty', value: summary.outstandingCents, detail: 'Tylko zatwierdzone, po odjęciu wypłat i potrąceń', color: 'text-violet-200' },
     { label: 'Planowane', value: summary.plannedCents, detail: 'Jeszcze niezatwierdzone — poza saldem', color: 'text-[#e5e4e2]/70' },
@@ -72,7 +72,7 @@ export default function CommissionEarningsChart({
         <div>
           <h4 className="text-sm font-medium text-[#e5e4e2]">Miesięcznie</h4>
           <p id={`${chartId}-description`} className="mt-1 text-[11px] leading-relaxed text-[#e5e4e2]/45">
-            Zarobione według daty wydarzenia; wypłacone według faktycznej daty płatności. Zmiana roku nie zmienia sum całej historii powyżej.
+            Zarobione według daty eventu; wypłacone według faktycznej daty płatności. Zmiana roku nie zmienia sum całej historii powyżej.
           </p>
         </div>
         {years.length > 0 && (
@@ -104,7 +104,7 @@ export default function CommissionEarningsChart({
           height={compact ? 250 : 310}
           valueFormatter={formatCommissionMoney}
           axisFormatter={(value) => axisMoney.format(value)}
-          ariaLabel="Miesięczne zarobki według dat wydarzeń i wypłaty prowizji według dat płatności, w złotych"
+          ariaLabel="Miesięczne zarobki według dat eventów i wypłaty prowizji według dat płatności, w złotych"
           showLegend
           emptyMessage="Brak zatwierdzonych prowizji lub wypłat z przypisaną datą."
         />
@@ -112,7 +112,7 @@ export default function CommissionEarningsChart({
 
       {(summary.undatedEarnedCents > 0 || summary.undatedPaidCents > 0) && (
         <p className="mt-4 rounded-lg bg-amber-300/5 px-3 py-2 text-xs leading-relaxed text-amber-100/80">
-          W sumach całej historii, lecz poza wykresem: {summary.undatedEarnedCents > 0 ? `${money(summary.undatedEarnedCents)} prowizji bez daty wydarzenia` : ''}{summary.undatedEarnedCents > 0 && summary.undatedPaidCents > 0 ? ' oraz ' : ''}{summary.undatedPaidCents > 0 ? `${money(summary.undatedPaidCents)} wypłat bez potwierdzonej daty płatności` : ''}. Brakujących dat nie zastępujemy datą utworzenia wpisu.
+          W sumach całej historii, lecz poza wykresem: {summary.undatedEarnedCents > 0 ? `${money(summary.undatedEarnedCents)} prowizji bez daty eventu` : ''}{summary.undatedEarnedCents > 0 && summary.undatedPaidCents > 0 ? ' oraz ' : ''}{summary.undatedPaidCents > 0 ? `${money(summary.undatedPaidCents)} wypłat bez potwierdzonej daty płatności` : ''}. Brakujących dat nie zastępujemy datą utworzenia wpisu.
         </p>
       )}
       {summary.paymentDetailsMismatchCents > 0 && <p className="mt-3 text-xs text-amber-100/80">Saldo wypłat różni się od szczegółowych wpisów o {money(summary.paymentDetailsMismatchCents)}. Historia rozliczeń wymaga uzupełnienia lub sprawdzenia.</p>}

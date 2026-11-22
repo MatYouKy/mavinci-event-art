@@ -115,7 +115,7 @@ export function CorrespondenceTab({ inquiryId, canManage, canCompose, run, onCom
       </View>
       <Text style={kit.muted}>
         Wiadomości są uporządkowane od najstarszej. Kolejne odpowiedzi pojawiają się po odświeżeniu. Powiązania pozostają przy zapytaniu również po
-        utworzeniu wydarzenia. Analiza obejmuje treść maili, bez zawartości załączników.
+        utworzeniu eventu. Analiza obejmuje treść maili, bez zawartości załączników.
       </Text>
       {!canCompose && canManage ? <Text style={kit.muted}>Klient nie ma adresu e-mail — uzupełnij go w kliencie zapytania, aby napisać wiadomość.</Text> : null}
       {loadedAt ? <Text style={kit.muted}>{loading ? 'Sprawdzam nowe wiadomości…' : `Ostatnia aktualizacja: ${timeOfDay(loadedAt)}`}</Text> : null}

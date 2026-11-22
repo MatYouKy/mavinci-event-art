@@ -7,7 +7,7 @@ export const DASHBOARD_WIDGETS = [
   {
     id: 'sales-trends',
     label: 'Trend sprzedażowy',
-    description: 'Zapytania, oferty i nowe wydarzenia w kolejnych miesiącach.',
+    description: 'Zapytania, oferty i nowe eventy w kolejnych miesiącach.',
   },
   {
     id: 'sales-funnel',
@@ -22,7 +22,7 @@ export const DASHBOARD_WIDGETS = [
   {
     id: 'operational-attention',
     label: 'Wymaga działania',
-    description: 'Zaległe zadania, faktury i nadchodzące wydarzenia.',
+    description: 'Zaległe zadania, faktury i nadchodzące eventy.',
   },
   {
     id: 'recent-activity',

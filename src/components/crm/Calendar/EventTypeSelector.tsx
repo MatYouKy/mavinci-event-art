@@ -28,7 +28,7 @@ export default function EventTypeSelector({
         <p className="text-[#e5e4e2]/60 mb-6">
           {showOnlyMeetings
             ? 'Możesz utworzyć nowe spotkanie lub zapytanie'
-            : 'Wybierz typ wydarzenia, które chcesz utworzyć'}
+            : 'Wybierz typ eventu, który chcesz utworzyć'}
         </p>
 
         <div className={`grid grid-cols-1 ${showOnlyMeetings ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-4'} gap-4`}>
@@ -43,9 +43,9 @@ export default function EventTypeSelector({
                     <Building2 className="w-8 h-8 text-[#d3bb73]" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-medium text-[#e5e4e2] mb-1">Wydarzenie biznesowe</h3>
+                    <h3 className="text-lg font-medium text-[#e5e4e2] mb-1">Event biznesowy</h3>
                     <p className="text-sm text-[#e5e4e2]/60">
-                      Pełne wydarzenie z organizacją/firmą
+                      Pełny event z organizacją/firmą
                     </p>
                   </div>
                 </div>
@@ -60,9 +60,9 @@ export default function EventTypeSelector({
                     <User className="w-8 h-8 text-[#d3bb73]" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-medium text-[#e5e4e2] mb-1">Wydarzenie indywidualne</h3>
+                    <h3 className="text-lg font-medium text-[#e5e4e2] mb-1">Event indywidualny</h3>
                     <p className="text-sm text-[#e5e4e2]/60">
-                      Pełne wydarzenie z osobą prywatną
+                      Pełny event z osobą prywatną
                     </p>
                   </div>
                 </div>

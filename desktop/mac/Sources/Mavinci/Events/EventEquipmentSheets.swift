@@ -336,7 +336,7 @@ import AppKit
                 Button { Task { await dismissGroup(group) } } label: { Label(group.required ? "Pomiń wymaganie" : "Nie używamy", systemImage: "minus.circle") }
                     .controlSize(.small)
             }
-            Text(group.required ? "Wybierz jeden z poniższych komponentów albo świadomie pomiń wymaganie dla tego wydarzenia" : "Możesz wybrać jeden z poniższych wariantów")
+            Text(group.required ? "Wybierz jeden z poniższych komponentów albo świadomie pomiń wymaganie dla tego eventu" : "Możesz wybrać jeden z poniższych wariantów")
                 .font(.caption).foregroundStyle(.secondary)
             ForEach(group.components) { component in
                 let isSelected = chosen[name] == component.targetId
@@ -366,7 +366,7 @@ import AppKit
                 Label(group.required ? "Pomiń wymaganie" : "Nie używamy", systemImage: "minus.circle")
             }
             .controlSize(.small)
-            .help(group.required ? "Pomiń wymaganie w tym wydarzeniu" : "Nie używamy w tym rozwiązaniu")
+            .help(group.required ? "Pomiń wymaganie w tym evencie" : "Nie używamy w tym rozwiązaniu")
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -531,7 +531,7 @@ import AppKit
             guard let component else { continue }
             if component.type == "optional" && selectedQuantity(component) <= 0 { continue }
             if let a = availability(component), !a.isAvailable {
-                state.snack = Snack(kind: .info, text: group.name != nil ? "Wybrany komponent nie jest dostępny w terminie wydarzenia" : "\(component.name ?? "Komponent") nie jest dostępny w terminie wydarzenia")
+                state.snack = Snack(kind: .info, text: group.name != nil ? "Wybrany komponent nie jest dostępny w terminie eventu" : "\(component.name ?? "Komponent") nie jest dostępny w terminie eventu")
                 return
             }
             picks.append(.object(["componentId": .string(component.id), "quantity": .number(Double(selectedQuantity(component)))]))
@@ -542,7 +542,7 @@ import AppKit
         if let offerID { body["offerId"] = .string(offerID) }
         do {
             try await store.tabAction(eventID, "equipment", "components", body, reload: ["equipment", "equipment-checklist"],
-                                      success: "Zaktualizowano komponenty wydarzenia", pending: "Dodawanie komponentów…")
+                                      success: "Zaktualizowano komponenty eventu", pending: "Dodawanie komponentów…")
             close(skipped: false)
         } catch {
             state.error = store.failureText(error, "Błąd podczas dodawania komponentów")

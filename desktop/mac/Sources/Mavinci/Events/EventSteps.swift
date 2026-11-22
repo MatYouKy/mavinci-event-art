@@ -58,7 +58,7 @@ struct EventStepsSnapshot: Codable, Hashable {
 enum EventStepRules {
     static let roles: [String: String] = [
         "sales": "Sprzedawca", "warehouse": "Magazyn", "manager": "Kierownik realizacji", "driver": "Kierowca",
-        "admin": "Administracja i finanse", "author": "Prowadzący wydarzenie",
+        "admin": "Administracja i finanse", "author": "Prowadzący event",
     ]
     static let stages: [(String, String)] = [
         ("formalities", "Formalności"), ("handoff", "Przekazanie"), ("preparation", "Przygotowanie i zamówienia"),
@@ -300,7 +300,7 @@ struct EventOnsiteContact: Codable, Hashable {
     var notes: String?
     var is_primary: Bool?
     var displayName: String { name?.trimmingCharacters(in: .whitespaces).nonEmpty ?? "Osoba kontaktowa" }
-    var sourceLabel: String { ["client": "Klient", "venue": "Obiekt"][source ?? ""] ?? "Wydarzenie" }
+    var sourceLabel: String { ["client": "Klient", "venue": "Obiekt"][source ?? ""] ?? "Event" }
 }
 struct EventOnsite: Codable, Hashable { var contacts: [EventOnsiteContact]; var error: Bool? }
 struct EventStepsState: Codable, Hashable { var snapshot: EventStepsSnapshot?; var hidden: Bool?; var unavailable: Bool?; var error: Bool? }

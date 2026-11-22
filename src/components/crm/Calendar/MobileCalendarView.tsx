@@ -199,7 +199,7 @@ export default function MobileCalendarView({
               </div>
               <p className="mt-3 text-xs text-[#e5e4e2]/60">Brak pozycji w kalendarzu</p>
               <p className="mt-1 text-[10px] text-[#e5e4e2]/40">
-                Brak potwierdzonych wydarzeń i potencjalnych zapytań na ten dzień
+                Brak potwierdzonych eventów i potencjalnych zapytań na ten dzień
               </p>
             </div>
           ) : (

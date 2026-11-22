@@ -190,7 +190,7 @@ import SwiftUI
                     fact("Zmieniono", [MaterialsText.dateLabel(current.updatedAt), current.updatedBy ?? ""].filter { !$0.isEmpty }.joined(separator: " · "))
                     if let event = detail?.event {
                         HStack(alignment: .firstTextBaseline) {
-                            Text("Wydarzenie").font(.caption).foregroundStyle(.secondary).frame(width: 78, alignment: .leading)
+                            Text("Event").font(.caption).foregroundStyle(.secondary).frame(width: 78, alignment: .leading)
                             Button(event.name) { state.showEvent(event.id) }.buttonStyle(.link).font(.caption)
                         }
                     }

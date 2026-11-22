@@ -78,7 +78,7 @@ export default function RealizationWorkspace({ initialData: d }: { initialData: 
   return (
     <main className="space-y-6 p-3 text-[#e5e4e2] sm:p-6">
       <header className="flex items-start gap-4">
-        <a href="/crm/events" aria-label="Wróć do wydarzeń" className="mt-1 text-[#e5e4e2]/70 hover:text-[#d3bb73]"><ArrowLeft className="h-6 w-6" /></a>
+        <a href="/crm/events" aria-label="Wróć do eventów" className="mt-1 text-[#e5e4e2]/70 hover:text-[#d3bb73]"><ArrowLeft className="h-6 w-6" /></a>
         <div><h1 className="text-2xl font-light uppercase">{d.name}</h1><p className="mt-1 text-sm text-[#e5e4e2]/60">{date(d.event_date)} – {date(d.event_end_date)}</p></div>
         <a
           href={`/bridge/events/${d.id}/card`}
@@ -127,7 +127,7 @@ export default function RealizationWorkspace({ initialData: d }: { initialData: 
           )}
           {card(
             'contact',
-            'Kontakt na wydarzeniu',
+            'Kontakt na evencie',
             <>
               {d.contact?.name}
               <p>{d.contact?.phone}</p>
@@ -179,7 +179,7 @@ export default function RealizationWorkspace({ initialData: d }: { initialData: 
       )}
       {tab === 'team' && (
         <section className="rounded-xl bg-[#1c1f33] p-4 sm:p-6">
-          <h2 className="mb-4 text-lg uppercase">Zespół wydarzenia</h2>
+          <h2 className="mb-4 text-lg uppercase">Zespół eventu</h2>
           {team.length ? <div className="space-y-3">{team.map((member: any) => {
             const phone = (member.phone || '').replace(/[^+0-9]/g, '');
             return <article key={member.id} className="flex flex-col gap-3 rounded-lg bg-black/15 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -199,7 +199,7 @@ export default function RealizationWorkspace({ initialData: d }: { initialData: 
                 {member.email && <a href={`mailto:${encodeURIComponent(member.email)}`} className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]"><Mail size={16} />E-mail</a>}
               </div>
             </article>;
-          })}</div> : <p className="text-sm text-[#e5e4e2]/60">Brak osób przypisanych do wydarzenia.</p>}
+          })}</div> : <p className="text-sm text-[#e5e4e2]/60">Brak osób przypisanych do eventu.</p>}
         </section>
       )}
       {tab === 'logistics' &&

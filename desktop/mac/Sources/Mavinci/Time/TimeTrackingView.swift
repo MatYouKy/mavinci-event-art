@@ -254,9 +254,9 @@ let workTimeRed = CrmTheme.rgb(0xf87171)
                 if !entry.description.isEmpty { Text(entry.description).foregroundStyle(.secondary).textSelection(.enabled) }
                 if !entry.eventName.isEmpty {
                     if let event = entry.eventId {
-                        Button { actions.openEvent(event) } label: { Text("Wydarzenie: \(entry.eventName)") }.buttonStyle(.link).font(.callout)
+                        Button { actions.openEvent(event) } label: { Text("Event: \(entry.eventName)") }.buttonStyle(.link).font(.callout)
                     } else {
-                        Text("Wydarzenie: \(entry.eventName)").font(.callout).foregroundStyle(.secondary)
+                        Text("Event: \(entry.eventName)").font(.callout).foregroundStyle(.secondary)
                     }
                 }
                 HStack(spacing: 14) {

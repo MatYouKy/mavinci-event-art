@@ -179,7 +179,7 @@ export const SOCIAL_CONSENT_PLATFORMS = ['instagram', 'facebook', 'linkedin', 'w
 export type SocialConsentPlatform = (typeof SOCIAL_CONSENT_PLATFORMS)[number];
 
 export const SOCIAL_CONSENT_LABELS: Record<SocialConsentStatus, string> = {
-  inherit: 'Jak dla wydarzenia i klienta',
+  inherit: 'Jak dla eventu i klienta',
   unknown: 'Nieustalona',
   requested: 'Czeka na odpowiedź klienta',
   granted: 'Jest zgoda',
@@ -189,7 +189,7 @@ export const SOCIAL_CONSENT_LABELS: Record<SocialConsentStatus, string> = {
 
 export const SOCIAL_CONSENT_SOURCE_LABELS: Record<SocialConsentSource, string> = {
   asset: 'ustawiona dla zdjęcia',
-  event: 'z wydarzenia',
+  event: 'z eventu',
   organization: 'z klienta',
   none: 'brak ustaleń',
 };
@@ -238,7 +238,7 @@ export const SOCIAL_ASSET_STATUS_LABELS: Record<SocialAssetStatus, string> = {
 export type SocialAssetSource = 'upload' | 'event_file' | 'portfolio' | 'camera' | 'mac';
 export const SOCIAL_ASSET_SOURCE_LABELS: Record<SocialAssetSource, string> = {
   upload: 'Z dysku',
-  event_file: 'Z plików wydarzenia',
+  event_file: 'Z plików eventu',
   portfolio: 'Z realizacji na stronie',
   camera: 'Z telefonu',
   mac: 'Z Maca',

@@ -183,7 +183,7 @@ struct PermissionDraft: Equatable {
                     .buttonStyle(.borderedProminent).disabled(!hasChanges || saving)
             }
             if targetIsAdmin {
-                notice("Administrator ma nieograniczony dostęp do Mavinci LIVE. Rola admin automatycznie udostępnia wszystkie sekcje, wydarzenia, presety i funkcje zarządzania — niezależnie od zapisanych pól.", color: CrmTheme.rgb(0xc084fc))
+                notice("Administrator ma nieograniczony dostęp do Mavinci LIVE. Rola admin automatycznie udostępnia wszystkie sekcje, eventy, presety i funkcje zarządzania — niezależnie od zapisanych pól.", color: CrmTheme.rgb(0xc084fc))
             }
             if let package = data.rolePackage { rolePackage(package, d) }
             HStack(spacing: 8) {
@@ -232,7 +232,7 @@ struct PermissionDraft: Equatable {
 
     private func companies(_ data: EmployeePermissionsData, _ d: PermissionDraft) -> some View {
         TeamCard(title: "Marki i spółki", symbol: "building.2") {
-            Text("To ograniczenie działa niezależnie od roli. Obejmuje wydarzenia, kalendarz, oferty, umowy i dane finansowe powiązane z marką.")
+            Text("To ograniczenie działa niezależnie od roli. Obejmuje eventy, kalendarz, oferty, umowy i dane finansowe powiązane z marką.")
                 .font(.callout).foregroundStyle(.secondary)
             Picker("Dostęp do marek", selection: Binding(get: { d.companyAccessMode }, set: { mode in
                 edit { $0.companyAccessMode = mode; if mode == "all" { $0.myCompanyIds = [] } }
@@ -285,7 +285,7 @@ struct PermissionDraft: Equatable {
                     .padding(10)
                     .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
                 }
-                Text("Finanse tej działalności: poziom wyższy obejmuje niższe. Uprawnienie „Wartości finansowe wydarzeń” w sekcji poniżej dotyczy tylko budżetów i kosztów widocznych wydarzeń, nie banku ani faktur.")
+                Text("Finanse tej działalności: poziom wyższy obejmuje niższe. Uprawnienie „Wartości finansowe eventów” w sekcji poniżej dotyczy tylko budżetów i kosztów widocznych eventów, nie banku ani faktur.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -365,11 +365,11 @@ struct PermissionDraft: Equatable {
             .disabled(targetIsAdmin)
             if data.catalog.recordScopeModules.contains(category.key) { recordScope(category.key, d) }
             if category.key == "mavinci_live" && value != "none" {
-                Text("Dostęp działa dwustopniowo: tutaj wybierasz dostępne sekcje aplikacji, a na karcie wydarzenia określasz projekty, poziom obsługi i okres dostępu. Light Magic pozostaje zawsze dostępny jako moduł podstawowy.")
+                Text("Dostęp działa dwustopniowo: tutaj wybierasz dostępne sekcje aplikacji, a na karcie eventu określasz projekty, poziom obsługi i okres dostępu. Light Magic pozostaje zawsze dostępny jako moduł podstawowy.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if category.key == "events" && value != "none" {
-                tabs("Dostępne zakładki w wydarzeniach", "Wybierz zakładki, które będą widoczne dla tego pracownika", data.catalog.eventTabs, \.eventTabs, d)
+                tabs("Dostępne zakładki w eventach", "Wybierz zakładki, które będą widoczne dla tego pracownika", data.catalog.eventTabs, \.eventTabs, d)
             }
             if category.key == "inquiries" && value != "none" { salesTeam(data, d) }
             if category.key == "clients" && value != "none" {

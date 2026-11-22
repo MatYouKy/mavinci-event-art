@@ -246,7 +246,7 @@ enum CalculationPdf {
         if calculation.accepted {
             return "Cofnąć akceptację kalkulacji \"\(calculation.name)\"? Źródłem danych finansowych ponownie będzie zaakceptowana oferta."
         }
-        return "Oznaczyć \"\(calculation.name)\" jako zaakceptowaną? Stanie się źródłem danych finansowych dla tego wydarzenia."
+        return "Oznaczyć \"\(calculation.name)\" jako zaakceptowaną? Stanie się źródłem danych finansowych dla tego eventu."
     }
 
     @ViewBuilder private func list(_ data: CalculationsTabData) -> some View {
@@ -264,7 +264,7 @@ enum CalculationPdf {
             if data.calculations.isEmpty {
                 // Pusty stan na środku wolnego pola pod nagłówkiem.
                 ContentUnavailableView {
-                    Label("Brak kalkulacji dla tego wydarzenia", systemImage: "function")
+                    Label("Brak kalkulacji dla tego eventu", systemImage: "function")
                 } description: { Text("Kalkulacja zbiera sprzęt, ludzi, transport i pozostałe koszty.") } actions: {
                     Button("Stwórz kalkulację") { Task { await create() } }
                 }
@@ -2097,7 +2097,7 @@ private struct CalculationConsumption: Decodable { var value: Double?; var sourc
     }
 
     private func suggestionText(_ place: CalculationTravelContext.Place) -> String {
-        let origin: String = place.source == "inquiry" ? "zapytania" : "wydarzenia"
+        let origin: String = place.source == "inquiry" ? "zapytania" : "eventu"
         return "Lokalizacja z " + origin + ": " + place.label
     }
 
@@ -2400,7 +2400,7 @@ private struct CalculationImportSources: Decodable {
         switch mode {
         case "products": return "Importuj produkty z oferty jako pozycje kalkulacji."
         case "contents": return "Importuj sprzęt i pracowników przypisanych do produktów w ofercie."
-        default: return "Importuj pojazdy przypisane do tego wydarzenia."
+        default: return "Importuj pojazdy przypisane do tego eventu."
         }
     }
 
@@ -2448,7 +2448,7 @@ private struct CalculationImportSources: Decodable {
 
     @ViewBuilder private func productsTable(_ products: [CalculationImportSources.Product]) -> some View {
         if products.isEmpty {
-            Text("Brak pozycji w ofertach dla tego wydarzenia.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(32)
+            Text("Brak pozycji w ofertach dla tego eventu.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(32)
         } else {
             VStack(spacing: 0) {
                 headerRow([("Oferta", 110), ("Nazwa", nil), ("Kategoria", 130), ("Ilość", 80), ("Cena", 90), ("Wartość", 100)])
@@ -2535,7 +2535,7 @@ private struct CalculationImportSources: Decodable {
 
     @ViewBuilder private func transportTable(_ vehicles: [CalculationImportSources.Vehicle]) -> some View {
         if vehicles.isEmpty {
-            Text("Brak pojazdów przypisanych do tego wydarzenia.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(32)
+            Text("Brak pojazdów przypisanych do tego eventu.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(32)
         } else {
             VStack(spacing: 0) {
                 headerRow([("Pojazd", nil), ("Rola", 140), ("Kierowca", 150), ("Dystans", 80), ("Koszt szac.", 100)])

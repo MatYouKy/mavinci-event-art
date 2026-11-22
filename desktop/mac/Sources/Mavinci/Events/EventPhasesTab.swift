@@ -119,7 +119,7 @@ import AppKit
                 VStack(spacing: 12) {
                     Image(systemName: "clock").font(.system(size: 48)).foregroundStyle(.tertiary)
                     Text("Brak faz o stałych terminach").font(.headline)
-                    Text("Podziel wydarzenie na fazy (montaż, realizacja, demontaż)").font(.callout).foregroundStyle(.secondary)
+                    Text("Podziel event na fazy (montaż, realizacja, demontaż)").font(.callout).foregroundStyle(.secondary)
                     Button { addOpen = true } label: { Label("Dodaj fazę", systemImage: "plus") }.buttonStyle(.borderedProminent)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity).padding(40)
@@ -145,7 +145,7 @@ import AppKit
                                       onChange: { id, start, end in drafts[id] = (start, end) })
                             Rectangle().fill(theme.accent.opacity(0.3)).frame(width: width, height: 2).padding(.vertical, 8)
                             HStack {
-                                Text("ZASOBY WYDARZENIA").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                Text("ZASOBY EVENTU").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                                 Spacer()
                                 Text("Wysokość:").font(.caption).foregroundStyle(.secondary)
                                 Picker("", selection: $rowHeight) { Text("S").tag(CGFloat(32)); Text("M").tag(CGFloat(44)); Text("L").tag(CGFloat(60)) }
@@ -178,7 +178,7 @@ import AppKit
         WrapLine(spacing: 10, lineSpacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "clock").foregroundStyle(theme.accent)
-                Text("Fazy wydarzenia").font(.headline)
+                Text("Fazy eventu").font(.headline)
                 Text("\(data.phases.count)").font(.caption.weight(.medium)).padding(.horizontal, 8).padding(.vertical, 2)
                     .background(theme.accent.opacity(0.2), in: Capsule()).foregroundStyle(theme.accent)
                 if conflicts {
@@ -426,7 +426,7 @@ extension TimelineText {
                         Text("Agenda").font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.accent).padding(.leading, 6).padding(.top, 1)
                     }
                     .offset(x: scale.x(eventStart))
-                    .help("Główne godziny wydarzenia (agenda dla klienta)")
+                    .help("Główne godziny eventu (agenda dla klienta)")
             }
             ForEach(scale.markers(zoom), id: \.self) { marker in
                 Rectangle().fill(Color.primary.opacity(0.15)).frame(width: 1, height: 34).offset(x: scale.x(marker))

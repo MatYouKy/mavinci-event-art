@@ -20,7 +20,7 @@ function sourceCurrency(source: SourceRow) {
   // another currency. Never relabel their numbers with the advance's currency.
   const stored = source.currency_code ?? source.currency ?? 'PLN';
   if (typeof stored !== 'string' || !/^[A-Z]{3}$/.test(stored.trim().toUpperCase())) {
-    throw new Error('Źródło cen wydarzenia ma nieprawidłową walutę. Popraw ją przed wystawieniem faktury końcowej.');
+    throw new Error('Źródło cen eventu ma nieprawidłową walutę. Popraw ją przed wystawieniem faktury końcowej.');
   }
   return stored.trim().toUpperCase();
 }
@@ -39,7 +39,7 @@ export async function loadFinalInvoiceEventOrder(eventId: string): Promise<Final
     .select('group_id')
     .eq('event_id', eventId)
     .maybeSingle();
-  if (membershipError) throw new Error('Nie udało się odczytać wspólnego rozliczenia wydarzenia. Spróbuj ponownie.');
+  if (membershipError) throw new Error('Nie udało się odczytać wspólnego rozliczenia eventu. Spróbuj ponownie.');
 
   let group: SourceRow | null = null;
   let eventIds = [eventId];
@@ -49,17 +49,17 @@ export async function loadFinalInvoiceEventOrder(eventId: string): Promise<Final
       .select('id,name,primary_event_id,billing_arrangement,billing_organization_id,status')
       .eq('id', membership.group_id)
       .maybeSingle();
-    if (error || !data) throw new Error('Nie udało się odczytać grupy rozliczeniowej wydarzenia.');
+    if (error || !data) throw new Error('Nie udało się odczytać grupy rozliczeniowej eventu.');
     if (data.status === 'active') {
       group = data;
       const { data: members, error: membersError } = await supabase
         .from('event_settlement_group_members')
         .select('event_id')
         .eq('group_id', data.id);
-      if (membersError || !members?.length) throw new Error('Nie udało się odczytać wydarzeń wspólnego rozliczenia.');
+      if (membersError || !members?.length) throw new Error('Nie udało się odczytać eventów wspólnego rozliczenia.');
       eventIds = [...new Set(members.map((member) => member.event_id as string))];
       if (!eventIds.includes(eventId) || !eventIds.includes(data.primary_event_id)) {
-        throw new Error('Powiązania wspólnego rozliczenia są niepełne. Sprawdź je w wydarzeniu.');
+        throw new Error('Powiązania wspólnego rozliczenia są niepełne. Sprawdź je w evencie.');
       }
     }
   }
@@ -70,14 +70,14 @@ export async function loadFinalInvoiceEventOrder(eventId: string): Promise<Final
     .in('id', eventIds)
     .order('event_date', { ascending: true });
   if (eventsError || !rows || rows.length !== eventIds.length) {
-    throw new Error('Nie udało się odczytać wszystkich powiązanych wydarzeń. Nie pobrano częściowej wartości zamówienia.');
+    throw new Error('Nie udało się odczytać wszystkich powiązanych eventów. Nie pobrano częściowej wartości zamówienia.');
   }
   const events = rows as SourceRow[];
   const primaryEvent = events.find((event) => event.id === (group?.primary_event_id || eventId));
-  if (!primaryEvent) throw new Error('Nie odnaleziono głównego wydarzenia rozliczenia.');
+  if (!primaryEvent) throw new Error('Nie odnaleziono głównego eventu rozliczenia.');
   const expectedPayer = payerId(primaryEvent, group);
   if (events.some((event) => payerId(event, group) !== expectedPayer)) {
-    throw new Error('Wydarzenia wspólnego rozliczenia mają różnych nabywców. Sprawdź sposób rozliczenia wydarzeń.');
+    throw new Error('Eventy wspólnego rozliczenia mają różnych nabywców. Sprawdź sposób rozliczenia eventów.');
   }
 
   const prepared = await Promise.all(events.map(async (event) => {
@@ -86,7 +86,7 @@ export async function loadFinalInvoiceEventOrder(eventId: string): Promise<Final
     let label: string;
     if (event.financial_source === 'calculation') {
       if (!event.accepted_calculation_id) {
-        throw new Error(`Wydarzenie „${event.name}” nie ma wybranej zaakceptowanej kalkulacji. Uzupełnij źródło cen w wydarzeniu.`);
+        throw new Error(`Event „${event.name}” nie ma wybranej zaakceptowanej kalkulacji. Uzupełnij źródło cen w evencie.`);
       }
       const { data, error } = await supabase
         .from('event_calculations')
@@ -95,16 +95,16 @@ export async function loadFinalInvoiceEventOrder(eventId: string): Promise<Final
         .eq('event_id', event.id)
         .eq('is_accepted', true)
         .maybeSingle();
-      if (error || !data) throw new Error(`Nie odczytano zaakceptowanej kalkulacji wydarzenia „${event.name}”. Sprawdź źródło cen w wydarzeniu.`);
+      if (error || !data) throw new Error(`Nie odczytano zaakceptowanej kalkulacji eventu „${event.name}”. Sprawdź źródło cen w evencie.`);
       source = data;
       prefill = getAcceptedCalculationInvoicePrefill(data);
       label = `Kalkulacja: ${data.name}`;
     } else {
       const { data: financialRows, error: financialError } = await supabase.rpc('get_event_financial_info', { p_event_id: event.id });
-      if (financialError) throw new Error(`Nie udało się odczytać uzgodnionych cen wydarzenia „${event.name}”.`);
+      if (financialError) throw new Error(`Nie udało się odczytać uzgodnionych cen eventu „${event.name}”.`);
       const financialInfo = financialRows?.[0];
       if (!financialInfo?.accepted_offer_id) {
-        throw new Error(`Wydarzenie „${event.name}” nie ma zaakceptowanej oferty. Zaakceptuj właściwą ofertę lub kalkulację w wydarzeniu.`);
+        throw new Error(`Event „${event.name}” nie ma zaakceptowanej oferty. Zaakceptuj właściwą ofertę lub kalkulację w evencie.`);
       }
       const { data, error } = await supabase
         .from('offers')
@@ -113,7 +113,7 @@ export async function loadFinalInvoiceEventOrder(eventId: string): Promise<Final
         .eq('event_id', event.id)
         .eq('status', 'accepted')
         .maybeSingle();
-      if (error || !data) throw new Error(`Nie odczytano zaakceptowanej oferty wydarzenia „${event.name}”. Sprawdź źródło cen w wydarzeniu.`);
+      if (error || !data) throw new Error(`Nie odczytano zaakceptowanej oferty eventu „${event.name}”. Sprawdź źródło cen w evencie.`);
       source = data;
       prefill = getAcceptedOfferInvoicePrefill(data, event.name || '');
       label = `Oferta ${data.offer_number || financialInfo.accepted_offer_number || ''}`.trim();
@@ -121,7 +121,7 @@ export async function loadFinalInvoiceEventOrder(eventId: string): Promise<Final
 
     const currencyCode = sourceCurrency(source);
     if ((event.currency_code || event.currency) && sourceCurrency(event) !== currencyCode) {
-      throw new Error(`Waluta wydarzenia „${event.name}” różni się od waluty jego uzgodnionych cen.`);
+      throw new Error(`Waluta eventu „${event.name}” różni się od waluty jego uzgodnionych cen.`);
     }
     if (event.my_company_id && source.my_company_id && event.my_company_id !== source.my_company_id) {
       const { data: sourceAllowed, error: sourceAccessError } = await supabase.rpc('can_use_event_invoice_source', {
@@ -130,14 +130,14 @@ export async function loadFinalInvoiceEventOrder(eventId: string): Promise<Final
         p_source_id: source.id,
       });
       if (sourceAccessError || sourceAllowed !== true) {
-        throw new Error(`Wydarzenie „${event.name}” i jego źródło cen wskazują różne firmy, bez potwierdzonego przeniesienia przez fakturę.`);
+        throw new Error(`Event „${event.name}” i jego źródło cen wskazują różne firmy, bez potwierdzonego przeniesienia przez fakturę.`);
       }
     }
     const calculatedNet = money(prefill.items.reduce((sum, item) => sum + money(item.quantity * item.price_net), 0));
     const calculatedVat = money(prefill.items.reduce((sum, item) => sum + money(money(item.quantity * item.price_net) * item.vat_rate / 100), 0));
     if (calculatedNet !== prefill.totals.net || calculatedVat !== prefill.totals.taxAmount
       || money(calculatedNet + calculatedVat) !== prefill.totals.gross) {
-      throw new Error(`Kwoty pozycji wydarzenia „${event.name}” nie odpowiadają jego uzgodnionemu podsumowaniu. Popraw źródło cen w wydarzeniu.`);
+      throw new Error(`Kwoty pozycji eventu „${event.name}” nie odpowiadają jego uzgodnionemu podsumowaniu. Popraw źródło cen w evencie.`);
     }
     return {
       ...prefill,
@@ -161,7 +161,7 @@ export async function loadFinalInvoiceEventOrder(eventId: string): Promise<Final
     vat_code: item.vat_code,
   })));
   if (!items.length || money(prepared.reduce((sum, entry) => sum + entry.totals.gross, 0)) <= 0) {
-    throw new Error('Pełna wartość zamówienia wydarzenia musi być większa od zera. Uzupełnij zaakceptowane źródło cen.');
+    throw new Error('Pełna wartość zamówienia eventu musi być większa od zera. Uzupełnij zaakceptowane źródło cen.');
   }
   return {
     items,

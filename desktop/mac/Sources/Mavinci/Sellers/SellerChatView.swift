@@ -195,7 +195,7 @@ private struct SellerUnreadBadge: View {
             .pickerStyle(.segmented).labelsHidden()
             Text(layer == .general
                  ? "Jedna rozmowa ogólna dla każdej marki. Do ustaleń dotyczących konkretnego zlecenia użyj zakładki „Oferty i realizacje”."
-                 : "Osobny wątek każdej oferty. Po powiązaniu oferty z wydarzeniem ten sam wątek pojawi się w jego zakładce „Ustalenia”, bez kopiowania ani utraty historii.")
+                 : "Osobny wątek każdej oferty. Po powiązaniu oferty z eventem ten sam wątek pojawi się w jego zakładce „Ustalenia”, bez kopiowania ani utraty historii.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if !writableBrands.isEmpty { starter }
             if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.red) }
@@ -334,8 +334,8 @@ private struct SellerUnreadBadge: View {
             Text("\(thread.brandName) · \(thread.offerId != nil ? (realization ? "Ustalenia realizacji · kontynuacja oferty" : "Ustalenia do oferty") : "Rozmowa ogólna")")
                 .font(.caption).foregroundStyle(.secondary)
             Text(thread.offerId != nil
-                 ? "Cała historia tego wątku pozostaje przy ofercie i jest dostępna w powiązanym wydarzeniu. Tutaj kontynuujemy ustalenia dotyczące realizacji."
-                 : "Luźne pytania i bieżący kontakt. Ta rozmowa nie jest dołączana do ofert ani wydarzeń.")
+                 ? "Cała historia tego wątku pozostaje przy ofercie i jest dostępna w powiązanym evencie. Tutaj kontynuujemy ustalenia dotyczące realizacji."
+                 : "Luźne pytania i bieżący kontakt. Ta rozmowa nie jest dołączana do ofert ani eventów.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 12) {
                 if let offerID = thread.offerId { Button("Otwórz ofertę") { state.open(.offers, id: offerID) }.buttonStyle(.link) }

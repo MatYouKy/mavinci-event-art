@@ -206,9 +206,9 @@ private struct NoteSpec {
         } else if stage != .dispatch && c.dispatch.confirmed_at == nil {
             Text("Etap otworzy się po potwierdzeniu wydania.").font(.callout).foregroundStyle(.secondary)
         } else if stage == .loadback && c.returning.confirmed_at != nil {
-            Text("Zwrot zatwierdzono bez załadunku po wydarzeniu.").font(.callout).foregroundStyle(.secondary)
+            Text("Zwrot zatwierdzono bez załadunku po evencie.").font(.callout).foregroundStyle(.secondary)
         } else if stage == .giveBack && c.stage == "loadback" {
-            Text("Zwrot możesz sprawdzić przed zatwierdzeniem załadunku po wydarzeniu — podstawą jest ilość wydana.").font(.callout).foregroundStyle(.secondary)
+            Text("Zwrot możesz sprawdzić przed zatwierdzeniem załadunku po evencie — podstawą jest ilość wydana.").font(.callout).foregroundStyle(.secondary)
         } else {
             Text(EquipmentRules.stageHints[c.stage] ?? "").font(.callout).foregroundStyle(.secondary)
         }
@@ -232,7 +232,7 @@ private struct NoteSpec {
             }
             if stage == .loadback && c.can.loadback {
                 if c.summary.loadback_unchecked > 0 { Button("Wszystko wraca") { fillTarget = .loadback }.disabled(stageBusy) }
-                Button { open(.confirmLoadback) } label: { Label("Zatwierdź załadunek po wydarzeniu", systemImage: "checkmark.circle") }
+                Button { open(.confirmLoadback) } label: { Label("Zatwierdź załadunek po evencie", systemImage: "checkmark.circle") }
                     .buttonStyle(.borderedProminent).disabled(stageBusy || !c.can.confirm_loadback)
                     .help(c.can.confirm_loadback ? "" : c.blockers.joined(separator: " · "))
             }
@@ -314,7 +314,7 @@ private struct NoteSpec {
         switch kind {
         case .requestApproval:
             return NoteSpec(title: "Poproś o zgodę na braki",
-                            description: "Sprzedawca wydarzenia i administratorzy dostaną powiadomienie z listą braków (\(c.summary.shortages_pending + c.summary.shortages_rejected)).",
+                            description: "Sprzedawca eventu i administratorzy dostaną powiadomienie z listą braków (\(c.summary.shortages_pending + c.summary.shortages_rejected)).",
                             label: "Notatka dla sprzedawcy", placeholder: "np. co proponujesz zamiast brakującego sprzętu", required: false, minLength: 0,
                             maxLength: 1000, submitLabel: "Wyślij prośbę", success: "Wysłano prośbę o zgodę na braki.", rpc: "request_event_equipment_shortage_approval",
                             params: { ["p_event": event, "p_note": optional($0)] })
@@ -344,10 +344,10 @@ private struct NoteSpec {
                             rpc: "request_event_equipment_unlock", params: { ["p_event": event, "p_reason": .string($0)] })
         case .confirmLoadback:
             let missing = c.summary.loadback_missing
-            return NoteSpec(title: "Zatwierdź załadunek po wydarzeniu",
+            return NoteSpec(title: "Zatwierdź załadunek po evencie",
                             description: missing > 0 ? "Rozbieżności (\(missing)) trafią do magazynu, sprzedawcy i administratorów." : "Magazyn dostanie powiadomienie, że sprzęt wraca w komplecie.",
                             label: "Notatka", required: false, minLength: 0, maxLength: 2000, submitLabel: "Zatwierdź załadunek",
-                            success: "Załadunek po wydarzeniu zatwierdzony.", rpc: "confirm_event_equipment_loadback", params: { ["p_event": event, "p_note": optional($0)] })
+                            success: "Załadunek po evencie zatwierdzony.", rpc: "confirm_event_equipment_loadback", params: { ["p_event": event, "p_note": optional($0)] })
         case .confirmReturn:
             let issues = returnIssues(c).count
             return NoteSpec(title: "Zatwierdź zwrot",
@@ -362,7 +362,7 @@ private struct NoteSpec {
         case .reopen:
             let stageValue: JSONValue = reopenable.map { .string($0.rawValue) } ?? .null
             return NoteSpec(title: "Cofnij etap: \(reopenable?.label ?? "")",
-                            description: "Etapy cofa się od końca: zwrot → po wydarzeniu → wydanie. Cofnięcie przywraca otwarte kroki realizacji.",
+                            description: "Etapy cofa się od końca: zwrot → po evencie → wydanie. Cofnięcie przywraca otwarte kroki realizacji.",
                             label: "Powód", placeholder: "np. pomyłka w ilości, sprzęt odnaleziony", required: true, minLength: 5, maxLength: 1000,
                             submitLabel: "Cofnij etap", danger: true, initialNote: reopenNote, success: "Etap cofnięty.",
                             rpc: "reopen_event_equipment_stage", params: { ["p_event": event, "p_stage": stageValue, "p_reason": .string($0)] })
@@ -387,7 +387,7 @@ private struct NoteSpec {
             return ("Wszystko wraca", "Nieodhaczone pozycje zostaną oznaczone jako wracające w komplecie (tyle, ile wydano). Wpisane już ilości zostaną bez zmian.",
                     "Nieodhaczone pozycje oznaczono jako wracające w komplecie.")
         case .giveBack?:
-            return ("Wszystko wróciło sprawne", "Nieodhaczone pozycje zostaną oznaczone jako sprawne w pełnej wydanej ilości. Pozycje z brakiem po wydarzeniu trzeba wpisać ręcznie z opisem.",
+            return ("Wszystko wróciło sprawne", "Nieodhaczone pozycje zostaną oznaczone jako sprawne w pełnej wydanej ilości. Pozycje z brakiem po evencie trzeba wpisać ręcznie z opisem.",
                     "Nieodhaczone pozycje oznaczono jako sprawne.")
         default:
             return ("Wszystko zgodne", "Nieodhaczone pozycje wymagane zostaną oznaczone jako spakowane w pełnej ilości. Wpisane już ilości zostaną bez zmian.",
@@ -589,7 +589,7 @@ struct EquipmentRowBadges: View {
             } else if stage == .dispatch, let packed = line.packed_qty, packed < line.quantity {
                 dispatchBadge(line, packed, avatarInfo: avatarInfo, who: who)
             } else if stage == .loadback, let back = line.loadback_qty, back < line.shipped_qty {
-                badge(.red, who, avatar: avatarInfo, "Brak \(line.shipped_qty - back) po wydarzeniu")
+                badge(.red, who, avatar: avatarInfo, "Brak \(line.shipped_qty - back) po evencie")
             } else if stage == .giveBack, line.return_ok_qty != nil {
                 if damagedCount > 0 {
                     badge(.red, who, avatar: avatarInfo, "Uszkodzone \(damagedCount)")
@@ -813,7 +813,7 @@ private struct QtyStepper: View {
 
     private var loadback: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Wraca po wydarzeniu (wydano \(line.shipped_qty))").font(.caption).foregroundStyle(.secondary)
+            Text("Wraca po evencie (wydano \(line.shipped_qty))").font(.caption).foregroundStyle(.secondary)
             QtyStepper(value: $qty, max: line.shipped_qty, disabled: busy) { _ in error = "" }
             if qty < line.shipped_qty {
                 (Text("Co się stało z \(line.shipped_qty - qty) szt.?") + Text(" *").foregroundColor(.red)).font(.caption)

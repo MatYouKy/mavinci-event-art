@@ -54,7 +54,7 @@ private func phaseRoleLabel(_ role: String) -> String { phaseRoleLabels[role] ??
                     }
                 }
             }
-            Text("Pokazuje zasoby przypisane do wydarzenia w czasie trwania tej fazy").font(.caption2).foregroundStyle(.tertiary).padding(10)
+            Text("Pokazuje zasoby przypisane do eventu w czasie trwania tej fazy").font(.caption2).foregroundStyle(.tertiary).padding(10)
         }
         .confirmationDialog(removing?.question ?? "", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Usuń", role: .destructive) { if let item = removing { Task { await remove(item.id, item.table) } } }
@@ -70,7 +70,7 @@ private func phaseRoleLabel(_ role: String) -> String { phaseRoleLabels[role] ??
     private var employeeList: some View {
         VStack(alignment: .leading, spacing: 0) {
             addButton(onAssign)
-            if employees.isEmpty { empty("person", "Brak pracowników w wydarzeniu") }
+            if employees.isEmpty { empty("person", "Brak pracowników w evencie") }
             ForEach(employees, id: \.id) { employee in
                 let assignment = assignments.first { $0.employeeId == employee.id }
                 VStack(alignment: .leading, spacing: 6) {
@@ -553,7 +553,7 @@ struct PhaseConflictRow: Decodable, Hashable {
                         EmployeeAvatarView(name: person.name, url: person.avatarUrl, crop: person.avatar, size: 34)
                         Text("\(person.name) \(person.surname)")
                         if person.inTeam {
-                            Text("Zespół wydarzenia").font(.caption2).padding(.horizontal, 6).padding(.vertical, 2)
+                            Text("Zespół eventu").font(.caption2).padding(.horizontal, 6).padding(.vertical, 2)
                                 .background(CrmTheme.rgb(0x10b981).opacity(0.15), in: Capsule()).foregroundStyle(CrmTheme.rgb(0x6ee7b7))
                         }
                         Spacer()
@@ -585,7 +585,7 @@ struct PhaseConflictRow: Decodable, Hashable {
             }
             .padding(10).background(theme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
             if !person.inTeam {
-                Text("Ta osoba nie jest jeszcze w zespole wydarzenia. Przy zapisie otrzyma dostęp do eventu i zostanie dodana do wybranych etapów timeline.")
+                Text("Ta osoba nie jest jeszcze w zespole eventu. Przy zapisie otrzyma dostęp do eventu i zostanie dodana do wybranych etapów timeline.")
                     .font(.caption).foregroundStyle(CrmTheme.rgb(0x93c5fd))
             }
             if checking { Text("Sprawdzam faktyczną obecność pracownika w wybranych etapach…").font(.caption).foregroundStyle(.secondary) }
@@ -629,7 +629,7 @@ struct PhaseConflictRow: Decodable, Hashable {
             Label(blocked ? "Nieobecność blokuje przypisanie do realizacji"
                   : "Nakładająca się praca na \(realization.count) \(realization.count == 1 ? "etapie" : "etapach")", systemImage: "exclamationmark.triangle")
                 .font(.callout.weight(.semibold)).foregroundStyle(blocked ? CrmTheme.rgb(0xfca5a5) : CrmTheme.rgb(0xfde68a))
-            Text("Konflikt wynika wyłącznie z godzin pracy na timeline. Autor, sprzedawca i osoby mające sam dostęp do innych wydarzeń nie są tutaj uwzględniane.")
+            Text("Konflikt wynika wyłącznie z godzin pracy na timeline. Autor, sprzedawca i osoby mające sam dostęp do innych eventów nie są tutaj uwzględniane.")
                 .font(.caption).foregroundStyle(.secondary)
             ForEach(conflicts, id: \.self) { conflict in
                 VStack(alignment: .leading, spacing: 3) {
@@ -651,14 +651,14 @@ struct PhaseConflictRow: Decodable, Hashable {
                 Toggle(isOn: $accept) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Akceptuję nakładanie się pracy").fontWeight(.medium)
-                        Text("Potwierdzam, że przejazd, godziny obecności i zakres koordynacji zostały sprawdzone. Decyzja będzie widoczna w kontroli wydarzenia.")
+                        Text("Potwierdzam, że przejazd, godziny obecności i zakres koordynacji zostały sprawdzone. Decyzja będzie widoczna w kontroli eventu.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 .toggleStyle(.checkbox)
                 if accept {
                     Text("Uzasadnienie i sposób podziału pracy").font(.caption.weight(.medium)).foregroundStyle(theme.accent)
-                    TextField("Np. koordynuje oba wydarzenia, a na miejscu jest w godz. 18:00–20:00; pozostały czas przejmuje lider techniczny.", text: $reason, axis: .vertical)
+                    TextField("Np. koordynuje oba eventy, a na miejscu jest w godz. 18:00–20:00; pozostały czas przejmuje lider techniczny.", text: $reason, axis: .vertical)
                         .lineLimit(3...5).textFieldStyle(.roundedBorder)
                     Text("Minimum 10 znaków").font(.caption2).foregroundStyle(.tertiary)
                 }
@@ -804,7 +804,7 @@ struct PhaseVehicleOptions: Decodable {
                 .frame(width: 300)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("FAZY WYDARZENIA").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+                        Text("FAZY EVENTU").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
                         ForEach(phases) { item in
                             let done = existing.contains(item.id)
                             Toggle(isOn: Binding(get: { selected.contains(item.id) || done }, set: { on in if on { selected.insert(item.id) } else { selected.remove(item.id) } })) {
@@ -832,7 +832,7 @@ struct PhaseVehicleOptions: Decodable {
                         }
                         if checking || !conflicts.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
-                                Label(checking ? "Sprawdzanie dostępności…" : "Pojazd koliduje z innym wydarzeniem", systemImage: "exclamationmark.triangle")
+                                Label(checking ? "Sprawdzanie dostępności…" : "Pojazd koliduje z innym eventem", systemImage: "exclamationmark.triangle")
                                     .font(.callout).foregroundStyle(conflicts.isEmpty ? theme.accent : CrmTheme.rgb(0xf87171))
                                 ForEach(conflicts, id: \.id) { conflict in
                                     Text("\(conflict.label): \(TimelineText.short(conflict.start)) – \(TimelineText.short(conflict.end))").font(.caption).foregroundStyle(CrmTheme.rgb(0xfca5a5))

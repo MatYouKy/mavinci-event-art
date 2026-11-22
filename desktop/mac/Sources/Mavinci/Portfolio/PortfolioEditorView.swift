@@ -233,7 +233,7 @@ enum PortfolioDrop {
             Button("Wróć", role: .cancel) {}
         } message: {
             let message: String = detail.item.status.onSite
-                ? "Realizacja zostanie usunięta ze strony i z „Realizacji”. Zdjęcia zostają w źródłach (Materiały, pliki wydarzenia). Tej operacji nie można cofnąć."
+                ? "Realizacja zostanie usunięta ze strony i z „Realizacji”. Zdjęcia zostają w źródłach (Materiały, pliki eventu). Tej operacji nie można cofnąć."
                 : "Kopia robocza zostanie usunięta. Tej operacji nie można cofnąć."
             Text(message)
         }
@@ -577,7 +577,7 @@ enum PortfolioDrop {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12, alignment: .topLeading), GridItem(.flexible(), alignment: .topLeading)],
                       alignment: .leading, spacing: 10) {
                 field("Kategoria") { categoryField }
-                field("Data wydarzenia") { dateField(draft) }
+                field("Data eventu") { dateField(draft) }
                 field("Miejsce (obiekt, miasto)") {
                     TextField("Hotel Omega, Olsztyn", text: limited(content.location, PortfolioLimits.location)).textFieldStyle(.roundedBorder)
                 }
@@ -684,17 +684,17 @@ enum PortfolioDrop {
     }
 
     private func eventField(_ draft: PortfolioDraft) -> some View {
-        field("Wydarzenie w CRM") {
+        field("Event w CRM") {
             HStack(spacing: 6) {
                 Button { eventPickerShown = true } label: {
-                    Label(draft.event?.name ?? "Powiąż z wydarzeniem", systemImage: "calendar").lineLimit(1)
+                    Label(draft.event?.name ?? "Powiąż z eventem", systemImage: "calendar").lineLimit(1)
                 }
                 if draft.eventID != nil {
                     Button {
                         store.drafts[id]?.eventID = nil
                         store.drafts[id]?.event = nil
                     } label: { Image(systemName: "xmark") }
-                        .help("Bez wydarzenia")
+                        .help("Bez eventu")
                 }
                 if let event = draft.event { Text(event.summary).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                 Spacer()
@@ -1216,7 +1216,7 @@ enum PortfolioDrop {
         let locale = Locale(identifier: "pl_PL")
         let needle = cityQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(with: locale)
         let filtered = needle.isEmpty ? cities : cities.filter { $0.name.lowercased(with: locale).contains(needle) }
-        return field("Priorytetowe miasta", hint: "(na których stronach usług pokazać realizację wyżej; nie zmieniają miejsca wydarzenia)") {
+        return field("Priorytetowe miasta", hint: "(na których stronach usług pokazać realizację wyżej; nie zmieniają miejsca eventu)") {
             TextField("Szukaj miasta…", text: $cityQuery).textFieldStyle(.roundedBorder).frame(maxWidth: 280)
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 6, alignment: .leading)], alignment: .leading, spacing: 4) {
@@ -1380,7 +1380,7 @@ enum PortfolioDrop {
                 .toggleStyle(.checkbox).font(.caption).disabled(photoCount == 0)
             Button { Task { await ask() } } label: { Label("Przygotuj teksty", systemImage: "sparkles") }.disabled(fields.isEmpty)
             if let result { proposals(result) }
-            Text("Do AI trafia treść realizacji, rodzaj, miejsce i data wydarzenia oraz — gdy zaznaczysz — zdjęcia ze strony. Bez danych osobowych.")
+            Text("Do AI trafia treść realizacji, rodzaj, miejsce i data eventu oraz — gdy zaznaczysz — zdjęcia ze strony. Bez danych osobowych.")
                 .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }

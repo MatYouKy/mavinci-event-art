@@ -324,7 +324,7 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
     if (inquiry.event_id) { router.replace(`/crm/events/${inquiry.event_id}`); return; }
     const sourceOfferId = searchParams.get('offerId');
     const sourceOffer = data.offers.find((row: any) => row.id === sourceOfferId);
-    if (!canLead) { showSnackbar('Nie masz uprawnień do utworzenia wydarzenia z tego zapytania.', 'error'); }
+    if (!canLead) { showSnackbar('Nie masz uprawnień do utworzenia eventu z tego zapytania.', 'error'); }
     else if (sourceOfferId && (!sourceOffer || sourceOffer.status !== 'accepted')) { showSnackbar('Oferta nie jest już zaakceptowana lub nie należy do tego zapytania. Odśwież jej dane.', 'warning'); }
     else { setShowConversionModal(true); }
     router.replace(`/crm/inquiries/${inquiry.id}`, {scroll:false});
@@ -695,7 +695,7 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
     { label: 'Oferta', icon: creatingOffer ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />, onClick: () => void createOffer(), disabled: creatingOffer, show: canManage, variant: 'primary' as const },
     { label: 'Napisz e-mail', icon: <Mail className="h-4 w-4" />, onClick: () => setShowEmailModal(true), disabled: !clientEmail, show: canManage },
     { label: 'Przygotuj realizację', icon: <Briefcase className="h-4 w-4" />, onClick: () => setShowConversionModal(true), show: canLead && Boolean(inquiry.accepted_offer_id) && !(data.activity || []).some((entry: any) => entry.kind === 'handoff') },
-    { label: inquiry.event_id ? 'Otwórz wydarzenie' : 'Utwórz wydarzenie', icon: <Briefcase className="h-4 w-4" />, onClick: () => inquiry.event_id ? router.push(`/crm/events/${inquiry.event_id}`) : setShowConversionModal(true), show: canLead && (!inquiry.accepted_offer_id || Boolean(inquiry.event_id)) },
+    { label: inquiry.event_id ? 'Otwórz event' : 'Utwórz event', icon: <Briefcase className="h-4 w-4" />, onClick: () => inquiry.event_id ? router.push(`/crm/events/${inquiry.event_id}`) : setShowConversionModal(true), show: canLead && (!inquiry.accepted_offer_id || Boolean(inquiry.event_id)) },
     { label: deletingInquiry ? 'Usuwanie zapytania…' : 'Usuń zapytanie', icon: deletingInquiry ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />, onClick: () => void deleteInquiry(), disabled: deletingInquiry, show: canLead, variant: 'danger' as const },
   ].map(action => ({ ...action, disabled: deletingInquiry || action.disabled }));
 
@@ -933,7 +933,7 @@ export default function InquiryWorkspaceClient({ initialData }: { initialData: a
           setShowClientModal(false);
           showSnackbar('Klient i organizacja zostały zapisane i powiązane z zapytaniem.', 'success');
         }} />}
-      {showConversionModal && <ConvertInquiryModal inquiry={inquiry} categories={data.categories} companies={data.companies} onBeforeConvert={async () => { if (briefDirty && !(await saveInquiryBrief())) throw new Error('Zapisz dane przed utworzeniem wydarzenia.'); if (!inquiry.contact_id && !inquiry.organization_id) await ensureContact(); }} onClose={() => setShowConversionModal(false)} onConverted={(eventId) => router.push(`/crm/events/${eventId}`)} />}
+      {showConversionModal && <ConvertInquiryModal inquiry={inquiry} categories={data.categories} companies={data.companies} onBeforeConvert={async () => { if (briefDirty && !(await saveInquiryBrief())) throw new Error('Zapisz dane przed utworzeniem eventu.'); if (!inquiry.contact_id && !inquiry.organization_id) await ensureContact(); }} onClose={() => setShowConversionModal(false)} onConverted={(eventId) => router.push(`/crm/events/${eventId}`)} />}
       {showStageModal && canLead && <InquiryStageModal inquiry={inquiry} onClose={() => setShowStageModal(false)} onSaved={(saved) => {
         setData((current: any) => ({ ...current, inquiry: { ...current.inquiry, ...saved } }));
         setShowStageModal(false);
@@ -971,9 +971,9 @@ function RecommendationView({ recommendation }: { recommendation: Recommendation
     <div className="rounded-lg bg-black/15 p-4 lg:col-span-2">
       <h3 className="text-sm font-medium">Podsumowanie zapytania i korespondencji</h3>
       <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/75">{recommendation.summary}</p>
-      {recommendation.event_goal && <p className="mt-3 text-sm text-white/60">Cel wydarzenia: {recommendation.event_goal}</p>}
+      {recommendation.event_goal && <p className="mt-3 text-sm text-white/60">Cel eventu: {recommendation.event_goal}</p>}
     </div>
-    <RecommendationList title="Założenia wydarzenia" items={assumptions.map(item => `${item.label ? item.label + ': ' : ''}${item.value}`)} />
+    <RecommendationList title="Założenia eventu" items={assumptions.map(item => `${item.label ? item.label + ': ' : ''}${item.value}`)} />
     {recommendation.client_needs?.length ? <RecommendationList title="Potrzeby klienta" items={recommendation.client_needs} /> : null}
     <RecommendationList title="Co trzeba doprecyzować" items={recommendation.missing_information || []} />
     <div className="rounded-lg bg-black/15 p-4 lg:col-span-2">

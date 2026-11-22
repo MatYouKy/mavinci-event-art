@@ -34,8 +34,8 @@ type Item = {
 };
 
 const KIND_LABELS: Record<Kind, string> = {
-  event: 'Wydarzenie',
-  phase: 'Faza wydarzenia',
+  event: 'Event',
+  phase: 'Faza eventu',
   meeting: 'Spotkanie',
   inquiry: 'Kontakt w zapytaniu',
   task: 'Zadanie',

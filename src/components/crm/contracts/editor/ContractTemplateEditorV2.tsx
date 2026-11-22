@@ -463,7 +463,7 @@ export default function ContractTemplateEditorV2({ template, brandLogos, brandFo
               value={simulation.kategoria}
               onChange={(event) => setSimulation({ ...simulation, kategoria: event.target.value })}
               className="h-7 max-w-[160px] rounded border border-white/15 bg-[#0f1119] px-2 text-xs text-[#e5e4e2]"
-              aria-label="Rodzaj wydarzenia"
+              aria-label="Rodzaj eventu"
             >
               <option value="">Bez kategorii</option>
               {categories.map((name) => <option key={name} value={name}>{name}</option>)}

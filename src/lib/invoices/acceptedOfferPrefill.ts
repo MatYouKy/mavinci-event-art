@@ -141,6 +141,6 @@ export function getAcceptedCalculationInvoicePrefill(calculation: {
     items: prepared.map((row) => row.item), totals,
     notice: prepared.some((row) => row.bundled)
       ? 'Zachowano kwoty i stawki VAT zaakceptowanej kalkulacji; pozycje wymagające ułamkowej ceny jednostkowej zapisano jako pozycje łączne.'
-      : 'Kwoty i stawki VAT pochodzą z zaakceptowanej kalkulacji wybranej jako źródło finansowe wydarzenia.',
+      : 'Kwoty i stawki VAT pochodzą z zaakceptowanej kalkulacji wybranej jako źródło finansowe eventu.',
   };
 }

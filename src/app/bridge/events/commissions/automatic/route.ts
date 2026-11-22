@@ -23,13 +23,13 @@ export async function POST(request: Request) {
     let body: Record<string, unknown>;
     try {
       const parsed = await request.json();
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fail('Nieprawidłowe wydarzenie lub sprzedawca.');
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return fail('Nieprawidłowy event lub sprzedawca.');
       body = parsed;
     } catch {
-      return fail('Nieprawidłowe wydarzenie lub sprzedawca.');
+      return fail('Nieprawidłowy event lub sprzedawca.');
     }
     if (!isUuid(body.eventId) || (body.salesPartnerId != null && !isUuid(body.salesPartnerId))) {
-      return fail('Nieprawidłowe wydarzenie lub sprzedawca.');
+      return fail('Nieprawidłowy event lub sprzedawca.');
     }
     const eventId = body.eventId as string;
     const selectedPartnerId = (body.salesPartnerId as string | undefined) ?? null;

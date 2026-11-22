@@ -22,7 +22,7 @@ export default function SettlementHeader({
   const { status, submitted, approved, returned } = settlement;
   // Ostrzeżenie o anulowaniu po zatwierdzeniu pokazujemy osobnym banerem (baza dodaje je też do warnings).
   const warnings = settlement.clawback
-    ? settlement.warnings.filter(warning => !warning.startsWith('Wydarzenie anulowane po zatwierdzeniu'))
+    ? settlement.warnings.filter(warning => !warning.startsWith('Event anulowany po zatwierdzeniu') && !warning.startsWith('Wydarzenie anulowane po zatwierdzeniu'))
     : settlement.warnings;
   return (
     <section aria-labelledby="settlement-heading" className="rounded-xl bg-white/5 p-4 sm:p-5">
@@ -30,7 +30,7 @@ export default function SettlementHeader({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 id="settlement-heading" className="text-lg font-medium text-[#e5e4e2]">
-              Podsumowanie wydarzenia
+              Podsumowanie eventu
             </h2>
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CHIP[status]}`}>
               {SETTLEMENT_STATUS_LABELS[status]}
@@ -96,7 +96,7 @@ export default function SettlementHeader({
       {settlement.clawback && (
         <p role="alert" className="mt-3 flex items-start gap-2 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-100">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          Wydarzenie anulowano po zatwierdzeniu podsumowania. Ponowne zatwierdzenie wyzeruje prowizje: niewypłacone zostaną anulowane,
+          Event anulowano po zatwierdzeniu podsumowania. Ponowne zatwierdzenie wyzeruje prowizje: niewypłacone zostaną anulowane,
           a wypłacone zamienią się w potrącenia.
         </p>
       )}
@@ -122,7 +122,7 @@ export default function SettlementHeader({
       {!settlement.finished && status === 'draft' && (
         <p className="mt-3 flex items-start gap-2 rounded-lg bg-white/[0.03] px-3 py-2 text-sm text-[#e5e4e2]/70">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#d3bb73]" aria-hidden />
-          Wydarzenie jeszcze się nie zakończyło — prowizje są prognozą. Podsumowanie wyślesz po zakończeniu.
+          Event jeszcze się nie zakończył — prowizje są prognozą. Podsumowanie wyślesz po zakończeniu.
         </p>
       )}
 

@@ -15,7 +15,7 @@ export async function confirmAndRemoveInquiry(
   let reasonInput: HTMLTextAreaElement | null = null;
   const confirmed = await showConfirm(mode === 'deleted' ? {
     title: 'Usuń zapytanie',
-    message: 'Zapytanie nie ma zadań, ofert, kalkulacji ani powiązanego wydarzenia. Zostanie trwale usunięte wraz z historią. Tej operacji nie można cofnąć.',
+    message: 'Zapytanie nie ma zadań, ofert, kalkulacji ani powiązanego eventu. Zostanie trwale usunięte wraz z historią. Tej operacji nie można cofnąć.',
     confirmText: 'Usuń trwale',
     cancelText: 'Anuluj',
   } : {

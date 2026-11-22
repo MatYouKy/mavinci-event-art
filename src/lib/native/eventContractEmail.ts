@@ -138,7 +138,7 @@ async function emailSetup(ctx: NativeContext, eventId: string, params: URLSearch
         approval,
       };
     }),
-    filesError: filesRes.error ? 'Nie udało się pobrać dostępnych plików wydarzenia' : null,
+    filesError: filesRes.error ? 'Nie udało się pobrać dostępnych plików eventu' : null,
   };
 }
 
@@ -196,12 +196,12 @@ export async function sendContractEmail(ctx: NativeContext, accessToken: string,
   if (ids.length) {
     const { data, error } = await ctx.supabase.from('event_files').select('id, name, original_name, file_path, mime_type')
       .eq('event_id', eventId).in('id', ids);
-    if (error) fail('Nie udało się pobrać plików wydarzenia');
+    if (error) fail('Nie udało się pobrać plików eventu');
     for (const file of ((data || []) as Row[]).filter((row) => row.file_path && row.file_path !== contract.generated_pdf_path)) {
       const displayName = String(file.name || file.original_name || 'Plik');
       const content = await download(ctx, file.file_path, `Nie udało się pobrać pliku: ${displayName}`);
       total += content.length;
-      if (total > MAX_ATTACHMENTS_BYTES) fail('Załączniki przekraczają 25 MB. Wybierz mniej plików wydarzenia.');
+      if (total > MAX_ATTACHMENTS_BYTES) fail('Załączniki przekraczają 25 MB. Wybierz mniej plików eventu.');
       attachments.push({
         filename: String(file.original_name || file.name || String(file.file_path).split('/').pop() || 'Plik'),
         content: content.toString('base64'),

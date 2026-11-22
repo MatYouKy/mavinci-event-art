@@ -145,7 +145,7 @@ private func searchKey(_ value: String) -> String {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Pola i warunki umowy").font(.title2.bold())
-                Text("Zmiany dotyczą tylko tej umowy. Pola pochodzą z danych wydarzenia, klienta i oferty — po zapisaniu treść umowy składa się od nowa.")
+                Text("Zmiany dotyczą tylko tej umowy. Pola pochodzą z danych eventu, klienta i oferty — po zapisaniu treść umowy składa się od nowa.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .padding([.horizontal, .top], 20).padding(.bottom, 6)

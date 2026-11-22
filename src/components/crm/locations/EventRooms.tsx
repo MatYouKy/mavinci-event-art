@@ -44,7 +44,7 @@ export function EventRooms({
     ]).then(([loc, event]) => {
       if (!active) return;
       if (loc.error || event.error) {
-        setError('Nie udało się pobrać sal wydarzenia.');
+        setError('Nie udało się pobrać sal eventu.');
         return;
       }
       setRooms(loc.data.rooms || []);
@@ -75,7 +75,7 @@ export function EventRooms({
       const { data, error } = await query.select('id').maybeSingle();
       if (error) throw error;
       if (!data)
-        throw new Error('Dane wydarzenia zmieniły się lub nie masz uprawnień. Odśwież stronę.');
+        throw new Error('Dane eventu zmieniły się lub nie masz uprawnień. Odśwież stronę.');
       setOriginal({ ids: selected, stage });
       showSnackbar('Sale zapisane. Jeśli wytyczne były już wysłane, wyślij je ponownie z nowym miejscem realizacji.', 'success');
       onClose?.();
@@ -154,7 +154,7 @@ export function EventRooms({
               onClick={save}
               className="rounded-lg bg-[#d3bb73] px-3 py-2 text-[#250914]"
             >
-              {saving ? 'Zapisywanie…' : 'Zapisz sale wydarzenia'}
+              {saving ? 'Zapisywanie…' : 'Zapisz sale eventu'}
             </button>
             <button
               type="button"

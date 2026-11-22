@@ -24,7 +24,7 @@ import UniformTypeIdentifiers
     var body: some View {
         LocationPanel(title: "Tło ofert", symbol: "photo.on.rectangle") {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Zdjęcie miejsca na okładkę ofert wydarzeń w tej lokalizacji — także gdy klientem jest inna firma (np. impreza firmowa w hotelu: oferta dla firmy, w tle zdjęcie hotelu). Wgrane zdjęcie trafia też do galerii obiektu. Po zmianie tła wcześniej wygenerowane PDF ofert z tego miejsca są oznaczone jako nieaktualne. Oferta z własną grafiką hero zachowuje swoją, oferty sprzedawców hotelowych — okładkę z profilu sprzedawcy.")
+                Text("Zdjęcie miejsca na okładkę ofert eventów w tej lokalizacji — także gdy klientem jest inna firma (np. impreza firmowa w hotelu: oferta dla firmy, w tle zdjęcie hotelu). Wgrane zdjęcie trafia też do galerii obiektu. Po zmianie tła wcześniej wygenerowane PDF ofert z tego miejsca są oznaczone jako nieaktualne. Oferta z własną grafiką hero zachowuje swoją, oferty sprzedawców hotelowych — okładkę z profilu sprzedawcy.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if !ready {
                     Label("Tło ofert wymaga aktualizacji bazy (migracja 20261119150000_location_offer_background.sql).", systemImage: "exclamationmark.triangle")

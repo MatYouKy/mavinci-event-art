@@ -159,7 +159,7 @@ private struct UncertainBanner: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Potrącenie z prowizji").font(.title2.bold())
                 Text(verbatim: "\(deduction.eventName) · \(deduction.beneficiaryName)").foregroundStyle(theme.accent)
-                Text(verbatim: "Do potrącenia: \(CommissionText.money(deduction.toOffset)). Wybierz zatwierdzoną prowizję tej samej osoby i marki (ten sam sposób wypłaty albo to samo wydarzenie). Baza potrąci mniejszą z kwot — pozostałe potrącenie albo kwotę do wypłaty z wybranej prowizji. Zapis trafi do historii obu wpisów, bez przelewu.")
+                Text(verbatim: "Do potrącenia: \(CommissionText.money(deduction.toOffset)). Wybierz zatwierdzoną prowizję tej samej osoby i marki (ten sam sposób wypłaty albo ten sam event). Baza potrąci mniejszą z kwot — pozostałe potrącenie albo kwotę do wypłaty z wybranej prowizji. Zapis trafi do historii obu wpisów, bez przelewu.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -176,7 +176,7 @@ private struct UncertainBanner: View {
                                 HStack(alignment: .top, spacing: 10) {
                                     Image(systemName: target == row.id ? "largecircle.fill.circle" : "circle").foregroundStyle(theme.accent)
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(verbatim: row.eventName.isEmpty ? "Wydarzenie" : row.eventName).fontWeight(.medium)
+                                        Text(verbatim: row.eventName.isEmpty ? "Event" : row.eventName).fontWeight(.medium)
                                         Text(verbatim: [row.beneficiaryName, row.day, CommissionText.method(row.paymentMethod)].filter { !$0.isEmpty }.joined(separator: " · "))
                                             .font(.caption).foregroundStyle(.secondary)
                                     }
@@ -341,7 +341,7 @@ private struct UncertainBanner: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if candidates.isEmpty {
-                    Text("Brak zatwierdzonych prowizji z kwotą do wypłaty. Prowizje z podsumowania wydarzenia stają się do wypłaty po zatwierdzeniu podsumowania.")
+                    Text("Brak zatwierdzonych prowizji z kwotą do wypłaty. Prowizje z podsumowania eventu stają się do wypłaty po zatwierdzeniu podsumowania.")
                         .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 } else {
                     HStack {
@@ -403,7 +403,7 @@ private struct UncertainBanner: View {
         })) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: row.eventName.isEmpty ? "Wydarzenie" : row.eventName).fontWeight(.medium)
+                    Text(verbatim: row.eventName.isEmpty ? "Event" : row.eventName).fontWeight(.medium)
                     Text(verbatim: [row.day, row.companyName ?? "", CommissionText.method(row.paymentMethod)].filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.caption).foregroundStyle(.secondary)
                     if let kind = CommissionText.kind(row.entryKind) { Text(verbatim: kind).font(.caption2).foregroundStyle(green) }
@@ -438,7 +438,7 @@ private struct UncertainBanner: View {
                     .font(.caption)
                 }
             } else {
-                Text("Potrącenia zostaną na później — zapiszesz pełne kwoty zaznaczonych prowizji. Wypłatę wpisu ręcznego z otwartym potrąceniem z tego samego wydarzenia baza odrzuci.")
+                Text("Potrącenia zostaną na później — zapiszesz pełne kwoty zaznaczonych prowizji. Wypłatę wpisu ręcznego z otwartym potrąceniem z tego samego eventu baza odrzuci.")
                     .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -589,7 +589,7 @@ private struct UncertainBanner: View {
 
     private var defaults: String {
         "Puste pole stawki = stawka globalna (" + CommissionText.percent(terms.defaultStandardRate ?? 5) + " / "
-            + CommissionText.percent(terms.defaultOwnClientRate ?? 10) + "). Po zapisie prognozy otwartych wydarzeń się przeliczą; zatwierdzone rozliczenia zachowują swoje stawki."
+            + CommissionText.percent(terms.defaultOwnClientRate ?? 10) + "). Po zapisie prognozy otwartych eventów się przeliczą; zatwierdzone rozliczenia zachowują swoje stawki."
     }
 
     var body: some View {
@@ -659,7 +659,7 @@ private struct UncertainBanner: View {
         ]
         do {
             _ = try await store.commissionPost("commissionTerms", employeeID, ["data": .object(data)], as: CommissionWriteReply.self)
-            state.succeed("Warunki prowizji zapisane — prognozy otwartych wydarzeń przeliczone.")
+            state.succeed("Warunki prowizji zapisane — prognozy otwartych eventów przeliczone.")
             dismiss()
         } catch {
             problem = store.failureText(error, "Nie udało się zapisać warunków prowizji.")

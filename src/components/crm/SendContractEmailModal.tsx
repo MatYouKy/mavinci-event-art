@@ -232,7 +232,7 @@ export default function SendContractEmailModal({
     } catch (error) {
       console.error('Error fetching contract attachments:', error);
       setAvailableAttachments([]);
-      showSnackbar('Nie udało się pobrać dostępnych plików wydarzenia', 'error');
+      showSnackbar('Nie udało się pobrać dostępnych plików eventu', 'error');
     } finally {
       setLoadingAttachments(false);
     }
@@ -580,7 +580,7 @@ export default function SendContractEmailModal({
                           </p>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <p className="text-xs text-[#e5e4e2]/40">
-                              Pliki wydarzenia{formattedSize ? ` · ${formattedSize}` : ''}
+                              Pliki eventu{formattedSize ? ` · ${formattedSize}` : ''}
                             </p>
                             {attachment.approval && (
                               <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/35 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-200">

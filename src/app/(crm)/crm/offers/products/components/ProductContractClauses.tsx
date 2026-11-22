@@ -71,15 +71,15 @@ const PLACEHOLDERS = [
     { value: '{{primary_contact_phone}}', label: 'Telefon głównego kontaktu', description: '+48 123 456 789' },
     { value: '{{primary_contact_position}}', label: 'Stanowisko głównego kontaktu', description: 'Kierownik' },
   ]},
-  { group: 'Wydarzenie', items: [
-    { value: '{{event_name}}', label: 'Nazwa wydarzenia', description: 'Konferencja 2024' },
-    { value: '{{event_date}}', label: 'Data wydarzenia (pełna)', description: '15 marca 2024 r., 10:00' },
-    { value: '{{event_date_only}}', label: 'Data wydarzenia (tylko data)', description: '15 marca 2024 r.' },
+  { group: 'Event', items: [
+    { value: '{{event_name}}', label: 'Nazwa eventu', description: 'Konferencja 2024' },
+    { value: '{{event_date}}', label: 'Data eventu (pełna)', description: '15 marca 2024 r., 10:00' },
+    { value: '{{event_date_only}}', label: 'Data eventu (tylko data)', description: '15 marca 2024 r.' },
     { value: '{{event_end_date}}', label: 'Data zakończenia (pełna)', description: '15 marca 2024 r., 18:00' },
     { value: '{{event_end_date_only}}', label: 'Data zakończenia (tylko data)', description: '15 marca 2024 r.' },
     { value: '{{event_time_start}}', label: 'Godzina rozpoczęcia', description: '10:00' },
     { value: '{{event_time_end}}', label: 'Godzina zakończenia', description: '18:00' },
-    { value: '{{event_schedule_contract}}', label: 'Pełny termin wydarzenia', description: 'Obsługuje wydarzenia jedno- i wielodniowe' },
+    { value: '{{event_schedule_contract}}', label: 'Pełny termin eventu', description: 'Obsługuje eventy jedno- i wielodniowe' },
   ]},
   { group: 'Lokalizacja', items: [
     { value: '{{location_name}}', label: 'Nazwa lokalizacji', description: 'Centrum Konferencyjne' },
@@ -581,7 +581,7 @@ export function ProductContractClauses({
                 Tab tworzy podpunkt, a Shift+Tab wraca poziom wyżej.
               </p>
               <p className="text-xs text-[#e5e4e2]/45">
-                Zmienne są automatycznie wypełniane danymi z wydarzenia, klienta i organizacji podczas generowania umowy.
+                Zmienne są automatycznie wypełniane danymi z eventu, klienta i organizacji podczas generowania umowy.
               </p>
               <details className="mt-2">
                 <summary className="cursor-pointer text-sm font-medium text-[#d3bb73] hover:text-[#e2cd8d]">

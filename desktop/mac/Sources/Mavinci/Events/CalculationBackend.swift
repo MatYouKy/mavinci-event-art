@@ -34,8 +34,8 @@ struct CalculationBackend {
     /// Kalkulacja zapytania (inne komunikaty: PDF „przy zapytaniu”, oferty zapytania).
     let isInquiry: Bool
 
-    var savedPdfMessage: String { isInquiry ? "PDF kalkulacji zapisany przy zapytaniu" : "PDF kalkulacji zapisany w plikach wydarzenia" }
-    var importSourceName: String { isInquiry ? "ofert zapytania" : "ofert wydarzenia" }
+    var savedPdfMessage: String { isInquiry ? "PDF kalkulacji zapisany przy zapytaniu" : "PDF kalkulacji zapisany w plikach eventu" }
+    var importSourceName: String { isInquiry ? "ofert zapytania" : "ofert eventu" }
     /// Pliki wydarzenia w wysyłce e-mailem — w zapytaniu tylko, gdy jest już powiązane z wydarzeniem (jak `eventId &&` w CRM).
     var hasEvent: Bool { owner["eventId"] != nil }
 

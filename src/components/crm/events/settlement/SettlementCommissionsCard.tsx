@@ -64,7 +64,7 @@ export default function SettlementCommissionsCard({
       {
         key: `seller-remove:${item.partner_id}`,
         title: `Usunąć ${item.name} z podsumowania?`,
-        description: 'Prowizja tego sprzedawcy w wydarzeniu zostanie anulowana z powodem (historia zostaje). Możesz go dodać ponownie.',
+        description: 'Prowizja tego sprzedawcy w evencie zostanie anulowana z powodem (historia zostaje). Możesz go dodać ponownie.',
         confirmLabel: 'Usuń z podsumowania',
         tone: 'danger',
         note: { label: 'Powód', required: true, placeholder: 'np. sprzedawca nie brał udziału w sprzedaży' },
@@ -86,12 +86,12 @@ export default function SettlementCommissionsCard({
       <p className="mt-0.5 text-xs text-[#e5e4e2]/55">
         Wszystkie prowizje liczymy od zysku netto — po kosztach i po koszcie prowizji sprzedawców zewnętrznych (gotówka z zysku razem
         z podatkiem). Pracownik: 5%, 10% gdy w dniu akceptacji oferty był opiekunem klienta. Sprzedawca zewnętrzny: % od zysku z
-        jego karty albo ustalony dla tego wydarzenia.
+        jego karty albo ustalony dla tego eventu.
       </p>
 
-      <h4 className="mt-4 text-xs font-semibold uppercase tracking-wider text-[#d3bb73]">Sprzedawcy wydarzenia (pracownicy)</h4>
+      <h4 className="mt-4 text-xs font-semibold uppercase tracking-wider text-[#d3bb73]">Sprzedawcy eventu (pracownicy)</h4>
       {internal.length === 0 ? (
-        <p className="mt-2 text-sm text-[#e5e4e2]/50">Nie zapisano sprzedawcy wydarzenia.</p>
+        <p className="mt-2 text-sm text-[#e5e4e2]/50">Nie zapisano sprzedawcy eventu.</p>
       ) : (
         <ul className="mt-2 space-y-2">
           {internal.map(item => (
@@ -151,8 +151,8 @@ export default function SettlementCommissionsCard({
       </div>
       {external.length === 0 ? (
         <p className="mt-2 text-sm text-[#e5e4e2]/50">
-          Brak sprzedawców zewnętrznych w tym wydarzeniu.
-          {canEdit ? ' Hotel lub agencja, która sprzedała wydarzenie? Dodaj jej sprzedawcę — prowizja będzie kosztem w podsumowaniu.' : ''}
+          Brak sprzedawców zewnętrznych w tym evencie.
+          {canEdit ? ' Hotel lub agencja, która sprzedała event? Dodaj jej sprzedawcę — prowizja będzie kosztem w podsumowaniu.' : ''}
         </p>
       ) : (
         <ul className="mt-2 space-y-2">
@@ -182,7 +182,7 @@ export default function SettlementCommissionsCard({
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <button type="button" disabled={Boolean(busy)} onClick={() => setRateFor(item)} className={smallButtonClass}>
                     <Pencil className="h-3.5 w-3.5" aria-hidden />
-                    {item.rate_override ? 'Zmień stawkę dla wydarzenia' : 'Inna stawka dla wydarzenia'}
+                    {item.rate_override ? 'Zmień stawkę dla eventu' : 'Inna stawka dla eventu'}
                   </button>
                   {item.source === 'manual_partner' && (
                     <button type="button" disabled={Boolean(busy)} onClick={() => askRemove(item)} className={smallButtonClass}>

@@ -877,7 +877,7 @@ export default function NewEquipmentPage() {
             Sprawdzić stan przed każdym wydaniem
           </label>
           <p id="new-equipment-pre-check-hint" className="mt-1 pl-6 text-xs text-[#e5e4e2]/50">
-            Każde wydarzenie z tym sprzętem dostanie krok dla magazynu.
+            Każdy event z tym sprzętem dostanie krok dla magazynu.
           </p>
           {formData.requires_pre_check && (
             <div className="mt-4">

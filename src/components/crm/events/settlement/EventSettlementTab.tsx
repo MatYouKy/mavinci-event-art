@@ -44,7 +44,7 @@ export default function EventSettlementTab({ eventId }: { eventId: string }) {
     return (
       <div className="flex items-center justify-center gap-2 py-16 text-sm text-[#e5e4e2]/55" role="status">
         <Loader2 className="h-5 w-5 animate-spin text-[#d3bb73]" aria-hidden />
-        Wczytuję podsumowanie wydarzenia…
+        Wczytuję podsumowanie eventu…
       </div>
     );
   }
@@ -54,14 +54,14 @@ export default function EventSettlementTab({ eventId }: { eventId: string }) {
   if (state === 'forbidden') {
     return (
       <p className="rounded-xl bg-white/5 p-5 text-sm text-[#e5e4e2]/70">
-        {loadError || 'Podsumowanie wydarzenia widzi osoba z dostępem do kwot tego wydarzenia.'}
+        {loadError || 'Podsumowanie eventu widzi osoba z dostępem do kwot tego eventu.'}
       </p>
     );
   }
   if (state === 'error' || !settlement) {
     return (
       <div role="alert" className="rounded-xl bg-white/5 p-5 text-sm text-red-200">
-        {loadError || 'Nie udało się wczytać podsumowania wydarzenia.'}{' '}
+        {loadError || 'Nie udało się wczytać podsumowania eventu.'}{' '}
         <button type="button" onClick={() => void refresh()} className="text-[#d3bb73] underline">
           Spróbuj ponownie
         </button>

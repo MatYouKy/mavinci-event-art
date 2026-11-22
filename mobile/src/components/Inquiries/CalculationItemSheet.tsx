@@ -553,7 +553,7 @@ function TravelPanel({ inquiryId, calculationId, vehicleId, vehicleFuelType, ini
         onChangeText={(value) => { setManual(true); setDestination(value.slice(0, 500)); invalidateRoute(); }} />
       {suggested ? (
         <View style={kit.row}>
-          <Text style={[kit.muted, kit.flex]}>Lokalizacja z {suggested.source === 'inquiry' ? 'zapytania' : 'wydarzenia'}: {suggested.label}</Text>
+          <Text style={[kit.muted, kit.flex]}>Lokalizacja z {suggested.source === 'inquiry' ? 'zapytania' : 'eventu'}: {suggested.label}</Text>
           {manual ? <SmallButton label="Użyj tej lokalizacji" icon="map-pin" disabled={routeLoading} onPress={() => { setManual(false); setDestination(suggested.label); invalidateRoute(); }} /> : null}
         </View>
       ) : null}

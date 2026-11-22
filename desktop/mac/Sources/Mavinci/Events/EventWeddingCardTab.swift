@@ -410,7 +410,7 @@ private enum DraftValue: Hashable { case text(String), flag(Bool) }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Mavinci LIVE · Familiada").font(.caption).foregroundStyle(.secondary)
                     Text(familiada.gameName).font(.title3)
-                    Text("Ta rozgrywka jest przypisana do wydarzenia. Materiał jest osobnym, czytelnym arkuszem zawierającym wyłącznie pytania — bez odpowiedzi i punktacji.")
+                    Text("Ta rozgrywka jest przypisana do eventu. Materiał jest osobnym, czytelnym arkuszem zawierającym wyłącznie pytania — bez odpowiedzi i punktacji.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()

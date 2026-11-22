@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
 const errorText = (error: unknown, fallback: string) => (error as { message?: string })?.message || fallback;
 const statusOf = (error: unknown) => (error as { status?: number })?.status || 500;
-const denied = () => failure('Nie masz uprawnień do kategorii wydarzeń. Wymagane uprawnienie: event_categories_manage.', 403);
+const denied = () => failure('Nie masz uprawnień do kategorii eventów. Wymagane uprawnienie: event_categories_manage.', 403);
 
 export async function GET(request: Request) {
   const ctx = await nativeContext(request);
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     return failure('Nieznana operacja.');
   } catch (error) {
     if (statusOf(error) >= 500) console.error('[native-event-categories]', op, error);
-    return failure(errorText(error, 'Nie udało się pobrać kategorii wydarzeń.'), statusOf(error));
+    return failure(errorText(error, 'Nie udało się pobrać kategorii eventów.'), statusOf(error));
   }
 }
 

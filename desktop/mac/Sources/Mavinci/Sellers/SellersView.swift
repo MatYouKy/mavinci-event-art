@@ -215,7 +215,7 @@ import SwiftUI
         let total = max(1, data.stages.reduce(0) { $0 + $1.count })
         return VStack(alignment: .leading, spacing: 10) {
             Text("Oferty na osi").font(.headline)
-            Text("Te same pięć etapów widzi hotel w portalu: Oferta, U klienta, U opiekuna, Wydarzenie, Rozliczenie.")
+            Text("Te same pięć etapów widzi hotel w portalu: Oferta, U klienta, U opiekuna, Event (w portalu „Wydarzenie”), Rozliczenie.")
                 .font(.caption).foregroundStyle(.secondary)
             GeometryReader { proxy in
                 HStack(spacing: 2) {
@@ -248,10 +248,10 @@ import SwiftUI
 
     private func upcoming(_ data: SellerCockpitState) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Najbliższe wydarzenia", systemImage: "calendar").font(.headline)
+            Label("Najbliższe eventy", systemImage: "calendar").font(.headline)
             Text("Realizacje sprzedawców w ciągu 14 dni.").font(.caption).foregroundStyle(.secondary)
             if data.upcoming.isEmpty {
-                Text("Brak wydarzeń w najbliższych dwóch tygodniach.").font(.callout).foregroundStyle(.secondary)
+                Text("Brak eventów w najbliższych dwóch tygodniach.").font(.callout).foregroundStyle(.secondary)
             } else {
                 ForEach(data.upcoming) { event in
                     Button { state.showEvent(event.eventId, cardTab: nil) } label: {

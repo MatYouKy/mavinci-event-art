@@ -226,7 +226,7 @@ export async function assetCreate(ctx: NativeContext, body: Row) {
   const source = (['upload', 'camera', 'mac'].includes(text(body.source)) ? text(body.source) : 'upload') as SocialAssetSource;
   const eventId = uuidOrNull(body.eventId);
   const event = eventId ? await eventInfo(ctx, eventId) : null;
-  if (eventId && !event) fail('Nie znaleziono wydarzenia albo nie masz do niego dostępu.', 404);
+  if (eventId && !event) fail('Nie znaleziono eventu albo nie masz do niego dostępu.', 404);
   let companyId = uuidOrNull(body.companyId) || uuidOrNull(event?.my_company_id);
   if (!companyId) {
     const { data } = await ctx.supabase.from('my_companies').select('id').eq('is_default', true).eq('is_active', true).limit(1).maybeSingle();
@@ -234,7 +234,7 @@ export async function assetCreate(ctx: NativeContext, body: Row) {
   }
   if (!companyId) fail('Wybierz markę.', 400);
   const access = await socialAccess(ctx, companyId);
-  if (!access.create && !eventId) fail('Zdjęcie do biblioteki dodaje twórca treści. Członek zespołu wydarzenia może dodać zdjęcie z wydarzenia.', 403);
+  if (!access.create && !eventId) fail('Zdjęcie do biblioteki dodaje twórca treści. Członek zespołu eventu może dodać zdjęcie z eventu.', 403);
   const id = randomUUID();
   const path = `${companyId}/assets/${id}/original.${EXTENSIONS[mimeType]}`;
   const { error } = await ctx.supabase.from('social_assets').insert({
@@ -251,7 +251,7 @@ export async function assetCreate(ctx: NativeContext, body: Row) {
     note: text(body.note).trim().slice(0, SOCIAL_LIMITS.note),
   });
   if (error && (error.code === '42501' || /row-level security/i.test(error.message || ''))) {
-    fail('Zdjęcie z wydarzenia może dodać członek zespołu tego wydarzenia albo twórca treści.', 403);
+    fail('Zdjęcie z eventu może dodać członek zespołu tego eventu albo twórca treści.', 403);
   }
   check(error, 'Nie udało się przygotować wgrywania zdjęcia.');
   return { assetId: id, bucket: 'social-media', path, companyId, proposal: !access.create };
@@ -328,11 +328,11 @@ export async function assetImport(ctx: NativeContext, body: Row) {
   if (isUuid(body.eventFileId)) {
     const { data: file, error } = await ctx.supabase.from('event_files').select('id, event_id, file_path, mime_type, original_name, name, file_size')
       .eq('id', body.eventFileId).maybeSingle();
-    check(error, 'Nie udało się pobrać pliku wydarzenia.');
-    if (!file) fail('Nie znaleziono pliku wydarzenia.', 404);
+    check(error, 'Nie udało się pobrać pliku eventu.');
+    if (!file) fail('Nie znaleziono pliku eventu.', 404);
     if (Number(file.file_size) > SOCIAL_LIMITS.uploadBytes) fail('Zdjęcie może mieć najwyżej 40 MB.', 413);
     const { data: blob, error: downloadError } = await ctx.supabase.storage.from('event-files').download(String(file.file_path));
-    if (downloadError || !blob) fail('Nie udało się pobrać pliku wydarzenia.', 502);
+    if (downloadError || !blob) fail('Nie udało się pobrać pliku eventu.', 502);
     bytes = Buffer.from(await blob.arrayBuffer());
     fileName = text(file.original_name) || text(file.name) || 'zdjecie.jpg';
     eventId = uuidOrNull(file.event_id);
@@ -439,7 +439,7 @@ export async function assetDelete(ctx: NativeContext, id: string) {
 export async function consentSave(ctx: NativeContext, body: Row) {
   const eventId = uuidOrNull(body.eventId);
   const organizationId = eventId ? null : uuidOrNull(body.organizationId);
-  if (!eventId && !organizationId) fail('Wybierz wydarzenie albo klienta.');
+  if (!eventId && !organizationId) fail('Wybierz event albo klienta.');
   const status = text(body.status);
   if (!['unknown', 'requested', 'granted', 'denied', 'not_required'].includes(status)) fail('Nieprawidłowy status zgody.');
   const { data: allowed } = await ctx.supabase.rpc('social_media_can', { p_company: null, p_scope: 'consent' });
@@ -482,7 +482,7 @@ export async function eventsPicker(ctx: NativeContext, params: URLSearchParams) 
   if (companyId) query = query.or(`my_company_id.eq.${companyId},my_company_id.is.null`);
   if (q) query = query.ilike('name', `%${q}%`);
   const { data, error } = await query;
-  check(error, 'Nie udało się pobrać wydarzeń.');
+  check(error, 'Nie udało się pobrać eventów.');
   const rows = (data || []) as Row[];
   const eventIds = rows.map((row) => String(row.id));
   const organizationIds = Array.from(new Set(rows.map((row) => row.organization_id).filter(isUuid)));
@@ -497,7 +497,7 @@ export async function eventsPicker(ctx: NativeContext, params: URLSearchParams) 
       const venue = isObject(row.venue) ? row.venue : null;
       return {
         id: String(row.id),
-        name: text(row.name) || 'Wydarzenie',
+        name: text(row.name) || 'Event',
         date: text(row.event_date) || null,
         location: venue ? [text(venue.name), text(venue.city)].filter(Boolean).join(', ') : text(row.location),
         organizationId: uuidOrNull(row.organization_id),
@@ -511,10 +511,10 @@ export async function eventsPicker(ctx: NativeContext, params: URLSearchParams) 
 
 /** Zdjęcia z plików wydarzenia (JPEG, PNG, WebP) z linkami podglądu. */
 export async function eventImages(ctx: NativeContext, eventId: string) {
-  if (!isUuid(eventId)) fail('Nie znaleziono wydarzenia.', 404);
+  if (!isUuid(eventId)) fail('Nie znaleziono eventu.', 404);
   const { data, error } = await ctx.supabase.from('event_files').select('id, name, original_name, file_path, mime_type, file_size, created_at')
     .eq('event_id', eventId).in('mime_type', ['image/jpeg', 'image/png', 'image/webp']).order('created_at', { ascending: false }).limit(120);
-  check(error, 'Nie udało się pobrać plików wydarzenia.');
+  check(error, 'Nie udało się pobrać plików eventu.');
   const rows = (data || []) as Row[];
   const paths = rows.map((row) => String(row.file_path));
   const signed = paths.length ? await ctx.supabase.storage.from('event-files').createSignedUrls(paths, 3600) : { data: [] };

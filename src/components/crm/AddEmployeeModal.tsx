@@ -395,7 +395,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
           <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0f1019]/55 p-4">
             <div className="text-sm font-medium text-[#e5e4e2]">Dostęp do marek</div>
             <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/55">
-              Rola określa co pracownik może robić, a marki określają, których wydarzeń i dokumentów może używać.
+              Rola określa co pracownik może robić, a marki określają, których eventów i dokumentów może używać.
             </p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#d3bb73]/15 p-3">

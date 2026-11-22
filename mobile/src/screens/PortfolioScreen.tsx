@@ -174,7 +174,7 @@ export default function PortfolioScreen() {
         onPick={(event) => { void create({ eventId: event.id }); }}
         footer={(
           <View style={{ gap: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border.default, paddingTop: spacing.sm }}>
-            <Text style={styles.muted}>Z wydarzenia: tytuł, data, miejsce i rodzaj. Albo od zera:</Text>
+            <Text style={styles.muted}>Z eventu: tytuł, data, miejsce i rodzaj. Albo od zera:</Text>
             <View style={{ flexDirection: 'row', gap: spacing.sm }}>
               <TextInput style={[styles.input, { flex: 1 }]} value={newTitle} onChangeText={(value) => setNewTitle(value.slice(0, PORTFOLIO_LIMITS.title))}
                 placeholder="Tytuł realizacji" placeholderTextColor={colors.text.tertiary}

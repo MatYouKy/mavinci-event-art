@@ -572,10 +572,10 @@ import AppKit
 
     // MARK: Wydarzenia
     private var eventsTab: some View {
-        card("Wydarzenia") {
+        card("Eventy") {
             if let events = detail?.events {
                 if events.isEmpty {
-                    emptyState("Brak przypisanych wydarzeń", symbol: "calendar")
+                    emptyState("Brak przypisanych eventów", symbol: "calendar")
                 } else {
                     VStack(spacing: 8) { ForEach(events) { assignment in eventRow(assignment) } }
                 }

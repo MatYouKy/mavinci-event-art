@@ -156,7 +156,7 @@ export default function MyCommissionsPanel({ compact = false, className = '' }: 
           <dl className={`mt-4 grid gap-2 ${compact ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'}`}>
             {(
               [
-                ['Prognoza', data.totals.forecast, 'text-[#e5e4e2]/80', 'Wydarzenia przed zatwierdzeniem podsumowania'],
+                ['Prognoza', data.totals.forecast, 'text-[#e5e4e2]/80', 'Eventy przed zatwierdzeniem podsumowania'],
                 ['Do wypłaty', data.totals.to_pay, 'text-[#d3bb73]', 'Zatwierdzone, po odjęciu wypłat i rozliczonych potrąceń'],
                 ['Wypłacone', data.totals.paid, 'text-emerald-300', 'Przelewy i wypłaty (bez potrąceń)'],
                 ['Do potrącenia', data.totals.to_offset, 'text-red-200', 'Nadpłaty do odjęcia z kolejnych prowizji'],

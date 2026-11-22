@@ -244,7 +244,7 @@ export function AddEventEmployeeModal({
               ) : null}
             </select>
             <p className="mt-1 text-xs text-[#e5e4e2]/40">
-              Dodanie do zespołu od razu nadaje dostęp do wydarzenia. Timeline możesz uzupełnić
+              Dodanie do zespołu od razu nadaje dostęp do eventu. Timeline możesz uzupełnić
               później.
             </p>
           </div>
@@ -307,8 +307,8 @@ export function AddEventEmployeeModal({
           </div>
 
           <p className="text-xs text-[#e5e4e2]/50">
-            Co ta osoba widzi w wydarzeniu, wynika z jej roli w ustawieniach pracownika. Poniżej możesz dodatkowo
-            nadać uprawnienia do edycji w tym wydarzeniu.
+            Co ta osoba widzi w evencie, wynika z jej roli w ustawieniach pracownika. Poniżej możesz dodatkowo
+            nadać uprawnienia do edycji w tym evencie.
           </p>
 
           <div className="border-t border-[#d3bb73]/10 pt-4">
@@ -347,7 +347,7 @@ export function AddEventEmployeeModal({
                     onChange={(e) => setCanEditEvent(e.target.checked)}
                     className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#1c1f33] text-[#d3bb73]"
                   />
-                  Edycja wydarzenia (nazwa, data, lokalizacja)
+                  Edycja eventu (nazwa, data, lokalizacja)
                 </label>
                 <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
                   <input
@@ -462,7 +462,7 @@ export function AddEventEmployeeModal({
               disabled={isSubmitting || isAddingEmployee}
               className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isSubmitting || isAddingEmployee ? 'Dodawanie...' : 'Dodaj do wydarzenia'}
+              {isSubmitting || isAddingEmployee ? 'Dodawanie...' : 'Dodaj do eventu'}
             </button>
             <button
               onClick={onClose}

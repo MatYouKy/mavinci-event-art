@@ -276,7 +276,7 @@ struct RepresentativeOption: Identifiable, Hashable {
         } header: {
             Text("Dane do faktury")
         } footer: {
-            Text("Na kogo wystawiamy faktury za tę organizację. Umowę i wydarzenia nadal prowadzisz z nią samą.").font(.caption).foregroundStyle(.secondary)
+            Text("Na kogo wystawiamy faktury za tę organizację. Umowę i eventy nadal prowadzisz z nią samą.").font(.caption).foregroundStyle(.secondary)
         }
     }
 

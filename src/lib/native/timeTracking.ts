@@ -225,7 +225,7 @@ export async function timeDashboard(ctx: NativeContext, from: string, to: string
 
 const FIELD_LABELS: Record<string, string> = {
   title: 'Tytuł', description: 'Opis', start_time: 'Czas rozpoczęcia', end_time: 'Czas zakończenia', duration_minutes: 'Czas trwania (minuty)',
-  is_billable: 'Płatne', hourly_rate: 'Stawka godzinowa', tags: 'Tagi', task_id: 'Zadanie', event_id: 'Wydarzenie', employee_id: 'Pracownik',
+  is_billable: 'Płatne', hourly_rate: 'Stawka godzinowa', tags: 'Tagi', task_id: 'Zadanie', event_id: 'Event', employee_id: 'Pracownik',
   personnel_contract_id: 'Umowa pracownika', personnel_rate_snapshot: 'Warunki rozliczenia', compensation_snapshot: 'Warunki wynagrodzenia',
   created_at: 'Data utworzenia',
 };

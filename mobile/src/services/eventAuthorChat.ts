@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 export async function openEventAuthorChat(eventId: string, employeeId: string): Promise<string> {
   const event = await supabase.from('events').select('created_by').eq('id', eventId).maybeSingle();
   if (event.error) throw event.error;
-  if (!event.data?.created_by) throw new Error('Nie udało się ustalić autora wydarzenia.');
+  if (!event.data?.created_by) throw new Error('Nie udało się ustalić autora eventu.');
   const creatorId = event.data.created_by;
   let author = await supabase.from('employees').select('id,is_active').eq('id', creatorId).maybeSingle();
   if (author.error) throw author.error;
@@ -12,9 +12,9 @@ export async function openEventAuthorChat(eventId: string, employeeId: string): 
     author = await supabase.from('employees').select('id,is_active').eq('auth_user_id', creatorId).maybeSingle();
     if (author.error) throw author.error;
   }
-  if (!author.data?.is_active) throw new Error('Autor wydarzenia nie ma aktywnego konta pracownika.');
+  if (!author.data?.is_active) throw new Error('Autor eventu nie ma aktywnego konta pracownika.');
   const authorId = author.data.id;
-  if (authorId === employeeId) throw new Error('Jesteś autorem tego wydarzenia. Wyznacz kierownika w zakładce Zespół w CRM.');
+  if (authorId === employeeId) throw new Error('Jesteś autorem tego eventu. Wyznacz kierownika w zakładce Zespół w CRM.');
 
   const mine = await supabase.from('employee_conversation_participants').select('conversation_id').eq('employee_id', employeeId);
   if (mine.error) throw mine.error;

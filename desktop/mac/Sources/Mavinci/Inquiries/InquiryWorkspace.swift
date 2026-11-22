@@ -387,7 +387,7 @@ private enum InquiryAfterClient { case offer, convert }
                     Button("Nowe zadanie", systemImage: "checklist") { tab = .tasks }
                 }
                 if data.permissions.canLead && info.eventId == nil && info.acceptedOfferId == nil {
-                    Button("Utwórz wydarzenie…", systemImage: "sparkles") { startConvert(data) }
+                    Button("Utwórz event…", systemImage: "sparkles") { startConvert(data) }
                 }
                 if data.permissions.canLead, info.ownerId != nil, !["won", "lost"].contains(info.stage) {
                     Button("Przekaż / oddaj…", systemImage: "arrowshape.turn.up.right") { sheet = .handoff }
@@ -398,7 +398,7 @@ private enum InquiryAfterClient { case offer, convert }
                 if data.permissions.canLead, info.acceptedOfferId != nil {
                     Button("Otwórz negocjacje ponownie…", systemImage: "arrow.uturn.backward") { sheet = .reopen }
                 }
-                if let event = info.eventId { Button("Otwórz wydarzenie", systemImage: "sparkles") { state.showEvent(event) } }
+                if let event = info.eventId { Button("Otwórz event", systemImage: "sparkles") { state.showEvent(event) } }
                 if data.permissions.canManage { Button("Analiza i rozmowa z AI", systemImage: "wand.and.stars") { tab = .analysis } }
                 Divider()
                 Button("Otwórz w CRM", systemImage: "safari") { state.openCRM("/crm/inquiries/\(inquiryID)") }
@@ -932,7 +932,7 @@ private struct InquiryBriefForm: View {
                     if brief.eventSingleDay && !brief.eventEndTime.isEmpty { Toggle("Kończy się następnego dnia", isOn: $brief.eventEndNextDay) }
                 }
             }
-            Section("Wydarzenie") {
+            Section("Event") {
                 MeetingTextField("Miejsce", text: $brief.locationText, prompt: "Nazwa obiektu, miasto")
                 MeetingTextField("Liczba osób", text: $brief.guestCount, prompt: "np. 120")
                 if !brief.guestCountText.isEmpty { Text("Z wiadomości: \(brief.guestCountText)").font(.caption).foregroundStyle(.secondary) }

@@ -733,7 +733,7 @@ export async function deleteTemplate(ctx: NativeContext, body: Row) {
   if (!contractsAccess(ctx).canManage) fail('Nie masz uprawnień do usuwania szablonów umów.');
   const { data, error } = await ctx.supabase.from('contract_templates').delete().eq('id', templateId(body.id)).select('id');
   if (error) {
-    if (error.code === '23503') fail('Szablon jest używany przez umowy lub kategorie wydarzeń. Wyłącz go („Nieaktywny”) zamiast usuwać.');
+    if (error.code === '23503') fail('Szablon jest używany przez umowy lub kategorie eventów. Wyłącz go („Nieaktywny”) zamiast usuwać.');
     fail(error.message);
   }
   changed(data, 'Nie znaleziono szablonu albo nie masz uprawnień do jego usunięcia.');

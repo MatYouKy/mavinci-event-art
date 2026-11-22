@@ -117,7 +117,7 @@ export default function RealizationWorkspace({
       automaticallyAdjustKeyboardInsets
     >
       <TouchableOpacity onPress={onBack}>
-        <Text style={{ color: colors.primary.gold }}>← Wydarzenia</Text>
+        <Text style={{ color: colors.primary.gold }}>← Eventy</Text>
       </TouchableOpacity>
       <Text style={{ fontSize: 22, color: colors.text.primary, marginVertical: 16 }}>
         {data.name}

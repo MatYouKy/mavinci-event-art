@@ -510,7 +510,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
     if (error) {
       console.error('Error fetching organization events:', error);
-      showSnackbar('Błąd podczas pobierania wydarzeń organizacji', 'error');
+      showSnackbar('Błąd podczas pobierania eventów organizacji', 'error');
       return;
     }
 
@@ -1599,7 +1599,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
               {!buyerIsPrivatePerson && selectedOrgId && (
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
                   <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                    Powiązane wydarzenie
+                    Powiązany event
                   </label>
 
                   <select
@@ -1607,7 +1607,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                     onChange={(e) => void handleEventChange(e.target.value || null)}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
                   >
-                    <option value="">Brak powiązanego wydarzenia</option>
+                    <option value="">Brak powiązanego eventu</option>
 
                     {organizationEvents.map((event) => (
                       <option key={event.id} value={event.id}>
@@ -1621,7 +1621,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
                   {organizationEvents.length === 0 && (
                     <div className="mt-2 text-xs text-[#e5e4e2]/50">
-                      Brak wydarzeń przypisanych do tej organizacji.
+                      Brak eventów przypisanych do tej organizacji.
                     </div>
                   )}
                 </div>

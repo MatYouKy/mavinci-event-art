@@ -52,7 +52,7 @@ export default function OfferStep2({
 
       <OfferAudienceFields value={offerData} needsTables={needsTables} onChange={counts => setOfferData({ ...offerData, ...counts })} />
       <div>
-        <label className="mb-2 block text-sm text-[#e5e4e2]/60">Miejsce wydarzenia</label>
+        <label className="mb-2 block text-sm text-[#e5e4e2]/60">Miejsce eventu</label>
         <LocationSelector
           allowFreeText
           value={offerData.event_location}
@@ -75,12 +75,12 @@ export default function OfferStep2({
 
 
       <div>
-        <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cel wydarzenia</label>
+        <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cel eventu</label>
         <textarea
           value={offerData.event_goal}
           onChange={(e) => setOfferData({ ...offerData, event_goal: e.target.value })}
           className="min-h-[90px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-          placeholder="Co klient chce osiągnąć dzięki wydarzeniu?"
+          placeholder="Co klient chce osiągnąć dzięki eventowi?"
         />
       </div>
 

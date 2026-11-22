@@ -84,7 +84,7 @@ import SwiftUI
                 .help("Odśwież listę ofert")
             Button { wizard = OfferWizardRoute(eventID: nil) } label: { Label("Nowa oferta", systemImage: "plus") }
                 .buttonStyle(.borderedProminent)
-                .help("Kreator oferty: wybierz wydarzenie, klienta i produkty")
+                .help("Kreator oferty: wybierz event, klienta i produkty")
         }
         .controlSize(.small)
         .padding(.horizontal, 14).padding(.vertical, 9)
@@ -205,7 +205,7 @@ import SwiftUI
     @ViewBuilder private func menu(_ item: OfferListItem) -> some View {
         Button("Zobacz szczegóły", systemImage: "eye") { store.openedID = item.id }
         if let event = item.eventId {
-            Button("Otwórz wydarzenie", systemImage: "calendar") { state.showEvent(event) }
+            Button("Otwórz event", systemImage: "calendar") { state.showEvent(event) }
         } else if let inquiry = item.inquiryId {
             Button("Otwórz zapytanie", systemImage: "tray") { state.showInquiry(inquiry) }
         }

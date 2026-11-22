@@ -16,7 +16,7 @@ struct ContractConditionRequest: Identifiable {
         var title: String {
             switch self {
             case .client: return "Klient"
-            case .category: return "Rodzaj wydarzenia"
+            case .category: return "Rodzaj eventu"
             case .option: return "Opcja umowy"
             case .filled: return "Pole wypełnione"
             }
@@ -24,8 +24,8 @@ struct ContractConditionRequest: Identifiable {
 
         var hint: String {
             switch self {
-            case .client: return "firma albo osoba prywatna — z danych wydarzenia"
-            case .category: return "kategoria wydarzenia, np. Wesele"
+            case .client: return "firma albo osoba prywatna — z danych eventu"
+            case .category: return "kategoria eventu, np. Wesele"
             case .option: return "włączana przy każdej umowie, np. nocleg"
             case .filled: return "np. numer zamówienia klienta"
             }
@@ -140,9 +140,9 @@ struct ContractConditionRequest: Identifiable {
                 .labelsHidden()
             case .category:
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Pokaż dla wydarzeń z kategorii (można kilka):").font(.caption).foregroundStyle(.secondary)
+                    Text("Pokaż dla eventów z kategorii (można kilka):").font(.caption).foregroundStyle(.secondary)
                     if categoryChoices.isEmpty {
-                        Text("Brak kategorii wydarzeń.").font(.caption).foregroundStyle(.secondary)
+                        Text("Brak kategorii eventów.").font(.caption).foregroundStyle(.secondary)
                     } else {
                         ScrollView {
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 6)], alignment: .leading, spacing: 6) {
@@ -187,7 +187,7 @@ struct ContractConditionRequest: Identifiable {
             }
 
             if kind != .client {
-                Toggle(kind == .category ? "Odwrotnie — dla wszystkich innych wydarzeń"
+                Toggle(kind == .category ? "Odwrotnie — dla wszystkich innych eventów"
                        : kind == .option ? "Odwrotnie — gdy opcja jest wyłączona" : "Odwrotnie — gdy pole jest puste", isOn: $negate)
                     .toggleStyle(.checkbox)
             }
@@ -255,7 +255,7 @@ enum ContractColorsUI {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Opcje umowy").font(.title3.weight(.semibold))
-                Text("Przełączane przy każdej umowie wydarzenia; w warunkach: „Opcja umowy”.").font(.caption).foregroundStyle(.secondary)
+                Text("Przełączane przy każdej umowie eventu; w warunkach: „Opcja umowy”.").font(.caption).foregroundStyle(.secondary)
             }
             if list.isEmpty {
                 Text("Szablon nie ma jeszcze opcji.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 6)

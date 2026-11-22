@@ -6,7 +6,7 @@
 /** Funkcja jeszcze nie istnieje w bazie (migracja 20261105130000 niewdrożona). */
 const MISSING_RPC_CODES = new Set(['PGRST202', '42883']);
 
-export const SETTLEMENT_MIGRATION_NOTICE = 'Podsumowanie wydarzenia wymaga aktualizacji bazy danych.';
+export const SETTLEMENT_MIGRATION_NOTICE = 'Podsumowanie eventu wymaga aktualizacji bazy danych.';
 
 type DbError = { code?: string | null; message?: string | null } | null | undefined;
 

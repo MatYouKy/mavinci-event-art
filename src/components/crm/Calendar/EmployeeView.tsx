@@ -56,14 +56,14 @@ export default function EmployeeView({
                   {employee.nickname || `${employee.name} ${employee.surname}`}
                 </h3>
                 <p className="text-sm text-[#e5e4e2]/60 mt-1">
-                  {employeeEvents.length} {employeeEvents.length === 1 ? 'wydarzenie' : employeeEvents.length < 5 ? 'wydarzenia' : 'wydarzeń'}
+                  {employeeEvents.length} {employeeEvents.length === 1 ? 'event' : employeeEvents.length < 5 ? 'eventy' : 'eventów'}
                 </p>
               </div>
 
               {sortedEvents.length === 0 ? (
                 <div className="p-8 text-center">
                   <Calendar className="w-8 h-8 text-[#e5e4e2]/20 mx-auto mb-2" />
-                  <p className="text-sm text-[#e5e4e2]/40">Brak przypisanych wydarzeń</p>
+                  <p className="text-sm text-[#e5e4e2]/40">Brak przypisanych eventów</p>
                 </div>
               ) : (
                 <div className="p-4 space-y-2">

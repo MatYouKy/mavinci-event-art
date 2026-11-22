@@ -436,7 +436,7 @@ export default function CommissionRegisterPanel({
           <div className="flex flex-1 flex-wrap justify-end gap-2">
             <div className="relative min-w-60 max-w-md flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#e5e4e2]/30" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Szukaj osoby lub wydarzenia..." className="w-full rounded-lg border border-white/10 bg-[#0a0d1a] py-2 pl-9 pr-3 text-sm text-[#e5e4e2] outline-none" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Szukaj osoby lub eventu..." className="w-full rounded-lg border border-white/10 bg-[#0a0d1a] py-2 pl-9 pr-3 text-sm text-[#e5e4e2] outline-none" />
             </div>
             <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | CommissionStatus)} className="rounded-lg border border-white/10 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2]">
               <option value="all">Wszystkie statusy</option>
@@ -467,7 +467,7 @@ export default function CommissionRegisterPanel({
                     <p className="text-sm text-[#e5e4e2]">{commission.beneficiary_name}</p>
                     <Link href={commission.event?.id ? `/crm/events/${commission.event.id}?tab=overview` : '#'} className="mt-1 flex items-center gap-2 text-xs text-[#d3bb73]/70 hover:text-[#d3bb73]">
                       <CalendarDays className="h-3 w-3" />
-                      {commission.event?.name || 'Wydarzenie'}
+                      {commission.event?.name || 'Event'}
                       {commission.event?.event_date && ` · ${new Date(commission.event.event_date).toLocaleDateString('pl-PL')}`}
                     </Link>
                     {(kind || source) && (
@@ -533,7 +533,7 @@ export default function CommissionRegisterPanel({
                       <button
                         type="button"
                         onClick={() => updateStatus(commission.id, 'planned')}
-                        title="Przywróć prowizję — kwotę ustali podsumowanie wydarzenia"
+                        title="Przywróć prowizję — kwotę ustali podsumowanie eventu"
                         className="rounded bg-[#d3bb73]/10 px-2.5 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/20"
                       >
                         Przywróć
@@ -564,7 +564,7 @@ export default function CommissionRegisterPanel({
                           <label key={target.id} className={`flex cursor-pointer items-center justify-between gap-3 rounded px-3 py-2 text-xs ${picking.target === target.id ? 'bg-[#d3bb73]/10' : 'bg-white/[0.03] hover:bg-white/[0.06]'}`}>
                             <span className="flex items-center gap-2 text-[#e5e4e2]">
                               <input type="radio" name={`deduction-${commission.id}`} checked={picking.target === target.id} onChange={() => setDeducting({ ...picking, target: target.id })} className="accent-[#d3bb73]" />
-                              {target.event?.name || 'Wydarzenie'}
+                              {target.event?.name || 'Event'}
                             </span>
                             <span className="text-[#d3bb73]">zostało {formatCommissionMoney(remainingOf(target))}</span>
                           </label>

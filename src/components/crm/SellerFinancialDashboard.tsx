@@ -81,7 +81,7 @@ export default function SellerFinancialDashboard({
         <div>
           <h2 className="text-xl font-medium">Moja sprzedaż</h2>
           <p className="mt-2 max-w-3xl text-xs leading-relaxed text-[#e5e4e2]/50">
-            Rok i miesiąc odnoszą się do daty wydarzenia. Kwoty obejmują wszystkie wystawione do niego faktury, także wystawione w innym okresie. To kwoty brutto, a nie zysk firmy.
+            Rok i miesiąc odnoszą się do daty eventu. Kwoty obejmują wszystkie wystawione do niego faktury, także wystawione w innym okresie. To kwoty brutto, a nie zysk firmy.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -97,7 +97,7 @@ export default function SellerFinancialDashboard({
           : <>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-4 text-sm text-[#e5e4e2]/70">
-                <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#d3bb73]" />Sprzedane wydarzenia: <strong className="text-[#e5e4e2]">{report.totals.sold_events}</strong></span>
+                <span className="inline-flex items-center gap-2"><CalendarDays className="h-4 w-4 text-[#d3bb73]" />Sprzedane eventy: <strong className="text-[#e5e4e2]">{report.totals.sold_events}</strong></span>
                 <span className="inline-flex items-center gap-2"><FileText className="h-4 w-4 text-[#d3bb73]" />Zafakturowane: <strong className="text-[#e5e4e2]">{report.totals.invoiced_events}</strong></span>
               </div>
               {currencies.length > 1 && <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/65">Waluta
@@ -109,7 +109,7 @@ export default function SellerFinancialDashboard({
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
                 { label: 'Zafakturowana sprzedaż', value: totals?.invoiced_gross, helper: 'Zaliczki i końcowe rozliczenie bez podwójnego liczenia.' },
-                { label: 'Potwierdzone płatności', value: totals?.paid_gross, helper: 'Płatności przypisane do faktur tych wydarzeń.' },
+                { label: 'Potwierdzone płatności', value: totals?.paid_gross, helper: 'Płatności przypisane do faktur tych eventów.' },
                 { label: 'Pozostało do zapłaty', value: totals?.outstanding_gross, helper: 'Nierozliczona część faktur Twojej sprzedaży.' },
                 { label: 'Po terminie płatności', value: totals?.overdue_gross, helper: 'Zaległości dotyczące wyłącznie tych faktur.' },
               ].map((card) => <article key={card.label} className={panelClass}>
@@ -120,8 +120,8 @@ export default function SellerFinancialDashboard({
             </div>
 
             <section className={panelClass}>
-              <h3 className="text-base font-medium">Sprzedaż według miesiąca wydarzenia</h3>
-              <p className="mt-1 text-xs text-[#e5e4e2]/50">Każda waluta jest pokazywana osobno. Wspólne faktury uwzględniają tylko udział przypisany do Twoich wydarzeń.</p>
+              <h3 className="text-base font-medium">Sprzedaż według miesiąca eventu</h3>
+              <p className="mt-1 text-xs text-[#e5e4e2]/50">Każda waluta jest pokazywana osobno. Wspólne faktury uwzględniają tylko udział przypisany do Twoich eventów.</p>
               <div className="mt-5">
                 <CrmCartesianChart data={chartData} categoryKey="label" kind="bar"
                   series={[{ key: 'invoiced_gross', label: 'Zafakturowano', color: '#d3bb73' }, { key: 'paid_gross', label: 'Opłacono', color: '#6ee7b7' }]}
@@ -132,13 +132,13 @@ export default function SellerFinancialDashboard({
 
             <section className={panelClass}>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-base font-medium">Moje sprzedane wydarzenia</h3>
+                <h3 className="text-base font-medium">Moje sprzedane eventy</h3>
                 <Link href="/crm/invoices?tab=local" className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/15">Moje faktury</Link>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead className="text-xs text-[#e5e4e2]/50"><tr>
-                    <th className="px-3 py-3 font-medium">Wydarzenie</th><th className="px-3 py-3 font-medium">Data / status</th>
+                    <th className="px-3 py-3 font-medium">Event</th><th className="px-3 py-3 font-medium">Data / status</th>
                     <th className="px-3 py-3 text-right font-medium">Zafakturowano</th><th className="px-3 py-3 text-right font-medium">Opłacono</th><th className="px-3 py-3 text-right font-medium">Do zapłaty</th>
                   </tr></thead>
                   <tbody className="divide-y divide-white/5">
@@ -149,7 +149,7 @@ export default function SellerFinancialDashboard({
                       <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">{formatMoney(event.paid_gross, event.currency)}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums text-[#d3bb73]">{formatMoney(event.outstanding_gross, event.currency)}</td>
                     </tr>)}
-                    {!rows.length && <tr><td colSpan={5} className="px-3 py-8 text-center text-[#e5e4e2]/50">Brak sprzedanych wydarzeń w tym okresie i walucie.</td></tr>}
+                    {!rows.length && <tr><td colSpan={5} className="px-3 py-8 text-center text-[#e5e4e2]/50">Brak sprzedanych eventów w tym okresie i walucie.</td></tr>}
                   </tbody>
                 </table>
               </div>

@@ -114,7 +114,7 @@ import UniformTypeIdentifiers
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Projekt oferty PDF").font(.title2)
-                Text("Jeden spójny proces dla każdej kategorii wydarzenia").foregroundStyle(.secondary)
+                Text("Jeden spójny proces dla każdej kategorii eventu").foregroundStyle(.secondary)
             }
             Spacer()
             if store.loading { ProgressView().controlSize(.small) }
@@ -230,7 +230,7 @@ import UniformTypeIdentifiers
             VStack(alignment: .leading, spacing: 4) {
                 Text("1. PRZYPISANIE").font(.caption2).foregroundStyle(.tertiary)
                 Text(!category.eventCategories.isEmpty ? category.eventCategories.joined(separator: ", ")
-                     : category.isDefault ? "Zestaw domyślny" : "Nieprzypisana do kategorii wydarzenia")
+                     : category.isDefault ? "Zestaw domyślny" : "Nieprzypisana do kategorii eventu")
                     .font(.callout).foregroundStyle(assigned ? .green : .orange)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

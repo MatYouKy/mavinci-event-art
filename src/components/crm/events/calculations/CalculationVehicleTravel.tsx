@@ -82,7 +82,7 @@ export default function CalculationVehicleTravel({ calculationId, vehicleId, veh
             placeholder="Nazwa obiektu, ulica, numer i miasto"
             onChange={event => { manuallyEdited.current = true; setManual(true); setDestination(event.target.value); invalidateRoute(); }} />
         </label>
-        {suggested && <p className="text-xs text-white/60">Lokalizacja z {suggested.source === 'inquiry' ? 'zapytania' : 'wydarzenia'}: {suggested.label} {manual && <button type="button" disabled={busy} className="ml-2 text-[#d3bb73]" onClick={() => { manuallyEdited.current = false; setManual(false); setDestination(suggested.label); invalidateRoute(); }}>Użyj tej lokalizacji</button>}</p>}
+        {suggested && <p className="text-xs text-white/60">Lokalizacja z {suggested.source === 'inquiry' ? 'zapytania' : 'eventu'}: {suggested.label} {manual && <button type="button" disabled={busy} className="ml-2 text-[#d3bb73]" onClick={() => { manuallyEdited.current = false; setManual(false); setDestination(suggested.label); invalidateRoute(); }}>Użyj tej lokalizacji</button>}</p>}
         {contextError && <p role="status" className="text-xs text-amber-200">{contextError}</p>}
         <label className="block max-w-48 text-sm">VAT w cenie paliwa (%)
           <input type="number" min="0" max="100" step="0.01" className={field} value={fuelVat} disabled={busy} onChange={event => { setFuelVat(event.target.value); onPendingChange(true); setMessage('Zmieniono VAT paliwa. Zastosuj koszt ponownie.'); }} />

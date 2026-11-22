@@ -117,16 +117,16 @@ export default function EventPreflightPanel({
               className="-m-1 flex min-w-0 flex-1 items-start gap-2 rounded-lg p-1 text-left hover:bg-white/[0.03]"
             >
               <span className="min-w-0 flex-1">
-                <span className="block font-medium text-[#e5e4e2]">Kontrola przed wydarzeniem</span>
+                <span className="block font-medium text-[#e5e4e2]">Kontrola przed eventem</span>
                 <span className="mt-0.5 block text-xs text-[#e5e4e2]/50">
-                  {daysLeft === null ? 'Termin nieznany' : daysLeft < 0 ? `${Math.abs(daysLeft)} dni po wydarzeniu` : daysLeft === 0 ? 'Wydarzenie jest dzisiaj' : `Do wydarzenia: ${daysLeft} dni`}
+                  {daysLeft === null ? 'Termin nieznany' : daysLeft < 0 ? `${Math.abs(daysLeft)} dni po evencie` : daysLeft === 0 ? 'Event jest dzisiaj' : `Do eventu: ${daysLeft} dni`}
                   {' · '}
                   {summary}
                 </span>
               </span>
               <ChevronDown className={`mt-1 h-4 w-4 flex-none text-[#e5e4e2]/45 transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden />
             </button>
-            <button type="button" onClick={() => load()} aria-label="Odśwież kontrolę przed wydarzeniem" title="Odśwież" className="rounded-lg p-2 text-[#e5e4e2]/45 hover:bg-white/5"><RefreshCw className="h-4 w-4" aria-hidden /></button>
+            <button type="button" onClick={() => load()} aria-label="Odśwież kontrolę przed eventem" title="Odśwież" className="rounded-lg p-2 text-[#e5e4e2]/45 hover:bg-white/5"><RefreshCw className="h-4 w-4" aria-hidden /></button>
           </div>
           <div id={regionId} hidden={!expanded}>
           {issues.length === 0 ? <div className="mt-4 rounded-lg bg-green-500/10 p-3 text-sm text-green-200">{hideCommercial ? 'Zespół i zasoby są przygotowane. Brak nierozwiązanych konfliktów.' : 'Formalności, płatności, zespół i zasoby są przygotowane. Brak nierozwiązanych konfliktów.'}</div> : <div className="mt-4 space-y-2">{issues.map((issue) => {
@@ -143,7 +143,7 @@ export default function EventPreflightPanel({
             >
               <ShieldCheck className="h-4 w-4 flex-none text-blue-300" />
               <span className="flex-1 text-xs leading-5 text-blue-100/75">
-                Zaakceptowane nakładanie pracy między wydarzeniami:{' '}
+                Zaakceptowane nakładanie pracy między eventami:{' '}
                 {data.accepted_employee_conflicts}. Decyzje mają zapisane uzasadnienie i osobę
                 akceptującą.
               </span>

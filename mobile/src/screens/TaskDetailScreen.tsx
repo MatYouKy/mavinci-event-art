@@ -327,7 +327,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
 
   const openAttachment = (attachment: Attachment) => {
     if (!attachment.file_url) {
-      notice.notify('Plik z wydarzenia otworzysz w zakładce Pliki wydarzenia.', true);
+      notice.notify('Plik z eventu otworzysz w zakładce Pliki eventu.', true);
       return;
     }
     if (isImageAttachment(attachment)) {
@@ -765,7 +765,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                       {attachment.is_linked && (
                         <View style={styles.linkedBadge}>
                           <Feather name="link" size={10} color={colors.primary.gold} />
-                          <Text style={styles.linkedText}>Z wydarzenia</Text>
+                          <Text style={styles.linkedText}>Z eventu</Text>
                         </View>
                       )}
                     </View>

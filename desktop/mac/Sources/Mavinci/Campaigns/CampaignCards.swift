@@ -259,7 +259,7 @@ struct MailCampaignCheck: View {
                     entityButton("organization", "Firmy")
                 }
             }
-            MailCampaignField(label: "Typy wydarzeń (po przecinku)") {
+            MailCampaignField(label: "Typy eventów (po przecinku)") {
                 TextField("wesele, gala, konferencja", text: $draft.eventTypes).textFieldStyle(.roundedBorder)
             }
             MailCampaignField(label: "Regiony (po przecinku)") {

@@ -1,19 +1,19 @@
 /** Zakładki wydarzeń, kontaktów i organizacji nadawane w „Uprawnieniach” pracownika (CRM i aplikacja na Maca). */
 export const EVENT_TABS = [
-  { value: 'overview', label: 'Przegląd', description: 'Podstawowe informacje o wydarzeniu' },
-  { value: 'details', label: 'Szczegóły', description: 'Podstawowe informacje o wydarzeniu' },
-  { value: 'phases', label: 'Timeline', description: 'Zarządzanie fazami wydarzenia' },
+  { value: 'overview', label: 'Przegląd', description: 'Podstawowe informacje o evencie' },
+  { value: 'details', label: 'Szczegóły', description: 'Podstawowe informacje o evencie' },
+  { value: 'phases', label: 'Timeline', description: 'Zarządzanie fazami eventu' },
   { value: 'offer', label: 'Oferta', description: 'Tworzenie i zarządzanie ofertami' },
-  { value: 'finances', label: 'Finanse', description: 'Budżet i koszty wydarzenia' },
+  { value: 'finances', label: 'Finanse', description: 'Budżet i koszty eventu' },
   { value: 'contract', label: 'Umowa', description: 'Zarządzanie umowami' },
-  { value: 'equipment', label: 'Sprzęt', description: 'Lista sprzętu przypisanego do wydarzenia' },
-  { value: 'team', label: 'Zespół', description: 'Pracownicy przypisani do wydarzenia' },
-  { value: 'agenda', label: 'Agenda', description: 'Zarządzanie agenda wydarzenia' },
+  { value: 'equipment', label: 'Sprzęt', description: 'Lista sprzętu przypisanego do eventu' },
+  { value: 'team', label: 'Zespół', description: 'Pracownicy przypisani do eventu' },
+  { value: 'agenda', label: 'Agenda', description: 'Zarządzanie agenda eventu' },
   { value: 'logistics', label: 'Logistyka', description: 'Pojazdy i transport' },
   { value: 'subcontractors', label: 'Podwykonawcy', description: 'Zewnętrzni wykonawcy' },
   { value: 'files', label: 'Pliki', description: 'Dokumenty i załączniki' },
   { value: 'tasks', label: 'Zadania', description: 'Zarządzanie zadaniami' },
-  { value: 'history', label: 'Historia', description: 'Dziennik zmian wydarzenia' },
+  { value: 'history', label: 'Historia', description: 'Dziennik zmian eventu' },
 ];
 
 export const CONTACT_TABS = [
@@ -26,7 +26,7 @@ export const ORGANIZATION_TABS = [
   { value: 'details', label: 'Szczegóły', description: 'Podstawowe informacje o organizacji' },
   { value: 'contacts', label: 'Kontakty', description: 'Osoby kontaktowe w organizacji' },
   { value: 'invoices', label: 'Faktury', description: 'Faktury powiązane z organizacją' },
-  { value: 'events', label: 'Realizacje', description: 'Wydarzenia powiązane z organizacją' },
+  { value: 'events', label: 'Realizacje', description: 'Eventy powiązane z organizacją' },
   { value: 'notes', label: 'Notatki', description: 'Notatki dotyczące organizacji' },
   { value: 'history', label: 'Historia', description: 'Historia zmian i kontaktów' },
 ];

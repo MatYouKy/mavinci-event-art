@@ -260,32 +260,32 @@ struct OfferPickList<Item: Identifiable & Hashable>: View where Item.ID == Strin
             .padding(6)
         }
 
-        GroupBox("Wydarzenie i termin") {
+        GroupBox("Event i termin") {
             VStack(alignment: .leading, spacing: 10) {
-                ProductField(label: "Powiązane wydarzenie", help: eventID == nil ? "Bez powiązanego wydarzenia" : nil) {
+                ProductField(label: "Powiązany event", help: eventID == nil ? "Bez powiązanego eventu" : nil) {
                     OfferPickList(items: data.events, selection: Binding(get: { eventID }, set: { next in
                         eventID = next
                         Task { await loadCalculations() }
-                    }), prompt: "Wyszukaj wydarzenie po nazwie lub dacie…", clearable: true, title: { $0.name }, detail: { $0.detail })
+                    }), prompt: "Wyszukaj event po nazwie lub dacie…", clearable: true, title: { $0.name }, detail: { $0.detail })
                 }
                 if data.fromInquiry {
                     HStack(spacing: 24) {
-                        ProductField(label: "Początek wydarzenia") { Text(data.scheduleStart) }
-                        ProductField(label: "Koniec wydarzenia") { Text(data.scheduleEnd) }
+                        ProductField(label: "Początek eventu") { Text(data.scheduleStart) }
+                        ProductField(label: "Koniec eventu") { Text(data.scheduleEnd) }
                     }
                     Text("Termin pobierany z zapytania. Początek i koniec zmienisz w jego sekcji „Miejsce i termin”.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
                     HStack {
-                        Toggle("Początek wydarzenia", isOn: $hasDate)
+                        Toggle("Początek eventu", isOn: $hasDate)
                         if hasDate {
                             DatePicker("", selection: $eventDate, displayedComponents: [.date, .hourAndMinute]).labelsHidden()
                         }
                     }
-                    Text("Termin zapisuje się w tej ofercie i jest używany w jej PDF. Nie zmienia terminu powiązanego wydarzenia.")
+                    Text("Termin zapisuje się w tej ofercie i jest używany w jej PDF. Nie zmienia terminu powiązanego eventu.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                ProductField(label: "Miejsce wydarzenia", help: "Ta lokalizacja pojawi się na pierwszej stronie oferty. Miejsce wybrane z listy lokalizacji daje też okładce jego „Tło ofert”.") {
+                ProductField(label: "Miejsce eventu", help: "Ta lokalizacja pojawi się na pierwszej stronie oferty. Miejsce wybrane z listy lokalizacji daje też okładce jego „Tło ofert”.") {
                     TextField("", text: $location, prompt: Text("Wyszukaj miejsce lub wpisz własną lokalizację...")).textFieldStyle(.roundedBorder)
                     let matches = placeMatches(data)
                     if !matches.isEmpty {
@@ -340,7 +340,7 @@ struct OfferPickList<Item: Identifiable & Hashable>: View where Item.ID == Strin
                     }
                 }
                 if calculations.isEmpty {
-                    Text("Brak kalkulacji powiązanych z tym wydarzeniem lub zapytaniem.").font(.caption).foregroundStyle(.secondary)
+                    Text("Brak kalkulacji powiązanych z tym eventem lub zapytaniem.").font(.caption).foregroundStyle(.secondary)
                 }
             }
             .padding(6)

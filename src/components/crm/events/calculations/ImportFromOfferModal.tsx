@@ -572,7 +572,7 @@ export function ImportFromOfferModal({
             {mode === 'products' && 'Importuj produkty z oferty jako pozycje kalkulacji.'}
             {mode === 'contents' &&
               'Importuj sprzęt i pracowników przypisanych do produktów w ofercie.'}
-            {mode === 'transport' && 'Importuj pojazdy przypisane do tego wydarzenia.'}
+            {mode === 'transport' && 'Importuj pojazdy przypisane do tego eventu.'}
           </span>
           <button data-crm-action="secondary"
             type="button"
@@ -628,7 +628,7 @@ export function ImportFromOfferModal({
     if (offerItems.length === 0) {
       return (
         <div className="p-8 text-center text-[#e5e4e2]/60">
-          Brak pozycji w ofertach dla tego wydarzenia.
+          Brak pozycji w ofertach dla tego eventu.
         </div>
       );
     }
@@ -860,7 +860,7 @@ export function ImportFromOfferModal({
     if (vehicleRows.length === 0) {
       return (
         <div className="p-8 text-center text-[#e5e4e2]/60">
-          Brak pojazdów przypisanych do tego wydarzenia.
+          Brak pojazdów przypisanych do tego eventu.
         </div>
       );
     }

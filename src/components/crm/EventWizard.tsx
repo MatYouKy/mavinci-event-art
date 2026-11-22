@@ -752,7 +752,7 @@ export default function EventWizard({
       if (assignmentError) {
         console.error('Error adding creator to team:', assignmentError);
         showSnackbar(
-          'Event utworzony, ale nie udało się automatycznie dodać Cię do zespołu wydarzenia',
+          'Event utworzony, ale nie udało się automatycznie dodać Cię do zespołu eventu',
           'error',
         );
       } else {
@@ -1041,7 +1041,7 @@ export default function EventWizard({
             <fieldset ref={detailsRef} disabled={loading || contactSaving} aria-busy={loading || contactSaving} className="mx-auto min-w-0 max-w-2xl space-y-4">
               {Object.keys(fieldErrors).length > 0 && (
                 <div role="alert" className="rounded-lg bg-red-500/10 p-4 text-sm text-red-200">
-                  <p className="font-medium">Popraw poniższe pola przed zapisem wydarzenia:</p>
+                  <p className="font-medium">Popraw poniższe pola przed zapisem eventu:</p>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
                     {Object.entries(fieldErrors).map(([field, message]) => (
                       <li key={field}><button type="button" onClick={() => focusField(field)} className="text-left underline underline-offset-2">{message}</button></li>

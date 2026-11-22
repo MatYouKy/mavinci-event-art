@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     } else {
       if (calc.data.event_id) {
         const event = await client.from('events').select('location_id,location').eq('id', calc.data.event_id).maybeSingle();
-        if (event.error) return reply({ error: 'Nie udało się odczytać miejsca wydarzenia. Możesz wpisać adres ręcznie.' }, 502);
+        if (event.error) return reply({ error: 'Nie udało się odczytać miejsca eventu. Możesz wpisać adres ręcznie.' }, 502);
         if (event.data) {
           destination = await readLocation(event.data.location_id, 'event');
           if (!destination && typeof event.data.location === 'string' && event.data.location.trim()) destination = { target: event.data.location.trim(), label: event.data.location.trim(), locationId: null, source: 'event' };
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
       }
     }
     if (body.action === 'destination') return reply({ origin: DEFAULT_TRAVEL_ORIGIN, destination: destination ? { label: destination.label, locationId: destination.locationId, source: destination.source } : null });
-    if (!destination) return reply({ error: 'Brak lokalizacji w zapytaniu lub wydarzeniu. Wpisz miejsce docelowe.' }, 400);
+    if (!destination) return reply({ error: 'Brak lokalizacji w zapytaniu lub evencie. Wpisz miejsce docelowe.' }, 400);
     if (typeof body.origin !== 'string' || !body.origin.trim() || body.origin.length > 500 || typeof body.roundTrip !== 'boolean') return reply({ error: 'Podaj adres startu i wybierz kierunek przejazdu.' }, 400);
     const key = process.env.GOOGLE_MAPS_API_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
     if (!key) return reply({ error: 'Brak klucza Google Maps w konfiguracji serwera.' }, 503);

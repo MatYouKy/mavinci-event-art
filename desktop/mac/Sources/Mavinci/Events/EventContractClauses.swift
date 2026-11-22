@@ -186,7 +186,7 @@ private func clauseSearchKey(_ value: String) -> String {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Klauzule tej umowy").font(.title2.bold())
-                Text("Zmiany dotyczą wyłącznie tego wydarzenia. Nie zmienią klauzul zapisanych przy produktach ani w ofercie.")
+                Text("Zmiany dotyczą wyłącznie tego eventu. Nie zmienią klauzul zapisanych przy produktach ani w ofercie.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .padding([.horizontal, .top], 20).padding(.bottom, 10)
@@ -255,7 +255,7 @@ private func clauseSearchKey(_ value: String) -> String {
             if let problem {
                 Text(problem).font(.callout).foregroundStyle(.orange).lineLimit(3)
             } else if data != nil {
-                Text("\(active) aktywnych klauzul · \(changed) zmian dla tego wydarzenia").font(.callout).foregroundStyle(.secondary)
+                Text("\(active) aktywnych klauzul · \(changed) zmian dla tego eventu").font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
             Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction).disabled(working != nil)
@@ -379,7 +379,7 @@ private func clauseSearchKey(_ value: String) -> String {
 
     private func addForm(_ data: EventContractClausesData) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Nowe ustalenie dla tego wydarzenia", systemImage: "doc.badge.plus").font(.callout.weight(.semibold))
+            Label("Nowe ustalenie dla tego eventu", systemImage: "doc.badge.plus").font(.callout.weight(.semibold))
             TextField("Tytuł", text: $newTitle).textFieldStyle(.roundedBorder)
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $newContent).font(.body).frame(minHeight: 90, maxHeight: 160)
@@ -424,7 +424,7 @@ private func clauseSearchKey(_ value: String) -> String {
                     Text(item.title).font(.callout.weight(.semibold))
                     HStack(spacing: 6) {
                         Text(item.productName).font(.caption).foregroundStyle(.secondary)
-                        badge(item.custom ? "Dodana do wydarzenia" : "Automatyczna", item.custom ? .blue : theme.accent)
+                        badge(item.custom ? "Dodana do eventu" : "Automatyczna", item.custom ? .blue : theme.accent)
                         if item.isEdited { badge("Zmieniona", .orange) }
                         if !item.enabled { badge("Wyłączona", .red) }
                         if flaggedIDs.contains(item.id) { badge("AI: do sprawdzenia", .purple) }
@@ -690,7 +690,7 @@ private func clauseSearchKey(_ value: String) -> String {
                     Text("Wybrany szablon: ") + Text(selectedName).bold()
                     Text(createsRevision
                          ? "Przygotujemy nowy szkic z wybranego szablonu. Dotychczasowa umowa i jej PDF pozostaną w historii. Nową wersję możesz sprawdzić przed wysłaniem klientowi."
-                         : "Treść szkicu zostanie przygotowana z wybranego szablonu i danych wydarzenia. Indywidualne zmiany treści i zmiennych trzeba będzie wprowadzić ponownie.")
+                         : "Treść szkicu zostanie przygotowana z wybranego szablonu i danych eventu. Indywidualne zmiany treści i zmiennych trzeba będzie wprowadzić ponownie.")
                     Text("Zmiana szablonu nie wysyła wiadomości do klienta.")
                 }
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

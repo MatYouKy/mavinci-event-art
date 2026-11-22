@@ -172,7 +172,7 @@ extension EventCardStore {
                     Text("Zobaczysz tylko pliki, do których masz dostęp zgodnie z uprawnieniami. Wybierz pliki, które chcesz dołączyć do wiadomości.")
                         .font(.caption).foregroundStyle(.secondary)
                     if setup.files.isEmpty {
-                        Text("Brak plików w wydarzeniu.").foregroundStyle(.secondary)
+                        Text("Brak plików w evencie.").foregroundStyle(.secondary)
                     }
                     ForEach(setup.files) { file in
                         Toggle(isOn: Binding(get: { fileIDs.contains(file.id) }, set: { on in

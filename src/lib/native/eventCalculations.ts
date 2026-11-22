@@ -184,7 +184,7 @@ async function suggestedDestination(ctx: NativeContext, scope: CalcScope, calc: 
   let destination: Destination | null = null;
   const eventId = scope.eventId || (typeof calc.event_id === 'string' ? calc.event_id : null);
   const event = eventId ? await s.from('events').select('location_id,location').eq('id', eventId).maybeSingle() : { data: null, error: null };
-  if (event.error) fail('Nie udało się odczytać miejsca wydarzenia. Możesz wpisać adres ręcznie.');
+  if (event.error) fail('Nie udało się odczytać miejsca eventu. Możesz wpisać adres ręcznie.');
   if (event.data) {
     const e = event.data as Row;
     destination = await readLocation(e.location_id, 'event');
@@ -224,7 +224,7 @@ async function travel(ctx: NativeContext, scope: CalcScope, params: URLSearchPar
   } else {
     destination = await suggestedDestination(ctx, scope, calc);
   }
-  if (!destination) fail('Brak lokalizacji w zapytaniu lub wydarzeniu. Wpisz miejsce docelowe.');
+  if (!destination) fail('Brak lokalizacji w zapytaniu lub evencie. Wpisz miejsce docelowe.');
   const origin = (params.get('origin') || '').trim();
   const roundTrip = params.get('roundTrip') === '1';
   if (!origin || origin.length > 500) fail('Podaj adres startu i wybierz kierunek przejazdu.');
@@ -477,12 +477,12 @@ async function sendEmail(ctx: NativeContext, accessToken: string, scope: CalcSco
   if (ids.length && scope.eventId) {
     const { data, error } = await ctx.supabase.from('event_files').select('id, name, original_name, file_path, mime_type')
       .eq('event_id', scope.eventId).in('id', ids);
-    if (error) fail('Nie udało się pobrać plików wydarzenia');
+    if (error) fail('Nie udało się pobrać plików eventu');
     for (const file of ((data || []) as Row[]).filter((row) => row.file_path !== calc.generated_pdf_path)) {
       const name = String(file.original_name || file.name || 'Plik');
       const content = await download(ctx, file.file_path, `Nie udało się pobrać pliku: ${name}`);
       total += content.length;
-      if (total > MAX_ATTACHMENTS_BYTES) fail('Załączniki przekraczają 25 MB. Wybierz mniej plików wydarzenia.');
+      if (total > MAX_ATTACHMENTS_BYTES) fail('Załączniki przekraczają 25 MB. Wybierz mniej plików eventu.');
       attachments.push({ filename: name, content: content.toString('base64'), contentType: String(file.mime_type || 'application/octet-stream'), contentDisposition: 'attachment' });
     }
   }

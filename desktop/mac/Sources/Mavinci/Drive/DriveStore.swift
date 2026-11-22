@@ -208,7 +208,7 @@ import UniformTypeIdentifiers
             saveCache()
         } catch {
             guard owner == workspace?.employee?.id else { return }
-            if events == nil || !quiet { eventsError = failureText(error, "Nie udało się pobrać wydarzeń.") }
+            if events == nil || !quiet { eventsError = failureText(error, "Nie udało się pobrać eventów.") }
         }
     }
 

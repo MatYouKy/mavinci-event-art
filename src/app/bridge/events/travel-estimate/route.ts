@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       !uuid.test(body.eventId) ||
       !['route', 'fuel'].includes(body.action)
     )
-      return reply({ error: 'Nieprawidłowe dane wydarzenia.' }, 400);
+      return reply({ error: 'Nieprawidłowe dane eventu.' }, 400);
     const client = createSupabaseServerClient(cookies());
     const { data: auth, error: authError } = await client.auth.getUser();
     if (authError || !auth.user)
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         .maybeSingle(),
     ]);
     if (eventResult.error || !eventResult.data || employeeResult.error || !employeeResult.data)
-      return reply({ error: 'Brak dostępu do wydarzenia.' }, 403);
+      return reply({ error: 'Brak dostępu do eventu.' }, 403);
 
     if (body.action === 'fuel') return reply(await getFuelPriceQuote());
     if (
@@ -64,14 +64,14 @@ export async function POST(request: Request) {
     )
       return reply({ error: 'Podaj adres startu i wybierz kierunek przejazdu.' }, 400);
     if (!eventResult.data.location_id)
-      return reply({ error: 'Najpierw zapisz lokalizację wydarzenia w zakładce Przegląd.' }, 400);
+      return reply({ error: 'Najpierw zapisz lokalizację eventu w zakładce Przegląd.' }, 400);
     const { data: location, error } = await client
       .from('locations')
       .select('name,formatted_address,address,city,postal_code,google_place_id,latitude,longitude')
       .eq('id', eventResult.data.location_id)
       .single();
     if (error || !location)
-      return reply({ error: 'Nie udało się odczytać lokalizacji wydarzenia.' }, 400);
+      return reply({ error: 'Nie udało się odczytać lokalizacji eventu.' }, 400);
     const address =
       location.formatted_address ||
       [location.address, location.postal_code, location.city].filter(Boolean).join(', ');

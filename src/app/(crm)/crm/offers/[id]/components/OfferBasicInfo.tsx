@@ -344,7 +344,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
         setEvents(data || []);
       } catch (err: any) {
         console.error('Error fetching events:', err);
-        showSnackbar('Błąd podczas ładowania wydarzeń', 'error');
+        showSnackbar('Błąd podczas ładowania eventów', 'error');
       }
     };
 
@@ -367,7 +367,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
 
         const eventDate = schedule.fromInquiry ? offer.event_date || null : localDatetimeStringToUTC(formData.event_date);
         if (!schedule.fromInquiry && formData.event_date && !eventDate) {
-          showSnackbar('Podaj prawidłowy termin wydarzenia', 'warning');
+          showSnackbar('Podaj prawidłowy termin eventu', 'warning');
           return;
         }
 
@@ -534,7 +534,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
                   {offer.title || inheritedOfferTitle || 'Bez tytułu'}
                 </p>
                 {!offer.title && inheritedOfferTitle && (
-                  <p className="mt-1 text-[11px] text-[#e5e4e2]/35">Pobrany z wydarzenia lub zapytania</p>
+                  <p className="mt-1 text-[11px] text-[#e5e4e2]/35">Pobrany z eventu lub zapytania</p>
                 )}
               </div>
             </div>
@@ -580,9 +580,9 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             <div className="flex items-start gap-3">
               <FileText className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
               <div className="flex-1">
-                <p className="text-xs text-[#e5e4e2]/60">Wydarzenie / zapytanie</p>
+                <p className="text-xs text-[#e5e4e2]/60">Event / zapytanie</p>
                 <p className="text-sm font-medium text-[#e5e4e2]">
-                  {offer.event?.name || offer.inquiry?.title?.replace(/^Zapytanie:\s*/i, '') || (isSellerOffer ? 'Samodzielna oferta sprzedawcy — bez powiązanego wydarzenia CRM' : '-')}
+                  {offer.event?.name || offer.inquiry?.title?.replace(/^Zapytanie:\s*/i, '') || (isSellerOffer ? 'Samodzielna oferta sprzedawcy — bez powiązanego eventu CRM' : '-')}
                 </p>
               </div>
             </div>
@@ -654,9 +654,9 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             <div className="flex items-start gap-3">
               <Calendar className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
               <div className="flex-1">
-                <p className="text-xs text-[#e5e4e2]/60">Początek wydarzenia</p>
+                <p className="text-xs text-[#e5e4e2]/60">Początek eventu</p>
                 <p className="text-sm text-[#e5e4e2]">{schedule.startLabel || 'Nie ustalono'}</p>
-                <p className="mt-3 text-xs text-[#e5e4e2]/60">Koniec wydarzenia</p>
+                <p className="mt-3 text-xs text-[#e5e4e2]/60">Koniec eventu</p>
                 <p className="text-sm text-[#e5e4e2]">{schedule.endLabel || 'Nie ustalono'}</p>
               </div>
             </div>
@@ -664,7 +664,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             <div className="flex items-start gap-3">
               <MapPin className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
               <div className="flex-1">
-                <p className="text-xs text-[#e5e4e2]/60">Miejsce wydarzenia</p>
+                <p className="text-xs text-[#e5e4e2]/60">Miejsce eventu</p>
                 <p className="text-sm text-[#e5e4e2]">{resolvedEventLocation || '-'}</p>
               </div>
             </div>
@@ -816,7 +816,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
           <div>
             <label className="mb-2 block text-xs text-[#e5e4e2]/60">
               <FileText className="mr-1 inline h-4 w-4" />
-              Wydarzenie
+              Event
             </label>
             <SearchCombobox
               value={formData.event_id}
@@ -824,22 +824,22 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               options={(selectedEvent && !events.some(event => event.id === selectedEvent.id)
                 ? [selectedEvent, ...events] : events).map(event => ({
                 id: event.id,
-                label: event.name || 'Wydarzenie bez nazwy',
+                label: event.name || 'Event bez nazwy',
                 description: event.event_date
                   ? new Date(event.event_date).toLocaleDateString('pl-PL') : undefined,
               }))}
-              placeholder="Wyszukaj wydarzenie po nazwie lub dacie…"
-              ariaLabel="Wydarzenie"
-              emptyLabel="Brak pasujących wydarzeń"
+              placeholder="Wyszukaj event po nazwie lub dacie…"
+              ariaLabel="Event"
+              emptyLabel="Brak pasujących eventów"
               disabled={loading}
             />
           </div>
 
           {schedule.fromInquiry ? <div className="grid gap-4 sm:grid-cols-2">
-            <label className="text-xs text-[#e5e4e2]/60">Początek wydarzenia
+            <label className="text-xs text-[#e5e4e2]/60">Początek eventu
               <input readOnly value={schedule.startLabel || 'Nie ustalono'} className="mt-2 w-full rounded-lg border border-white/10 bg-[#0f1118] px-3 py-2.5 text-sm text-[#e5e4e2]" />
             </label>
-            <label className="text-xs text-[#e5e4e2]/60">Koniec wydarzenia
+            <label className="text-xs text-[#e5e4e2]/60">Koniec eventu
               <input readOnly value={schedule.endLabel || 'Nie ustalono'} className="mt-2 w-full rounded-lg border border-white/10 bg-[#0f1118] px-3 py-2.5 text-sm text-[#e5e4e2]" />
             </label>
             <p className="text-[11px] text-[#e5e4e2]/45 sm:col-span-2">Termin pobierany z zapytania. Początek i koniec zmienisz w jego sekcji „Miejsce i termin”.</p>
@@ -847,7 +847,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
           <div>
             <label htmlFor="offer-event-date" className="mb-2 flex items-center gap-2 text-xs text-[#e5e4e2]/60">
               <Calendar className="h-4 w-4 text-[#d3bb73]" />
-              Początek wydarzenia
+              Początek eventu
             </label>
             <input
               id="offer-event-date"
@@ -858,7 +858,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               className="w-full rounded-lg border border-white/10 bg-[#0f1118] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none focus:ring-2 focus:ring-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <p className="mt-1.5 text-[11px] leading-5 text-[#e5e4e2]/45">
-              Termin zapisuje się w tej ofercie i jest używany w jej PDF. Nie zmienia terminu powiązanego wydarzenia.
+              Termin zapisuje się w tej ofercie i jest używany w jej PDF. Nie zmienia terminu powiązanego eventu.
             </p>
           </div>
           )}
@@ -909,7 +909,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
 
             {eventCalculations.length === 0 && (
               <p className="mt-2 text-[11px] text-[#e5e4e2]/35">
-                Brak kalkulacji powiązanych z tym wydarzeniem lub zapytaniem.
+                Brak kalkulacji powiązanych z tym eventem lub zapytaniem.
               </p>
             )}
           </div>
@@ -920,7 +920,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               Indywidualna grafika hero oferty
             </label>
             <p className="mb-3 text-[11px] leading-5 text-[#e5e4e2]/40">
-              Po wgraniu zastąpi grafikę hero ustawioną w szablonie i tło lokalizacji wydarzenia tylko dla tej oferty.
+              Po wgraniu zastąpi grafikę hero ustawioną w szablonie i tło lokalizacji eventu tylko dla tej oferty.
             </p>
             <label
               className={`relative flex min-h-40 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-all duration-150 ${
@@ -1019,7 +1019,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
           <div>
             <label className="mb-2 block text-xs text-[#e5e4e2]/60">
               <MapPin className="mr-1 inline h-4 w-4" />
-              Miejsce wydarzenia
+              Miejsce eventu
             </label>
             <LocationSelector
               allowFreeText

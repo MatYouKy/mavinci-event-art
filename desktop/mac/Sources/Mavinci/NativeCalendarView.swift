@@ -164,7 +164,7 @@ struct CalendarDay:Identifiable { let id:Int;let date:Date? }
             Button("Połącz z Kalendarzem Apple…",systemImage:"calendar.badge.clock") {calendarSheet=true}
             Button {creation = .chooser(selectedDate)} label:{Label("Dodaj",systemImage:"plus")}
                 .buttonStyle(.borderedProminent).keyboardShortcut("n")
-                .help("Co chcesz dodać? — wydarzenie, spotkanie albo zapytanie na wybrany dzień (⌘N)")
+                .help("Co chcesz dodać? — event, spotkanie albo zapytanie na wybrany dzień (⌘N)")
         }.padding(16).crmBar()
     }
     private func monthGrid(_ byDay:[Date:[Row]]) -> some View {
@@ -225,7 +225,7 @@ struct CalendarDay:Identifiable { let id:Int;let date:Date? }
                 Text(CalendarDates.title(selectedDate,format:"EEEE, d MMMM").capitalized).font(.headline)
                 Spacer()
                 Button {creation = .chooser(selectedDate)} label:{Image(systemName:"plus")}
-                    .buttonStyle(.borderless).help("Dodaj wydarzenie, spotkanie albo zapytanie na ten dzień")
+                    .buttonStyle(.borderless).help("Dodaj event, spotkanie albo zapytanie na ten dzień")
             }.padding(16)
             List(dayRows(selectedDate)) { row in
                 Button {open(row)} label: {
@@ -283,8 +283,8 @@ struct CalendarDay:Identifiable { let id:Int;let date:Date? }
     /// Rodzaje nowych wpisów — jak „Co chcesz dodać?” (`EventTypeSelector`) w CRM.
     @ViewBuilder private func createMenu(_ date:Date) -> some View {
         if canCreateEvents {
-            Button("Nowe wydarzenie biznesowe…",systemImage:"building.2") {selectedDate=date;start(.business,on:date)}
-            Button("Nowe wydarzenie indywidualne…",systemImage:"person") {selectedDate=date;start(.individual,on:date)}
+            Button("Nowy event biznesowy…",systemImage:"building.2") {selectedDate=date;start(.business,on:date)}
+            Button("Nowy event indywidualny…",systemImage:"person") {selectedDate=date;start(.individual,on:date)}
         }
         Button("Nowe spotkanie…",systemImage:"calendar.badge.plus") {selectedDate=date;start(.meeting,on:date)}
         if canSeeInquiries {

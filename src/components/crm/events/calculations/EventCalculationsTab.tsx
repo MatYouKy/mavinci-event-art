@@ -279,7 +279,7 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
   const handleAccept = async (calc: CalculationRow) => {
     const newAccepted = !calc.is_accepted;
     const confirmMsg = newAccepted
-      ? `Oznaczyć "${calc.name}" jako zaakceptowaną? Stanie się źródłem danych finansowych dla tego wydarzenia.`
+      ? `Oznaczyć "${calc.name}" jako zaakceptowaną? Stanie się źródłem danych finansowych dla tego eventu.`
       : `Cofnąć akceptację kalkulacji "${calc.name}"? Źródłem danych finansowych ponownie będzie zaakceptowana oferta.`;
 
     showConfirm({
@@ -341,7 +341,7 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
         <div>
           <h2 className="flex items-center gap-2 text-lg font-light text-[#e5e4e2]">
             <Calculator className="h-5 w-5 text-[#d3bb73]" />
-            Kalkulacje wydarzenia
+            Kalkulacje eventu
           </h2>
           <p className="text-sm text-[#e5e4e2]/60">
             Podsumowanie zasobów: sprzęt, ludzie, transport i inne.
@@ -363,7 +363,7 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
       ) : list.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[#d3bb73]/20 bg-[#1c1f33] p-10 text-center">
           <Calculator className="mx-auto mb-3 h-10 w-10 text-[#d3bb73]/40" />
-          <p className="text-[#e5e4e2]/70">Brak kalkulacji dla tego wydarzenia</p>
+          <p className="text-[#e5e4e2]/70">Brak kalkulacji dla tego eventu</p>
           <p className="mt-1 text-sm text-[#e5e4e2]/50">
             Kliknij &bdquo;Stwórz kalkulację&rdquo;, aby zacząć.
           </p>

@@ -454,14 +454,14 @@ export default function CalendarMain({
       if (error) {
         console.error('Error saving event:', error);
         console.error('Error details:', JSON.stringify(error, null, 2));
-        alert('Błąd podczas zapisywania wydarzenia: ' + error.message);
+        alert('Błąd podczas zapisywania eventu: ' + error.message);
         return;
       }
       refetchEvents();
       setIsModalOpen(false);
     } catch (err) {
       console.error('Error:', err);
-      alert('Wystąpił błąd podczas zapisywania wydarzenia');
+      alert('Wystąpił błąd podczas zapisywania eventu');
     }
   };
 
@@ -703,7 +703,7 @@ export default function CalendarMain({
               {canCreateEvents() ? (
                 <>
                   <Plus className="h-4 w-4" />
-                  <span className="hidden md:inline">Nowe wydarzenie</span>
+                  <span className="hidden md:inline">Nowy event</span>
                 </>
               ) : (
                 <>
@@ -742,7 +742,7 @@ export default function CalendarMain({
                       : 'border border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/5'
                   }`}
                 >
-                  Moje wydarzenia
+                  Moje eventy
                 </button>
                 <button
                   onClick={() => toggleFilter('assignedToMe', null)}
@@ -1121,7 +1121,7 @@ export default function CalendarMain({
                 {canCreateEvents() ? (
                   <>
                     <Plus className="h-4 w-4" />
-                    Dodaj nowe wydarzenie tego dnia
+                    Dodaj nowy event tego dnia
                   </>
                 ) : (
                   <>

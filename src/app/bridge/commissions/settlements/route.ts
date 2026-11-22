@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     const accountType = query.get('accountType');
     const accountId = query.get('accountId');
     const eventId = query.get('eventId');
-    if (eventId !== null && !isUuid(eventId)) return fail('Nieprawidłowe wydarzenie.');
+    if (eventId !== null && !isUuid(eventId)) return fail('Nieprawidłowy event.');
     if (mode !== 'crm' && mode !== 'seller') return fail('Nieprawidłowy widok rozliczeń.');
     if (mode === 'seller' && (accountType !== null || accountId !== null)) {
       return fail('Portal sprzedawcy korzysta wyłącznie z własnego konta.', 403);

@@ -149,15 +149,15 @@ import SwiftUI
             }
             .disabled(model.companyLoading || model.isNextAdvance || (model.isCorrective && !model.relatedID.isEmpty))
             if model.companyLoading {
-                Text("Wczytywanie działalności przypisanej do wydarzenia…").font(.caption).foregroundStyle(.secondary)
+                Text("Wczytywanie działalności przypisanej do eventu…").font(.caption).foregroundStyle(.secondary)
             } else if let message = model.companyMessage {
                 Text(message).font(.caption).foregroundStyle(.orange)
             } else if !model.isNextAdvance && !model.isCorrective, let event = model.linkedEvent, !event.companyId.isEmpty, model.companyID == event.companyId {
-                Text("Działalność przypisana do wydarzenia: \(event.name).").font(.caption).foregroundStyle(.secondary)
+                Text("Działalność przypisana do eventu: \(event.name).").font(.caption).foregroundStyle(.secondary)
             }
             if !model.companyLoading, let event = model.linkedEvent, !model.companyID.isEmpty, !model.isCorrective, model.companyID != event.companyId {
-                Text(model.type == "proforma" ? "Pro forma nie zmieni firmy wydarzenia. Zdecyduje wystawiona na jej podstawie faktura."
-                     : "Po wystawieniu faktury firma wydarzenia zostanie zmieniona na \(model.company?.name ?? ""). Sam zapis szkicu nie zmienia przypisania.")
+                Text(model.type == "proforma" ? "Pro forma nie zmieni firmy eventu. Zdecyduje wystawiona na jej podstawie faktura."
+                     : "Po wystawieniu faktury firma eventu zostanie zmieniona na \(model.company?.name ?? ""). Sam zapis szkicu nie zmienia przypisania.")
                     .font(.caption).foregroundStyle(Color.accentColor)
             }
             if model.isCorrective && !model.relatedID.isEmpty {
@@ -282,7 +282,7 @@ import SwiftUI
         }
         if model.buyerDiffersFromEvent {
             Section {
-                Text("Nabywca zapisany w rozliczeniu wydarzenia: \(model.organizations.first(where: { $0.id == model.expectedEventBuyerID })?.name ?? "inna organizacja niż wybrana powyżej").")
+                Text("Nabywca zapisany w rozliczeniu eventu: \(model.organizations.first(where: { $0.id == model.expectedEventBuyerID })?.name ?? "inna organizacja niż wybrana powyżej").")
                 Toggle("Potwierdzam, że na tej fakturze nabywcą ma być wybrana powyżej osoba lub organizacja. Odbiorca nie zastępuje nabywcy.", isOn: $model.buyerOverrideConfirmed)
                     .toggleStyle(.checkbox)
             }
@@ -295,7 +295,7 @@ import SwiftUI
             VStack(alignment: .leading, spacing: 2) {
                 Text(buyer.name).fontWeight(.medium)
                 Text("\(buyer.nip.isEmpty ? "" : "NIP: \(buyer.nip) · ")\(buyer.street), \(buyer.postalCode) \(buyer.city)").font(.caption).foregroundStyle(.secondary)
-                if let event = model.linkedEvent { Text("Wydarzenie: \(event.name)").font(.caption).foregroundStyle(.secondary) }
+                if let event = model.linkedEvent { Text("Event: \(event.name)").font(.caption).foregroundStyle(.secondary) }
             }
         } else if model.isPartyData, let original = model.original {
             InvoiceBuyerCorrectionView(model: model, originalNip: original.buyer.nip)
@@ -323,7 +323,7 @@ import SwiftUI
         return Section {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("ROZLICZENIE WYDARZENIA").font(.caption2).foregroundStyle(.secondary)
+                    Text("ROZLICZENIE EVENTU").font(.caption2).foregroundStyle(.secondary)
                     Text(event.name).fontWeight(.medium)
                     Text([recipientName, event.date.map { InvoiceFormText.plDate($0) }].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
                 }
@@ -331,11 +331,11 @@ import SwiftUI
                 if !indirect, let jst { Label("Nabywca: \(jst)", systemImage: "building.2").font(.caption).foregroundStyle(.blue) }
                 if indirect, let payer { Label("Płatnik: \(payer)", systemImage: "building.2").font(.caption).foregroundStyle(.blue) }
             }
-            Picker("Kto opłaca wydarzenie?", selection: Binding(get: { model.billingArrangement }, set: { value in Task { await model.changeBilling(value) } })) {
+            Picker("Kto opłaca event?", selection: Binding(get: { model.billingArrangement }, set: { value in Task { await model.changeBilling(value) } })) {
                 ForEach(InvoiceFormText.arrangements, id: \.0) { Text($0.1).tag($0.0) }
             }
             Text(!indirect && jst != nil
-                 ? "Klient wydarzenia jest rozliczany na \(jst ?? "") (karta klienta → Dane do faktury): nabywcą będzie \(jst ?? ""), a klient odbiorcą faktury."
+                 ? "Klient eventu jest rozliczany na \(jst ?? "") (karta klienta → Dane do faktury): nabywcą będzie \(jst ?? ""), a klient odbiorcą faktury."
                  : InvoiceFormText.arrangementDescription(model.billingArrangement))
                 .font(.caption).foregroundStyle(.secondary)
             if indirect { Text("Poniżej wybierz organizację, której dane mają znaleźć się na fakturze.").font(.caption.weight(.medium)).foregroundStyle(.blue) }
@@ -345,12 +345,12 @@ import SwiftUI
     private func groupSection(_ group: InvoiceSettlementGroup) -> some View {
         Section {
             Label("Faktura wspólna: \(group.name)", systemImage: "link").fontWeight(.medium)
-            Text("Dokument zostanie automatycznie pokazany i rozliczony w poniższych wydarzeniach. Operacyjnie pozostają one osobnymi realizacjami.")
+            Text("Dokument zostanie automatycznie pokazany i rozliczony w poniższych eventach. Operacyjnie pozostają one osobnymi realizacjami.")
                 .font(.caption).foregroundStyle(.secondary)
             ForEach(group.events) { member in
                 VStack(alignment: .leading, spacing: 1) {
                     Text(member.name).font(.callout)
-                    Text("\(member.date.map { InvoiceFormText.plDate($0) } ?? "Termin nieustalony")\(member.id == group.primaryEventId ? " · wydarzenie główne" : "")")
+                    Text("\(member.date.map { InvoiceFormText.plDate($0) } ?? "Termin nieustalony")\(member.id == group.primaryEventId ? " · event główny" : "")")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -393,16 +393,16 @@ import SwiftUI
 
     private var relatedEventSection: some View {
         Section {
-            Picker("Powiązane wydarzenie", selection: Binding(get: { model.eventID }, set: { id in Task { await model.loadEvent(id, initial: false) } })) {
-                Text("Brak powiązanego wydarzenia").tag("")
+            Picker("Powiązany event", selection: Binding(get: { model.eventID }, set: { id in Task { await model.loadEvent(id, initial: false) } })) {
+                Text("Brak powiązanego eventu").tag("")
                 ForEach(model.organizationEvents) { event in
                     Text(Self.eventLabel(event)).tag(event.id)
                 }
                 if !model.eventID.isEmpty && !model.organizationEvents.contains(where: { $0.id == model.eventID }) {
-                    Text(model.linkedEvent?.name ?? "Wybrane wydarzenie").tag(model.eventID)
+                    Text(model.linkedEvent?.name ?? "Wybrany event").tag(model.eventID)
                 }
             }
-            Text("Jeśli wybierzesz wydarzenie, PDF faktury zapisze się również w plikach tego eventu.").font(.caption).foregroundStyle(.secondary)
+            Text("Jeśli wybierzesz event, PDF faktury zapisze się również w plikach tego eventu.").font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -465,7 +465,7 @@ import SwiftUI
     private var proformaSection: some View {
         Section {
             LabeledContent(Self.proformaLabel) { InvoiceNumberField(title: "", value: $model.proformaPercent, width: 120).textFieldStyle(.roundedBorder) }
-            Text(verbatim: "Procent pełnej wartości pozycji poniżej, pobranych z wydarzenia lub dodanych ręcznie. Np. 50% automatycznie przelicza kwoty netto, VAT i brutto proformy.")
+            Text(verbatim: "Procent pełnej wartości pozycji poniżej, pobranych z eventu lub dodanych ręcznie. Np. 50% automatycznie przelicza kwoty netto, VAT i brutto proformy.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -534,7 +534,7 @@ import SwiftUI
         Picker("Podstawa pozycji i kwot zamówienia", selection: Binding(get: { model.itemSource }, set: { model.selectSource($0) })) {
             ForEach(["calculation", "offer"], id: \.self) { id in
                 if let source = model.itemSources.first(where: { $0.id == id }) {
-                    Text("\(source.label) — \(InvoiceMath.plain(source.net)) netto / \(InvoiceMath.plain(source.gross)) \(model.currency) brutto\(model.preferredSource == id ? " · źródło wydarzenia" : "")").tag(id)
+                    Text("\(source.label) — \(InvoiceMath.plain(source.net)) netto / \(InvoiceMath.plain(source.gross)) \(model.currency) brutto\(model.preferredSource == id ? " · źródło eventu" : "")").tag(id)
                 }
             }
             Text("Pozycje i kwoty wprowadzone ręcznie").tag("manual")
@@ -544,14 +544,14 @@ import SwiftUI
             Text("Kalkulacja i oferta — wczytywanie…").font(.caption).foregroundStyle(.secondary)
         } else {
             ForEach(["calculation", "offer"].filter { id in !model.itemSources.contains { $0.id == id } }, id: \.self) { id in
-                Text("\(id == "calculation" ? "Kalkulacja" : "Oferta") — \(model.eventID.isEmpty ? "najpierw wybierz wydarzenie" : "brak dostępnego zaakceptowanego źródła")")
+                Text("\(id == "calculation" ? "Kalkulacja" : "Oferta") — \(model.eventID.isEmpty ? "najpierw wybierz event" : "brak dostępnego zaakceptowanego źródła")")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
-        Text("Domyślnie korzystamy ze źródła finansowego wydarzenia po rabatach. Wybór innego źródła zastępuje bieżące pozycje i kwoty — ich podsumowanie widzisz przy każdej opcji. Nie zmienia to ustawień wydarzenia.")
+        Text("Domyślnie korzystamy ze źródła finansowego eventu po rabatach. Wybór innego źródła zastępuje bieżące pozycje i kwoty — ich podsumowanie widzisz przy każdej opcji. Nie zmienia to ustawień eventu.")
             .font(.caption).foregroundStyle(.secondary)
         if model.itemSource != "manual", let preferred = model.preferredSource, model.itemSource != preferred {
-            Text("Wybrano inne źródło niż finansowe źródło wydarzenia. Sprawdź kwotę zamówienia przed wystawieniem.").font(.caption).foregroundStyle(.orange)
+            Text("Wybrano inne źródło niż finansowe źródło eventu. Sprawdź kwotę zamówienia przed wystawieniem.").font(.caption).foregroundStyle(.orange)
         }
         if model.itemSource == "manual" {
             Text("Zachowano bieżące pozycje do edycji. Ich kwoty nie są automatycznie zastępowane danymi z katalogu.").font(.caption).foregroundStyle(.secondary)

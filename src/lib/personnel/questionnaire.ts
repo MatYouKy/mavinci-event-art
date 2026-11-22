@@ -28,7 +28,7 @@ const needsSocial = (a: Record<string,string>, c: QuestionContext) => {
 // Only visible questions are required. An explicit "unknown" is an answer, but never a tax assumption.
 export const personnelQuestions: Question[] = [
   {key:'work_nature',step:1,label:'Na czym ma polegać współpraca?',options:[['services','Wykonywanie czynności / obsługa / usługi'],['result','Wykonanie konkretnego, indywidualnego dzieła'],['employment','Praca na etacie'],['unknown','Nie wiem — potrzebna ocena']]},
-  {key:'supervision',step:1,label:'Czy osoba ma pracować pod kierownictwem firmy, w wyznaczonym przez nią miejscu i czasie?',help:'Np. przełożony na bieżąco zleca zadania i ustala obowiązkowy rozkład pracy. Sam termin wydarzenia nie rozstrzyga rodzaju umowy.',options:yesNo,when:civil},
+  {key:'supervision',step:1,label:'Czy osoba ma pracować pod kierownictwem firmy, w wyznaczonym przez nią miejscu i czasie?',help:'Np. przełożony na bieżąco zleca zadania i ustala obowiązkowy rozkład pracy. Sam termin eventu nie rozstrzyga rodzaju umowy.',options:yesNo,when:civil},
   {key:'result_check',step:1,label:'Czy rezultat można opisać, odebrać i sprawdzić pod kątem wad?',help:'Sama liczba przepracowanych godzin, gotowość lub powtarzalna obsługa nie stanowią indywidualnego dzieła.',options:yesNo,when:(_,c)=>c.kind==='specific_work'},
   {key:'birth_date',step:2,label:'Data urodzenia osoby',type:'date',when:person},
   {key:'citizenship',step:2,label:'Czy osoba ma obywatelstwo polskie?',options:[['PL','Tak'],['other','Nie — potrzebne dokumenty pobytowe / uprawnienie do pracy'],['unknown','Nie wiem']],when:person},

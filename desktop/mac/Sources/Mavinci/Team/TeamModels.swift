@@ -157,7 +157,7 @@ enum ScheduleGroup: String, CaseIterable, Identifiable {
     case events, meetings, funnel, absences
     var id: String { rawValue }
     var label: String {
-        switch self { case .events: return "Wydarzenia i fazy"; case .meetings: return "Spotkania"; case .funnel: return "Lejek i zadania"; case .absences: return "Nieobecności" }
+        switch self { case .events: return "Eventy i fazy"; case .meetings: return "Spotkania"; case .funnel: return "Lejek i zadania"; case .absences: return "Nieobecności" }
     }
     var kinds: Set<String> {
         switch self { case .events: return ["event", "phase"]; case .meetings: return ["meeting"]; case .funnel: return ["inquiry", "task", "call"]; case .absences: return ["absence"] }
@@ -242,7 +242,7 @@ enum EmployeeTab: String, CaseIterable, Identifiable {
         case .overview: return "Przegląd"; case .personnel: return "Umowy i rozliczenia"; case .commissions: return "Prowizje"
         case .qualifications: return "Kwalifikacje"
         case .emails: return "Konta Email"; case .permissions: return "Uprawnienia"; case .documents: return "Dokumenty"
-        case .tasks: return "Zadania"; case .events: return "Wydarzenia"; case .timeline: return "Oś czasu"
+        case .tasks: return "Zadania"; case .events: return "Eventy"; case .timeline: return "Oś czasu"
         }
     }
     var symbol: String {

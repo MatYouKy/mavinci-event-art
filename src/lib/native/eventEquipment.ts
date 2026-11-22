@@ -80,7 +80,7 @@ type EventDates = { id: string; event_date: string | null; event_end_date: strin
 
 async function eventDates(ctx: NativeContext, eventId: string): Promise<EventDates> {
   const { data, error } = await ctx.supabase.from('events').select('id, event_date, event_end_date').eq('id', eventId).single();
-  if (error || !data) dbFail(error, 'Nie znaleziono wydarzenia albo nie masz do niego dostępu.');
+  if (error || !data) dbFail(error, 'Nie znaleziono eventu albo nie masz do niego dostępu.');
   return data as EventDates;
 }
 
@@ -410,7 +410,7 @@ async function componentConflicts(ctx: NativeContext, eventId: string, key: stri
       const conflictEnd = new Date(event.event_end_date || new Date(conflictStart + 86_400_000).toISOString()).getTime();
       if (conflictStart >= end || conflictEnd <= start) return [];
       return [{
-        reservationId: row.id, eventId: row.event_id, eventName: event.name || 'Wydarzenie bez nazwy', start: event.event_date,
+        reservationId: row.id, eventId: row.event_id, eventName: event.name || 'Event bez nazwy', start: event.event_date,
         end: event.event_end_date || new Date(conflictEnd).toISOString(), quantity: Number(row.quantity || 1), source: row.source,
       }];
     });
@@ -484,7 +484,7 @@ async function equipmentTab(ctx: NativeContext, eventId: string) {
   const { data: event, error } = await s.from('events')
     .select('id, name, event_date, event_end_date, has_equipment_shortage, equipment_checklist_pdf_path, equipment_checklist_modified, loading_confirmed, loading_confirmed_at, equipment_checklist_notes, equipment_checklist_note_items')
     .eq('id', eventId).single();
-  if (error || !event) dbFail(error, 'Nie znaleziono wydarzenia albo nie masz do niego dostępu.');
+  if (error || !event) dbFail(error, 'Nie znaleziono eventu albo nie masz do niego dostępu.');
   const e = event as any;
   const [rows, reviews, calculation, hasConflicts] = await Promise.all([
     equipmentRows(ctx, eventId),
@@ -507,7 +507,7 @@ async function equipmentTab(ctx: NativeContext, eventId: string) {
   for (const key of Array.from(keys)) if (avail.byKey[key]) availabilitySubset[key] = avail.byKey[key];
   return {
     event: {
-      name: e.name || 'Wydarzenie', start: e.event_date ?? null, end: e.event_end_date ?? null, hasShortage: e.has_equipment_shortage === true,
+      name: e.name || 'Event', start: e.event_date ?? null, end: e.event_end_date ?? null, hasShortage: e.has_equipment_shortage === true,
       checklistPdfPath: e.equipment_checklist_pdf_path ?? null, checklistModified: e.equipment_checklist_modified === true,
       loadingConfirmed: e.loading_confirmed === true, loadingConfirmedAt: e.loading_confirmed_at ?? null,
     },
@@ -838,7 +838,7 @@ async function dismissComponents(ctx: NativeContext, eventId: string, body: Reco
   } catch {
     fail('Nie udało się zapisać decyzji o pominięciu komponentu');
   }
-  return { ok: true, message: body.required === true ? 'Wymaganie zostało świadomie pominięte dla tego wydarzenia' : 'Rekomendacja została pominięta dla tego wydarzenia' };
+  return { ok: true, message: body.required === true ? 'Wymaganie zostało świadomie pominięte dla tego eventu' : 'Rekomendacja została pominięta dla tego eventu' };
 }
 
 /** `addComponentReservation` — istniejąca rezerwacja dostaje większą ilość. */
@@ -900,7 +900,7 @@ async function addComponents(ctx: NativeContext, eventId: string, body: Record<s
       continue;
     }
     if (a && !a.isAvailable) {
-      fail(group.name ? 'Wybrany komponent nie jest dostępny w terminie wydarzenia' : `${component.name || 'Komponent'} nie jest dostępny w terminie wydarzenia`);
+      fail(group.name ? 'Wybrany komponent nie jest dostępny w terminie eventu' : `${component.name || 'Komponent'} nie jest dostępny w terminie eventu`);
     }
     if (quantity <= 0) {
       if (!group.required) omitted.push(...(group.name ? group.components.map((c: any) => c.id) : [component.id]));
@@ -912,7 +912,7 @@ async function addComponents(ctx: NativeContext, eventId: string, body: Record<s
     });
   }
   if (omitted.length) await upsertDismissed(ctx, eventId, equipmentId, omitted);
-  return { ok: true, message: 'Zaktualizowano komponenty wydarzenia' };
+  return { ok: true, message: 'Zaktualizowano komponenty eventu' };
 }
 
 /** Kolejka weryfikacji zestawów (`onReviewFinished`). */
@@ -1190,7 +1190,7 @@ async function reservationsQuery(ctx: NativeContext, eventId: string, params: UR
     }
     const person = row.created_by ? byId.get(row.created_by) : null;
     reservations.push({
-      eventId: row.id, name: row.name || 'Wydarzenie', status: row.status || null, quantity: value.quantity,
+      eventId: row.id, name: row.name || 'Event', status: row.status || null, quantity: value.quantity,
       start: value.start || row.event_date || null, end: value.end || row.event_end_date || null,
       eventStart: row.event_date || null, eventEnd: row.event_end_date || null,
       author: person ? {

@@ -254,7 +254,7 @@ export async function offerLinkChoices(ctx: NativeContext, id: string, kind: str
 export async function linkOffer(ctx: NativeContext, body: Row) {
   const id = uuid(body.id);
   await managed(ctx, id);
-  const target = uuid(body.targetId, 'Wybierz wydarzenie lub zapytanie.');
+  const target = uuid(body.targetId, 'Wybierz event lub zapytanie.');
   const event = body.kind === 'event';
   const { error } = await ctx.supabase.rpc('link_offer_context', { p_offer: id, p_event: event ? target : null, p_inquiry: event ? null : target });
   if (error) fail(error.message || 'Nie udało się powiązać oferty.');
@@ -308,12 +308,12 @@ export async function offerEventSetup(ctx: NativeContext, id: string) {
   const offer = await managed(ctx, uuid(id));
   const inquiry = await acceptedInquiry(ctx, offer);
   if (inquiry.event_id) return { eventId: String(inquiry.event_id) };
-  if (inquiry.accepted_offer_id !== offer.id) fail('W zapytaniu wybierz tę ofertę jako zaakceptowaną przed utworzeniem wydarzenia.');
+  if (inquiry.accepted_offer_id !== offer.id) fail('W zapytaniu wybierz tę ofertę jako zaakceptowaną przed utworzeniem eventu.');
   const [categories, companies] = await Promise.all([
     ctx.supabase.from('event_categories').select('id, name').eq('is_active', true).order('order_index'),
     ctx.supabase.from('my_companies').select('id, name, legal_name, is_default').eq('is_active', true).order('is_default', { ascending: false }),
   ]);
-  if (categories.error || companies.error) fail('Nie udało się otworzyć formularza wydarzenia');
+  if (categories.error || companies.error) fail('Nie udało się otworzyć formularza eventu');
   const details = (inquiry.inquiry_details || {}) as Row;
   const inquiryDate = warsawLocal(details.termin);
   const date = inquiryDate
@@ -339,17 +339,17 @@ export async function createOfferEvent(ctx: NativeContext, body: Row) {
   const offer = await managed(ctx, uuid(body.id));
   const name = text(body.name).trim();
   const date = new Date(text(body.date));
-  if (!name) fail('Uzupełnij nazwę wydarzenia');
-  if (Number.isNaN(date.getTime())) fail('Uzupełnij poprawny termin wydarzenia');
+  if (!name) fail('Uzupełnij nazwę eventu');
+  if (Number.isNaN(date.getTime())) fail('Uzupełnij poprawny termin eventu');
   const inquiry = await acceptedInquiry(ctx, offer);
   if (inquiry.event_id) return { eventId: String(inquiry.event_id) };
   if (inquiry.accepted_offer_id !== offer.id) fail('Zaakceptowana oferta w zapytaniu zmieniła się. Otwórz formularz ponownie.');
-  if (!inquiry.contact_id && !inquiry.organization_id) fail('Uzupełnij klienta w powiązanym zapytaniu przed utworzeniem wydarzenia.');
+  if (!inquiry.contact_id && !inquiry.organization_id) fail('Uzupełnij klienta w powiązanym zapytaniu przed utworzeniem eventu.');
   const category = body.categoryId ? uuid(body.categoryId, 'Nieprawidłowa kategoria.') : null;
   const company = body.companyId ? uuid(body.companyId, 'Nieprawidłowa działalność.') : null;
   const { data, error } = await ctx.supabase.rpc('prepare_inquiry_realization', {
     p_inquiry_id: inquiry.id, p_event_name: name, p_event_date: date.toISOString(), p_category_id: category, p_my_company_id: company,
   });
-  if (error) fail(error.message || 'Nie udało się utworzyć wydarzenia');
+  if (error) fail(error.message || 'Nie udało się utworzyć eventu');
   return { eventId: text(data) || null };
 }

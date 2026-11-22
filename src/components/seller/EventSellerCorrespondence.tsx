@@ -43,7 +43,7 @@ export default function EventSellerCorrespondence({ eventId }: { eventId: string
     if (!alive.current || sequence !== loadSequence.current) return;
     setLoading(false);
     if (error) {
-      setLoadError('Nie udało się wczytać ustaleń. Wymagane są uprawnienia do wydarzenia i sprzedawcy oraz migracja rozmów ofert i realizacji.');
+      setLoadError('Nie udało się wczytać ustaleń. Wymagane są uprawnienia do eventu i sprzedawcy oraz migracja rozmów ofert i realizacji.');
       return;
     }
     setOffers(data?.offers || []);
@@ -93,7 +93,7 @@ export default function EventSellerCorrespondence({ eventId }: { eventId: string
     </div>
     {loading && <p className="flex items-center gap-2 text-sm text-white/50"><Loader2 className="h-4 w-4 animate-spin" />Wczytywanie ustaleń…</p>}
     {loadError && <p role="alert" className="text-sm text-amber-200">{loadError}</p>}
-    {!loading && !loadError && !offers.length && <p className="rounded-lg bg-white/[0.03] p-5 text-sm leading-6 text-white/50">Brak powiązanych ofert sprzedawców dostępnych w Twoim zakresie uprawnień. Po powiązaniu takiej oferty z wydarzeniem jej korespondencja pojawi się tutaj automatycznie.</p>}
+    {!loading && !loadError && !offers.length && <p className="rounded-lg bg-white/[0.03] p-5 text-sm leading-6 text-white/50">Brak powiązanych ofert sprzedawców dostępnych w Twoim zakresie uprawnień. Po powiązaniu takiej oferty z eventem jej korespondencja pojawi się tutaj automatycznie.</p>}
     {offers.length > 1 && <div className="space-y-3 rounded-xl bg-[#1c1f33] p-4">
         <input aria-label="Szukaj oferty lub sprzedawcy" placeholder="Szukaj oferty lub sprzedawcy…" value={query} onChange={(event) => setQuery(event.target.value)} className="w-full rounded-lg bg-black/20 px-3 py-2.5 text-sm outline-none ring-1 ring-white/5 focus:ring-[#d3bb73]/30" />
         <div className="grid max-h-64 gap-2 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">
@@ -110,7 +110,7 @@ export default function EventSellerCorrespondence({ eventId }: { eventId: string
         <div className="space-y-2 rounded-lg bg-white/[0.035] p-3 text-sm">
           <p>{selectedOffer.partner_name} · {selectedOffer.brand_name}</p>
           <Link href={`/crm/offers/${selectedOffer.id}`} className="text-[#d3bb73] hover:underline">Oferta źródłowa: {selectedOffer.offer_number || selectedOffer.title || 'Otwórz ofertę'}</Link>
-          <p className="text-xs leading-5 text-white/50">Ustalenia są wspólne z ofertą — nie tworzymy osobnej kopii. Ich zapis nie cofa akceptacji i nie zmienia automatycznie harmonogramu wydarzenia.</p>
+          <p className="text-xs leading-5 text-white/50">Ustalenia są wspólne z ofertą — nie tworzymy osobnej kopii. Ich zapis nie cofa akceptacji i nie zmienia automatycznie harmonogramu eventu.</p>
         </div>
         <SellerEventPreparation key={`preparation:${selectedOffer.id}`} offerId={selectedOffer.id} eventId={eventId}/>
         <SellerRealizationWizard key={`wizard:${selectedOffer.id}`} offerId={selectedOffer.id} crm refreshKey={arrangementsRefresh} blocked={arrangementsDirty} onDirtyChange={setWizardDirty}/>
@@ -124,6 +124,6 @@ export default function EventSellerCorrespondence({ eventId }: { eventId: string
       <aside aria-label="Rozmowa o realizacji" className="flex min-w-0 flex-col lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)]">
         <SellerOfferConversation key={selectedOffer.id} offerId={selectedOffer.id} partnerId={selectedOffer.sales_partner_id} companyId={selectedOffer.my_company_id} canStart={selectedOffer.can_start} crm compact standalone realization/>
       </aside>
-    </div> : !loading && !loadError && offers.length > 0 && <p className="rounded-xl bg-[#1c1f33] p-5 text-sm text-white/50">Wybierz ofertę. Wskazana rozmowa lub oferta może nie należeć do tego wydarzenia albo być poza Twoimi uprawnieniami.</p>}
+    </div> : !loading && !loadError && offers.length > 0 && <p className="rounded-xl bg-[#1c1f33] p-5 text-sm text-white/50">Wybierz ofertę. Wskazana rozmowa lub oferta może nie należeć do tego eventu albo być poza Twoimi uprawnieniami.</p>}
   </section>;
 }

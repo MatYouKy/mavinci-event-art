@@ -40,7 +40,7 @@ export async function POST(request: Request) {
     const { data: contract, error: contractError } = await admin.from('contracts')
       .select('id').eq('id', body.contractId).eq('event_id', body.eventId).maybeSingle();
     if (contractError) return reply({ error: 'Nie udało się odczytać umowy.' }, 500);
-    if (!contract) return reply({ error: 'Nie znaleziono umowy dla tego wydarzenia.' }, 404);
+    if (!contract) return reply({ error: 'Nie znaleziono umowy dla tego eventu.' }, 404);
 
     // Separate, non-persistent client: reauthentication must not replace the admin's session.
     // The email is taken exclusively from the verified current session, never from the body.

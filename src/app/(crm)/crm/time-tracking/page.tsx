@@ -651,7 +651,7 @@ export default function TimeTrackingPage() {
                         <p className="mb-2 text-sm text-[#e5e4e2]/60">{entry.description}</p>
                       )}
                       {entry.event_name && (
-                        <p className="text-xs text-[#e5e4e2]/40">Wydarzenie: {entry.event_name}</p>
+                        <p className="text-xs text-[#e5e4e2]/40">Event: {entry.event_name}</p>
                       )}
                       <div className="mt-2 flex items-center gap-4 text-sm text-[#e5e4e2]/60">
                         <span>
@@ -1150,7 +1150,7 @@ function HistoryModal({ entryId, onClose }: { entryId: string; onClose: () => vo
       hourly_rate: 'Stawka godzinowa',
       tags: 'Tagi',
       task_id: 'Powiązane zadanie',
-      event_id: 'Powiązane wydarzenie',
+      event_id: 'Powiązany event',
       employee_id: 'Pracownik',
       personnel_contract_id: 'Umowa pracownika',
       personnel_rate_snapshot: 'Warunki rozliczenia',

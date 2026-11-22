@@ -24,7 +24,7 @@ export function CockpitPipeline({ cockpit }: { cockpit: SellerCockpit }) {
   const total = stages.reduce((sum, stage) => sum + stage.count, 0);
   return <section aria-labelledby="cockpit-pipeline-heading" className="rounded-2xl bg-[#1c1f33] p-5">
     <h2 id="cockpit-pipeline-heading" className="flex items-center gap-2 text-base font-medium"><Filter className="h-4 w-4 text-[#d3bb73]" />Oś w 5 etapach</h2>
-    <p className="mt-0.5 text-xs text-white/45">Oferty i wydarzenia sprzedawców na tej samej osi, którą hotel widzi w portalu.</p>
+    <p className="mt-0.5 text-xs text-white/45">Oferty i eventy sprzedawców na tej samej osi, którą hotel widzi w portalu.</p>
     {total === 0 ? <p className="mt-4 rounded-xl bg-[#0f1119]/60 p-4 text-sm text-white/40">Sprzedawcy nie mają jeszcze ofert.</p> : <>
       <div className="mt-4 flex h-4 w-full overflow-hidden rounded-full bg-[#0f1119]" role="img" aria-label={stages.map(stage => `${stage.label}: ${stage.count}`).join(', ')}>
         {stages.filter(stage => stage.count > 0).map(stage => (
@@ -45,9 +45,9 @@ export function CockpitPipeline({ cockpit }: { cockpit: SellerCockpit }) {
 /** Najbliższe wydarzenia sprzedawców (14 dni). */
 export function CockpitUpcoming({ cockpit }: { cockpit: SellerCockpit }) {
   return <section aria-labelledby="cockpit-upcoming-heading" className="rounded-2xl bg-[#1c1f33] p-5">
-    <h2 id="cockpit-upcoming-heading" className="flex items-center gap-2 text-base font-medium"><CalendarDays className="h-4 w-4 text-[#d3bb73]" />Najbliższe wydarzenia</h2>
+    <h2 id="cockpit-upcoming-heading" className="flex items-center gap-2 text-base font-medium"><CalendarDays className="h-4 w-4 text-[#d3bb73]" />Najbliższe eventy</h2>
     <p className="mt-0.5 text-xs text-white/45">Realizacje sprzedawców w ciągu 14 dni.</p>
-    {cockpit.upcoming.length === 0 ? <p className="mt-4 rounded-xl bg-[#0f1119]/60 p-4 text-sm text-white/40">Brak wydarzeń w najbliższych dwóch tygodniach.</p> : (
+    {cockpit.upcoming.length === 0 ? <p className="mt-4 rounded-xl bg-[#0f1119]/60 p-4 text-sm text-white/40">Brak eventów w najbliższych dwóch tygodniach.</p> : (
       <ul className="mt-4 space-y-1.5">
         {cockpit.upcoming.map(event => {
           const date = event.event_date ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(event.event_date) ? `${event.event_date}T12:00:00` : event.event_date) : null;
@@ -59,7 +59,7 @@ export function CockpitUpcoming({ cockpit }: { cockpit: SellerCockpit }) {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm group-hover:text-[#d3bb73]">{event.name}</span>
-              <span className="block truncate text-xs text-white/45">{event.seller_name} · {EVENT_STATUS_LABELS[event.status as keyof typeof EVENT_STATUS_LABELS] || 'Wydarzenie'}</span>
+              <span className="block truncate text-xs text-white/45">{event.seller_name} · {EVENT_STATUS_LABELS[event.status as keyof typeof EVENT_STATUS_LABELS] || 'Event'}</span>
             </span>
             <span className="shrink-0 text-[11px] text-white/45">{formatDaysUntil(event.event_date)}</span>
           </Link></li>;

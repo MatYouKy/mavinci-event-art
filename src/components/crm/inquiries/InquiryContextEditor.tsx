@@ -94,7 +94,7 @@ export default function InquiryContextEditor({ initial, disabled, onSave, onCanc
       setError('Podaj datę zakończenia późniejszą od daty rozpoczęcia oraz godzinę zakończenia.'); return;
     }
     if (draft.event_single_day && draft.event_start_time && draft.event_end_time && draft.event_end_time <= draft.event_start_time) {
-      setError('Godzina zakończenia musi być późniejsza od rozpoczęcia. Jeśli wydarzenie kończy się innego dnia, odznacz „Wydarzenie jednodniowe”.'); return;
+      setError('Godzina zakończenia musi być późniejsza od rozpoczęcia. Jeśli event kończy się innego dnia, odznacz „Event jednodniowy”.'); return;
     }
     if (draft.guest_count !== '' && (!Number.isInteger(Number(draft.guest_count)) || Number(draft.guest_count) < 1 || Number(draft.guest_count) > 100000)) { setError('Podaj całkowitą liczbę osób od 1 do 100 000 lub zostaw pole puste.'); return; }
     const matchedLocation = !draft.location_id && !locationError && exactMatches.length === 1 ? exactMatches[0] : null;
@@ -132,10 +132,10 @@ export default function InquiryContextEditor({ initial, disabled, onSave, onCanc
         <button type="button" onClick={() => { setShowLocations(false); setAddingLocation(true); }} className="mt-2 inline-flex items-center gap-1 text-xs text-[#d3bb73] hover:underline"><Plus className="h-3.5 w-3.5" />Dodaj lokalizację</button>
       </div>
       <div className="space-y-3">
-        <label className="flex items-center gap-2 text-xs text-white/60"><input type="checkbox" checked={draft.event_single_day} onChange={event => setDraft({ ...draft, event_single_day: event.target.checked })} />Wydarzenie jednodniowe</label>
+        <label className="flex items-center gap-2 text-xs text-white/60"><input type="checkbox" checked={draft.event_single_day} onChange={event => setDraft({ ...draft, event_single_day: event.target.checked })} />Event jednodniowy</label>
         <div className="flex flex-wrap items-end gap-2">
           <div className="min-w-[150px] flex-1">
-            <label htmlFor="inquiry-context-date" className="text-xs text-white/60">{draft.event_single_day ? 'Data wydarzenia' : 'Data rozpoczęcia'}</label>
+            <label htmlFor="inquiry-context-date" className="text-xs text-white/60">{draft.event_single_day ? 'Data eventu' : 'Data rozpoczęcia'}</label>
             <div className="flex items-center gap-2">
               <input id="inquiry-context-date" value={date} onChange={e => setDate(e.target.value)} placeholder="DD.MM.RRRR" inputMode="numeric" maxLength={10} className={`${input} min-w-0`} />
               <label className="relative mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[#d3bb73]" title="Wybierz termin z kalendarza">

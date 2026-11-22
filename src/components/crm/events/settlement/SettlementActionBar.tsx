@@ -72,7 +72,7 @@ export default function SettlementActionBar({
         key: `approve:${settlement.source_key}`,
         title: 'Zatwierdzić podsumowanie?',
         description: settlement.clawback
-          ? 'Wydarzenie jest anulowane — zatwierdzenie wyzeruje prowizje.'
+          ? 'Event jest anulowany — zatwierdzenie wyzeruje prowizje.'
           : 'Prowizje staną się „do wypłaty” z zamrożoną podstawą. Późniejsza zmiana wymaga ponownego otwarcia.',
         body: (
           <div className="space-y-3">
@@ -120,7 +120,7 @@ export default function SettlementActionBar({
         note: { label: 'Powód ponownego otwarcia', required: true, placeholder: 'Np. doszła faktura kosztowa po zatwierdzeniu' },
         option: {
           label: 'Przelicz stawki według aktualnych warunków',
-          hint: 'Zwykle zatwierdzona prowizja zachowuje swoją stawkę. Zaznacz, gdy stawka była ustawiona błędnie i została już poprawiona przy pracowniku lub w kartotece sprzedawców. Dotyczy wszystkich osób w wydarzeniu — kogo zmiana obejmie, pokażą ostrzeżenia podsumowania.',
+          hint: 'Zwykle zatwierdzona prowizja zachowuje swoją stawkę. Zaznacz, gdy stawka była ustawiona błędnie i została już poprawiona przy pracowniku lub w kartotece sprzedawców. Dotyczy wszystkich osób w evencie — kogo zmiana obejmie, pokażą ostrzeżenia podsumowania.',
         },
       },
       (note, refreshRates) =>

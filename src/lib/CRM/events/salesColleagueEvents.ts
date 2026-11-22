@@ -30,7 +30,7 @@ export function parseSalesColleagueEvents(data: unknown): SalesColleagueEvent[] 
       const category = row.category && typeof row.category === 'object' ? (row.category as Record<string, unknown>) : null;
       return {
         id: String(row.id),
-        name: text(row.name) ?? 'Wydarzenie',
+        name: text(row.name) ?? 'Event',
         event_date: text(row.event_date),
         event_end_date: text(row.event_end_date),
         location: text(row.location),

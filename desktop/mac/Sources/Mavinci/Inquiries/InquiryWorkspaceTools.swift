@@ -269,7 +269,7 @@ private func inquiryDate(_ value: String?) -> String {
                     Button("Otwórz analizę") { openAnalysis() }.disabled(loading || (data?.messages.isEmpty ?? true))
                 }
             }
-            Text("Wiadomości są uporządkowane od najstarszej. Kolejne odpowiedzi pojawiają się po odświeżeniu. Powiązania pozostają przy zapytaniu również po utworzeniu wydarzenia. Analiza obejmuje treść maili, bez zawartości załączników.")
+            Text("Wiadomości są uporządkowane od najstarszej. Kolejne odpowiedzi pojawiają się po odświeżeniu. Powiązania pozostają przy zapytaniu również po utworzeniu eventu. Analiza obejmuje treść maili, bez zawartości załączników.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let loadedAt {
                 Text(loading ? "Sprawdzam nowe wiadomości…" : "Ostatnia aktualizacja: \(MeetingDates.format(loadedAt, "HH:mm:ss"))")
@@ -618,10 +618,10 @@ private func inquiryDate(_ value: String?) -> String {
         VStack(alignment: .leading, spacing: 10) {
             block("Podsumowanie zapytania i korespondencji") {
                 Text(analysis.summary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                if !analysis.eventGoal.isEmpty { Text("Cel wydarzenia: \(analysis.eventGoal)").font(.callout).foregroundStyle(.secondary) }
+                if !analysis.eventGoal.isEmpty { Text("Cel eventu: \(analysis.eventGoal)").font(.callout).foregroundStyle(.secondary) }
             }
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 10, alignment: .top), GridItem(.flexible(), spacing: 10, alignment: .top)], alignment: .leading, spacing: 10) {
-                list("Założenia wydarzenia", analysis.assumptions)
+                list("Założenia eventu", analysis.assumptions)
                 if !analysis.clientNeeds.isEmpty { list("Potrzeby klienta", analysis.clientNeeds) }
                 list("Co trzeba doprecyzować", analysis.missing)
                 block("Szacunkowa kalkulacja") {
@@ -1397,20 +1397,20 @@ private struct InquiryTaskSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(setup?.realization == true ? "Przygotuj realizację" : "Utwórz wydarzenie z zapytania").font(.title3.bold())
+            Text(setup?.realization == true ? "Przygotuj realizację" : "Utwórz event z zapytania").font(.title3.bold())
             if let setup {
-                Text("Dokumenty i zadania zachowają powiązania. Przy zaakceptowanej ofercie przeniesiemy wycenę oraz plan zasobów i dodamy zadanie weryfikacji dostępności. Bez akceptacji utworzymy robocze wydarzenie, pozostawiając sprzedaż otwartą.")
+                Text("Dokumenty i zadania zachowają powiązania. Przy zaakceptowanej ofercie przeniesiemy wycenę oraz plan zasobów i dodamy zadanie weryfikacji dostępności. Bez akceptacji utworzymy roboczy event, pozostawiając sprzedaż otwartą.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if !setup.endNote.isEmpty { Text(setup.endNote).font(.callout) }
-                if !setup.location.isEmpty { Text("Miejsce wydarzenia: \(setup.location)").font(.callout) }
+                if !setup.location.isEmpty { Text("Miejsce eventu: \(setup.location)").font(.callout) }
                 Form {
-                    MeetingTextField("Nazwa", text: $name, prompt: "Nazwa wydarzenia")
+                    MeetingTextField("Nazwa", text: $name, prompt: "Nazwa eventu")
                     Toggle("Termin ustalony", isOn: $hasDate)
                     if hasDate {
                         DatePicker("Termin *", selection: $date, displayedComponents: [.date, .hourAndMinute])
                             .environment(\.timeZone, MeetingDates.zone).environment(\.locale, Locale(identifier: "pl_PL"))
                     } else {
-                        Text("Uzupełnij termin wydarzenia — jest wymagany.").font(.caption).foregroundStyle(.orange)
+                        Text("Uzupełnij termin eventu — jest wymagany.").font(.caption).foregroundStyle(.orange)
                     }
                     Picker("Kategoria", selection: $categoryId) {
                         Text("Bez kategorii").tag("")
@@ -1431,7 +1431,7 @@ private struct InquiryTaskSheet: View {
             HStack {
                 Spacer()
                 Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
-                Button(setup?.realization == true ? "Przygotuj realizację" : "Utwórz wydarzenie") { Task { await convert() } }
+                Button(setup?.realization == true ? "Przygotuj realizację" : "Utwórz event") { Task { await convert() } }
                     .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                     .disabled(saving || setup == nil || !hasDate || name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
@@ -1448,7 +1448,7 @@ private struct InquiryTaskSheet: View {
             companyId = next.companyId
             if let parsed = Self.localFormat.date(from: next.dateLocal) { date = parsed; hasDate = true }
         } catch {
-            loadProblem = store.failureText(error, "Nie udało się przygotować wydarzenia.")
+            loadProblem = store.failureText(error, "Nie udało się przygotować eventu.")
         }
     }
 
@@ -1461,11 +1461,11 @@ private struct InquiryTaskSheet: View {
                 "date": .string(MeetingDates.iso(date)),
                 "categoryId": categoryId.isEmpty ? .null : .string(categoryId),
                 "companyId": companyId.isEmpty ? .null : .string(companyId),
-            ], pending: setup?.realization == true ? "Przygotowywanie realizacji…" : "Tworzenie wydarzenia…", timeout: 120)
+            ], pending: setup?.realization == true ? "Przygotowywanie realizacji…" : "Tworzenie eventu…", timeout: 120)
             dismiss()
             converted(reply.eventId)
         } catch {
-            problem = store.failureText(error, "Nie udało się utworzyć wydarzenia")
+            problem = store.failureText(error, "Nie udało się utworzyć eventu")
         }
     }
 }

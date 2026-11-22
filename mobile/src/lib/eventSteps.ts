@@ -85,7 +85,7 @@ export const EVENT_STEP_ROLE_LABELS: Record<EventStepRole, string> = {
   manager: 'Kierownik realizacji',
   driver: 'Kierowca',
   admin: 'Administracja i finanse',
-  author: 'Prowadzący wydarzenie',
+  author: 'Prowadzący event',
 };
 
 export const EVENT_STEP_STAGE_LABELS: Record<EventStepStage, string> = {
@@ -127,7 +127,7 @@ export const EVENT_STEP_KIND_LABELS: Record<EventStepKind, string> = {
 };
 
 export const EVENT_STEP_ANCHOR_LABELS: Record<'event' | 'loading', string> = {
-  event: 'przed wydarzeniem',
+  event: 'przed eventem',
   loading: 'przed załadunkiem',
 };
 
@@ -415,49 +415,49 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
     role: 'sales',
     title: 'Sprzedawca',
     summary:
-      'Sprzedajesz i przekazujesz wydarzenie do realizacji. Odpowiadasz za to, żeby magazyn i kierownik dostali komplet informacji, a klient i obiekt znali wymagania usług.',
+      'Sprzedajesz i przekazujesz event do realizacji. Odpowiadasz za to, żeby magazyn i kierownik dostali komplet informacji, a klient i obiekt znali wymagania usług.',
     responsibilities: [
       'Zaakceptowana oferta z pełną listą usług; sprzęt zarezerwowany, braki zaznaczone przy rezerwacji.',
-      'Dane wydarzenia: miejsce, godziny, osoba kontaktowa na miejscu, uwagi dla ekipy.',
-      'Wymagania usług wobec klienta i obiektu (np. zgoda na dym ciężki, wyłączenie czujek, zasilanie) — potwierdzone przed wydarzeniem.',
+      'Dane eventu: miejsce, godziny, osoba kontaktowa na miejscu, uwagi dla ekipy.',
+      'Wymagania usług wobec klienta i obiektu (np. zgoda na dym ciężki, wyłączenie czujek, zasilanie) — potwierdzone przed eventem.',
       'Kontakt z klientem do końca realizacji. Zmianę zakresu wprowadzasz w ofercie — kroki przeliczą się same.',
       'Checklista sprzętu (zakładka Sprzęt): zgoda albo odmowa na braki przy wydaniu i decyzja przy rozbieżnościach w zwrocie (np. obciążenie klienta, naprawa).',
     ],
     steps: [
       {
         title: 'Formalności',
-        how: 'Etap „Formalności” pokazuje: kluczowe dane wydarzenia (data, miejsce, klient), podpisaną umowę i zaliczkę z harmonogramu płatności. Kroki zamykają się same, gdy uzupełnisz dane w zakładkach Szczegóły, Umowa i Finanse. Widzą je tylko osoby z dostępem handlowym.',
+        how: 'Etap „Formalności” pokazuje: kluczowe dane eventu (data, miejsce, klient), podpisaną umowę i zaliczkę z harmonogramu płatności. Kroki zamykają się same, gdy uzupełnisz dane w zakładkach Szczegóły, Umowa i Finanse. Widzą je tylko osoby z dostępem handlowym.',
       },
       {
         title: 'Przekaż realizację do magazynu',
-        how: 'Na wydarzeniu w sekcji „Kroki realizacji” kliknij „Przekazane do magazynu”, gdy oferta, sprzęt i dane są kompletne. Krok zamknie się sam, jeśli magazyn przyjmie realizację wcześniej.',
+        how: 'Na evencie w sekcji „Kroki realizacji” kliknij „Przekazane do magazynu”, gdy oferta, sprzęt i dane są kompletne. Krok zamknie się sam, jeśli magazyn przyjmie realizację wcześniej.',
       },
       {
         title: 'Potwierdź z klientem i obiektem wymagania usług',
         how: 'Krok pokazuje listę wymagań z usług. Potwierdź każdy punkt (mail lub telefon), w notatce wpisz z kim i kiedy, kliknij „Potwierdzone”. Gdy obiekt się nie zgadza — „Zgłoś problem” z opisem; kierownik i prowadzący dostaną powiadomienie.',
       },
       {
-        title: 'Wyznacz kierownika realizacji (prowadzący wydarzenie)',
+        title: 'Wyznacz kierownika realizacji (prowadzący event)',
         how: 'Zakładka „Zespół” → kierownik realizacji. Krok zamknie się sam. Bez kierownika magazyn nie oznaczy przygotowania jako gotowego.',
       },
       {
-        title: 'Zespół, agenda i transport (prowadzący wydarzenie)',
+        title: 'Zespół, agenda i transport (prowadzący event)',
         how: 'Kroki zamykają się same: zespół — gdy wszyscy zaproszeni potwierdzą udział; agenda — po jej przygotowaniu; transport — gdy każde auto ma kierowcę. Na weselu dochodzi „Karta weselna wysłana do akceptacji”.',
       },
       {
         title: 'Dodatkowe ustalenia',
-        how: '„Dodaj krok” na wydarzeniu, np. „Potwierdź godzinę wjazdu z obiektem”. Wybierz właściciela i termin — dostanie przypomnienie.',
+        how: '„Dodaj krok” na evencie, np. „Potwierdź godzinę wjazdu z obiektem”. Wybierz właściciela i termin — dostanie przypomnienie.',
       },
       {
-        title: 'Wyślij podsumowanie wydarzenia',
-        how: 'Po wydarzeniu zakładka „Podsumowanie”: przychody i koszty netto uzupełniają się same (faktury, koszty, podwykonawcy, ekipa, prowizje). Potwierdź netto przy kosztach wpisanych ręcznie, dopisz brakujące pozycje, oznacz wykonawców zewnętrznych i kliknij „Wyślij do zatwierdzenia”. Krok zamknie się sam; po zatwierdzeniu przez administratora prowizje są do wypłaty.',
+        title: 'Wyślij podsumowanie eventu',
+        how: 'Po evencie zakładka „Podsumowanie”: przychody i koszty netto uzupełniają się same (faktury, koszty, podwykonawcy, ekipa, prowizje). Potwierdź netto przy kosztach wpisanych ręcznie, dopisz brakujące pozycje, oznacz wykonawców zewnętrznych i kliknij „Wyślij do zatwierdzenia”. Krok zamknie się sam; po zatwierdzeniu przez administratora prowizje są do wypłaty.',
       },
     ],
     closeScope: [
-      'Formalności zamknięte: dane wydarzenia, podpisana umowa, zaliczka (jeśli jest w harmonogramie).',
+      'Formalności zamknięte: dane eventu, podpisana umowa, zaliczka (jeśli jest w harmonogramie).',
       'Kroki „Przekaż realizację”, „Potwierdź wymagania usług” i (jako prowadzący) „Wyznacz kierownika”, zespół, agenda i transport są zrobione.',
-      'Na wydarzeniu nie ma Twoich kroków „Do zrobienia” ani „Problem” — sprawdzisz to w „Moje kroki”.',
-      'Po wydarzeniu: podsumowanie wysłane do zatwierdzenia (zakładka Podsumowanie) — z niego liczą się prowizje. Fakturę wystawia administrator.',
+      'Na evencie nie ma Twoich kroków „Do zrobienia” ani „Problem” — sprawdzisz to w „Moje kroki”.',
+      'Po evencie: podsumowanie wysłane do zatwierdzenia (zakładka Podsumowanie) — z niego liczą się prowizje. Fakturę wystawia administrator.',
       'Braki w wydaniu i rozbieżności w zwrocie na checkliście sprzętu nie czekają na Twoją decyzję.',
     ],
     notYours:
@@ -467,13 +467,13 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
     role: 'warehouse',
     title: 'Magazyn',
     summary:
-      'Przygotowujesz sprzęt, zamówienia z wyprzedzeniem i sprawdzenia stanu, wydajesz sprzęt i przyjmujesz zwrot. Osoba, która przyjmie wydarzenie, zostaje jego opiekunem w magazynie.',
+      'Przygotowujesz sprzęt, zamówienia z wyprzedzeniem i sprawdzenia stanu, wydajesz sprzęt i przyjmujesz zwrot. Osoba, która przyjmie event, zostaje jego opiekunem w magazynie.',
     responsibilities: [
-      'Przyjęcie realizacji w terminie: do 2 dni od akceptacji oferty, najpóźniej dzień przed wydarzeniem.',
-      'Zamówienia z wyprzedzeniem z konfiguracji usług (np. suchy lód min. 4 dni przed wydarzeniem): zamówione, potem dostarczone.',
+      'Przyjęcie realizacji w terminie: do 2 dni od akceptacji oferty, najpóźniej dzień przed eventem.',
+      'Zamówienia z wyprzedzeniem z konfiguracji usług (np. suchy lód min. 4 dni przed eventem): zamówione, potem dostarczone.',
       'Sprawdzenie stanu sprzętu oznaczonego „Sprawdzić stan przed wydaniem” (np. wytwornica dymu, termobox).',
       'Braki z rezerwacji i wynajmy zewnętrzne — zapewnione przed „Gotowe do wydania”.',
-      'Wydanie i zwrot na checkliście sprzętu (zakładka Sprzęt): spakowane ilości, braki z powodem, po wydarzeniu sprawne / uszkodzone / brak ze zdjęciami.',
+      'Wydanie i zwrot na checkliście sprzętu (zakładka Sprzęt): spakowane ilości, braki z powodem, po evencie sprawne / uszkodzone / brak ze zdjęciami.',
     ],
     steps: [
       {
@@ -506,20 +506,20 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
       },
     ],
     closeScope: [
-      'Wszystkie kroki magazynu na wydarzeniu są „Zrobione” (albo „Pominięte” z powodem przez administratora).',
+      'Wszystkie kroki magazynu na evencie są „Zrobione” (albo „Pominięte” z powodem przez administratora).',
       'Wydanie potwierdzone i zwrot zatwierdzony na checkliście sprzętu, braki i uszkodzenia opisane (ze zdjęciami).',
       'W „Moje kroki” nie masz kroków po terminie.',
     ],
     notYours:
-      'Nie przyjmujesz do przygotowania wydarzeń, które sam sprzedałeś lub prowadzisz — wtedy robi to inna osoba z magazynu.',
+      'Nie przyjmujesz do przygotowania eventów, które sam sprzedałeś lub prowadzisz — wtedy robi to inna osoba z magazynu.',
   },
   {
     role: 'manager',
     title: 'Kierownik realizacji',
     summary:
-      'Prowadzisz wydarzenie na miejscu: przejmujesz sprzęt od magazynu, startujesz i kończysz realizację, oddajesz sprzęt do magazynu.',
+      'Prowadzisz event na miejscu: przejmujesz sprzęt od magazynu, startujesz i kończysz realizację, oddajesz sprzęt do magazynu.',
     responsibilities: [
-      'Odbiór sprzętu zgodnego z listą (gdy na wydarzenie nie jedzie kierowca).',
+      'Odbiór sprzętu zgodnego z listą (gdy na event nie jedzie kierowca).',
       'Start realizacji na miejscu i kontakt z klientem w trakcie.',
       'Raport końcowy: przebieg, dodatkowe godziny, uwagi klienta, szkody.',
       'Załadunek powrotny na checkliście sprzętu: co wraca z wydanego sprzętu, braki z opisem.',
@@ -543,7 +543,7 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
       },
       {
         title: 'Oddaj sprzęt',
-        how: 'Checklista sprzętu → Załadunek powrotny: przy załadunku po wydarzeniu odhacz, ile wraca z każdej pozycji („Wraca komplet” albo mniej z opisem, np. zostało na obiekcie), potem „Zatwierdź załadunek powrotny”. Krok zamknie się sam.',
+        how: 'Checklista sprzętu → Załadunek powrotny: przy załadunku po evencie odhacz, ile wraca z każdej pozycji („Wraca komplet” albo mniej z opisem, np. zostało na obiekcie), potem „Zatwierdź załadunek powrotny”. Krok zamknie się sam.',
       },
     ],
     closeScope: [
@@ -577,10 +577,10 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
   {
     role: 'admin',
     title: 'Administracja i finanse',
-    summary: 'Pilnujesz terminów całego procesu i rozliczenia wydarzenia.',
+    summary: 'Pilnujesz terminów całego procesu i rozliczenia eventu.',
     responsibilities: [
-      'Faktura i wpłata za wydarzenie — kroki rozliczenia zamykają się same po wystawieniu faktury i zaksięgowaniu wpłaty.',
-      'Zatwierdzenie podsumowania wydarzenia — zamraża prowizje sprzedawców do wypłaty.',
+      'Faktura i wpłata za event — kroki rozliczenia zamykają się same po wystawieniu faktury i zaksięgowaniu wpłaty.',
+      'Zatwierdzenie podsumowania eventu — zamraża prowizje sprzedawców do wypłaty.',
       'Reakcja na eskalacje (krok 2 dni po terminie).',
       'Pominięcie kroku, który nie jest potrzebny — zawsze z powodem.',
       'Checklista sprzętu: zgoda na braki i przyjęcie rozbieżności (jak sprzedawca), odblokowanie wydania i cofnięcie etapu („Cofnij etap”, z powodem).',
@@ -589,11 +589,11 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
     steps: [
       {
         title: 'Konfiguracja usług',
-        how: 'Oferty → Produkty → usługa → „Przygotowanie i zamówienia”: co zamówić lub sprawdzić, ile dni przed wydarzeniem lub załadunkiem, kto odpowiada, dostawca i ilość na sztukę usługi.',
+        how: 'Oferty → Produkty → usługa → „Przygotowanie i zamówienia”: co zamówić lub sprawdzić, ile dni przed eventem lub załadunkiem, kto odpowiada, dostawca i ilość na sztukę usługi.',
       },
       {
         title: 'Sprzęt ze sprawdzeniem stanu',
-        how: 'Magazyn → sprzęt → „Sprawdzić stan przed każdym wydaniem” i instrukcja testu. Każde wydarzenie z tym sprzętem dostanie krok dla magazynu.',
+        how: 'Magazyn → sprzęt → „Sprawdzić stan przed każdym wydaniem” i instrukcja testu. Każdy event z tym sprzętem dostanie krok dla magazynu.',
       },
       {
         title: 'Zatwierdź podsumowanie',
@@ -612,12 +612,12 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
 export const EVENT_STEPS_RULES: string[] = [
   'Każdy krok ma właściciela (rolę i osobę) oraz termin. Krok zamyka jego właściciel przyciskiem — system zapisuje kto i kiedy.',
   '„Czekamy na” pokazuje kroki, które można wykonać teraz: kto, co i do kiedy. Kłódka oznacza krok czekający na wcześniejsze kroki.',
-  'Kroki z procesu (dane wydarzenia, umowa, zaliczka, zespół, agenda, transport, przyjęcie przez magazyn, gotowość, kierownik, start, zakończenie, faktura, wpłata, podsumowanie) zamykają się same, gdy zdarzy się to w systemie. Wydanie, oddanie i przyjęcie zwrotu sprzętu zamyka checklista sprzętu.',
+  'Kroki z procesu (dane eventu, umowa, zaliczka, zespół, agenda, transport, przyjęcie przez magazyn, gotowość, kierownik, start, zakończenie, faktura, wpłata, podsumowanie) zamykają się same, gdy zdarzy się to w systemie. Wydanie, oddanie i przyjęcie zwrotu sprzętu zamyka checklista sprzętu.',
   'Formalności i rozliczenie widzą tylko osoby z dostępem handlowym. Magazyn, kierownik realizacji i ekipa widzą kroki realizacji bez kwot i dokumentów.',
   'Zmiana oferty, sprzętu, etapów lub dat przelicza kroki i terminy automatycznie.',
   'Powiadomienia: nowy krok (najwcześniej tydzień przed terminem), dzień przed terminem, po terminie (także kierownik i prowadzący), 2 dni po terminie — administratorzy.',
   'Problem zgłaszaj w kroku z opisem — kierownik i prowadzący dostaną powiadomienie, a krok zostanie oznaczony na czerwono.',
-  'Pominąć krok może administrator albo osoba z uprawnieniem do zarządzania wydarzeniami — zawsze z powodem.',
+  'Pominąć krok może administrator albo osoba z uprawnieniem do zarządzania eventami — zawsze z powodem.',
 ];
 
 /** Sekcje pomocy w kolejności: najpierw role bieżącej osoby na tym wydarzeniu, potem pozostałe. */

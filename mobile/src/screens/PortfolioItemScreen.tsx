@@ -248,7 +248,7 @@ export default function PortfolioItemScreen() {
   ]);
 
   const remove = () => Alert.alert('Usunąć realizację?', onSite
-    ? 'Realizacja zostanie usunięta ze strony i z „Realizacji”. Zdjęcia zostają w źródłach (Materiały, pliki wydarzenia). Tej operacji nie można cofnąć.'
+    ? 'Realizacja zostanie usunięta ze strony i z „Realizacji”. Zdjęcia zostają w źródłach (Materiały, pliki eventu). Tej operacji nie można cofnąć.'
     : 'Kopia robocza zostanie usunięta. Tej operacji nie można cofnąć.', [
     { text: 'Wróć', style: 'cancel' },
     {
@@ -536,7 +536,7 @@ export default function PortfolioItemScreen() {
               ))}
             </ScrollView>
           )}
-          <Text style={styles.label}>Data wydarzenia</Text>
+          <Text style={styles.label}>Data eventu</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
             <Switch value={content.eventDate !== null} onValueChange={(on) => set({ eventDate: on ? content.eventDate || ymd(new Date()) : null })}
               trackColor={{ true: colors.primary.gold, false: colors.border.hover }} />
@@ -560,11 +560,11 @@ export default function PortfolioItemScreen() {
             placeholder="Hotel Omega, Olsztyn" placeholderTextColor={colors.text.tertiary} />
           <Text style={styles.label}>Klient (opcjonalnie, do opisów)</Text>
           <TextInput style={styles.input} value={content.client} onChangeText={(value) => set({ client: value.slice(0, PORTFOLIO_LIMITS.client) })} />
-          <Text style={styles.label}>Wydarzenie w CRM</Text>
+          <Text style={styles.label}>Event w CRM</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
             <TouchableOpacity style={[styles.input, { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }]} onPress={() => setEventPicker(true)}>
               <Feather name="calendar" size={14} color={colors.primary.gold} />
-              <Text style={[styles.body, { flex: 1 }]} numberOfLines={1}>{draft.event?.name || 'Powiąż z wydarzeniem'}</Text>
+              <Text style={[styles.body, { flex: 1 }]} numberOfLines={1}>{draft.event?.name || 'Powiąż z eventem'}</Text>
             </TouchableOpacity>
             {draft.eventId && (
               <TouchableOpacity style={styles.iconButton} onPress={() => setDraft({ ...draft, eventId: null, event: null })}>
@@ -599,7 +599,7 @@ export default function PortfolioItemScreen() {
           <View style={styles.wrap}>
             <TouchableOpacity style={styles.small} onPress={() => { void fromPhone('camera'); }}><Feather name="camera" size={14} color={colors.primary.gold} /><Text style={styles.smallText}>Aparat</Text></TouchableOpacity>
             <TouchableOpacity style={styles.small} onPress={() => { void fromPhone('library'); }}><Feather name="image" size={14} color={colors.primary.gold} /><Text style={styles.smallText}>Galeria telefonu</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.small} onPress={() => setPicker('event')}><Feather name="folder" size={14} color={colors.primary.gold} /><Text style={styles.smallText}>Z wydarzenia</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.small} onPress={() => setPicker('event')}><Feather name="folder" size={14} color={colors.primary.gold} /><Text style={styles.smallText}>Z eventu</Text></TouchableOpacity>
             <TouchableOpacity style={styles.small} onPress={() => setPicker('material')}><Feather name="archive" size={14} color={colors.primary.gold} /><Text style={styles.smallText}>Z Materiałów</Text></TouchableOpacity>
             <TouchableOpacity style={styles.small} onPress={() => setPicker('social')}><Feather name="instagram" size={14} color={colors.primary.gold} /><Text style={styles.smallText}>Z biblioteki social</Text></TouchableOpacity>
           </View>
@@ -826,7 +826,7 @@ export default function PortfolioItemScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={styles.label}>Priorytetowe miasta (na których stronach usług pokazać realizację wyżej; nie zmieniają miejsca wydarzenia)</Text>
+          <Text style={styles.label}>Priorytetowe miasta (na których stronach usług pokazać realizację wyżej; nie zmieniają miejsca eventu)</Text>
           <TextInput style={styles.input} value={referenceQuery} onChangeText={setReferenceQuery} placeholder="Szukaj miasta…" placeholderTextColor={colors.text.tertiary} />
           <View style={styles.wrap}>
             {referenceCities.map((city) => {
@@ -900,7 +900,7 @@ export default function PortfolioItemScreen() {
       <PortfolioPhotoPicker visible={picker !== null} initialSource={picker || 'event'} eventId={draft.eventId} eventName={draft.event?.name || null}
         onClose={() => setPicker(null)} onPick={(source, photos) => { void importPhotos(source, photos); }} />
 
-      <PortfolioEventPicker visible={eventPicker} title="Powiąż z wydarzeniem" onClose={() => setEventPicker(false)}
+      <PortfolioEventPicker visible={eventPicker} title="Powiąż z eventem" onClose={() => setEventPicker(false)}
         onPick={(event) => { setDraft({ ...draft, eventId: event.id, event }); setEventPicker(false); }} />
 
       <Modal visible={cityPicker} transparent animationType="slide" onRequestClose={() => setCityPicker(false)}>

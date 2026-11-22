@@ -22,7 +22,7 @@ export default function SettlementTotalsCard({ totals, forecast }: { totals: Set
   return (
     <section aria-labelledby="settlement-totals-heading" className="rounded-xl bg-white/5 p-4 sm:p-5">
       <h3 id="settlement-totals-heading" className="font-medium text-[#e5e4e2]">
-        Wynik wydarzenia
+        Wynik eventu
       </h3>
       {forecast && <p className="mt-0.5 text-xs text-sky-200/80">Prognoza — przychód z oferty lub kalkulacji.</p>}
       <dl className="mt-3 space-y-1">

@@ -454,7 +454,7 @@ export function TeamMembersList({
                                 !transportVehicles?.some((vehicle) => vehicle.driverId === employeeId),
                             },
                             {
-                              label: 'Uprawnienia w wydarzeniu',
+                              label: 'Uprawnienia w evencie',
                               onClick: () => openPermissionsModal(item),
                               icon: <User className="h-4 w-4" />,
                               variant: 'default',
@@ -588,9 +588,9 @@ export function TeamMembersList({
                   className="mt-1 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-[#0f1119]"
                 />
                 <div>
-                  <div className="font-medium text-[#e5e4e2]">Edycja wydarzenia</div>
+                  <div className="font-medium text-[#e5e4e2]">Edycja eventu</div>
                   <div className="text-xs text-[#e5e4e2]/60">
-                    Może edytować podstawowe informacje o wydarzeniu
+                    Może edytować podstawowe informacje o evencie
                   </div>
                 </div>
               </label>
@@ -607,7 +607,7 @@ export function TeamMembersList({
                 <div>
                   <div className="font-medium text-[#e5e4e2]">Edycja agendy</div>
                   <div className="text-xs text-[#e5e4e2]/60">
-                    Może edytować fazy wydarzenia
+                    Może edytować fazy eventu
                   </div>
                 </div>
               </label>
@@ -623,7 +623,7 @@ export function TeamMembersList({
                 <div>
                   <div className="font-medium text-[#e5e4e2]">Edycja harmonogramu</div>
                   <div className="text-xs text-[#e5e4e2]/60">
-                    Może edytować harmonogram wydarzenia
+                    Może edytować harmonogram eventu
                   </div>
                 </div>
               </label>

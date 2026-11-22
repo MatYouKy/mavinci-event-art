@@ -936,7 +936,7 @@ export default function EventWeddingCardTab({
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#d3bb73]">Mavinci LIVE · Familiada</p>
                 <h3 className="mt-1 text-lg font-semibold text-white">{familiadaMaterial.gameName}</h3>
-                <p className="mt-1 max-w-xl text-sm leading-relaxed text-[#e5e4e2]/55">Ta rozgrywka jest przypisana do wydarzenia. Materiał jest osobnym, czytelnym arkuszem zawierającym wyłącznie pytania — bez odpowiedzi i punktacji.</p>
+                <p className="mt-1 max-w-xl text-sm leading-relaxed text-[#e5e4e2]/55">Ta rozgrywka jest przypisana do eventu. Materiał jest osobnym, czytelnym arkuszem zawierającym wyłącznie pytania — bez odpowiedzi i punktacji.</p>
               </div>
             </div>
             {familiadaMaterial.pdfPath ? <button type="button" onClick={() => void openFamiliadaPdf()} disabled={openingFamiliadaPdf} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-2.5 text-sm font-semibold text-[#111320] disabled:opacity-60">

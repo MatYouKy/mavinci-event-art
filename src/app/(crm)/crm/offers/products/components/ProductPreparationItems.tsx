@@ -115,10 +115,10 @@ export function preparationPreview(item: {
     : days === 0
       ? item.anchor === 'loading'
         ? 'w dniu załadunku'
-        : 'w dniu wydarzenia'
+        : 'w dniu eventu'
       : `${days} ${days === 1 ? 'dzień' : 'dni'} ${EVENT_STEP_ANCHOR_LABELS[item.anchor]}`;
   const role = EVENT_STEP_ROLE_LABELS[item.ownerRole].toLocaleLowerCase('pl-PL');
-  return `Każde wydarzenie z tą usługą dostanie krok: ${title} — ${when}, odpowiada ${role}.`;
+  return `Każdy event z tą usługą dostanie krok: ${title} — ${when}, odpowiada ${role}.`;
 }
 
 /** Konfiguracja „Przygotowanie i zamówienia” usługi: z niej powstają kroki realizacji każdego wydarzenia z tą usługą. */
@@ -247,8 +247,8 @@ export default function ProductPreparationItems({ productId }: { productId: stri
       if (!saved?.length) throw { code: '42501' };
       showSnackbar(
         item.is_active
-          ? 'Krok wyłączony — nie pojawi się w wydarzeniach (otwarte kroki z tej usługi zostaną zarchiwizowane).'
-          : 'Krok włączony — pojawi się w bieżących wydarzeniach z tą usługą.',
+          ? 'Krok wyłączony — nie pojawi się w eventach (otwarte kroki z tej usługi zostaną zarchiwizowane).'
+          : 'Krok włączony — pojawi się w bieżących eventach z tą usługą.',
         'success',
       );
       await load();
@@ -263,7 +263,7 @@ export default function ProductPreparationItems({ productId }: { productId: stri
     if (!canManage || busyId) return;
     const confirmed = await showConfirm({
       title: 'Usuń krok przygotowania',
-      message: `Usunąć „${item.title}”? Wydarzenia z tą usługą przestaną dostawać ten krok. Aby tylko wstrzymać krok, użyj „Wyłącz”.`,
+      message: `Usunąć „${item.title}”? Eventy z tą usługą przestaną dostawać ten krok. Aby tylko wstrzymać krok, użyj „Wyłącz”.`,
       confirmText: 'Usuń',
       cancelText: 'Anuluj',
     });
@@ -289,8 +289,8 @@ export default function ProductPreparationItems({ productId }: { productId: stri
   return (
     <div className="space-y-3" aria-busy={loading || saving || Boolean(busyId)}>
       <p className="text-sm text-[#e5e4e2]/60">
-        Co trzeba zamówić, sprawdzić lub potwierdzić przed każdym wydarzeniem z tą usługą. Kroki pojawią się na wydarzeniu
-        po akceptacji oferty, z terminem i osobą odpowiedzialną. Zmiany przeliczają kroki zaplanowanych wydarzeń automatycznie.
+        Co trzeba zamówić, sprawdzić lub potwierdzić przed każdym eventem z tą usługą. Kroki pojawią się na evencie
+        po akceptacji oferty, z terminem i osobą odpowiedzialną. Zmiany przeliczają kroki zaplanowanych eventów automatycznie.
       </p>
       {!canManage && !loading && (
         <p className="rounded-lg bg-white/[0.04] px-3 py-2 text-xs text-[#e5e4e2]/55">
@@ -412,7 +412,7 @@ export default function ProductPreparationItems({ productId }: { productId: stri
         onClose={closeForm}
         busy={saving}
         title={draft?.id ? 'Edytuj krok przygotowania' : 'Dodaj krok przygotowania'}
-        description="Krok powstanie na każdym wydarzeniu z tą usługą po akceptacji oferty."
+        description="Krok powstanie na każdym evencie z tą usługą po akceptacji oferty."
         wide
       >
         {draft && (
@@ -524,7 +524,7 @@ export default function ProductPreparationItems({ productId }: { productId: stri
                 </label>
               </div>
               <p className="-mt-2 text-xs text-[#e5e4e2]/45">
-                Ilość na wydarzeniu = ilość na sztukę × liczba sztuk usługi w zaakceptowanej ofercie.
+                Ilość na evencie = ilość na sztukę × liczba sztuk usługi w zaakceptowanej ofercie.
               </p>
               <label className="block text-sm text-[#e5e4e2]/70">
                 Opis / instrukcja (opcjonalnie)
@@ -559,7 +559,7 @@ export default function ProductPreparationItems({ productId }: { productId: stri
                       onChange={event => setDraft({ ...draft, isActive: event.target.checked })}
                       className="mt-0.5 accent-[#d3bb73]"
                     />
-                    Aktywny — dodawaj ten krok do wydarzeń
+                    Aktywny — dodawaj ten krok do eventów
                   </label>
                 )}
               </div>

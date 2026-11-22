@@ -210,7 +210,7 @@ export const describeContractCondition = (expression: string, context: ContractC
       return condition.negate ? `Klient inny niż ${list(labels)}` : `Klient: ${list(labels)}`;
     }
     case 'category':
-      return condition.negate ? `Wydarzenie inne niż ${list(condition.values)}` : `Wydarzenie: ${list(condition.values)}`;
+      return condition.negate ? `Event inny niż ${list(condition.values)}` : `Event: ${list(condition.values)}`;
     case 'option': {
       const key = condition.variable.slice(CONTRACT_OPTION_PREFIX.length);
       const label = context.options?.find((option) => option.key === key)?.label || key;

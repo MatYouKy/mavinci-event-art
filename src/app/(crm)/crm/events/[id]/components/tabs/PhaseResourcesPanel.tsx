@@ -282,7 +282,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                   <div className="p-8 text-center">
                     <User className="mx-auto mb-2 h-12 w-12 text-[#e5e4e2]/20" />
                     <p className="text-sm text-[#e5e4e2]/60">
-                      Brak pracowników w wydarzeniu
+                      Brak pracowników w evencie
                     </p>
                   </div>
                 ) : (
@@ -512,7 +512,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
       {/* Footer */}
       <div className="border-t border-[#d3bb73]/10 p-4">
         <div className="text-xs text-[#e5e4e2]/60">
-          <p>Pokazuje zasoby przypisane do wydarzenia w czasie trwania tej fazy</p>
+          <p>Pokazuje zasoby przypisane do eventu w czasie trwania tej fazy</p>
         </div>
       </div>
 

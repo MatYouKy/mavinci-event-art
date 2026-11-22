@@ -57,7 +57,7 @@ type WorkflowTemplate = {
 type EventCategory = { id: string; name: string; color: string | null };
 
 const requirementOptions = [
-  ['event_details_complete', 'Uzupełnione kluczowe dane wydarzenia'],
+  ['event_details_complete', 'Uzupełnione kluczowe dane eventu'],
   ['client_assigned', 'Przypisany klient'],
   ['offer_accepted', 'Zaakceptowana oferta'],
   ['contract_signed', 'Podpisana umowa'],
@@ -173,7 +173,7 @@ export default function WorkflowSettingsPage() {
     setSaving(true);
     const { data, error } = await supabase
       .from('event_workflow_templates')
-      .insert({ name: 'Nowy proces', description: 'Nowy szablon procesu wydarzenia.' })
+      .insert({ name: 'Nowy proces', description: 'Nowy szablon procesu eventu.' })
       .select('id')
       .single();
     setSaving(false);
@@ -346,7 +346,7 @@ export default function WorkflowSettingsPage() {
         <div className="flex items-center gap-3">
           <button onClick={() => router.push('/crm/settings?tab=admin')} className="rounded-lg p-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] hover:text-[#e5e4e2]"><ArrowLeft className="h-5 w-5" /></button>
           <div>
-            <h1 className="flex items-center gap-2 text-2xl font-light text-[#e5e4e2]"><Workflow className="h-6 w-6 text-[#d3bb73]" />Procesy wydarzeń</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-light text-[#e5e4e2]"><Workflow className="h-6 w-6 text-[#d3bb73]" />Procesy eventów</h1>
             <p className="mt-1 text-sm text-[#e5e4e2]/50">Etapy, terminy, bramki jakości i automatyczne zadania.</p>
           </div>
         </div>
@@ -379,7 +379,7 @@ export default function WorkflowSettingsPage() {
                 <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/75"><input type="checkbox" checked={selected.is_default} onChange={(event) => updateSelected({ is_default: event.target.checked })} />Domyślny dla pozostałych kategorii</label>
               </div>
               <div className="mt-5">
-                <div className="mb-2 text-xs text-[#e5e4e2]/50">Kategorie wydarzeń (puste = tylko użycie jako domyślny)</div>
+                <div className="mb-2 text-xs text-[#e5e4e2]/50">Kategorie eventów (puste = tylko użycie jako domyślny)</div>
                 <div className="flex flex-wrap gap-2">
                   {categories.map((category) => {
                     const checked = selected.event_workflow_template_categories.some((item) => item.category_id === category.id);
@@ -396,7 +396,7 @@ export default function WorkflowSettingsPage() {
                     <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
                       <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-[minmax(220px,1fr)_150px_90px]">
                         <label className="space-y-1"><span className="text-[11px] text-[#e5e4e2]/40">Etap</span><input className={inputClass} value={stage.name} onChange={(event) => updateStage(stage.id, { name: event.target.value })} /></label>
-                        <label className="space-y-1"><span className="text-[11px] text-[#e5e4e2]/40">Termin względem wydarzenia</span><div className="flex items-center gap-2"><input type="number" className={inputClass} value={stage.due_offset_days ?? ''} onChange={(event) => updateStage(stage.id, { due_offset_days: event.target.value === '' ? null : Number(event.target.value) })} /><span className="text-xs text-[#e5e4e2]/40">dni</span></div></label>
+                        <label className="space-y-1"><span className="text-[11px] text-[#e5e4e2]/40">Termin względem eventu</span><div className="flex items-center gap-2"><input type="number" className={inputClass} value={stage.due_offset_days ?? ''} onChange={(event) => updateStage(stage.id, { due_offset_days: event.target.value === '' ? null : Number(event.target.value) })} /><span className="text-xs text-[#e5e4e2]/40">dni</span></div></label>
                         <label className="space-y-1"><span className="text-[11px] text-[#e5e4e2]/40">Kolor</span><input type="color" className="h-[38px] w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] p-1" value={stage.color} onChange={(event) => updateStage(stage.id, { color: event.target.value })} /></label>
                       </div>
                       <div className="flex items-center gap-1">
@@ -413,7 +413,7 @@ export default function WorkflowSettingsPage() {
                     {stage.event_workflow_requirements.map((requirement) => (
                       <div key={requirement.id} className="grid gap-3 p-4 sm:grid-cols-[200px_minmax(180px,1fr)_auto] sm:items-end">
                         <label className="space-y-1"><span className="text-[11px] text-[#e5e4e2]/40">Źródło potwierdzenia</span><select className={inputClass} value={requirement.requirement_key} onChange={(event) => { const option = requirementOptions.find(([key]) => key === event.target.value); updateRequirement(stage.id, requirement.id, { requirement_key: event.target.value, label: option?.[1] ?? requirement.label, auto_create_task: event.target.value === 'manual' ? false : requirement.auto_create_task }); }}>{requirementOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-                        <label className="space-y-1"><span className="text-[11px] text-[#e5e4e2]/40">Nazwa widoczna w wydarzeniu</span><input className={inputClass} value={requirement.label} onChange={(event) => updateRequirement(stage.id, requirement.id, { label: event.target.value })} /></label>
+                        <label className="space-y-1"><span className="text-[11px] text-[#e5e4e2]/40">Nazwa widoczna w evencie</span><input className={inputClass} value={requirement.label} onChange={(event) => updateRequirement(stage.id, requirement.id, { label: event.target.value })} /></label>
                         <button onClick={() => removeRequirement(requirement.id)} className="mb-0.5 rounded-lg p-2 text-red-400/70 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></button>
                         <div className="flex flex-wrap gap-4 sm:col-span-3">
                           <label className="flex items-center gap-2 text-xs text-[#e5e4e2]/55"><input type="checkbox" checked={requirement.is_required} onChange={(event) => updateRequirement(stage.id, requirement.id, { is_required: event.target.checked })} />Wymagane</label>
@@ -434,7 +434,7 @@ export default function WorkflowSettingsPage() {
             </div>
           </main>
         ) : (
-          <div className="rounded-xl border border-dashed border-[#d3bb73]/20 p-12 text-center text-[#e5e4e2]/45"><CheckCircle2 className="mx-auto mb-3 h-8 w-8" />Utwórz pierwszy proces wydarzenia.</div>
+          <div className="rounded-xl border border-dashed border-[#d3bb73]/20 p-12 text-center text-[#e5e4e2]/45"><CheckCircle2 className="mx-auto mb-3 h-8 w-8" />Utwórz pierwszy proces eventu.</div>
         )}
       </div>
     </div>

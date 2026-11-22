@@ -458,7 +458,7 @@ function InquiryInspector({ inquiry, canManage, canClaim, onClose, onClaim, onCo
         {!inquiry.firstContactAt ? field('Termin pierwszego kontaktu (SLA)', formatInquiryFull(inquiry.slaDueAt)) : null}
         {inquiry.stage === 'lost' ? field('Kategoria utraty', INQUIRY_LOST_CATEGORIES.find((item) => item.value === inquiry.lostReasonCategory)?.label || '') : null}
         {inquiry.stage === 'lost' ? field('Powód utraty', inquiry.lostReason) : null}
-        <Text style={styles.group}>Wydarzenie</Text>
+        <Text style={styles.group}>Event</Text>
         {field('Termin', inquiry.termin || '')}
         {field('Miejsce', inquiry.locationText)}
         {field('Zakres', inquiry.scope)}

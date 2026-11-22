@@ -416,7 +416,7 @@ export function EquipmentLineRow({
           {stage === 'dispatch' && shortage > 0 && (
             <Text style={[styles.hint, { color: line.required ? AMBER_TEXT : colors.text.secondary }]}>
               {line.required
-                ? `Brak ${shortage} szt. — wydanie wymaga zgody sprzedawcy wydarzenia lub administratora.`
+                ? `Brak ${shortage} szt. — wydanie wymaga zgody sprzedawcy eventu lub administratora.`
                 : `Pozycja niewymagana — brak ${shortage} szt. nie blokuje wydania.`}
             </Text>
           )}

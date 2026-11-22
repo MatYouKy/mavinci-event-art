@@ -488,9 +488,9 @@ private struct SubcontractorBadge: View {
                     Text(task.name).font(.headline)
                     if !task.eventId.isEmpty {
                         HStack(spacing: 4) {
-                            Text("Wydarzenie:").foregroundStyle(.secondary)
+                            Text("Event:").foregroundStyle(.secondary)
                             Button { state.showEvent(task.eventId, cardTab: "subcontractors") } label: {
-                                Label(task.eventName.nonEmpty ?? "Przejdź do wydarzenia", systemImage: "arrow.up.right")
+                                Label(task.eventName.nonEmpty ?? "Przejdź do eventu", systemImage: "arrow.up.right")
                             }
                             .buttonStyle(.link).linkCursor()
                         }
@@ -555,7 +555,7 @@ private struct SubcontractorBadge: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Label(contract.title, systemImage: "doc.text").font(.headline)
                     Text(contract.number).font(.callout).foregroundStyle(.secondary)
-                    if !contract.eventName.isEmpty { Text("Wydarzenie: \(contract.eventName)").font(.callout).foregroundStyle(.secondary) }
+                    if !contract.eventName.isEmpty { Text("Event: \(contract.eventName)").font(.callout).foregroundStyle(.secondary) }
                 }
                 Spacer()
                 SubcontractorBadge(text: contract.statusLabel, color: SubcontractorText.statusColor(contract.status))

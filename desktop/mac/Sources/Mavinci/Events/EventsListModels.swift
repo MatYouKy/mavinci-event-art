@@ -100,7 +100,7 @@ struct EventCategoryOption: Codable, Hashable, Identifiable {
 enum EventsSortField: String, CaseIterable, Identifiable {
     case date, name, budget, created
     var id: String { rawValue }
-    var label: String { ["date": "Data wydarzenia", "name": "Nazwa", "budget": "Budżet", "created": "Data utworzenia"][rawValue] ?? rawValue }
+    var label: String { ["date": "Data eventu", "name": "Nazwa", "budget": "Budżet", "created": "Data utworzenia"][rawValue] ?? rawValue }
 }
 enum EventsViewMode: String, CaseIterable, Identifiable {
     case list, grid, table
@@ -119,7 +119,7 @@ enum EventLabels {
     ]
     /// Etapy operacyjne (pracownicy bez wglądu w sprzedaż) jak `OPERATIONAL_LABELS`.
     static let operational: [InquiryOption] = [
-        .init(value: "inquiry", label: "Nowe wydarzenie"), .init(value: "offer_accepted", label: "Do potwierdzenia"),
+        .init(value: "inquiry", label: "Nowy event"), .init(value: "offer_accepted", label: "Do potwierdzenia"),
         .init(value: "in_preparation", label: "W przygotowaniu"), .init(value: "ready_for_live", label: "Gotowe do realizacji"),
         .init(value: "in_progress", label: "W trakcie realizacji"), .init(value: "completed", label: "Zrealizowane"),
         .init(value: "settled", label: "Zakończone"), .init(value: "cancelled", label: "Anulowane"),

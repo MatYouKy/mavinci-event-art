@@ -87,7 +87,7 @@ export default function SellerEquipmentReview({ review, confirmed, reason, disab
     {data && <>
       <p className="text-xs text-white/60">{arrangementLocalDate(data.period.start)} — {arrangementLocalDate(data.period.end)} · czas polski.
         {data.period.whole_days && ' Brak godzin: sprawdzamy pełne dni.'}
-        {' Sprzęt jest liczony na cały okres, także pomiędzy dniami wydarzenia.'}
+        {' Sprzęt jest liczony na cały okres, także pomiędzy dniami eventu.'}
         {data.period.includes_preparation ? ' Uwzględniamy zapisany montaż i demontaż.' : ' Montaż i demontaż trzeba jeszcze uwzględnić po ich ustaleniu.'}
       </p>
       <p className={data.status === 'clear' ? 'text-emerald-200' : 'text-amber-200'}>{equipmentReviewLabels[data.status]} · {data.rows.length} modeli.</p>

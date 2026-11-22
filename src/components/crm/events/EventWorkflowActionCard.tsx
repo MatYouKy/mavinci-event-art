@@ -32,7 +32,7 @@ export default function EventWorkflowActionCard({ action, canSnooze, onChanged }
     <p className="mt-1 font-medium text-[#e5e4e2]">Następny krok: {action.label}</p>
     <p className="mt-1 text-xs text-[#e5e4e2]/60">{action.status === 'snoozed' ? `Przypomnienie wstrzymane do ${dateLabel(action.snoozed_until)}` : action.status === 'waiting' ? `Zaplanowane od ${dateLabel(action.starts_at)}` : `Termin: ${dateLabel(action.due_at)}`}</p>
     {action.snooze_note && <p className="mt-1 text-sm text-[#e5e4e2]/60">{action.snooze_note}</p>}
-    <Link href={action.action_url} className="mt-3 inline-block text-sm text-[#d3bb73]">Otwórz wydarzenie →</Link>
+    <Link href={action.action_url} className="mt-3 inline-block text-sm text-[#d3bb73]">Otwórz event →</Link>
     {canSnooze && <details className="mt-3 text-sm text-[#e5e4e2]/70">
       <summary className="cursor-pointer">Czekam na klienta / przypomnij później</summary>
       <div className="mt-3 flex flex-wrap items-end gap-3">

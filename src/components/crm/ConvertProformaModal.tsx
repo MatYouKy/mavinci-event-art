@@ -330,7 +330,7 @@ export default function ConvertProformaModal({
                   </p>
                 )}
                 {form.targetType === 'advance' && (
-                  <p className="text-xs text-[#e5e4e2]/55">Faktura końcowa odziedziczy nazwy i układ tej zaliczki. Pełną wartość rozliczenia pobierze osobno z zamówienia, w pierwszej kolejności z powiązanego wydarzenia; nie będzie to ponowne naliczenie samej kwoty zaliczki.</p>
+                  <p className="text-xs text-[#e5e4e2]/55">Faktura końcowa odziedziczy nazwy i układ tej zaliczki. Pełną wartość rozliczenia pobierze osobno z zamówienia, w pierwszej kolejności z powiązanego eventu; nie będzie to ponowne naliczenie samej kwoty zaliczki.</p>
                 )}
               </div>
             </div>

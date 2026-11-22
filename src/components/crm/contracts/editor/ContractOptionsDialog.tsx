@@ -46,7 +46,7 @@ export default function ContractOptionsDialog({ options, usage, onSave, onClose 
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
           <div>
             <h2 id="contract-options-title" className="text-base font-medium text-[#e5e4e2]">Opcje umowy</h2>
-            <p className="text-xs text-[#e5e4e2]/50">Włączane przy każdej umowie wydarzenia. Akapity z warunkiem „Opcja” pojawiają się tylko przy włączonej opcji.</p>
+            <p className="text-xs text-[#e5e4e2]/50">Włączane przy każdej umowie eventu. Akapity z warunkiem „Opcja” pojawiają się tylko przy włączonej opcji.</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Zamknij" className="rounded p-1 text-[#e5e4e2]/60 hover:bg-white/10 hover:text-[#e5e4e2]">
             <X className="h-4 w-4" />

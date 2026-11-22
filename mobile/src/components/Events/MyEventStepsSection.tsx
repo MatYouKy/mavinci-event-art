@@ -163,7 +163,7 @@ export default function MyEventStepsSection({ refreshKey }: { refreshKey: number
 
       {visible.map((step) => {
         const date = eventDate(step.event?.event_date ?? null);
-        const label = [step.event?.name || 'Wydarzenie', date].filter(Boolean).join(' · ');
+        const label = [step.event?.name || 'Event', date].filter(Boolean).join(' · ');
         return (
           <EventStepRow
             key={step.id}

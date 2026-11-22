@@ -19,7 +19,7 @@ const localDate = yup.string().trim().test(
 );
 
 export const eventWizardSchema = yup.object({
-  name: yup.string().trim().required('Wpisz nazwę wydarzenia — same spacje nie wystarczą.'),
+  name: yup.string().trim().required('Wpisz nazwę eventu — same spacje nie wystarczą.'),
   clientType: yup.string().oneOf(['business', 'individual'], 'Wybierz typ klienta: biznesowy lub indywidualny.')
     .required('Wybierz typ klienta: biznesowy lub indywidualny.'),
   my_company_id: optionalId('Wybierz ponownie firmę realizującą z listy.'),
@@ -28,14 +28,14 @@ export const eventWizardSchema = yup.object({
     .test('saved-contact', 'Zapisz nową osobę przyciskiem „Dodaj osobę kontaktową” albo zamknij jej formularz.',
       function () { return !this.options.context?.pendingContact; }),
   category_id: optionalId('Wybierz ponownie kategorię z listy.'),
-  event_date: localDate.required('Podaj datę i godzinę rozpoczęcia wydarzenia.'),
-  event_end_date: localDate.test('after-start', 'Zakończenie musi być późniejsze niż rozpoczęcie wydarzenia.',
+  event_date: localDate.required('Podaj datę i godzinę rozpoczęcia eventu.'),
+  event_end_date: localDate.test('after-start', 'Zakończenie musi być późniejsze niż rozpoczęcie eventu.',
     function (value) {
       const start = this.parent.event_date;
       return !value || !start || !validLocalDate(value) || !validLocalDate(start) ||
         new Date(value).getTime() > new Date(start).getTime();
     }),
-  location: yup.string().trim().required('Wybierz lokalizację wydarzenia.'),
+  location: yup.string().trim().required('Wybierz lokalizację eventu.'),
   location_id: optionalId('Wybierz ponownie zapisany obiekt z listy lokalizacji.'),
   // Room IDs belong to the location JSON, not a UUID foreign key.
   location_room_ids: yup.array().of(yup.string().trim().required('Wybierz ponownie sale realizacji.'))
@@ -50,7 +50,7 @@ export const eventWizardSchema = yup.object({
   }).typeError('Wpisz budżet jako nieujemną kwotę z maksymalnie dwoma miejscami po przecinku.')
     .min(0, 'Budżet nie może być ujemny.')
     .max(99999999.99, 'Budżet nie może przekraczać 99 999 999,99 zł.'),
-  status: yup.string().required('Wybierz status wydarzenia.').test('known-status', 'Wybierz status z listy.',
+  status: yup.string().required('Wybierz status eventu.').test('known-status', 'Wybierz status z listy.',
     function (value) { return !!value && !!this.options.context?.statuses?.includes(value); }),
 });
 
@@ -81,12 +81,12 @@ export function eventSaveError(error: unknown): { message: string; details: stri
   const value = error as { code?: string; status?: string; message?: string; error?: string; details?: string };
   const code = value?.code;
   const details = [code, value?.message || value?.error, value?.details].filter(Boolean).join(' — ');
-  let message = 'Serwer nie zapisał wydarzenia. Dane formularza zostały zachowane. Przekaż szczegóły błędu administratorowi.';
-  if (code === 'AUTH_REQUIRED') message = 'Sesja wygasła. Zaloguj się ponownie przed zapisem wydarzenia.';
+  let message = 'Serwer nie zapisał eventu. Dane formularza zostały zachowane. Przekaż szczegóły błędu administratorowi.';
+  if (code === 'AUTH_REQUIRED') message = 'Sesja wygasła. Zaloguj się ponownie przed zapisem eventu.';
   else if (code === 'EMPLOYEE_MISSING') message = 'Twoje konto nie ma powiązanego pracownika. Poproś administratora o uzupełnienie powiązania.';
-  else if (code === '42501') message = 'Nie masz uprawnień do zapisu wydarzenia lub powiązanych danych. Poproś administratora o sprawdzenie dostępu.';
+  else if (code === '42501') message = 'Nie masz uprawnień do zapisu eventu lub powiązanych danych. Poproś administratora o sprawdzenie dostępu.';
   else if (code === '23503') message = 'Nie udało się zapisać powiązania w bazie. Wybrany rekord mógł zostać usunięty lub zmieniony. Wybierz go ponownie; jeśli błąd wraca, przekaż szczegóły administratorowi.';
-  else if (code === '23505') message = 'Zapis koliduje z istniejącym rekordem. Sprawdź listę wydarzeń przed ponowną próbą; jeśli wydarzenia nie ma, przekaż szczegóły administratorowi.';
-  else if (value?.status === 'FETCH_ERROR' || code === '57014') message = 'Nie udało się potwierdzić zapisu. Sprawdź listę wydarzeń przed ponowną próbą, aby nie utworzyć duplikatu. Dane formularza zostały zachowane.';
+  else if (code === '23505') message = 'Zapis koliduje z istniejącym rekordem. Sprawdź listę eventów przed ponowną próbą; jeśli eventu nie ma, przekaż szczegóły administratorowi.';
+  else if (value?.status === 'FETCH_ERROR' || code === '57014') message = 'Nie udało się potwierdzić zapisu. Sprawdź listę eventów przed ponowną próbą, aby nie utworzyć duplikatu. Dane formularza zostały zachowane.';
   return { message, details };
 }

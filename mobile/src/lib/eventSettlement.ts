@@ -449,7 +449,7 @@ export function parseMyCommissions(data: unknown): MyCommissions | null {
     commissions: arr<Record<string, unknown>>(raw.commissions).map(row => ({
       id: String(row.id ?? ''),
       event_id: String(row.event_id ?? ''),
-      event_name: text(row.event_name) ?? 'Wydarzenie',
+      event_name: text(row.event_name) ?? 'Event',
       event_date: text(row.event_date),
       event_status: text(row.event_status),
       entry_kind: (row.entry_kind === 'correction' || row.entry_kind === 'deduction' ? row.entry_kind : 'accrual') as CommissionEntryKind,
@@ -506,7 +506,7 @@ export const SETTLEMENT_CATEGORY_HINTS: Record<SettlementCategory, string> = {
   revenue: 'Liczy się do przychodu netto.',
   subcontractor: 'Zespoły, atrakcje, podwykonawcy, na których nie mamy marży — pomniejsza podstawę prowizji sprzedawców zewnętrznych i zysk.',
   direct_cost: 'Wynajem, zakupy, transport, materiały — pomniejsza zysk (prowizja pracownika).',
-  team: 'Wynagrodzenie ekipy za to wydarzenie — pomniejsza zysk.',
+  team: 'Wynagrodzenie ekipy za ten event — pomniejsza zysk.',
   external_commission: 'Prowizja lub narzut sprzedawcy zewnętrznego — pomniejsza zysk.',
 };
 
@@ -516,7 +516,7 @@ export const SETTLEMENT_SOURCE_LABELS: Record<SettlementSourceType, string> = {
   offer: 'Oferta (prognoza)',
   cash: 'Gotówka',
   forecast: 'Prognoza',
-  event_cost: 'Koszt wydarzenia',
+  event_cost: 'Koszt eventu',
   subcontractor_task: 'Zlecenie podwykonawcy',
   team: 'Ewidencja czasu',
   markup: 'Narzut sprzedawcy',
@@ -551,7 +551,7 @@ export const COMMISSION_PAYMENT_LABELS: Record<CommissionPaymentMethod, string> 
 };
 
 export const COMMISSION_SOURCE_LABELS: Record<string, string> = {
-  sales_share: 'Sprzedawca wydarzenia',
+  sales_share: 'Sprzedawca eventu',
   seller_portal: 'Oferta z portalu sprzedawcy',
   event_referral: 'Polecenie',
   billing_contact: 'Kontakt rozliczeniowy (hotel / agencja)',
@@ -564,7 +564,7 @@ export const SALES_SHARE_SOURCE_LABELS: Record<string, string> = {
   offer_author: 'Autor zaakceptowanej oferty',
   seller_portal_owner: 'Opiekun sprzedawcy z portalu',
   inquiry_owner: 'Prowadzący zapytanie',
-  event_creator: 'Twórca wydarzenia',
+  event_creator: 'Twórca eventu',
   manual: 'Ustawione przez administratora',
 };
 

@@ -26,11 +26,11 @@ export default async function WarehouseDashboard({ employeeId }: { employeeId: s
     <main className="w-full space-y-5 p-3 sm:p-6">
       <header>
         <h1 className="text-xl uppercase text-[#e5e4e2]">Magazyn i logistyka</h1>
-        <p className="mt-1 text-sm text-[#e5e4e2]/60">Przygotowanie wydarzeń, stan sprzętu i Twoje zadania.</p>
+        <p className="mt-1 text-sm text-[#e5e4e2]/60">Przygotowanie eventów, stan sprzętu i Twoje zadania.</p>
       </header>
       <MyDayTimeline employeeId={employeeId} />
       <nav aria-label="Szybki dostęp" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {[{ href: '/crm/equipment', label: 'Sprzęt', Icon: Package }, { href: '/crm/events', label: 'Wydarzenia', Icon: Calendar }, { href: '/crm/tasks/mine', label: 'Moje zadania', Icon: CheckSquare }].map(({ href, label, Icon }) => (
+        {[{ href: '/crm/equipment', label: 'Sprzęt', Icon: Package }, { href: '/crm/events', label: 'Eventy', Icon: Calendar }, { href: '/crm/tasks/mine', label: 'Moje zadania', Icon: CheckSquare }].map(({ href, label, Icon }) => (
           <Link key={href} href={href} className={`${card} flex items-center gap-3 text-[#d3bb73] hover:bg-[#4b1b30]`}><Icon size={22} /><span>{label}</span></Link>
         ))}
       </nav>
@@ -47,13 +47,13 @@ export default async function WarehouseDashboard({ employeeId }: { employeeId: s
           {(damaged.count || 0) > 20 && <p className="mt-3 text-xs text-[#e5e4e2]/60">Pokazano 20 ostatnio aktualizowanych egzemplarzy.</p>}
         </section>
         <section className={card}>
-          <h2 className="mb-3 uppercase">Wydarzenia do przygotowania</h2>
-          {events.error || stages.error ? <p role="alert">Nie udało się pobrać wydarzeń. Odśwież stronę.</p> : !events.data?.length ? <p className="text-sm text-[#e5e4e2]/60">Brak wydarzeń oczekujących na przygotowanie.</p> : <div className="space-y-2">{events.data.map(event => (
+          <h2 className="mb-3 uppercase">Eventy do przygotowania</h2>
+          {events.error || stages.error ? <p role="alert">Nie udało się pobrać eventów. Odśwież stronę.</p> : !events.data?.length ? <p className="text-sm text-[#e5e4e2]/60">Brak eventów oczekujących na przygotowanie.</p> : <div className="space-y-2">{events.data.map(event => (
             <Link key={event.id} href={`/crm/events/${event.id}`} className={rowStyle}>
               <p>{event.name}</p><p className="mt-1 text-sm text-[#d3bb73]">{date(event.event_date)} · {OPERATIONAL_LABELS[statusById.get(event.id) || event.status] || 'Do potwierdzenia'}</p>
             </Link>
           ))}</div>}
-          <Link href="/crm/events" className="mt-4 inline-block text-sm text-[#d3bb73]">Przejdź do wydarzeń →</Link>
+          <Link href="/crm/events" className="mt-4 inline-block text-sm text-[#d3bb73]">Przejdź do eventów →</Link>
         </section>
         <section className={`${card} lg:col-span-2`}>
           <h2 className="mb-3 uppercase">Moje zadania do wykonania</h2>

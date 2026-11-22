@@ -516,7 +516,7 @@ import Charts
             weekRow(key: "undated", label: "Bez terminu (poza saldem)", inflows: model.undatedInflows, outflows: model.undatedOutflows,
                     inflowsNote: nil, outflowsNote: nil, balance: nil, flows: model.undatedFlows, maxFlow: model.maxFlow, bars: false)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Wpływy: należności, pro formy i harmonogramy płatności wydarzeń bez faktury. Wydatki: faktury kosztowe, umowy stałe, wynagrodzenia z umów personelu (do 10. następnego miesiąca) oraz ZUS i podatki (kwota z deklaracji, bez niej — szacunek VAT albo ostatnia zapłata; „~” = szacunek). Tylko kwoty w PLN.")
+                Text("Wpływy: należności, pro formy i harmonogramy płatności eventów bez faktury. Wydatki: faktury kosztowe, umowy stałe, wynagrodzenia z umów personelu (do 10. następnego miesiąca) oraz ZUS i podatki (kwota z deklaracji, bez niej — szacunek VAT albo ostatnia zapłata; „~” = szacunek). Tylko kwoty w PLN.")
                 if scope.multi {
                     Text("Wybrane działalności razem: saldo to suma rachunków, a wpływy i wydatki — pozycje wszystkich wybranych działalności.")
                 }

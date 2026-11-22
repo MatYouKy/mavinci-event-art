@@ -8,7 +8,7 @@ enum TaskBoardKind: String {
         switch self {
         case .company: return "Zadania firmowe"
         case .mine: return "Moja tablica zadań"
-        case .event: return "Zadania wydarzenia"
+        case .event: return "Zadania eventu"
         }
     }
     var href: String { self == .company ? "/crm/tasks" : "/crm/tasks/mine" }

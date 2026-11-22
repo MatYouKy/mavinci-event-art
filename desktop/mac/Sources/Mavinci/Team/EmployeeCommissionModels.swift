@@ -174,7 +174,7 @@ struct CommissionPayrollReply: Decodable {
 
 enum CommissionText {
     static let automaticSources: Set<String> = ["sales_share", "billing_contact", "event_referral", "partner_arrangement", "seller_portal", "manual_partner", "seller_markup"]
-    static let automaticHint = "Do wypłaty po zatwierdzeniu podsumowania wydarzenia"
+    static let automaticHint = "Do wypłaty po zatwierdzeniu podsumowania eventu"
     static let methods: [InquiryOption] = [
         .init(value: "payroll", label: "Wynagrodzenie pracownicze"), .init(value: "cash_dividend", label: "Gotówka z zysku spółki"),
         .init(value: "invoice", label: "Faktura / rachunek"), .init(value: "other", label: "Inny sposób"),
@@ -191,7 +191,7 @@ enum CommissionText {
     }
     static func source(_ value: String?) -> String? {
         switch value ?? "" {
-        case "sales_share": return "Sprzedawca wydarzenia"
+        case "sales_share": return "Sprzedawca eventu"
         case "seller_portal": return "Oferta z portalu sprzedawcy"
         case "event_referral": return "Polecenie"
         case "billing_contact": return "Kontakt rozliczeniowy (hotel / agencja)"

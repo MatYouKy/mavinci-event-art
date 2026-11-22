@@ -781,11 +781,11 @@ async function eventContract(input: EventContractInput) {
       .select('id');
     if (error) {
       if (['42703', 'PGRST204'].includes(error.code || '')) {
-        throw new Error('Brakuje pola klauzul wydarzenia w bazie. Uruchom najnowszą migrację Supabase i spróbuj ponownie.');
+        throw new Error('Brakuje pola klauzul eventu w bazie. Uruchom najnowszą migrację Supabase i spróbuj ponownie.');
       }
       throw new Error(error.message || 'Nie udało się zapisać klauzul umowy');
     }
-    if (!data?.length) throw new Error('Nie masz uprawnień do zmiany klauzul tego wydarzenia.');
+    if (!data?.length) throw new Error('Nie masz uprawnień do zmiany klauzul tego eventu.');
     await runContractData(state, base, undefined, true);
   }
   let content = null;

@@ -18,7 +18,7 @@ export async function PATCH(request: Request) {
 
     if (!eventId || !templateId) {
       return NextResponse.json(
-        { error: 'Brak identyfikatora wydarzenia lub szablonu.' },
+        { error: 'Brak identyfikatora eventu lub szablonu.' },
         { status: 400 },
       );
     }
@@ -42,7 +42,7 @@ export async function PATCH(request: Request) {
 
     const { data: eventAccess, error: eventAccessError } = await userClient.from('events').select('id').eq('id', eventId).maybeSingle();
     const { data: contractManage } = await userClient.rpc('crm_contract_permission', { p_action: 'manage' });
-    if (eventAccessError || !eventAccess || !contractManage) return NextResponse.json({ error: 'Brak dostępu do umowy wydarzenia.' }, { status: 403 });
+    if (eventAccessError || !eventAccess || !contractManage) return NextResponse.json({ error: 'Brak dostępu do umowy eventu.' }, { status: 403 });
     const admin = createSupabaseAdminClient();
     const { data: template, error: templateError } = await admin
       .from('contract_templates')

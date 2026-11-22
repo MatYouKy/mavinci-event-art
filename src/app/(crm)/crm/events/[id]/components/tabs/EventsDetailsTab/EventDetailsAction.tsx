@@ -251,7 +251,7 @@ export default function EventDetailsAction({
         setCategory(undefined);
       }
 
-      showSnackbar('Zaktualizowano kategorię wydarzenia', 'success');
+      showSnackbar('Zaktualizowano kategorię eventu', 'success');
       setIsEditingCategory(false);
       router.refresh();
     } catch (err: any) {
@@ -323,7 +323,7 @@ export default function EventDetailsAction({
     if (sendingConfirmationRef.current) return;
     const recipientEmail = confirmationPreview.preview?.recipientEmail;
     if (!event?.id || !recipientEmail) {
-      showSnackbar('Brak potwierdzonego odbiorcy wiadomości dla tego wydarzenia.', 'error');
+      showSnackbar('Brak potwierdzonego odbiorcy wiadomości dla tego eventu.', 'error');
       return;
     }
     sendingConfirmationRef.current = true;

@@ -341,7 +341,7 @@ export async function invoiceEditSave(ctx: NativeContext, body: Row) {
   const companyId = trimmed(form.companyId);
   if (!companyId) fail('Wybierz firmę wystawiającą fakturę');
   const eventId = trimmed(form.eventId);
-  if (eventId && !UUID.test(eventId)) fail('Nieprawidłowe wydarzenie.');
+  if (eventId && !UUID.test(eventId)) fail('Nieprawidłowy event.');
   const billingArrangement = ARRANGEMENTS.includes(str(form.billingArrangement)) ? str(form.billingArrangement) : 'direct';
   const privatePerson = form.privatePerson === true;
   const privateBuyer = object(form.privateBuyer);

@@ -249,7 +249,7 @@ export function isCollaborator(permissions: EventMemberPermissions): boolean {
  */
 export function getPermissionLabel(permission: EventPermission): string {
   const labels: Record<EventPermission, string> = {
-    edit_event: 'Edycja wydarzenia',
+    edit_event: 'Edycja eventu',
     edit_agenda: 'Edycja agendy',
     edit_tasks: 'Zarządzanie zadaniami',
     edit_files: 'Zarządzanie plikami',
@@ -284,8 +284,8 @@ export function getActionLabel(action: string): string {
  */
 export function getEntityTypeLabel(entityType: string): string {
   const labels: Record<string, string> = {
-    event: 'Wydarzenie',
-    events: 'Wydarzenie',
+    event: 'Event',
+    events: 'Event',
     task: 'Zadanie',
     tasks: 'Zadanie',
     file: 'Plik',

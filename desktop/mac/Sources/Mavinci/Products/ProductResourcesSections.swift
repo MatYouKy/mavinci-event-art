@@ -507,7 +507,7 @@ struct ProductQuantityButton: View {
 
     var body: some View {
         ProductPanel(title: "Mavinci LIVE — zawartość uruchamiana przez produkt",
-                     subtitle: "Gdy ten produkt znajdzie się w ofercie wydarzenia, pojawi się zakładka Mavinci LIVE z wybranymi modułami. Brak wyboru oznacza, że produkt nie wymaga tej części realizacji.") {
+                     subtitle: "Gdy ten produkt znajdzie się w ofercie eventu, pojawi się zakładka Mavinci LIVE z wybranymi modułami. Brak wyboru oznacza, że produkt nie wymaga tej części realizacji.") {
             if variantName != nil {
                 ProductScopeButtons(canEdit: resources.canEdit && state.canWrite, variant: true, inherited: inherited,
                                     customize: { variantAction("variantCustomize", success: "Wariant ma teraz własne moduły Mavinci LIVE") },

@@ -93,7 +93,7 @@ export async function GET(request: Request) {
     variant: 'company',
     scope: analytics.scope ?? 'none',
     accessError: analytics.accessError ?? null,
-    subtitle: company ? 'Przegląd działalności agencji eventowej Mavinci' : 'Twoje zadania, oferty i wydarzenia, do których jesteś przypisany',
+    subtitle: company ? 'Przegląd działalności agencji eventowej Mavinci' : 'Twoje zadania, oferty i eventy, do których jesteś przypisany',
     range,
     months,
     funnel: analytics.funnel,

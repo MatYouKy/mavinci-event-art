@@ -19,9 +19,9 @@ const failure = (error: string, status = 400): AutomaticCommissionResult => ({ s
 
 function databaseFailure(error: { code?: string; message?: string }): AutomaticCommissionResult {
   if (['PGRST202', '42883'].includes(error.code || '')) {
-    return failure('Automatyczne prowizje liczy podsumowanie wydarzenia — wymaga aktualizacji bazy danych.', 503);
+    return failure('Automatyczne prowizje liczy podsumowanie eventu — wymaga aktualizacji bazy danych.', 503);
   }
-  if (error.code === '42501') return failure(error.message || 'Nie masz uprawnień do prowizji tego wydarzenia.', 403);
+  if (error.code === '42501') return failure(error.message || 'Nie masz uprawnień do prowizji tego eventu.', 403);
   // Komunikaty RAISE EXCEPTION z bazy są po polsku i mówią, co uzupełnić (np. warunki sprzedawcy dla marki).
   if (['P0001', '22023', '23505', '40001'].includes(error.code || '')) {
     return failure(error.message || 'Dane prowizji zmieniły się. Odśwież sekcję.', 409);
@@ -50,7 +50,7 @@ export async function runAutomaticCommissions(
   if (employeeResult.error || eventAccess.error || companyAccess.error || portalSession.error || commissionAccess.error ||
     portalSession.data !== false || !employeeResult.data || commissionAccess.data !== true ||
     eventAccess.data !== true || companyAccess.data !== true) {
-    return failure('Nie masz uprawnień do naliczania prowizji dla tego wydarzenia.', 403);
+    return failure('Nie masz uprawnień do naliczania prowizji dla tego eventu.', 403);
   }
 
   if (selectedPartnerId) {
@@ -68,8 +68,8 @@ export async function runAutomaticCommissions(
         commissionId: result.commission_id ?? null,
         reason: result.reason ?? (result.created ? 'ready' : 'existing'),
         message: existing
-          ? 'Prowizja dla tej osoby jest już zapisana w tym wydarzeniu.'
-          : 'Sprzedawca dodany do wydarzenia. Kwotę prowizji liczy podsumowanie wydarzenia.',
+          ? 'Prowizja dla tej osoby jest już zapisana w tym evencie.'
+          : 'Sprzedawca dodany do eventu. Kwotę prowizji liczy podsumowanie eventu.',
       },
     };
   }
@@ -88,8 +88,8 @@ export async function runAutomaticCommissions(
       message: matched === 0
         ? ''
         : eligible === 0
-          ? 'Sprzedawcy zewnętrzni tego wydarzenia nie mają aktywnej prowizji dla marki albo rozliczają się narzutem — szczegóły w zakładce Podsumowanie.'
-          : `Prowizje sprzedawców zewnętrznych (${eligible}) liczy podsumowanie wydarzenia — wyliczenie w zakładce Podsumowanie.`,
+          ? 'Sprzedawcy zewnętrzni tego eventu nie mają aktywnej prowizji dla marki albo rozliczają się narzutem — szczegóły w zakładce Podsumowanie.'
+          : `Prowizje sprzedawców zewnętrznych (${eligible}) liczy podsumowanie eventu — wyliczenie w zakładce Podsumowanie.`,
     },
   };
 }

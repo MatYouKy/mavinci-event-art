@@ -881,7 +881,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-light text-[#e5e4e2]">Zadania wydarzenia</h2>
+        <h2 className="text-xl font-light text-[#e5e4e2]">Zadania eventu</h2>
 
         {isMobile && (
           <div className="order-3 flex w-full items-center gap-2 lg:order-none lg:w-auto">

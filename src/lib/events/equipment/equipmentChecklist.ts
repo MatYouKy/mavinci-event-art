@@ -173,17 +173,17 @@ export const EQUIPMENT_STAGE_LABELS: Record<EquipmentChecklistStage, string> = {
 
 export const EQUIPMENT_STAGE_TABS: { key: EquipmentStageKey; label: string; owner: string; done: string }[] = [
   { key: 'dispatch', label: 'Wydanie', owner: 'Magazyn', done: 'Załadowane' },
-  { key: 'loadback', label: 'Po wydarzeniu', owner: 'Kierownik realizacji', done: 'Załadowane po wydarzeniu' },
+  { key: 'loadback', label: 'Po evencie', owner: 'Kierownik realizacji', done: 'Załadowane po evencie' },
   { key: 'return', label: 'Zwrot', owner: 'Magazyn', done: 'Zwrócone' },
 ];
 
 /** Krótka podpowiedź „co teraz” dla etapu wydarzenia. */
 export const EQUIPMENT_STAGE_HINTS: Record<EquipmentChecklistStage, string> = {
-  empty: 'Wydarzenie nie ma sprzętu na liście.',
+  empty: 'Event nie ma sprzętu na liście.',
   dispatch: 'Magazyn odhacza spakowane ilości. Brak oznacz mniejszą ilością z powodem — wydanie czeka na zgodę sprzedawcy lub administratora.',
-  loadback: 'Kierownik realizacji przy załadunku po wydarzeniu odhacza, co wraca z wydanego sprzętu, i zatwierdza listę.',
+  loadback: 'Kierownik realizacji przy załadunku po evencie odhacza, co wraca z wydanego sprzętu, i zatwierdza listę.',
   return: 'Magazyn wpisuje, ile wróciło sprawne, uszkodzone i czego brakuje (z opisem i zdjęciami), i zatwierdza zwrot.',
-  issues: 'Zwrot ma rozbieżności — sprzedawca wydarzenia lub administrator przyjmuje je z decyzją, co dalej.',
+  issues: 'Zwrot ma rozbieżności — sprzedawca eventu lub administrator przyjmuje je z decyzją, co dalej.',
   done: 'Sprzęt wrócił i został sprawdzony.',
 };
 

@@ -66,7 +66,7 @@ const slug = (value: string) =>
     .replace(/Ł/g, 'L')
     .replace(/[^a-zA-Z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
-    .slice(0, 60) || 'wydarzenie';
+    .slice(0, 60) || 'event';
 
 export type LoadedEventCard = {
   data: EventCardData;
@@ -82,11 +82,11 @@ export async function loadEventCardData(
 ): Promise<LoadedEventCard> {
   const { data: workspace, error: workspaceError } = await userClient.rpc('get_realization_workspace', { p_event_id: eventId });
   if (workspaceError) {
-    throw new EventCardError('Nie udało się odczytać danych realizacji wydarzenia. Spróbuj ponownie.', 500);
+    throw new EventCardError('Nie udało się odczytać danych realizacji eventu. Spróbuj ponownie.', 500);
   }
   if (!workspace) {
     throw new EventCardError(
-      'Kartę imprezy przygotowuje kierownik realizacji, autor wydarzenia albo osoba z uprawnieniem do zarządzania wydarzeniami.',
+      'Kartę imprezy przygotowuje kierownik realizacji, autor eventu albo osoba z uprawnieniem do zarządzania eventami.',
       403,
     );
   }
@@ -159,7 +159,7 @@ export async function loadEventCardData(
     ]);
 
   if (eventRes.error || !eventRes.data) {
-    throw new EventCardError('Nie udało się odczytać wydarzenia do karty imprezy. Spróbuj ponownie.', 500);
+    throw new EventCardError('Nie udało się odczytać eventu do karty imprezy. Spróbuj ponownie.', 500);
   }
   const vehiclesRows: Json[] = vehiclesRes.data ?? [];
   const transportRows: Json[] = transportRes.error ? [] : ((transportRes.data ?? []) as Json[]);
@@ -190,10 +190,10 @@ export async function loadEventCardData(
   } else {
     const coordinator = team.find((m) => /koordynator/i.test(text(m.role)));
     if (coordinator) {
-      manager = { name: text(coordinator.name), role: 'Koordynator wydarzenia', phone: coordinator.phone || null, email: coordinator.email || null };
-      notices.push('Nie wyznaczono kierownika realizacji — na karcie jest koordynator wydarzenia. Wyznacz kierownika w zakładce Zespół.');
+      manager = { name: text(coordinator.name), role: 'Koordynator eventu', phone: coordinator.phone || null, email: coordinator.email || null };
+      notices.push('Nie wyznaczono kierownika realizacji — na karcie jest koordynator eventu. Wyznacz kierownika w zakładce Zespół.');
     } else {
-      notices.push('Nie wyznaczono kierownika realizacji ani koordynatora wydarzenia.');
+      notices.push('Nie wyznaczono kierownika realizacji ani koordynatora eventu.');
     }
   }
 
@@ -465,7 +465,7 @@ export async function loadEventCardData(
 
   const guidelines: Array<{ title: string; text: string }> = [];
   if (soldItems.length) guidelines.push({ title: 'Zakres — co zostało sprzedane', text: soldItems.map((line) => `• ${line}`).join('\n') });
-  if (text(ws.description)) guidelines.push({ title: 'Opis wydarzenia', text: text(ws.description) });
+  if (text(ws.description)) guidelines.push({ title: 'Opis eventu', text: text(ws.description) });
   if (productRequirements.length) guidelines.push({ title: 'Wymagania usług (do sprawdzenia z klientem i obiektem)', text: productRequirements.map((line) => `• ${line}`).join('\n') });
   const agendaNotes = ((Array.isArray(ws.agenda_notes) ? ws.agenda_notes : []) as Json[]).map((n) => text(n.content)).filter(Boolean);
   if (agendaNotes.length) guidelines.push({ title: 'Uwagi z agendy', text: agendaNotes.map((line) => `• ${line}`).join('\n') });
@@ -489,7 +489,7 @@ export async function loadEventCardData(
     generatedAt: new Date().toISOString(),
     generatedBy: fullName(generatorRes.data as Json) || null,
     event: {
-      name: text(ws.name) || text(event.name) || 'Wydarzenie',
+      name: text(ws.name) || text(event.name) || 'Event',
       status: [EVENT_STATUS_LABELS[statusKey] || null, warehouseStatus ? `Magazyn: ${warehouseStatus}` : null, event.loading_confirmed ? 'Załadunek potwierdzony' : null].filter(Boolean).join(' · ') || null,
       category: text(event.category?.name) || null,
       start,

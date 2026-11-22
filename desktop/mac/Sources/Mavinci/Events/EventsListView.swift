@@ -147,27 +147,27 @@ struct EventSettlementCell: View {
             header
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationTitle("Wydarzenia")
+        .navigationTitle("Eventy")
         .inspector(isPresented: $inspectorShown) {
             Group {
                 if let item = selected {
                     EventListInspector(item: item, canManage: store.canManage && !item.salesColleague, open: { open(item) },
                                        changeStatus: { statusFor = item }, remove: { removing = item })
                 } else {
-                    ContentUnavailableView("Wybierz wydarzenie z listy", systemImage: "calendar",
-                                           description: Text("Karta pokaże termin, klienta, miejsce, status i rozliczenie. Dwuklik albo ↩ otwiera kartę wydarzenia."))
+                    ContentUnavailableView("Wybierz event z listy", systemImage: "calendar",
+                                           description: Text("Karta pokaże termin, klienta, miejsce, status i rozliczenie. Dwuklik albo ↩ otwiera kartę eventu."))
                 }
             }
             .inspectorColumnWidth(min: 280, ideal: 340, max: 520)
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { categoriesShown = true } label: { Label("Kategorie", systemImage: "tag") }.help("Kategorie wydarzeń")
+                Button { categoriesShown = true } label: { Label("Kategorie", systemImage: "tag") }.help("Kategorie eventów")
                 if store.access?.canCreate == true {
                     Button { creating = true } label: { Label("Nowy event", systemImage: "plus") }.help("Nowy event — kreator jak w CRM")
                 }
                 Button { inspectorShown.toggle() } label: { Label("Karta", systemImage: "sidebar.trailing") }
-                    .help("Pokaż lub ukryj kartę wydarzenia (⌥⌘I)").keyboardShortcut("i", modifiers: [.command, .option])
+                    .help("Pokaż lub ukryj kartę eventu (⌥⌘I)").keyboardShortcut("i", modifiers: [.command, .option])
             }
         }
         .onChange(of: selectedID) { _, value in if value != nil { inspectorShown = true } }
@@ -178,10 +178,10 @@ struct EventSettlementCell: View {
         .sheet(item: $statusFor) { item in
             EventStatusSheet(store: store, item: item).environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
-        .confirmationDialog("Usuń wydarzenie", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+        .confirmationDialog("Usuń event", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Usuń", role: .destructive) { if let item = removing { Task { _ = await store.delete(item) } } }
             Button("Anuluj", role: .cancel) {}
-        } message: { Text("Czy na pewno chcesz usunąć wydarzenie „\(removing?.name ?? "")”? Tej operacji nie można cofnąć.") }
+        } message: { Text("Czy na pewno chcesz usunąć event „\(removing?.name ?? "")”? Tej operacji nie można cofnąć.") }
         .task(id: state.employee?.id) {
             await store.backgroundSync()
             while !Task.isCancelled {
@@ -201,10 +201,10 @@ struct EventSettlementCell: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("Wydarzenia").font(.title2.weight(.semibold))
+                Text("Eventy").font(.title2.weight(.semibold))
                 Text(countText).foregroundStyle(.secondary)
                 Spacer()
-                if store.syncing { ProgressView().controlSize(.small).help("Synchronizacja wydarzeń") }
+                if store.syncing { ProgressView().controlSize(.small).help("Synchronizacja eventów") }
             }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
@@ -257,7 +257,7 @@ struct EventSettlementCell: View {
         if store.events.isEmpty && !store.loaded {
             if let error = store.loadError {
                 ContentUnavailableView {
-                    Label("Wydarzenia", systemImage: "calendar")
+                    Label("Eventy", systemImage: "calendar")
                 } description: { Text(error) } actions: { Button("Spróbuj ponownie") { Task { await store.sync(force: true) } } }
             } else {
                 ProgressView("Ładowanie...").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -275,7 +275,7 @@ struct EventSettlementCell: View {
             .overlay {
                 if list.isEmpty {
                     ContentUnavailableView("Brak wyników", systemImage: "line.3.horizontal.decrease.circle",
-                                           description: Text(search.isEmpty ? "Zmień filtr „Pokaż” albo kategorię." : "Żadne wydarzenie nie pasuje do wyszukiwania."))
+                                           description: Text(search.isEmpty ? "Zmień filtr „Pokaż” albo kategorię." : "Żaden event nie pasuje do wyszukiwania."))
                 }
             }
         }
@@ -415,7 +415,7 @@ struct EventSettlementCell: View {
                             .font(.callout)
                     }
                 }
-                Button(action: open) { Label("Otwórz kartę wydarzenia", systemImage: "arrow.up.forward.app").frame(maxWidth: .infinity) }
+                Button(action: open) { Label("Otwórz kartę eventu", systemImage: "arrow.up.forward.app").frame(maxWidth: .infinity) }
                     .buttonStyle(.borderedProminent).controlSize(.large)
                 if item.salesColleague {
                     Label(item.salesColleagueSeller.isEmpty ? "Sprzedaż kolegi — podgląd tylko do odczytu" : "Sprzedaż kolegi — sprzedał: \(item.salesColleagueSeller)",
@@ -452,7 +452,7 @@ struct EventSettlementCell: View {
                         if canManage { Button { changeStatus() } label: { Label("Zmień status", systemImage: "flag") } }
                         if let maps = item.mapsURL { Button { NSWorkspace.shared.open(maps) } label: { Label("Pokaż na mapie", systemImage: "map") } }
                         Button { state.openCRM("/crm/events/\(item.id)") } label: { Label("Otwórz w CRM", systemImage: "safari") }
-                        if canManage { Button(role: .destructive) { remove() } label: { Label("Usuń wydarzenie", systemImage: "trash") } }
+                        if canManage { Button(role: .destructive) { remove() } label: { Label("Usuń event", systemImage: "trash") } }
                     }
                     .buttonStyle(.borderless)
                 }

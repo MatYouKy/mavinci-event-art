@@ -118,7 +118,7 @@ export function SummaryTab({
           <Feather name="database" size={16} color={colors.primary.gold} />
           <View style={{ flex: 1 }}>
             <Text style={styles.noticeTitle}>{SETTLEMENT_DATABASE_UPDATE_MESSAGE}</Text>
-            <Text style={styles.noticeText}>Podsumowanie wydarzenia i prowizje będą dostępne po wdrożeniu migracji w bazie.</Text>
+            <Text style={styles.noticeText}>Podsumowanie eventu i prowizje będą dostępne po wdrożeniu migracji w bazie.</Text>
           </View>
         </View>
       );
@@ -128,7 +128,7 @@ export function SummaryTab({
         <View style={styles.notice} accessibilityRole="alert">
           <Feather name="shield" size={16} color={colors.primary.gold} />
           <Text style={[styles.noticeText, { flex: 1 }]}>
-            {state.message || 'Podsumowanie wydarzenia widzi osoba z dostępem do kwot tego wydarzenia.'}
+            {state.message || 'Podsumowanie eventu widzi osoba z dostępem do kwot tego eventu.'}
           </Text>
         </View>
       );
@@ -137,7 +137,7 @@ export function SummaryTab({
       return (
         <View style={styles.section}>
           <Text accessibilityRole="alert" style={styles.errorText}>
-            {state.message || 'Nie udało się pobrać podsumowania wydarzenia.'}
+            {state.message || 'Nie udało się pobrać podsumowania eventu.'}
           </Text>
           <TouchableOpacity accessibilityRole="button" onPress={onReload}>
             <Text style={styles.link}>Spróbuj ponownie</Text>
@@ -199,7 +199,7 @@ export function SummaryTab({
     <View>
       {/* Status */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Podsumowanie wydarzenia</Text>
+        <Text style={styles.sectionTitle}>Podsumowanie eventu</Text>
         <View style={styles.chipRow}>
           <View style={[styles.chip, { backgroundColor: `${statusColor}26` }]}>
             <Text style={[styles.chipText, { color: statusColor }]}>{SETTLEMENT_STATUS_LABELS[data.status]}</Text>
@@ -228,12 +228,12 @@ export function SummaryTab({
         )}
         {data.submitted_stale && (
           <Text style={[styles.meta, { color: WARNING_TEXT }]}>
-            Dane wydarzenia zmieniły się od wysłania — przed zatwierdzeniem podsumowanie wraca do poprawy.
+            Dane eventu zmieniły się od wysłania — przed zatwierdzeniem podsumowanie wraca do poprawy.
           </Text>
         )}
         {data.stale && (
           <Text style={[styles.meta, { color: WARNING_TEXT }]}>
-            Dane wydarzenia zmieniły się po zatwierdzeniu — prowizje mają zamrożoną podstawę do ponownego otwarcia podsumowania.
+            Dane eventu zmieniły się po zatwierdzeniu — prowizje mają zamrożoną podstawę do ponownego otwarcia podsumowania.
           </Text>
         )}
         {state.status === 'error' && !!state.message && (

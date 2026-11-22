@@ -116,7 +116,7 @@ export default function EmployeesPageClient({
     try {
   
     const confirmed = await showConfirm(
-      `Czy na pewno chcesz trwale usunąć pracownika:\n\n${employee.name} ${employee.surname}?\n\nTej operacji nie można cofnąć. Autorstwo wydarzeń i wymaganych dokumentów przejmie Twoje konto administratora, a przypisania tego pracownika zostaną usunięte.`,
+      `Czy na pewno chcesz trwale usunąć pracownika:\n\n${employee.name} ${employee.surname}?\n\nTej operacji nie można cofnąć. Autorstwo eventów i wymaganych dokumentów przejmie Twoje konto administratora, a przypisania tego pracownika zostaną usunięte.`,
       'Usuń trwale',
     );
   

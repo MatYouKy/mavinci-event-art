@@ -22,8 +22,8 @@ export type ScheduleItem = {
 };
 
 export const SCHEDULE_KIND_LABELS: Record<ScheduleKind, string> = {
-  event: 'Wydarzenie',
-  phase: 'Faza wydarzenia',
+  event: 'Event',
+  phase: 'Faza eventu',
   meeting: 'Spotkanie',
   inquiry: 'Kontakt w zapytaniu',
   task: 'Zadanie',
@@ -34,7 +34,7 @@ export const SCHEDULE_KIND_LABELS: Record<ScheduleKind, string> = {
 /** Grupy w filtrach widoku (lejek = zapytania, zadania i oddzwonienia). */
 export type ScheduleGroup = 'events' | 'meetings' | 'funnel' | 'absences';
 export const SCHEDULE_GROUPS: { id: ScheduleGroup; label: string; kinds: ScheduleKind[]; color: string }[] = [
-  { id: 'events', label: 'Wydarzenia i fazy', kinds: ['event', 'phase'], color: '#3b82f6' },
+  { id: 'events', label: 'Eventy i fazy', kinds: ['event', 'phase'], color: '#3b82f6' },
   { id: 'meetings', label: 'Spotkania', kinds: ['meeting'], color: '#0ea5e9' },
   { id: 'funnel', label: 'Lejek i zadania', kinds: ['inquiry', 'task', 'call'], color: '#f59e0b' },
   { id: 'absences', label: 'Nieobecności', kinds: ['absence'], color: '#10b981' },

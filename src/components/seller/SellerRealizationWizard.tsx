@@ -173,7 +173,7 @@ export default function SellerRealizationWizard({ offerId, crm = false, refreshK
         })}
       </ol>
       <p className="text-xs text-white/50">{state.steps.filter(step => step.available && step.status === 'approved').length}/4 kroków uzgodnionych · {state.completed ? 'przygotowania zatwierdzone' : 'pozostaje końcowa decyzja opiekuna'}</p>
-      {state.active && crm && !state.manager && <p className="text-sm text-amber-200">Masz dostęp tylko do podglądu przygotowań. Decyzje wymagają uprawnień do tej oferty i wydarzenia.</p>}
+      {state.active && crm && !state.manager && <p className="text-sm text-amber-200">Masz dostęp tylko do podglądu przygotowań. Decyzje wymagają uprawnień do tej oferty i eventu.</p>}
       {!state.active && <p className="text-sm text-amber-200">{!state.event_id ? 'Najpierw utwórz powiązane wydarzenie w CRM.' : 'Przygotowania są tylko do odczytu — sprawdź status wydarzenia i powiązanie oferty.'}</p>}
       {state.steps[0]?.status === 'approved' && <details className="rounded-lg bg-white/[0.035] p-3"><summary className="cursor-pointer text-sm text-[#d3bb73]">Zatwierdzony kontakt na miejscu · {String(state.steps[0].payload.name || '')}</summary><div className="mt-3"><PayloadView value={state.steps[0].payload}/></div></details>}
       {selected === 'finish' ? <div className="space-y-4">

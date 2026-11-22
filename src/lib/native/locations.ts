@@ -179,7 +179,7 @@ export async function saveLocation(ctx: NativeContext, id: string | null, body: 
 export async function deleteLocation(ctx: NativeContext, id: string) {
   requireManage(ctx);
   const { data, error } = await ctx.supabase.from('locations').delete().eq('id', id).select('id');
-  if (error?.code === '23503') fail('Nie można usunąć lokalizacji używanej w wydarzeniach lub ofertach.');
+  if (error?.code === '23503') fail('Nie można usunąć lokalizacji używanej w eventach lub ofertach.');
   check(error, 'Błąd podczas usuwania lokalizacji');
   if (!data?.length) fail('Nie udało się usunąć lokalizacji (brak uprawnień albo została już usunięta).', 403);
   return { ok: true, message: 'Lokalizacja usunięta' };

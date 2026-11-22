@@ -90,7 +90,7 @@ export default function SettlementLineRow({
             label: 'Powód wyłączenia',
             required: true,
             initial: line.note ?? '',
-            placeholder: 'Np. faktura dotyczy innego wydarzenia',
+            placeholder: 'Np. faktura dotyczy innego eventu',
           },
         },
         note => save({ included: false, note }, 'Pozycja wyłączona z podsumowania.'),

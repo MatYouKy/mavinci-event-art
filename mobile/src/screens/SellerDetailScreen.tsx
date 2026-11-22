@@ -18,7 +18,7 @@ import {
 import {
   SELLER_JOURNEY_ACTOR_LABELS,
   SELLER_JOURNEY_FILTERS,
-  SELLER_JOURNEY_STAGES,
+  SELLER_JOURNEY_STAGES_TEAM,
   type SellerJourneyTone,
   sellerJourneyMatches,
 } from '../lib/offerJourney';
@@ -318,8 +318,8 @@ export default function SellerDetailScreen() {
         )}
 
         {/* Wydarzenia */}
-        <Text style={styles.sectionTitle}>Wydarzenia ({data.events.length})</Text>
-        {data.events.length === 0 && <Text style={styles.empty}>Sprzedawca nie ma jeszcze wydarzeń.</Text>}
+        <Text style={styles.sectionTitle}>Eventy ({data.events.length})</Text>
+        {data.events.length === 0 && <Text style={styles.empty}>Sprzedawca nie ma jeszcze eventów.</Text>}
         {data.events.map((event) => {
           const onOpen = canOpenEvents ? () => navigateToEvent(event.id) : undefined;
           return (
@@ -331,7 +331,7 @@ export default function SellerDetailScreen() {
               onPress={onOpen}
               accessibilityRole={onOpen ? 'button' : undefined}
               accessibilityLabel={`${event.name}, ${formatDate(event.event_date)}`}
-              accessibilityHint={onOpen ? 'Otwiera szczegóły wydarzenia' : undefined}
+              accessibilityHint={onOpen ? 'Otwiera szczegóły eventu' : undefined}
             >
               <View style={styles.rowHeader}>
                 <View style={styles.dateBadge}>
@@ -439,7 +439,7 @@ function OfferRow({ offer }: { offer: SellerDetailOffer }) {
         <Feather name="external-link" size={16} color={colors.text.tertiary} />
       </View>
       <View style={styles.journeyBar} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        {SELLER_JOURNEY_STAGES.map((stage, index) => (
+        {SELLER_JOURNEY_STAGES_TEAM.map((stage, index) => (
           <View
             key={stage.key}
             style={[

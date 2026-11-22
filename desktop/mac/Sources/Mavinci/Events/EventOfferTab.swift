@@ -73,7 +73,7 @@ struct OfferTabData: Decodable {
                         .help("Wysyłka pierwszej oferty w szkicu e-mailem (z aktualnym PDF oferty)")
                 }
                 Button { newOffer() } label: { Label("Nowa oferta", systemImage: "plus") }
-                    .buttonStyle(.borderedProminent).help(nativeWizard ? "Kreator oferty dla tego wydarzenia" : "Kreator oferty otworzy się w CRM.")
+                    .buttonStyle(.borderedProminent).help(nativeWizard ? "Kreator oferty dla tego eventu" : "Kreator oferty otworzy się w CRM.")
             }
             .padding(.horizontal, 18).padding(.top, 12)
             Divider()

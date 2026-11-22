@@ -396,7 +396,7 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-[#e5e4e2]">Podwykonawcy wydarzenia</h2>
+          <h2 className="text-xl font-bold text-[#e5e4e2]">Podwykonawcy eventu</h2>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
             Jedno miejsce dla zakresu prac, godzin, rozliczeń, umów i potwierdzeń
           </p>
@@ -514,7 +514,7 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
         <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
           <UserCheck className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
           <p className="mb-4 text-[#e5e4e2]/60">
-            Brak przypisanych podwykonawców do tego wydarzenia
+            Brak przypisanych podwykonawców do tego eventu
           </p>
           <button
             onClick={() => setShowAddTaskModal(true)}
@@ -1135,7 +1135,7 @@ function AddTaskModal({
       }));
       setAiSource(
         (data.sourceOffers || []).map((offer: { name: string }) => offer.name).join(', ') ||
-          'Dane wydarzenia, zlecenie i dodatkowe wskazówki',
+          'Dane eventu, zlecenie i dodatkowe wskazówki',
       );
       setShowGenerator(false);
       showSnackbar(
@@ -1326,7 +1326,7 @@ function AddTaskModal({
         }}
       >
         <p className="mb-4 text-sm text-white/60">
-          AI uzupełni zakres obowiązków, oczekiwany rezultat i wytyczne na podstawie wydarzenia,
+          AI uzupełni zakres obowiązków, oczekiwany rezultat i wytyczne na podstawie eventu,
           zlecenia i Twoich wskazówek. Jeśli jest zaakceptowana oferta, uwzględni także wybrany
           pakiet. Oferta nie jest wymagana. Zastąpi treść tych trzech pól — sprawdź ją przed
           wysłaniem.
@@ -1766,7 +1766,7 @@ function AddTaskModal({
 
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-              Uzgodniony koszt do prognozy wydarzenia (zł)
+              Uzgodniony koszt do prognozy eventu (zł)
             </label>
             <ContactValidationField field="agreed_cost" error={formErrors.agreed_cost}>
               <input
@@ -1777,7 +1777,7 @@ function AddTaskModal({
                 onChange={(e) =>
                   setFormData({ ...formData, agreed_cost: parseFloat(e.target.value) || 0 })
                 }
-                placeholder="Kwota, którą pokażemy w przyszłej rentowności wydarzenia"
+                placeholder="Kwota, którą pokażemy w przyszłej rentowności eventu"
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
             </ContactValidationField>
@@ -1847,7 +1847,7 @@ function AddTaskModal({
                     </div>
                     <p className="mt-2 text-xs text-[#e5e4e2]/45">
                       Przeciągnij PDF albo skan umowy. Plik trafi także do folderu „Umowy z
-                      podwykonawcami” w wydarzeniu.
+                      podwykonawcami” w evencie.
                     </p>
                   </div>
 

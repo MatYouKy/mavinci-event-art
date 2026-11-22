@@ -316,7 +316,7 @@ export default function EditTemplateWYSIWYGPage() {
             .maybeSingle();
 
           if (contractError) throw contractError;
-          if (!contractData) throw new Error('Nie znaleziono umowy przypisanej do wydarzenia');
+          if (!contractData) throw new Error('Nie znaleziono umowy przypisanej do eventu');
           if (contractData.locked_at) {
             throw new Error('Podpisana umowa jest zablokowana i nie może być edytowana');
           }
@@ -2014,7 +2014,7 @@ export default function EditTemplateWYSIWYGPage() {
               <select
                 value={selectedLogo}
                 onChange={(e) => setSelectedLogo(e.target.value)}
-                title="W umowie wydarzenia obowiązuje „Logo do druku” z brandbooka firmy wydarzenia. To logo działa, gdy firma nie ma zaznaczonego logo do druku."
+                title="W umowie eventu obowiązuje „Logo do druku” z brandbooka firmy eventu. To logo działa, gdy firma nie ma zaznaczonego logo do druku."
                 className="max-w-[220px] rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
               >
                 {brandLogos.length > 0 ? (
@@ -2153,7 +2153,7 @@ export default function EditTemplateWYSIWYGPage() {
                   offer: 'Oferta',
                   contact: 'Kontakt',
                   organization: 'Firma',
-                  event: 'Wydarzenie',
+                  event: 'Event',
                   location: 'Lokalizacja',
                   financial: 'Finanse',
                   executor: 'Wykonawca',
@@ -2181,7 +2181,7 @@ export default function EditTemplateWYSIWYGPage() {
                 { key: 'offer', label: 'Oferta' },
                 { key: 'contact', label: 'Kontakt' },
                 { key: 'organization', label: 'Firma' },
-                { key: 'event', label: 'Wydarzenie' },
+                { key: 'event', label: 'Event' },
                 { key: 'location', label: 'Lokalizacja' },
                 { key: 'financial', label: 'Finanse' },
                 { key: 'executor', label: 'Wykonawca' },
@@ -2292,7 +2292,7 @@ export default function EditTemplateWYSIWYGPage() {
                 ))}
               {placeholderCategory === 'event' &&
                 [
-                  { key: '{{event_name}}', label: 'Nazwa wydarzenia' },
+                  { key: '{{event_name}}', label: 'Nazwa eventu' },
                   { key: '{{event_date}}', label: 'Data i czas start' },
                   { key: '{{event_end_date}}', label: 'Data i czas koniec' },
                   { key: '{{event_date_only}}', label: 'Data start (DD.MM.RRRR)' },

@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     }
     const { eventId } = body;
     if (!eventId) {
-      return NextResponse.json({ error: 'Brak identyfikatora wydarzenia.' }, { status: 400 });
+      return NextResponse.json({ error: 'Brak identyfikatora eventu.' }, { status: 400 });
     }
 
     const { admin, employeeId } = await authorizeWeddingDocument(request, eventId);
@@ -104,7 +104,7 @@ export async function POST(request: Request) {
     ]);
 
     if (eventResult.error || !eventResult.data) {
-      return NextResponse.json({ error: 'Nie znaleziono wydarzenia.' }, { status: 404 });
+      return NextResponse.json({ error: 'Nie znaleziono eventu.' }, { status: 404 });
     }
     if (cardResult.error || !cardResult.data) {
       return NextResponse.json(

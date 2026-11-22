@@ -435,11 +435,11 @@ export default function NewInvoicePage() {
     const available = companies.some((company) => company.id === companyId);
     setSelectedCompanyId(available ? companyId : '');
     setEventCompanyMessage(!event
-      ? 'Nie udało się odczytać działalności wydarzenia. Sprawdź dane wydarzenia przed wyborem firmy wystawiającej.'
+      ? 'Nie udało się odczytać działalności eventu. Sprawdź dane eventu przed wyborem firmy wystawiającej.'
       : !companyId
-        ? 'Wydarzenie nie ma przypisanej działalności. Wybierz firmę wystawiającą fakturę.'
+        ? 'Event nie ma przypisanej działalności. Wybierz firmę wystawiającą fakturę.'
         : !available
-          ? 'Działalność przypisana do wydarzenia jest nieaktywna lub nie masz uprawnień do wystawiania jej faktur. Nie wybrano innej firmy automatycznie.'
+          ? 'Działalność przypisana do eventu jest nieaktywna lub nie masz uprawnień do wystawiania jej faktur. Nie wybrano innej firmy automatycznie.'
           : null);
   };
 
@@ -933,7 +933,7 @@ export default function NewInvoicePage() {
       if (advanceFrom) setAdvancePrefillError(err.message || 'Nie udało się przygotować kolejnej zaliczki.');
       if (issuerRequest !== null && issuerRequest === eventCompanyRequest.current) {
         setSelectedCompanyId('');
-        setEventCompanyMessage('Nie udało się ustalić firmy wystawiającej na podstawie wydarzenia. Odśwież formularz, aby ponownie wczytać dane.');
+        setEventCompanyMessage('Nie udało się ustalić firmy wystawiającej na podstawie eventu. Odśwież formularz, aby ponownie wczytać dane.');
       }
       showSnackbar(err.message || 'Błąd podczas ładowania danych', 'error');
     } finally {
@@ -1122,11 +1122,11 @@ export default function NewInvoicePage() {
       return;
     }
     if (eventCompanyLoading) {
-      showSnackbar('Poczekaj na wczytanie działalności przypisanej do wydarzenia.', 'warning');
+      showSnackbar('Poczekaj na wczytanie działalności przypisanej do eventu.', 'warning');
       return;
     }
     if (!financeAccess?.canIssueInvoices || !canUseInvoiceEvent(selectedEventId)) {
-      showSnackbar('Nie masz uprawnień do wystawienia faktury dla tego wydarzenia.', 'error');
+      showSnackbar('Nie masz uprawnień do wystawienia faktury dla tego eventu.', 'error');
       return;
     }
     if ((!isPartyDataCorrection && !isPaid && !calculatePaymentDueDate())
@@ -1135,7 +1135,7 @@ export default function NewInvoicePage() {
       return;
     }
     if (!advanceFrom && invoiceType !== 'corrective' && itemSourcesLoading) {
-      showSnackbar('Poczekaj na wczytanie źródeł pozycji i kwot wydarzenia.', 'warning');
+      showSnackbar('Poczekaj na wczytanie źródeł pozycji i kwot eventu.', 'warning');
       return;
     }
     if (advanceFrom && (advancePrefillLoading || advancePrefillError || !nextAdvanceContext)) {
@@ -1147,7 +1147,7 @@ export default function NewInvoicePage() {
       return;
     }
     if (buyerDiffersFromEvent && !buyerOverrideConfirmed) {
-      showSnackbar('Wybrany nabywca różni się od nabywcy przypisanego do rozliczenia wydarzenia. Sprawdź obie strony i potwierdź zmianę w formularzu.', 'warning');
+      showSnackbar('Wybrany nabywca różni się od nabywcy przypisanego do rozliczenia eventu. Sprawdź obie strony i potwierdź zmianę w formularzu.', 'warning');
       return;
     }
 
@@ -1565,7 +1565,7 @@ export default function NewInvoicePage() {
         if (settlementLinkError) {
           console.error('Error linking invoice to settlement group:', settlementLinkError);
           showSnackbar(
-            'Faktura powstała, ale nie udało się przypisać jej do wszystkich wydarzeń grupy',
+            'Faktura powstała, ale nie udało się przypisać jej do wszystkich eventów grupy',
             'warning',
           );
         }
@@ -1739,18 +1739,18 @@ export default function NewInvoicePage() {
                 ))}
               </select>
               {eventCompanyLoading ? (
-                <p className="mt-2 text-xs text-[#e5e4e2]/60">Wczytywanie działalności przypisanej do wydarzenia…</p>
+                <p className="mt-2 text-xs text-[#e5e4e2]/60">Wczytywanie działalności przypisanej do eventu…</p>
               ) : eventCompanyMessage ? (
                 <p role="alert" className="mt-2 text-xs text-amber-200">{eventCompanyMessage}</p>
               ) : !advanceFrom && invoiceType !== 'corrective' && linkedEvent?.my_company_id && selectedCompanyId === linkedEvent.my_company_id ? (
-                <p className="mt-2 text-xs text-[#e5e4e2]/60">Działalność przypisana do wydarzenia: {linkedEvent.name}.</p>
+                <p className="mt-2 text-xs text-[#e5e4e2]/60">Działalność przypisana do eventu: {linkedEvent.name}.</p>
               ) : null}
               {!eventCompanyLoading && linkedEvent && selectedCompanyId && invoiceType !== 'corrective'
                 && selectedCompanyId !== linkedEvent.my_company_id && (
                 <p className="mt-2 text-xs text-[#d3bb73]">
                   {invoiceType === 'proforma'
-                    ? 'Pro forma nie zmieni firmy wydarzenia. Zdecyduje wystawiona na jej podstawie faktura.'
-                    : <>Po wystawieniu faktury firma wydarzenia zostanie zmieniona na {myCompanies.find((company) => company.id === selectedCompanyId)?.name}. Sam zapis szkicu nie zmienia przypisania.</>}
+                    ? 'Pro forma nie zmieni firmy eventu. Zdecyduje wystawiona na jej podstawie faktura.'
+                    : <>Po wystawieniu faktury firma eventu zostanie zmieniona na {myCompanies.find((company) => company.id === selectedCompanyId)?.name}. Sam zapis szkicu nie zmienia przypisania.</>}
                 </p>
               )}
               {invoiceType === 'corrective' && relatedInvoiceId && (
@@ -1955,7 +1955,7 @@ export default function NewInvoicePage() {
                       </p>
                       <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/50">
                         Dokument zostanie automatycznie pokazany i rozliczony w poniższych
-                        wydarzeniach. Operacyjnie pozostają one osobnymi realizacjami.
+                        eventach. Operacyjnie pozostają one osobnymi realizacjami.
                       </p>
                       <div className="mt-3 grid gap-2 md:grid-cols-2">
                         {settlementGroup.events.map((groupEvent) => (
@@ -1972,7 +1972,7 @@ export default function NewInvoicePage() {
                                 ? new Date(groupEvent.event_date).toLocaleDateString('pl-PL')
                                 : 'Termin nieustalony'}
                               {groupEvent.id === settlementGroup.primary_event_id &&
-                                ' · wydarzenie główne'}
+                                ' · event główny'}
                             </p>
                           </div>
                         ))}
@@ -1985,7 +1985,7 @@ export default function NewInvoicePage() {
                 <div className="rounded-lg bg-white/[0.03] px-4 py-3 text-sm">
                   <p className="text-[#e5e4e2]">{nextAdvanceContext.source.buyer_name}</p>
                   <p className="mt-1 text-[#e5e4e2]/50">{nextAdvanceContext.source.buyer_nip ? `NIP: ${nextAdvanceContext.source.buyer_nip} · ` : ''}{nextAdvanceContext.source.buyer_street}, {nextAdvanceContext.source.buyer_postal_code} {nextAdvanceContext.source.buyer_city}</p>
-                  {linkedEvent && <p className="mt-1 text-[#e5e4e2]/50">Wydarzenie: {linkedEvent.name}</p>}
+                  {linkedEvent && <p className="mt-1 text-[#e5e4e2]/50">Event: {linkedEvent.name}</p>}
                 </div>
               ) : isPartyDataCorrection && originalInvoice ? (
                 <InvoiceBuyerCorrectionEditor value={correctedBuyer} onChange={handleCorrectedBuyerChange}
@@ -2169,7 +2169,7 @@ export default function NewInvoicePage() {
                 </label>
               </>}
               {buyerDiffersFromEvent && <div className="rounded-xl bg-[#d3bb73]/10 p-4 text-sm text-[#e5e4e2]">
-                <p>Nabywca zapisany w rozliczeniu wydarzenia: <strong>{organizations.find((organization) => organization.id === expectedEventBuyerId)?.name || 'inna organizacja niż wybrana powyżej'}</strong>.</p>
+                <p>Nabywca zapisany w rozliczeniu eventu: <strong>{organizations.find((organization) => organization.id === expectedEventBuyerId)?.name || 'inna organizacja niż wybrana powyżej'}</strong>.</p>
                 <label className="mt-3 flex items-start gap-3">
                   <input type="checkbox" checked={buyerOverrideConfirmed} onChange={(event) => setBuyerOverrideConfirmed(event.target.checked)} className="mt-1 h-4 w-4 accent-[#d3bb73]" />
                   Potwierdzam, że na tej fakturze nabywcą ma być wybrana powyżej osoba lub organizacja. Odbiorca nie zastępuje nabywcy.
@@ -2178,7 +2178,7 @@ export default function NewInvoicePage() {
               {!buyerIsPrivatePerson && selectedOrgId && !eventId && !advanceFrom && invoiceType !== 'corrective' && (
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
                   <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                    Powiązane wydarzenie
+                    Powiązany event
                   </label>
 
                   <select
@@ -2186,7 +2186,7 @@ export default function NewInvoicePage() {
                     onChange={(e) => void handleEventChange(e.target.value)}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
                   >
-                    <option value="">Brak powiązanego wydarzenia</option>
+                    <option value="">Brak powiązanego eventu</option>
 
                     {organizationEvents.map((event) => (
                       <option key={event.id} value={event.id}>
@@ -2199,7 +2199,7 @@ export default function NewInvoicePage() {
                   </select>
 
                   <div className="mt-2 text-xs text-[#e5e4e2]/50">
-                    Jeśli wybierzesz wydarzenie, PDF faktury zapisze się również w plikach tego
+                    Jeśli wybierzesz event, PDF faktury zapisze się również w plikach tego
                     eventu.
                   </div>
                 </div>
@@ -2378,7 +2378,7 @@ export default function NewInvoicePage() {
                 <label className="block text-sm text-[#e5e4e2]">Wysokość proformy (%)
                   <input type="number" min="0.01" max="100" step="0.01" value={Number.isFinite(proformaPercent) ? proformaPercent : ''} onChange={event => setProformaPercent(event.target.valueAsNumber)} className="mt-2 w-full rounded-lg border border-white/10 bg-[#0a0d1a] px-4 py-3" />
                 </label>
-                <p className="text-sm text-[#e5e4e2]/65">Procent pełnej wartości pozycji poniżej, pobranych z wydarzenia lub dodanych ręcznie. Np. 50% automatycznie przelicza kwoty netto, VAT i brutto proformy.</p>
+                <p className="text-sm text-[#e5e4e2]/65">Procent pełnej wartości pozycji poniżej, pobranych z eventu lub dodanych ręcznie. Np. 50% automatycznie przelicza kwoty netto, VAT i brutto proformy.</p>
               </div>
             </div>}
 
@@ -2441,21 +2441,21 @@ export default function NewInvoicePage() {
                       const source = itemSources.find((candidate) => candidate.id === sourceId);
                       return source ? (
                         <option key={sourceId} value={sourceId}>
-                          {source.label} — {source.net.toFixed(2)} netto / {source.gross.toFixed(2)} {currencyCode} brutto{preferredItemSource === sourceId ? ' · źródło wydarzenia' : ''}
+                          {source.label} — {source.net.toFixed(2)} netto / {source.gross.toFixed(2)} {currencyCode} brutto{preferredItemSource === sourceId ? ' · źródło eventu' : ''}
                         </option>
                       ) : (
                         <option key={sourceId} value={sourceId} disabled>
-                          {sourceId === 'calculation' ? 'Kalkulacja' : 'Oferta'} — {itemSourcesLoading ? 'wczytywanie…' : !selectedEventId ? 'najpierw wybierz wydarzenie' : 'brak dostępnego zaakceptowanego źródła'}
+                          {sourceId === 'calculation' ? 'Kalkulacja' : 'Oferta'} — {itemSourcesLoading ? 'wczytywanie…' : !selectedEventId ? 'najpierw wybierz event' : 'brak dostępnego zaakceptowanego źródła'}
                         </option>
                       );
                     })}
                     <option value="manual">Pozycje i kwoty wprowadzone ręcznie</option>
                   </select>
                   <p className="text-xs leading-relaxed text-[#e5e4e2]/60">
-                    Domyślnie korzystamy ze źródła finansowego wydarzenia po rabatach. Wybór innego źródła zastępuje bieżące pozycje i kwoty — ich podsumowanie widzisz przy każdej opcji. Nie zmienia to ustawień wydarzenia.
+                    Domyślnie korzystamy ze źródła finansowego eventu po rabatach. Wybór innego źródła zastępuje bieżące pozycje i kwoty — ich podsumowanie widzisz przy każdej opcji. Nie zmienia to ustawień eventu.
                   </p>
                   {selectedItemSource !== 'manual' && preferredItemSource && selectedItemSource !== preferredItemSource && (
-                    <p role="status" className="text-xs text-amber-200">Wybrano inne źródło niż finansowe źródło wydarzenia. Sprawdź kwotę zamówienia przed wystawieniem.</p>
+                    <p role="status" className="text-xs text-amber-200">Wybrano inne źródło niż finansowe źródło eventu. Sprawdź kwotę zamówienia przed wystawieniem.</p>
                   )}
                   {selectedItemSource === 'manual' && <p className="text-xs text-[#e5e4e2]/60">Zachowano bieżące pozycje do edycji. Ich kwoty nie są automatycznie zastępowane danymi z katalogu.</p>}
                 </div>

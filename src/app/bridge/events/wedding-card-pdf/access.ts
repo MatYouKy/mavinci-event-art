@@ -15,7 +15,7 @@ export const getWeddingAdmin = () => createClient(
 
 /** The integration key stays on the two servers. Browser-supplied employee IDs are never trusted. */
 export async function authorizeWeddingDocument(request: Request, eventId: string) {
-  if (!UUID_PATTERN.test(eventId)) throw new WeddingDocumentError('Nieprawidłowe wydarzenie.');
+  if (!UUID_PATTERN.test(eventId)) throw new WeddingDocumentError('Nieprawidłowy event.');
   const admin = getWeddingAdmin();
   let employeeId: string | null = null;
   let userId: string | null = null;
@@ -48,7 +48,7 @@ export async function authorizeWeddingDocument(request: Request, eventId: string
     }
     const { data: event, error: eventError } = await admin.from('events')
       .select('id,event_categories!inner(name)').eq('id', eventId).ilike('event_categories.name', 'wesele').maybeSingle();
-    if (eventError || !event) throw new WeddingDocumentError('Nie znaleziono wydarzenia weselnego.', 404);
+    if (eventError || !event) throw new WeddingDocumentError('Nie znaleziono eventu weselnego.', 404);
   } else {
     // Aplikacja na Maca: token pracownika w `Authorization: Bearer` (bez nagłówka integracji); przeglądarka — ciasteczka CRM.
     const bearer = /^Bearer\s+(\S+)$/i.exec(request.headers.get('Authorization') || '')?.[1] || null;

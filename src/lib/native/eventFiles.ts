@@ -169,7 +169,7 @@ async function prepareUpload(ctx: NativeContext, eventId: string, body: Record<s
   for (const name of names) {
     const path = storagePath(eventId, name);
     const { data, error } = await ctx.supabase.storage.from(BUCKET).createSignedUploadUrl(path);
-    if (error || !data?.signedUrl) fail('Nie masz uprawnień do dodawania plików w tym wydarzeniu.');
+    if (error || !data?.signedUrl) fail('Nie masz uprawnień do dodawania plików w tym evencie.');
     slots.push({ name, path, url: data.signedUrl });
   }
   return { slots };
@@ -223,7 +223,7 @@ async function documents(ctx: NativeContext, eventId: string) {
     .in('document_type', ['offer', 'calculation', 'contract', 'agenda', 'equipment_checklist', 'invoice'])
     .order('created_at', { ascending: false })
     .limit(200);
-  if (error) fail('Nie udało się pobrać dokumentów wydarzenia.');
+  if (error) fail('Nie udało się pobrać dokumentów eventu.');
   return {
     documents: ((data || []) as any[]).map((f) => ({
       id: f.id, name: f.name || f.original_name || 'dokument.pdf', type: f.document_type, mime: f.mime_type || '',

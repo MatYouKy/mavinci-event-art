@@ -846,7 +846,7 @@ struct SocialLibraryFilter: Equatable {
         do {
             return try JSONDecoder().decode(SocialEventsReply.self, from: try await api.get("/social", query: params)).events
         } catch {
-            workspace?.error = failureText(error, "Nie udało się pobrać wydarzeń.")
+            workspace?.error = failureText(error, "Nie udało się pobrać eventów.")
             return []
         }
     }
@@ -856,7 +856,7 @@ struct SocialLibraryFilter: Equatable {
         do {
             return try JSONDecoder().decode(SocialEventFilesReply.self, from: try await api.get("/social", query: ["op": "eventImages", "event": eventID])).files
         } catch {
-            workspace?.error = failureText(error, "Nie udało się pobrać plików wydarzenia.")
+            workspace?.error = failureText(error, "Nie udało się pobrać plików eventu.")
             return []
         }
     }

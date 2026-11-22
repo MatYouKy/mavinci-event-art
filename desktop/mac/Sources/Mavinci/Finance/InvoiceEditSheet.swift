@@ -322,7 +322,7 @@ struct InvoiceEditItem: Identifiable, Equatable {
             organizationEvents = reply.events
         } catch {
             guard request == eventsRequest else { return }
-            workspace?.error = "Błąd podczas pobierania wydarzeń organizacji"
+            workspace?.error = "Błąd podczas pobierania eventów organizacji"
         }
     }
 
@@ -669,17 +669,17 @@ struct InvoiceEditItem: Identifiable, Equatable {
         }
         if !model.privatePerson && !model.organizationID.isEmpty {
             Section {
-                Picker("Powiązane wydarzenie", selection: Binding(get: { model.eventID }, set: { model.changeEvent($0) })) {
-                    Text("Brak powiązanego wydarzenia").tag("")
+                Picker("Powiązany event", selection: Binding(get: { model.eventID }, set: { model.changeEvent($0) })) {
+                    Text("Brak powiązanego eventu").tag("")
                     ForEach(model.organizationEvents) { event in
                         Text(event.date.map { "\(event.name) — \(InvoiceFormText.plDate($0))" } ?? event.name).tag(event.id)
                     }
                     if !model.eventID.isEmpty && !model.organizationEvents.contains(where: { $0.id == model.eventID }) {
-                        Text(model.linkedEvent?.name ?? "Wybrane wydarzenie").tag(model.eventID)
+                        Text(model.linkedEvent?.name ?? "Wybrany event").tag(model.eventID)
                     }
                 }
                 if model.organizationEvents.isEmpty {
-                    Text("Brak wydarzeń przypisanych do tej organizacji.").font(.caption).foregroundStyle(.secondary)
+                    Text("Brak eventów przypisanych do tej organizacji.").font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -692,14 +692,14 @@ struct InvoiceEditItem: Identifiable, Equatable {
         return Section {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("ROZLICZENIE WYDARZENIA").font(.caption2).foregroundStyle(.secondary)
+                    Text("ROZLICZENIE EVENTU").font(.caption2).foregroundStyle(.secondary)
                     Text(event.name).fontWeight(.medium)
                     Text([recipientName, event.date.map { InvoiceFormText.plDate($0) }].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if indirect, let payer { Label("Płatnik: \(payer)", systemImage: "building.2").font(.caption).foregroundStyle(.blue) }
             }
-            Picker("Kto opłaca wydarzenie?", selection: Binding(get: { model.billingArrangement }, set: { value in Task { await model.changeBilling(value) } })) {
+            Picker("Kto opłaca event?", selection: Binding(get: { model.billingArrangement }, set: { value in Task { await model.changeBilling(value) } })) {
                 ForEach(InvoiceFormText.arrangements, id: \.0) { Text($0.1).tag($0.0) }
             }
             Text(InvoiceFormText.arrangementDescription(model.billingArrangement)).font(.caption).foregroundStyle(.secondary)

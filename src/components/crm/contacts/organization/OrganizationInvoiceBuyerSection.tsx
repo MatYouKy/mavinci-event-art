@@ -116,7 +116,7 @@ export default function OrganizationInvoiceBuyerSection({
         <div>
           <h2 className="text-lg uppercase text-white">Dane do faktury</h2>
           <p className="mt-1 text-sm text-gray-400">
-            Na kogo wystawiamy faktury za tę organizację. Umowę i wydarzenia nadal prowadzisz z nią samą.
+            Na kogo wystawiamy faktury za tę organizację. Umowę i eventy nadal prowadzisz z nią samą.
           </p>
         </div>
       </div>

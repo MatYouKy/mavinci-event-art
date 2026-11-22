@@ -134,7 +134,7 @@ export function ChecklistTab({
     unloading: 'Rozładunek',
     setup: 'Montaż',
     rehearsal: 'Próba',
-    event: 'Wydarzenie',
+    event: 'Event',
     breakdown: 'Demontaż',
     packing: 'Pakowanie',
   };

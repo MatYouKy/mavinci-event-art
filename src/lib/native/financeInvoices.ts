@@ -373,7 +373,7 @@ export async function invoiceStatus(ctx: NativeContext, body: Row) {
   }
   return {
     ok: true,
-    message: next === 'paid' ? 'Potwierdzono zapłatę. Rozliczenie powiązanego wydarzenia przeliczono automatycznie.' : 'Status faktury został zmieniony',
+    message: next === 'paid' ? 'Potwierdzono zapłatę. Rozliczenie powiązanego eventu przeliczono automatycznie.' : 'Status faktury został zmieniony',
   };
 }
 

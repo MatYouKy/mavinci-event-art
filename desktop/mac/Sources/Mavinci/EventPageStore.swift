@@ -20,7 +20,7 @@ import SwiftUI
         guard !workspace.offline, let api = workspace.eventAPI() else {
             if let page, Date().timeIntervalSince(page.loadedAt) <= 86_400 {
                 sections = cachedSections(selectedTab,page:page)
-            } else { page = nil; sections = []; error = "Połącz się z serwerem, aby pobrać kartę wydarzenia." }
+            } else { page = nil; sections = []; error = "Połącz się z serwerem, aby pobrać kartę eventu." }
             return
         }
         do {

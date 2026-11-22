@@ -152,7 +152,7 @@ function buildTodayRows(cockpit: SellerCockpit): TodayRow[] {
     rows.push({
       key: `event-${event.event_id}`,
       icon: 'calendar',
-      kind: event.confirmation_required ? 'Wydarzenie do potwierdzenia' : 'Godziny do ustalenia',
+      kind: event.confirmation_required ? 'Event do potwierdzenia' : 'Godziny do ustalenia',
       title: event.name,
       meta: joinMeta(event.seller_name, formatDate(event.event_date)),
       detail: event.confirmation_required && event.schedule_pending ? 'Godziny są jeszcze do ustalenia.' : undefined,
@@ -180,7 +180,7 @@ const TODAY_COUNTS: { key: keyof SellerCockpit['today']; label: string }[] = [
   { key: 'chats_waiting', label: 'Rozmowy bez odpowiedzi' },
   { key: 'inquiries', label: 'Zapytania' },
   { key: 'wizard_steps', label: 'Kroki realizacji' },
-  { key: 'events_pending', label: 'Wydarzenia do potwierdzenia' },
+  { key: 'events_pending', label: 'Eventy do potwierdzenia' },
   { key: 'guest_acceptances', label: 'Akceptacje klientów' },
 ];
 
@@ -284,8 +284,8 @@ export default function SellerCockpitScreen() {
         <View style={styles.terms}>
           <Feather name="info" size={15} color={colors.primary.gold} style={{ marginTop: 1 }} />
           <Text style={styles.termsText}>
-            Sprawy Twoich sprzedawców. Rozmowy, wydarzenia i kartę sprzedawcy („Gotowość do pracy”, oferty na osi)
-            otworzysz w aplikacji; sprawdzenie oferty, zgodę na cenę, potwierdzenie wydarzenia i odpowiedź na zapytanie
+            Sprawy Twoich sprzedawców. Rozmowy, eventy i kartę sprzedawcy („Gotowość do pracy”, oferty na osi)
+            otworzysz w aplikacji; sprawdzenie oferty, zgodę na cenę, potwierdzenie eventu i odpowiedź na zapytanie
             wykonasz w CRM (otwiera się przeglądarka). Instrukcja — „?” u góry.
           </Text>
         </View>
@@ -378,8 +378,8 @@ export default function SellerCockpitScreen() {
         ))}
 
         {/* Najbliższe wydarzenia */}
-        <Text style={styles.sectionTitle}>Najbliższe wydarzenia ({data.upcoming.length})</Text>
-        {data.upcoming.length === 0 && <Text style={styles.empty}>Brak wydarzeń sprzedawców w najbliższych 14 dniach.</Text>}
+        <Text style={styles.sectionTitle}>Najbliższe eventy ({data.upcoming.length})</Text>
+        {data.upcoming.length === 0 && <Text style={styles.empty}>Brak eventów sprzedawców w najbliższych 14 dniach.</Text>}
         {data.upcoming.map((event) => {
           const onOpen = canOpenEvents && event.event_id ? () => navigateToEvent(event.event_id) : undefined;
           return (
@@ -391,7 +391,7 @@ export default function SellerCockpitScreen() {
               onPress={onOpen}
               accessibilityRole={onOpen ? 'button' : undefined}
               accessibilityLabel={`${event.name}, ${formatDate(event.event_date)}, ${event.seller_name}`}
-              accessibilityHint={onOpen ? 'Otwiera szczegóły wydarzenia' : undefined}
+              accessibilityHint={onOpen ? 'Otwiera szczegóły eventu' : undefined}
             >
               <View style={styles.rowHeader}>
                 <View style={styles.dateBadge}>
@@ -432,7 +432,7 @@ function SellerCard({ seller, showManager, onOpen }: { seller: SellerCockpitSell
       onPress={onOpen}
       accessibilityRole="button"
       accessibilityLabel={`${seller.name}${seller.organization_name ? `, ${seller.organization_name}` : ''}`}
-      accessibilityHint="Otwiera kartę sprzedawcy: gotowość do pracy, oferty na osi, rozmowy i wydarzenia"
+      accessibilityHint="Otwiera kartę sprzedawcy: gotowość do pracy, oferty na osi, rozmowy i eventy"
     >
       <View style={styles.rowHeader}>
         <View style={{ flex: 1, gap: 2 }}>
@@ -478,7 +478,7 @@ function SellerCard({ seller, showManager, onOpen }: { seller: SellerCockpitSell
         ))}
       </View>
       <Text style={styles.metaMuted}>
-        {joinMeta(`Oferty razem: ${seller.offers.total}`, `Nadchodzące wydarzenia: ${seller.upcoming_events}`)}
+        {joinMeta(`Oferty razem: ${seller.offers.total}`, `Nadchodzące eventy: ${seller.upcoming_events}`)}
       </Text>
     </TouchableOpacity>
   );

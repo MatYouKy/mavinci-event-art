@@ -239,8 +239,8 @@ export default function EventCategoriesPage() {
         <div className="w-full">
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="mb-2 text-3xl font-bold text-white">Kategorie wydarzeń</h1>
-              <p className="text-[var(--brand-platinum)]/60">Zarządzaj kategoriami i ikonami dla wydarzeń</p>
+              <h1 className="mb-2 text-3xl font-bold text-white">Kategorie eventów</h1>
+              <p className="text-[var(--brand-platinum)]/60">Zarządzaj kategoriami i ikonami dla eventów</p>
             </div>
             <div className="flex flex-wrap gap-3">
               <button

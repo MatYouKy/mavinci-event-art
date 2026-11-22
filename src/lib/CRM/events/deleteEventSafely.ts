@@ -23,6 +23,6 @@ export async function deleteEventSafely(eventId: string): Promise<void> {
 
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result?.success) {
-    throw new Error(result?.error || 'Nie udało się usunąć wydarzenia.');
+    throw new Error(result?.error || 'Nie udało się usunąć eventu.');
   }
 }

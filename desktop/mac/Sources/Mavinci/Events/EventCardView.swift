@@ -307,29 +307,29 @@ import AppKit
                 }
             } else if let error = store.errors[eventID] {
                 ContentUnavailableView {
-                    Label("Nie można otworzyć wydarzenia", systemImage: "calendar.badge.exclamationmark")
+                    Label("Nie można otworzyć eventu", systemImage: "calendar.badge.exclamationmark")
                 } description: { Text(error) } actions: {
                     Button("Spróbuj ponownie") { Task { await store.load(eventID) } }
                 }
             } else {
-                ProgressView("Pobieranie wydarzenia…").frame(maxWidth: .infinity, maxHeight: .infinity)
+                ProgressView("Pobieranie eventu…").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .navigationTitle(EventFields(raw: cached?.page.event ?? [:]).name.nonEmpty ?? cached?.page.realization?.object["name"]?.text.nonEmpty ?? "Wydarzenie")
+        .navigationTitle(EventFields(raw: cached?.page.event ?? [:]).name.nonEmpty ?? cached?.page.realization?.object["name"]?.text.nonEmpty ?? "Event")
         .toolbar { toolbar }
         .sheet(isPresented: $editingEvent) { EventEditSheet(store: store, eventID: eventID).warehouseSheetStyle(state) }
-        .confirmationDialog("Czy na pewno chcesz usunąć to wydarzenie?", isPresented: $removing, titleVisibility: .visible) {
+        .confirmationDialog("Czy na pewno chcesz usunąć ten event?", isPresented: $removing, titleVisibility: .visible) {
             Button("Usuń", role: .destructive) { Task { await deleteEvent() } }
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text("Wydarzenie \"\(EventFields(raw: cached?.page.event ?? [:]).name)\" zostanie trwale usunięte wraz z całą historią, przypisaniami i plikami. Tej operacji nie można cofnąć.")
+            Text("Event \"\(EventFields(raw: cached?.page.event ?? [:]).name)\" zostanie trwale usunięty wraz z całą historią, przypisaniami i plikami. Tej operacji nie można cofnąć.")
         }
-        .confirmationDialog("Duplikuj wydarzenie", isPresented: $duplicating, titleVisibility: .visible) {
+        .confirmationDialog("Duplikuj event", isPresented: $duplicating, titleVisibility: .visible) {
             Button("Duplikuj") { Task { await duplicateEvent() } }
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text("Czy chcesz zduplikować wydarzenie \"\(EventFields(raw: cached?.page.event ?? [:]).name)\"? Zostaną skopiowane wszystkie dane podstawowe, ale NIE zostaną skopiowane: przypisani ludzie, pliki i dokumenty.")
+            Text("Czy chcesz zduplikować event \"\(EventFields(raw: cached?.page.event ?? [:]).name)\"? Zostaną skopiowane wszystkie dane podstawowe, ale NIE zostaną skopiowane: przypisani ludzie, pliki i dokumenty.")
         }
     }
 
@@ -342,7 +342,7 @@ import AppKit
                     overviewHidden = overviewShown
                     overviewCollapsed = false
                 } label: { Label("Przegląd", systemImage: "sidebar.trailing") }
-                    .help("Pokaż lub ukryj panel boczny: Przegląd (kroki realizacji, kontrola przed wydarzeniem, najważniejsze informacje) oraz Rozliczenie i prowizje (⌥⌘I)")
+                    .help("Pokaż lub ukryj panel boczny: Przegląd (kroki realizacji, kontrola przed eventem, najważniejsze informacje) oraz Rozliczenie i prowizje (⌥⌘I)")
                     .keyboardShortcut("i", modifiers: [.command, .option])
             }
         }
@@ -431,8 +431,8 @@ import AppKit
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "exclamationmark.shield").font(.title3).foregroundStyle(theme.accent)
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Brak dostępu do danych tego wydarzenia").font(.callout.weight(.medium))
-                        Text("Twój zakres nie obejmuje danych tego wydarzenia. Jeśli to pomyłka, poproś administratora o dostęp.")
+                        Text("Brak dostępu do danych tego eventu").font(.callout.weight(.medium))
+                        Text("Twój zakres nie obejmuje danych tego eventu. Jeśli to pomyłka, poproś administratora o dostęp.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }
@@ -465,7 +465,7 @@ import AppKit
                 }
                 .pickerStyle(.segmented).labelsHidden()
                 .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 2)
-                .help("Przegląd wydarzenia albo rozliczenie: kto rozlicza, numer PO, wspólne rozliczenie, sprzedawcy i prowizje")
+                .help("Przegląd eventu albo rozliczenie: kto rozlicza, numer PO, wspólne rozliczenie, sprzedawcy i prowizje")
             }
             if billing {
                 EventBillingPanel(store: store, eventID: eventID, page: page, navigate: { tab = $0 })
@@ -537,11 +537,11 @@ import AppKit
     /// Wydarzenie z akceptacji oferty sprzedawcy — do przygotowania i osobnego potwierdzenia realizacji.
     private func sellerBanner(_ event: EventFields) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("OFERTA SPRZEDAWCY PRZYJĘTA — WYDARZENIE DO PRZYGOTOWANIA").font(.caption.weight(.medium)).foregroundStyle(CrmTheme.rgb(0xfde68a))
-            Text("Wydarzenie zostało utworzone przy akceptacji oferty. Uzupełnij harmonogram, zespół, agendę i logistykę, a następnie osobno potwierdź realizację.")
+            Text("OFERTA SPRZEDAWCY PRZYJĘTA — EVENT DO PRZYGOTOWANIA").font(.caption.weight(.medium)).foregroundStyle(CrmTheme.rgb(0xfde68a))
+            Text("Event został utworzony przy akceptacji oferty. Uzupełnij harmonogram, zespół, agendę i logistykę, a następnie osobno potwierdź realizację.")
                 .font(.callout).foregroundStyle(.secondary)
             if event["seller_schedule_pending"] == "true" {
-                Text("Godziny są do ustalenia. Godzina 00:00 w kalendarzu jest wyłącznie oznaczeniem daty, nie ustalonym początkiem wydarzenia.")
+                Text("Godziny są do ustalenia. Godzina 00:00 w kalendarzu jest wyłącznie oznaczeniem daty, nie ustalonym początkiem eventu.")
                     .font(.caption).foregroundStyle(CrmTheme.rgb(0xfde68a))
             }
             Button("Przygotowanie i potwierdzenie realizacji") { tab = "seller-arrangements" }
@@ -594,14 +594,14 @@ import AppKit
         guard let api = state.nativeAPI() else { return }
         var ok = false
         await state.withPending("Usuwanie…") {
-            do { _ = try await api.post("/events", ["op": .string("delete"), "id": .string(eventID)]); ok = true; state.succeed("Wydarzenie zostało usunięte") }
-            catch { state.error = store.failureText(error, "Nie udało się usunąć wydarzenia.") }
+            do { _ = try await api.post("/events", ["op": .string("delete"), "id": .string(eventID)]); ok = true; state.succeed("Event został usunięty") }
+            catch { state.error = store.failureText(error, "Nie udało się usunąć eventu.") }
         }
         if ok { nav.eventRoute = nil; Task { await state.events.sync(force: true) } }
     }
     private func duplicateEvent() async {
         do {
-            let data = try await store.detailsRun(eventID, "duplicate", [:], success: "Wydarzenie zostało zduplikowane", pending: "Duplikowanie…")
+            let data = try await store.detailsRun(eventID, "duplicate", [:], success: "Event został zduplikowany", pending: "Duplikowanie…")
             struct Reply: Decodable { let id: String }
             if let reply = try? JSONDecoder().decode(Reply.self, from: data) { state.showEvent(reply.id) }
         } catch {
@@ -654,7 +654,7 @@ enum EventCardText {
         let overview = page.overview?.object ?? [:]
         let event = overview["event"]?.object ?? [:]
         let fallback = page.fallbackEvent?.object ?? [:]
-        let name = event["name"]?.text.nonEmpty ?? fallback["name"]?.text.nonEmpty ?? "Wydarzenie"
+        let name = event["name"]?.text.nonEmpty ?? fallback["name"]?.text.nonEmpty ?? "Event"
         let start = event["event_date"]?.text.nonEmpty ?? fallback["event_date"]?.text.nonEmpty
         let end = event["event_end_date"]?.text.nonEmpty ?? fallback["event_end_date"]?.text.nonEmpty
         let place = page.locationName?.nonEmpty ?? event["location"]?.text.nonEmpty ?? fallback["location"]?.text.nonEmpty
@@ -674,7 +674,7 @@ enum EventCardText {
                 }
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text("Wydarzenie innego sprzedawcy").font(.headline)
+                        Text("Event innego sprzedawcy").font(.headline)
                         if let status { statusPill(status) }
                     }
                     Text("Termin jest zajęty przez sprzedaż innego sprzedawcy. Szczegóły, kwoty i dokumenty prowadzi sprzedawca.")

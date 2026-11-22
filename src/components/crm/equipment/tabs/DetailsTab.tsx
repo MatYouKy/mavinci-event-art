@@ -228,7 +228,7 @@ export function DetailsTab({
                   Sprawdzić stan przed każdym wydaniem
                 </label>
                 <p id="equipment-pre-check-hint" className="mt-1 pl-6 text-xs text-[#e5e4e2]/50">
-                  Każde wydarzenie z tym sprzętem dostanie krok dla magazynu.
+                  Każdy event z tym sprzętem dostanie krok dla magazynu.
                 </p>
               </div>
               {editForm.requires_pre_check && (
@@ -252,7 +252,7 @@ export function DetailsTab({
           ) : equipment.requires_pre_check ? (
             <div className="mt-3 space-y-2 text-sm">
               <p className="text-[#e5e4e2]">Tak — sprawdzić stan przed każdym wydaniem.</p>
-              <p className="text-xs text-[#e5e4e2]/50">Każde wydarzenie z tym sprzętem dostanie krok dla magazynu.</p>
+              <p className="text-xs text-[#e5e4e2]/50">Każdy event z tym sprzętem dostanie krok dla magazynu.</p>
               {equipment.pre_check_instructions ? (
                 <pre className="whitespace-pre-wrap rounded-lg bg-black/15 px-3 py-2 font-sans text-[#e5e4e2]/80">
                   {equipment.pre_check_instructions}

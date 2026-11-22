@@ -401,7 +401,7 @@ private struct ComponentsRequest: Identifiable {
         let kits = rows.filter(\.isKit)
         let cables = rows.filter(\.isCable)
         if !items.isEmpty {
-            section("Pojedynczy sprzęt", "Samodzielne urządzenia rezerwowane na wydarzenie", items, data, lines, ordered)
+            section("Pojedynczy sprzęt", "Samodzielne urządzenia rezerwowane na event", items, data, lines, ordered)
         }
         if !kits.isEmpty {
             section("Zestawy sprzętowe", "Gotowe komplety z możliwością rozwinięcia zawartości", kits, data, lines, ordered)
@@ -890,7 +890,7 @@ struct EquipmentRowActions {
                 Button("Komponenty…", systemImage: "puzzlepiece.extension") { actions.components() }
             }
             Divider()
-            Button(row.autoAdded ? "Usuń z wydarzenia (z oferty)" : "Usuń z wydarzenia", systemImage: "trash", role: .destructive) { actions.remove() }
+            Button(row.autoAdded ? "Usuń z eventu (z oferty)" : "Usuń z eventu", systemImage: "trash", role: .destructive) { actions.remove() }
         }
         if editable && row.removed {
             Button("Przywróć z oferty", systemImage: "arrow.uturn.backward") { actions.restore() }
@@ -972,7 +972,7 @@ struct EquipmentRowActions {
                     EventDotLabel(label: status.label, color: status.color)
                 }
                 GridRow {
-                    Text("W wydarzeniu").foregroundStyle(.secondary)
+                    Text("W evencie").foregroundStyle(.secondary)
                     Text("\(row.qty) \(unit)").monospacedDigit()
                 }
                 if row.key != nil {

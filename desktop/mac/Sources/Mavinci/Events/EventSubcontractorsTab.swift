@@ -157,14 +157,14 @@ enum SubcontractorLabels {
             }
             if mode == "contracts" {
                 if contracts.isEmpty {
-                    ContentUnavailableView("Brak umów", systemImage: "doc.text", description: Text("Do tego wydarzenia nie dodano umów od podwykonawców."))
+                    ContentUnavailableView("Brak umów", systemImage: "doc.text", description: Text("Do tego eventu nie dodano umów od podwykonawców."))
                 } else {
                     contractsTable(contracts)
                 }
             } else if orders.isEmpty {
                 ContentUnavailableView {
                     Label("Brak zleceń", systemImage: "person.badge.shield.checkmark")
-                } description: { Text("Brak przypisanych podwykonawców do tego wydarzenia") } actions: {
+                } description: { Text("Brak przypisanych podwykonawców do tego eventu") } actions: {
                     Button("Dodaj pierwsze zadanie") { editor = SubcontractorEditRequest(order: nil) }
                 }
             } else {
@@ -632,7 +632,7 @@ private struct GeneratedGuidelines: Decodable { var scopeOfWork: String; var del
                     TextField("Rzeczywiste godziny", value: $actualHours, format: .number)
                     if paymentType != "fixed" { TextField("Stawka godzinowa (zł)", value: $hourlyRate, format: .number) }
                     if paymentType != "hourly" { TextField("Cena ryczałtowa (zł)", value: $fixedPrice, format: .number) }
-                    TextField("Uzgodniony koszt do prognozy wydarzenia (zł)", value: $agreedCost, format: .number)
+                    TextField("Uzgodniony koszt do prognozy eventu (zł)", value: $agreedCost, format: .number)
                     Picker("Status zadania", selection: $status) {
                         Text("Zaplanowane").tag("planned")
                         Text("W trakcie").tag("in_progress")
@@ -770,7 +770,7 @@ private struct GeneratedGuidelines: Decodable { var scopeOfWork: String; var del
                     contractFile = url
                     return true
                 }
-                Text("Przeciągnij PDF albo skan umowy. Plik trafi także do folderu „Umowy z podwykonawcami” w wydarzeniu.").font(.caption).foregroundStyle(.secondary)
+                Text("Przeciągnij PDF albo skan umowy. Plik trafi także do folderu „Umowy z podwykonawcami” w evencie.").font(.caption).foregroundStyle(.secondary)
                 TextField("Numer umowy (opcjonalnie)", text: $contractNumber, prompt: Text("np. UMW/2025/001"))
                 Picker("Typ umowy", selection: $contractType) {
                     Text("Projektowa").tag("project")
@@ -797,7 +797,7 @@ private struct GeneratedGuidelines: Decodable { var scopeOfWork: String; var del
     private var generatorSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Wygeneruj wytyczne").font(.title3.bold())
-            Text("AI uzupełni zakres obowiązków, oczekiwany rezultat i wytyczne na podstawie wydarzenia, zlecenia i Twoich wskazówek. Jeśli jest zaakceptowana oferta, uwzględni także wybrany pakiet. Oferta nie jest wymagana. Zastąpi treść tych trzech pól — sprawdź ją przed wysłaniem.")
+            Text("AI uzupełni zakres obowiązków, oczekiwany rezultat i wytyczne na podstawie eventu, zlecenia i Twoich wskazówek. Jeśli jest zaakceptowana oferta, uwzględni także wybrany pakiet. Oferta nie jest wymagana. Zastąpi treść tych trzech pól — sprawdź ją przed wysłaniem.")
                 .font(.callout).foregroundStyle(.secondary)
             Text("Dodatkowe wskazówki (opcjonalnie)").font(.caption.weight(.semibold))
             TextEditor(text: Binding(get: { aiPrompt }, set: { aiPrompt = String($0.prefix(2000)) })).frame(minHeight: 90).font(.body)

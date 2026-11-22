@@ -149,7 +149,7 @@ export default function InquiryCorrespondencePanel({ inquiryId, canManage, analy
       {canManage && <><button className={button} disabled={mutating || analyzing} onClick={() => setShowPicker(!showPicker)}><Plus className="h-4 w-4" />Dołącz wiadomość lub konwersację</button>
       <button className={button} disabled={analyzing || mutating || loading || !!error || !messages.length} onClick={onAnalyze}>Otwórz analizę</button></>}
     </div></div>
-    <p className="text-xs text-white/50">Wiadomości są uporządkowane od najstarszej. Kolejne odpowiedzi pojawiają się po odświeżeniu. Powiązania pozostają przy zapytaniu również po utworzeniu wydarzenia. Analiza obejmuje treść maili, bez zawartości załączników.</p>
+    <p className="text-xs text-white/50">Wiadomości są uporządkowane od najstarszej. Kolejne odpowiedzi pojawiają się po odświeżeniu. Powiązania pozostają przy zapytaniu również po utworzeniu eventu. Analiza obejmuje treść maili, bez zawartości załączników.</p>
     {savedAt && <p role="status" className="text-xs text-white/40">{refreshing ? 'Sprawdzam nowe wiadomości w tle…' : `Ostatnia aktualizacja: ${new Date(savedAt).toLocaleTimeString('pl-PL')}`}</p>}
     {error && <p role="alert" className="text-sm text-amber-200">{error}</p>}
     {showPicker && canManage && <EmailThreadPicker onAttach={async (m, thread) => { await change(m, thread); setShowPicker(false); }} />}

@@ -415,7 +415,7 @@ export async function offerDetail(ctx: NativeContext, id: string) {
       contactPhone: text(seller ? offer.portal_client_phone : contact?.mobile || contact?.phone) || null,
       sellerDescription: seller ? text(offer.description) || null : null,
       eventLabel: offer.event?.name || text(offer.inquiry?.title).replace(/^Zapytanie:\s*/i, '')
-        || (seller ? 'Samodzielna oferta sprzedawcy — bez powiązanego wydarzenia CRM' : '-'),
+        || (seller ? 'Samodzielna oferta sprzedawcy — bez powiązanego eventu CRM' : '-'),
       audience: `Liczba osób: ${guestCount ?? 'Nie ustalono'}${tables}`,
       guestCount,
       pricingSource: offer.pricing_source === 'calculation' ? 'Zaakceptowana kalkulacja' : 'Pozycje oferty',

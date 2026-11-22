@@ -161,7 +161,7 @@ export default function DayView({
 
           {dayEvents.length === 0 ? (
             <div className="py-8 text-center text-[#e5e4e2]/40">
-              <p className="text-sm">Brak wydarzeń i potencjalnych zapytań tego dnia</p>
+              <p className="text-sm">Brak eventów i potencjalnych zapytań tego dnia</p>
             </div>
           ) : (
             <div className="space-y-3">

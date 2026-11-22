@@ -244,7 +244,7 @@ export async function vehicleConflicts(ctx: NativeContext, eventId: string, vehi
     .eq('vehicle_id', vehicleId).lt('assigned_start', end).gt('assigned_end', start);
   if (error) return [];
   return ((data ?? []) as any[]).filter((item) => (one(item.phase) as any)?.event_id !== eventId).map((item) => ({
-    id: item.id, label: (one(item.phase) as any)?.name || 'Inna faza wydarzenia', start: item.assigned_start, end: item.assigned_end,
+    id: item.id, label: (one(item.phase) as any)?.name || 'Inna faza eventu', start: item.assigned_start, end: item.assigned_end,
   }));
 }
 

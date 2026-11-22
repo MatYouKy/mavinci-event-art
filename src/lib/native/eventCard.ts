@@ -172,7 +172,7 @@ async function eventEquipmentBadge(ctx: NativeContext, eventId: string, eventSta
       : { label: 'Sprzęt: zwrócony', tone: 'success' };
   }
   if (row?.loadback_confirmed_at) return { label: 'Sprzęt: czeka na zwrot', tone: 'warning' };
-  if (row?.dispatch_confirmed_at) return { label: 'Sprzęt: wydany — czeka na załadunek po wydarzeniu', tone: 'progress' };
+  if (row?.dispatch_confirmed_at) return { label: 'Sprzęt: wydany — czeka na załadunek po evencie', tone: 'progress' };
   if ((lines.count ?? 0) > 0 && EQUIPMENT_PREPARATION_STATUSES.has(eventStatus)) return { label: 'Sprzęt: do wydania', tone: 'neutral' };
   return null;
 }
@@ -183,7 +183,7 @@ async function eventEquipmentBadge(ctx: NativeContext, eventId: string, eventSta
  */
 export async function duplicateEvent(ctx: NativeContext, eventId: string) {
   const event = await fetchEventByIdWith(ctx.supabase, eventId, ctx.employee.authUserId);
-  if (!event) throw new Error('Nie znaleziono wydarzenia albo nie masz do niego dostępu.');
+  if (!event) throw new Error('Nie znaleziono eventu albo nie masz do niego dostępu.');
   const canViewValues = event.permissionContext.access?.areas?.values === true;
   const source = event as any;
   const duplicated: Record<string, unknown> = {
@@ -224,7 +224,7 @@ function eventBudget(event: any, offers: any[]) {
   const planned = totals?.gross ?? Number(eventMoney(event, event.financials, 'expected_revenue') || 0);
   const costNet = latest?.total_cost == null ? null : Number(latest.total_cost);
   return {
-    source: latest ? 'Źródło: oferta' : event.financial_source === 'calculation' ? 'Źródło: kalkulacja' : 'Źródło: wydarzenie',
+    source: latest ? 'Źródło: oferta' : event.financial_source === 'calculation' ? 'Źródło: kalkulacja' : 'Źródło: event',
     planned,
     actual: Number(eventMoney(event, event.financials, 'actual_revenue') || 0),
     offer: latest && totals ? {
@@ -476,7 +476,7 @@ export async function eventLocations(ctx: NativeContext) {
 export async function eventConfirmationPreview(ctx: NativeContext, eventId: string) {
   const s = ctx.supabase;
   const { data: event, error } = await s.from('events').select('id, name, event_date, contact_person_id, organization_id').eq('id', eventId).single();
-  if (error || !event) throw new Error('Nie udało się odczytać wydarzenia i odbiorcy potwierdzenia.');
+  if (error || !event) throw new Error('Nie udało się odczytać eventu i odbiorcy potwierdzenia.');
   const [contactResult, organizationResult] = await Promise.all([
     event.contact_person_id
       ? s.from('contacts').select('full_name, first_name, last_name, email').eq('id', event.contact_person_id).maybeSingle()
@@ -503,7 +503,7 @@ export async function eventConfirmationPreview(ctx: NativeContext, eventId: stri
 export async function sendEventConfirmation(ctx: NativeContext, token: string, eventId: string, expectedRecipientEmail: string) {
   const preview = await eventConfirmationPreview(ctx, eventId);
   if (!preview.recipientEmail || preview.recipientEmail !== expectedRecipientEmail) {
-    throw new Error('Odbiorca potwierdzenia zmienił się lub nie ma adresu e-mail. Sprawdź dane wydarzenia przed wysyłką.');
+    throw new Error('Odbiorca potwierdzenia zmienił się lub nie ma adresu e-mail. Sprawdź dane eventu przed wysyłką.');
   }
   let response: Response;
   try {

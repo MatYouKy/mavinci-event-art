@@ -30,7 +30,7 @@ import SwiftUI
         let addButton: AnyView? = mayEdit
             ? AnyView(Button { adding = true } label: { Label("Dodaj produkt", systemImage: "plus") }.disabled(!canEdit))
             : nil
-        OfferCard(title: "Zobacz, co warto dobrać do takiego wydarzenia",
+        OfferCard(title: "Zobacz, co warto dobrać do takiego eventu",
                   subtitle: "Proponowane produkty z indywidualnymi cenami. Poza wyceną i rezerwacją sprzętu; w PDF po kalkulacji i pakietach.",
                   symbol: "sparkles", trailing: addButton) {
             if let loadError, data == nil {

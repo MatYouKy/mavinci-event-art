@@ -457,7 +457,7 @@ export async function deleteProduct(ctx: NativeContext, body: Row) {
   const id = productId(body.id);
   const { data, error } = await ctx.supabase.from('offer_products').delete().eq('id', id).select('id');
   if (error) {
-    if (error.code === '23503') fail('Produkt jest używany w ofertach lub wydarzeniach. Wyłącz go („Produkt aktywny”) zamiast usuwać.');
+    if (error.code === '23503') fail('Produkt jest używany w ofertach lub eventach. Wyłącz go („Produkt aktywny”) zamiast usuwać.');
     fail(error.message);
   }
   if (!data?.length) fail('Nie znaleziono produktu albo nie masz uprawnień do jego usunięcia.');

@@ -114,10 +114,10 @@ import SwiftUI
         Text("\(data.steps.filter { $0.available && $0.status == "approved" }.count)/4 kroków uzgodnionych · \(data.completed ? "przygotowania zatwierdzone" : "pozostaje końcowa decyzja opiekuna")")
             .font(.caption).foregroundStyle(.secondary)
         if data.active && !data.manager {
-            Text("Masz dostęp tylko do podglądu przygotowań. Decyzje wymagają uprawnień do tej oferty i wydarzenia.").font(.callout).foregroundStyle(.orange)
+            Text("Masz dostęp tylko do podglądu przygotowań. Decyzje wymagają uprawnień do tej oferty i eventu.").font(.callout).foregroundStyle(.orange)
         }
         if !data.active {
-            Text(data.eventId == nil ? "Najpierw utwórz powiązane wydarzenie w CRM." : "Przygotowania są tylko do odczytu — sprawdź status wydarzenia i powiązanie oferty.")
+            Text(data.eventId == nil ? "Najpierw utwórz powiązany event w CRM." : "Przygotowania są tylko do odczytu — sprawdź status eventu i powiązanie oferty.")
                 .font(.callout).foregroundStyle(.orange)
         }
         if let first = data.steps.first, first.status == "approved" {
@@ -160,7 +160,7 @@ import SwiftUI
             Text("Ten krok wymaga zatwierdzenia danych sprzedawcy, potwierdzenia planu przez sprzedawcę oraz osobnego potwierdzenia realizacji w CRM.")
                 .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if data.confirmationRequired {
-                Text("Realizacja nie została jeszcze potwierdzona w CRM. Zrób to w sekcji przygotowania wydarzenia.").font(.callout).foregroundStyle(.orange)
+                Text("Realizacja nie została jeszcze potwierdzona w CRM. Zrób to w sekcji przygotowania eventu.").font(.callout).foregroundStyle(.orange)
             }
             if data.completed {
                 Text("Przygotowania zatwierdzone · \(SellerText.timestamp(data.completedAt))").font(.callout).foregroundStyle(.green)
@@ -168,7 +168,7 @@ import SwiftUI
                 Button { Task { await act("complete") } } label: { Label("Zatwierdź przygotowania", systemImage: "checkmark.seal") }
                     .buttonStyle(.borderedProminent).disabled(!data.canComplete || busy || blocked)
             }
-            Text("Ta decyzja nie rezerwuje sprzętu, nie przypisuje pracowników i nie zmienia automatycznie statusu wydarzenia. Te operacje pozostają w CRM. Zmiana uzgodnionych danych wymaga ponownego sprawdzenia.")
+            Text("Ta decyzja nie rezerwuje sprzętu, nie przypisuje pracowników i nie zmienia automatycznie statusu eventu. Te operacje pozostają w CRM. Zmiana uzgodnionych danych wymaga ponownego sprawdzenia.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -198,7 +198,7 @@ import SwiftUI
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Termin CRM: \(SellerText.localDate(data.context.startsAt)) — \(SellerText.localDate(data.context.endsAt))")
                         Text("Miejsce CRM: \(data.context.location?.nonEmpty ?? "Do ustalenia z opiekunem")")
-                        Text("Zmianę terminu lub obiektu opiekun zapisuje w wydarzeniu. Ten krok nie nadpisuje kalendarza.").font(.caption).foregroundStyle(.secondary)
+                        Text("Zmianę terminu lub obiektu opiekun zapisuje w evencie. Ten krok nie nadpisuje kalendarza.").font(.caption).foregroundStyle(.secondary)
                     }
                     .font(.callout).padding(10).frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
@@ -286,7 +286,7 @@ import SwiftUI
                     }
                     input("access", "Dojazd, dostęp, odbiór zespołu na miejscu", multiline: true)
                     input("note", "Dodatkowe informacje", multiline: true, required: false)
-                    Toggle("Sprawdziłem/-am pokazany termin i miejsce wydarzenia.", isOn: flag("schedule_confirmed")).toggleStyle(.checkbox)
+                    Toggle("Sprawdziłem/-am pokazany termin i miejsce eventu.", isOn: flag("schedule_confirmed")).toggleStyle(.checkbox)
                 case "materials":
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Materiały *").font(.callout)
@@ -303,7 +303,7 @@ import SwiftUI
                     let none = SellerText.plain(payload["mode"]) == "none"
                     input("note", none ? "Dlaczego materiały nie są potrzebne?" : "Dodatkowe informacje", multiline: true, required: none)
                 default:
-                    Text("Przygotuj plan w sekcjach CRM, a następnie zaznacz sprawdzone obszary. Jeśli coś nie dotyczy wydarzenia, wyjaśnij to w podsumowaniu. Zaznaczenie nie wykonuje rezerwacji ani przypisania.")
+                    Text("Przygotuj plan w sekcjach CRM, a następnie zaznacz sprawdzone obszary. Jeśli coś nie dotyczy eventu, wyjaśnij to w podsumowaniu. Zaznaczenie nie wykonuje rezerwacji ani przypisania.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     ForEach(SellerWizardText.planChecks, id: \.key) { check in
                         Toggle(check.label, isOn: flag(check.key)).toggleStyle(.checkbox)
@@ -357,7 +357,7 @@ import SwiftUI
             }
             if !source.isEmpty {
                 let company = (data.client.company?.nonEmpty).map { ": " + $0 } ?? ""
-                Text((source == "seller" ? "Dane z Twojej wizytówki. Sprawdź telefon dostępny w dniu wydarzenia."
+                Text((source == "seller" ? "Dane z Twojej wizytówki. Sprawdź telefon dostępny w dniu eventu."
                       : source == "client" ? "Dane klienta z tej oferty\(company). Uzupełnij brakujące pola."
                       : "Podaj dane osoby, z którą zespół będzie mógł skontaktować się na miejscu.")
                      + " Możesz poprawić pola poniżej — nie zmieni to wizytówki ani bazy kontaktów.")

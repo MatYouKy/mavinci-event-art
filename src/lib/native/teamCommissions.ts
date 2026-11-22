@@ -357,7 +357,7 @@ export async function commissionPayroll(ctx: NativeContext, accountType: Commiss
   if (ids.some((id) => !known.has(id))) return fail('Część zaznaczonych prowizji nie należy już do tego konta. Odśwież prowizje.', 409);
 
   const lines: PayrollLine[] = [];
-  const names = new Map(account.rows.map((row) => [row.id, str(row.event_name) || 'Wydarzenie']));
+  const names = new Map(account.rows.map((row) => [row.id, str(row.event_name) || 'Event']));
   let offsetCents = 0;
   let paidCents = 0;
   let uncertain = false;
@@ -373,7 +373,7 @@ export async function commissionPayroll(ctx: NativeContext, accountType: Commiss
       });
       if (error) {
         const failure = dbFailure(error, 'Nie udało się potwierdzić potrącenia.');
-        lines.push({ commissionId: step.targetId, eventName: names.get(step.targetId) || 'Wydarzenie', kind: 'error', amount: step.amountCents / 100, message: failure.error });
+        lines.push({ commissionId: step.targetId, eventName: names.get(step.targetId) || 'Event', kind: 'error', amount: step.amountCents / 100, message: failure.error });
         return { ok: true, data: {
           done: false, stopped: true, uncertain: failure.status >= 500, lines, paid: paidCents / 100, offset: offsetCents / 100,
           message: 'Potrącenie nie zostało zapisane, więc wypłat nie zapisano. Odśwież prowizje i rozlicz ponownie — zapisane już potrącenia nie powtórzą się.',
@@ -381,7 +381,7 @@ export async function commissionPayroll(ctx: NativeContext, accountType: Commiss
       }
       const amount = cents((data as Row | null)?.amount);
       offsetCents += amount;
-      lines.push({ commissionId: step.targetId, eventName: names.get(step.targetId) || 'Wydarzenie', kind: 'offset', amount: amount / 100,
+      lines.push({ commissionId: step.targetId, eventName: names.get(step.targetId) || 'Event', kind: 'offset', amount: amount / 100,
         message: (data as Row | null)?.duplicate === true ? 'Potrącenie było już zapisane' : 'Potrącono nadpłatę (bez przelewu)' });
     }
     if (steps.length) {
@@ -400,7 +400,7 @@ export async function commissionPayroll(ctx: NativeContext, accountType: Commiss
   const current = new Map(account.rows.map((row) => [row.id, row]));
   const ordered = ids.map((id) => current.get(id)).filter((row): row is CommissionSettlement => Boolean(row)).sort(byDate);
   for (const row of ordered) {
-    const eventName = str(row.event_name) || 'Wydarzenie';
+    const eventName = str(row.event_name) || 'Event';
     const skip = (message: string) => lines.push({ commissionId: row.id, eventName, kind: 'skipped', amount: 0, message });
     if (row.entry_kind === 'deduction') { skip('To potrącenie — odlicza się od innych prowizji.'); continue; }
     // Ponowienie po niepewnej odpowiedzi: wypłata z tą datą i numerem już jest — pokazujemy ją jako zapisaną, bez drugiego zapisu.
@@ -415,7 +415,7 @@ export async function commissionPayroll(ctx: NativeContext, accountType: Commiss
     if (row.status === 'planned') { skip('Niezatwierdzona — do wypłaty po zatwierdzeniu.'); continue; }
     if (row.status !== 'approved') { skip('Anulowana — nie wypłaca się.'); continue; }
     if (row.automatic_waiting_for_offer) { skip('Oczekuje na podstawę (oferta).'); continue; }
-    if (!row.can_manage) { skip('Brak uprawnień do rozliczenia tego wydarzenia.'); continue; }
+    if (!row.can_manage) { skip('Brak uprawnień do rozliczenia tego eventu.'); continue; }
     const remaining = cents(row.remaining_amount);
     if (remaining <= 0) { skip('Nic do wypłaty'); continue; }
     const key = derivedKey('mavinci-payroll', batchKey, 'payout', row.id, String(cents(row.paid_amount)));

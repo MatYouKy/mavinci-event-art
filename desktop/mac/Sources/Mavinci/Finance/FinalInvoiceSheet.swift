@@ -561,7 +561,7 @@ enum FinalFormat {
             reply = try await get(query)
         } catch {
             reply = .empty
-            reply.eventOrderError = failureText(error, "Nie udało się pobrać pełnego zamówienia wydarzenia.")
+            reply.eventOrderError = failureText(error, "Nie udało się pobrać pełnego zamówienia eventu.")
         }
         guard itemsRequestKey == key else { return }
         itemsRequestKey = nil
@@ -851,7 +851,7 @@ enum FinalFormat {
                     LabeledContent("Do zaliczki:") { Text(model.source?.number ?? "Ładowanie…").fontWeight(.semibold) }
                 }
                 if model.linkedEventID != nil {
-                    LabeledContent("Wydarzenie:") { Text(model.contextEventName).fontWeight(.semibold) }
+                    LabeledContent("Event:") { Text(model.contextEventName).fontWeight(.semibold) }
                 }
                 if model.initialOrganizationID != nil {
                     LabeledContent("Podmiot:") { Text(model.lockedOrganizationName ?? "...").fontWeight(.semibold) }
@@ -958,7 +958,7 @@ enum FinalFormat {
         let currency = model.currencyCode
         return Section("Podsumowanie rozliczenia") {
             if model.loadingEventOrder {
-                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Pobieranie pełnego zamówienia z wydarzenia…") }
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Pobieranie pełnego zamówienia z eventu…") }
                     .foregroundStyle(.secondary)
             } else if let error = model.eventOrderError {
                 Text(error).foregroundStyle(.red).textSelection(.enabled)
@@ -973,7 +973,7 @@ enum FinalFormat {
                         .font(.callout).foregroundStyle(.secondary)
                     if let error = model.presentationError { Text(error).font(.callout).foregroundStyle(.red) }
                     Button(model.presentationMode == "inherited"
-                           ? (model.eventOrder != nil ? "Zamiast tego użyj pozycji z wydarzenia" : "Zamiast tego użyj pozycji pełnego zamówienia")
+                           ? (model.eventOrder != nil ? "Zamiast tego użyj pozycji z eventu" : "Zamiast tego użyj pozycji pełnego zamówienia")
                            : "Przywróć nazwy i układ z zaliczki") {
                         model.requestPresentation(model.presentationMode == "inherited" ? "order" : "inherited")
                     }
@@ -1003,7 +1003,7 @@ enum FinalFormat {
                     .font(.callout).foregroundStyle(remaining < -0.01 ? Color.red : Color.secondary)
             }
             if model.eventOrderEdited && !unavailable {
-                Text("Zmieniono pozycje na fakturze. Podsumowanie uwzględnia te zmiany; wartość zapisana w wydarzeniu pozostaje bez zmian.")
+                Text("Zmieniono pozycje na fakturze. Podsumowanie uwzględnia te zmiany; wartość zapisana w evencie pozostaje bez zmian.")
                     .font(.callout).foregroundStyle(theme.accent)
             }
         }
@@ -1011,7 +1011,7 @@ enum FinalFormat {
 
     private var sourceText: String {
         if let order = model.eventOrder {
-            return "Źródło kwot: \(order.sourceLabel). Pełna wartość została pobrana z \(order.eventIds.count > 1 ? "wydarzeń we wspólnym rozliczeniu" : "powiązanego wydarzenia") z uwzględnieniem uzgodnionych rabatów."
+            return "Źródło kwot: \(order.sourceLabel). Pełna wartość została pobrana z \(order.eventIds.count > 1 ? "eventów we wspólnym rozliczeniu" : "powiązanego eventu") z uwzględnieniem uzgodnionych rabatów."
         }
         return model.orderItems != nil
             ? "Źródło kwot: pełne zamówienie zapisane przy dokumentach. Zaliczki pomniejszają wyłącznie kwotę do zapłaty."

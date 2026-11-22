@@ -26,10 +26,10 @@ const one = <T,>(value: T | T[] | null | undefined): T | null => (Array.isArray(
 
 /** `checklistFileName` z zakładki Sprzęt. */
 export function checklistFileName(eventName: string | null | undefined, suffix = '') {
-  const name = String(eventName || 'wydarzenie').normalize('NFC')
+  const name = String(eventName || 'event').normalize('NFC')
     .replace(/[^\p{L}\p{N}._ -]/gu, '-')
     .replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^[. -]+|[. -]+$/g, '')
-    .slice(0, 100) || 'wydarzenie';
+    .slice(0, 100) || 'event';
   return `checklista-sprzętu-${name}${suffix ? `-${suffix}` : ''}.pdf`;
 }
 
@@ -48,7 +48,7 @@ async function checklistLogo(client: SupabaseClient) {
     || (logos || []).find((item: any) => normalize(item.variant) === 'logo-horizontal-black');
   const raw = (logo as any)?.url as string | undefined;
   if (!raw) {
-    throw new ChecklistPrintError('W brandbooku Mavinci dodaj logo o nazwie logo-horizontal-black. Checklista zawsze używa marki Mavinci, niezależnie od marki wydarzenia.');
+    throw new ChecklistPrintError('W brandbooku Mavinci dodaj logo o nazwie logo-horizontal-black. Checklista zawsze używa marki Mavinci, niezależnie od marki eventu.');
   }
   const publicUrl = /^https?:\/\//i.test(raw) || raw.startsWith('data:')
     ? raw
@@ -80,7 +80,7 @@ export async function loadChecklistPrint(client: SupabaseClient, eventId: string
     .select('id, name, event_date, location, location_id, contact_person_id, equipment_checklist_notes, equipment_checklist_note_items')
     .eq('id', eventId).maybeSingle();
   if (eventError) throw new ChecklistPrintError('Nie udało się pobrać notatek do checklisty.');
-  if (!event) throw new ChecklistPrintError('Nie znaleziono wydarzenia albo nie masz do niego dostępu.', 404);
+  if (!event) throw new ChecklistPrintError('Nie znaleziono eventu albo nie masz do niego dostępu.', 404);
   const e = event as any;
   const [rows, access, location, me, calculation] = await Promise.all([
     client.from('event_equipment').select(`
@@ -133,7 +133,7 @@ export async function loadChecklistPrint(client: SupabaseClient, eventId: string
   const html = buildEquipmentChecklistHtml({
     checklistNotes: e.equipment_checklist_notes,
     checklistNoteItems: e.equipment_checklist_note_items,
-    eventName: e.name || 'Wydarzenie',
+    eventName: e.name || 'Event',
     eventDate: e.event_date ? new Date(e.event_date).toLocaleDateString('pl-PL', { timeZone: 'Europe/Warsaw' }) : '',
     location: locationText,
     equipmentItems: items,
@@ -144,7 +144,7 @@ export async function loadChecklistPrint(client: SupabaseClient, eventId: string
     companyLogoUrl,
     externalItems: external.length > 0 ? external : undefined,
   });
-  return { html, eventName: e.name || 'wydarzenie', fileName: checklistFileName(e.name) };
+  return { html, eventName: e.name || 'event', fileName: checklistFileName(e.name) };
 }
 
 /** Ustawienia druku odpowiadające `html2pdf` z zakładki: A4, marginesy z `@page`, „Strona X / Y” w prawym dolnym rogu. */

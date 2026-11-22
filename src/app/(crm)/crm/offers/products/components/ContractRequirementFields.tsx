@@ -99,7 +99,7 @@ export function ContractRequirementFields({
         <div />
         {numberInput('download', 'Pobieranie co najmniej', 'Mb/s')}
         {numberInput('upload', 'Wysyłanie co najmniej', 'Mb/s')}
-        <div className="md:col-span-2">{check('dedicated', 'Niewspółdzielone z uczestnikami wydarzenia')}</div>
+        <div className="md:col-span-2">{check('dedicated', 'Niewspółdzielone z uczestnikami eventu')}</div>
       </>}
       {value.type === 'space' && <>
         {numberInput('width', 'Szerokość stanowiska', 'm')}
@@ -126,11 +126,11 @@ export function ContractRequirementFields({
         <div className="flex items-end pb-2">{check('lift', 'Wniesienie bez schodów lub windą towarową')}</div>
       </>}
       {value.type === 'setup' && <>
-        {numberInput('before', 'Dostęp przed wydarzeniem', 'godz.')}
-        {numberInput('after', 'Demontaż po wydarzeniu', 'godz.')}
+        {numberInput('before', 'Dostęp przed eventem', 'godz.')}
+        {numberInput('after', 'Demontaż po evencie', 'godz.')}
         <div className="flex flex-wrap gap-4 md:col-span-2">
-          {check('test', 'Próba techniczna przed wydarzeniem')}
-          {check('teardown', 'Demontaż po wydarzeniu')}
+          {check('test', 'Próba techniczna przed eventem')}
+          {check('teardown', 'Demontaż po evencie')}
         </div>
       </>}
       {value.type === 'backstage' && <>

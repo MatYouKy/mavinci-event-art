@@ -122,7 +122,7 @@ export default function EmployeeSalesCommissionTermsCard({
       const parsed = parseSalesCommissionSettings(data);
       if (parsed) setSettings(parsed);
       else void load();
-      showSnackbar('Warunki prowizji zapisane — prognozy otwartych wydarzeń przeliczone.', 'success');
+      showSnackbar('Warunki prowizji zapisane — prognozy otwartych eventów przeliczone.', 'success');
       return true;
     } finally {
       savingRef.current = false;
@@ -137,7 +137,7 @@ export default function EmployeeSalesCommissionTermsCard({
         Prowizja od sprzedaży
       </h3>
       <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/50">
-        Procent od zysku netto wydarzeń, w których pracownik jest sprzedawcą wydarzenia. Wyższa stawka, gdy w dniu akceptacji oferty był
+        Procent od zysku netto eventów, w których pracownik jest sprzedawcą eventu. Wyższa stawka, gdy w dniu akceptacji oferty był
         opiekunem klienta.
       </p>
       {state === 'loading' && (

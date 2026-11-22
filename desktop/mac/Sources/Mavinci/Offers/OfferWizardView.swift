@@ -59,7 +59,7 @@ struct OfferWizardRoute: Identifiable {
             }
             .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 12)
             if events != nil && !(events ?? []).isEmpty {
-                TextField("", text: $search, prompt: Text("Szukaj wydarzenia lub klienta"))
+                TextField("", text: $search, prompt: Text("Szukaj eventu lub klienta"))
                     .textFieldStyle(.roundedBorder).padding(.horizontal, 20).padding(.bottom, 10)
             }
             Divider()
@@ -178,7 +178,7 @@ struct OfferWizardRoute: Identifiable {
                 Button("Spróbuj ponownie") { Task { await model.load() } }.buttonStyle(.borderedProminent)
             } else {
                 ProgressView()
-                Text("Uzupełniam dane z wydarzenia…").foregroundStyle(.secondary)
+                Text("Uzupełniam dane z eventu…").foregroundStyle(.secondary)
             }
         }
         .padding(40)
@@ -425,8 +425,8 @@ struct OfferWizardRoute: Identifiable {
 
     private func term(_ start: String, _ end: String?) -> String {
         let from = OfferText.dayTime(start)
-        guard let end else { return "Termin wydarzenia: \(from)" }
-        return "Termin wydarzenia: \(from) – \(OfferText.dayTime(end))"
+        guard let end else { return "Termin eventu: \(from)" }
+        return "Termin eventu: \(from) – \(OfferText.dayTime(end))"
     }
 
     var body: some View {
@@ -437,7 +437,7 @@ struct OfferWizardRoute: Identifiable {
                     if let start = event.startsAt {
                         Text(term(start, event.endsAt)).font(.callout).foregroundStyle(.secondary)
                     }
-                    Text("Dostępne dane zostały uzupełnione z wydarzenia. Możesz je dostosować do tej oferty.")
+                    Text("Dostępne dane zostały uzupełnione z eventu. Możesz je dostosować do tej oferty.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading)
@@ -451,8 +451,8 @@ struct OfferWizardRoute: Identifiable {
                 TextField("", text: $model.offerNumber, prompt: Text("Zostaw puste dla automatycznego numeru")).textFieldStyle(.roundedBorder)
             }
             OfferWizardAudienceFields(model: model)
-            ProductField(label: "Miejsce wydarzenia") {
-                TextField("", text: $model.location, prompt: Text("Wpisz miejsce wydarzenia")).textFieldStyle(.roundedBorder)
+            ProductField(label: "Miejsce eventu") {
+                TextField("", text: $model.location, prompt: Text("Wpisz miejsce eventu")).textFieldStyle(.roundedBorder)
             }
             ProductField(label: "Ważna do") {
                 HStack(spacing: 8) {
@@ -467,14 +467,14 @@ struct OfferWizardRoute: Identifiable {
                     }
                 }
             }
-            ProductField(label: "Cel wydarzenia") {
-                ProductTextArea(text: $model.goal, prompt: "Co klient chce osiągnąć dzięki wydarzeniu?", lines: 3...6)
+            ProductField(label: "Cel eventu") {
+                ProductTextArea(text: $model.goal, prompt: "Co klient chce osiągnąć dzięki eventowi?", lines: 3...6)
             }
             ProductField(label: "Notatki") {
                 ProductTextArea(text: $model.notes, prompt: "Dodatkowe informacje o ofercie...", lines: 4...8)
             }
             if model.setup?.hasDescription == true {
-                Text("Opis wydarzenia trafi do założeń oferty („Przebieg i potrzeby klienta”). Założenia zmienisz na stronie oferty.")
+                Text("Opis eventu trafi do założeń oferty („Przebieg i potrzeby klienta”). Założenia zmienisz na stronie oferty.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

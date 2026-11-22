@@ -90,7 +90,7 @@ export function ComponentEditDialog({ row, compatible, equipmentId, onClose, onS
               <option value="required">Wymagany</option><option value="recommended">Rekomendowany</option><option value="optional">Opcjonalny</option>
             </select></label>
             <label className="block text-sm">Sposób przeliczania<select value={mode} onChange={e => setMode(e.target.value)} className={field}>
-              <option value="per_item">Na każdą sztukę sprzętu</option><option value="fixed">Stała liczba dla całego wydarzenia</option>
+              <option value="per_item">Na każdą sztukę sprzętu</option><option value="fixed">Stała liczba dla całego eventu</option>
             </select></label>
             <label className="block text-sm">Grupa alternatyw<input value={group} onChange={e => setGroup(e.target.value)} placeholder="Bez grupy" className={field} /><span className="mt-1 block text-xs text-[#e5e4e2]/60">Ta sama nazwa grupy łączy elementy, spośród których wybierasz jeden.</span></label>
           </> : <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={optional} onChange={e => setOptional(e.target.checked)} className="h-4 w-4 accent-[#d3bb73]" />Opcjonalny</label>}

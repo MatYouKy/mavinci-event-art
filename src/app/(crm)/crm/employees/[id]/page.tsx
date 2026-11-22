@@ -299,7 +299,7 @@ export default function EmployeeDetailPage() {
     }
 
     const confirmed = await showConfirm(
-      `Czy na pewno chcesz trwale usunąć pracownika:\n\n${employee.name} ${employee.surname}?\n\nTej operacji nie można cofnąć. Autorstwo wydarzeń i wymaganych dokumentów przejmie Twoje konto administratora, a przypisania tego pracownika zostaną usunięte.`,
+      `Czy na pewno chcesz trwale usunąć pracownika:\n\n${employee.name} ${employee.surname}?\n\nTej operacji nie można cofnąć. Autorstwo eventów i wymaganych dokumentów przejmie Twoje konto administratora, a przypisania tego pracownika zostaną usunięte.`,
       'Usuń trwale',
     );
 
@@ -711,7 +711,7 @@ export default function EmployeeDetailPage() {
           ...(currentEmployee?.id === employeeId
             ? [{ id: 'tasks', label: 'Zadania', icon: CheckSquare }]
             : []),
-          ...(canViewOwnProfile ? [{ id: 'events', label: 'Wydarzenia', icon: Calendar }] : []),
+          ...(canViewOwnProfile ? [{ id: 'events', label: 'Eventy', icon: Calendar }] : []),
           ...(canViewOwnProfile ? [{ id: 'timeline', label: 'Oś czasu', icon: Clock }] : []),
         ].map((tab) => (
           <button data-crm-tab-active={activeTab === tab.id}

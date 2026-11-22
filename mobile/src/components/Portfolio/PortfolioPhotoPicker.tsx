@@ -10,7 +10,7 @@ import { portfolioErrorMessage, portfolioGet, type PortfolioPhotoOption, type Po
  */
 
 const SOURCES: Array<[PortfolioPhotoSource, string, keyof typeof Feather.glyphMap]> = [
-  ['event', 'Wydarzenie', 'folder'],
+  ['event', 'Event', 'folder'],
   ['material', 'Materiały', 'archive'],
   ['social', 'Social media', 'image'],
 ];
@@ -39,7 +39,7 @@ export default function PortfolioPhotoPicker({ visible, initialSource, eventId, 
     if (!visible) return;
     if (source === 'event' && !eventId) {
       setPhotos([]);
-      setProblem('Powiąż realizację z wydarzeniem, żeby wybrać zdjęcia z jego plików.');
+      setProblem('Powiąż realizację z eventem, żeby wybrać zdjęcia z jego plików.');
       return;
     }
     let active = true;
@@ -51,7 +51,7 @@ export default function PortfolioPhotoPicker({ visible, initialSource, eventId, 
         });
         if (!active) return;
         setPhotos(data.photos);
-        setProblem(data.problem || (data.photos.length ? '' : source === 'event' ? 'Wydarzenie nie ma zdjęć w plikach (JPEG, PNG, WebP).' : 'Brak zdjęć.'));
+        setProblem(data.problem || (data.photos.length ? '' : source === 'event' ? 'Event nie ma zdjęć w plikach (JPEG, PNG, WebP).' : 'Brak zdjęć.'));
       } catch (cause) {
         if (active) { setPhotos([]); setProblem(portfolioErrorMessage(cause, 'Nie udało się pobrać zdjęć.')); }
       } finally {
@@ -80,7 +80,7 @@ export default function PortfolioPhotoPicker({ visible, initialSource, eventId, 
             ))}
           </View>
           {source === 'event'
-            ? (eventName ? <Text style={styles.muted}>Wydarzenie: {eventName}</Text> : null)
+            ? (eventName ? <Text style={styles.muted}>Event: {eventName}</Text> : null)
             : <TextInput style={styles.input} value={query} onChangeText={setQuery} placeholder="Szukaj po nazwie" placeholderTextColor={colors.text.tertiary} />}
           {loading && <ActivityIndicator color={colors.primary.gold} />}
           {!!problem && !loading && <Text style={styles.muted}>{problem}</Text>}

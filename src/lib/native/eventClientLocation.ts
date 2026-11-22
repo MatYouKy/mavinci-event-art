@@ -38,7 +38,7 @@ async function clientEditor(ctx: NativeContext, eventId: string) {
     s.from('contacts').select('id, full_name, first_name, last_name, email, phone').eq('contact_type', 'individual').order('full_name'),
     eventContactPersons(ctx, eventId),
   ]);
-  if (event.error || !event.data) fail('Nie znaleziono wydarzenia.');
+  if (event.error || !event.data) fail('Nie znaleziono eventu.');
   const e = event.data as Row;
   return {
     clientType: e.client_type === 'individual' ? 'individual' : 'business',
@@ -114,7 +114,7 @@ registerEventQueries('details', { clientEditor, businessContacts, placeSearch, p
 async function personOfEvent(ctx: NativeContext, eventId: string, id: string) {
   if (!UUID.test(id)) fail('Nieprawidłowa osoba kontaktowa.');
   const { data } = await ctx.supabase.from('event_contact_persons').select('id').eq('id', id).eq('event_id', eventId).maybeSingle();
-  if (!data) fail('Ta osoba nie jest przypisana do wydarzenia.');
+  if (!data) fail('Ta osoba nie jest przypisana do eventu.');
 }
 
 /** `handleCreateIndividual`. */

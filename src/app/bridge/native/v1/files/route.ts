@@ -25,7 +25,7 @@ function failure(error: unknown) {
 export async function GET(request: Request) {
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
-  if (!eventsAccess(ctx).canView) return nativeJson({ error: 'Nie masz dostępu do wydarzeń.' }, 403);
+  if (!eventsAccess(ctx).canView) return nativeJson({ error: 'Nie masz dostępu do eventów.' }, 403);
   const params = new URL(request.url).searchParams;
   try {
     switch (params.get('op')) {
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
-  if (!eventsAccess(ctx).canView) return nativeJson({ error: 'Nie masz dostępu do wydarzeń.' }, 403);
+  if (!eventsAccess(ctx).canView) return nativeJson({ error: 'Nie masz dostępu do eventów.' }, 403);
   let body: Record<string, any>;
   try {
     body = await readJson(request, 100_000);

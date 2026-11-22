@@ -19,7 +19,7 @@ export async function loadEventAcceptanceConfirmationPreview(
     .select('id, name, event_date, contact_person_id, organization_id')
     .eq('id', eventId)
     .single();
-  if (error || !event) throw new Error('Nie udało się odczytać wydarzenia i odbiorcy potwierdzenia.');
+  if (error || !event) throw new Error('Nie udało się odczytać eventu i odbiorcy potwierdzenia.');
 
   const [contactResult, organizationResult] = await Promise.all([
     event.contact_person_id
@@ -59,7 +59,7 @@ export async function sendEventAcceptanceConfirmation({
   acceptedOfferId?: string;
 }): Promise<{ recipientEmail: string; sentAt: string; historyRecorded: boolean }> {
   if (pendingEventConfirmations.has(eventId)) {
-    throw new Error('Wysyłka potwierdzenia tego wydarzenia już trwa.');
+    throw new Error('Wysyłka potwierdzenia tego eventu już trwa.');
   }
   pendingEventConfirmations.add(eventId);
   try {
@@ -69,7 +69,7 @@ export async function sendEventAcceptanceConfirmation({
 
     const preview = await loadEventAcceptanceConfirmationPreview(eventId);
     if (!preview.recipientEmail || preview.recipientEmail !== expectedRecipientEmail) {
-      throw new Error('Odbiorca potwierdzenia zmienił się lub nie ma adresu e-mail. Sprawdź dane wydarzenia przed wysyłką.');
+      throw new Error('Odbiorca potwierdzenia zmienił się lub nie ma adresu e-mail. Sprawdź dane eventu przed wysyłką.');
     }
     if (acceptedOfferId) {
       const { data: acceptedOffer, error } = await supabase.from('offers')

@@ -59,10 +59,10 @@ export function useEvent(initialEvent?: IEvent) {
         setEvent((prev) => (prev ? ({ ...prev, ...data } as IEvent) : prev));
 
         await updateEventMutation({ id: eventId, data }).unwrap();
-        showSnackbar('Wydarzenie zaktualizowane', 'success');
+        showSnackbar('Event zaktualizowany', 'success');
         return true;
       } catch (err: any) {
-        showSnackbar(`Błąd: ${err?.message ?? 'Nie udało się zaktualizować wydarzenia'}`, 'error');
+        showSnackbar(`Błąd: ${err?.message ?? 'Nie udało się zaktualizować eventu'}`, 'error');
         return false;
       }
     },
@@ -72,11 +72,11 @@ export function useEvent(initialEvent?: IEvent) {
   const deleteEvent = useCallback(async () => {
     try {
       await deleteEventMutation(eventId).unwrap();
-      showSnackbar('Wydarzenie usunięte', 'success');
+      showSnackbar('Event usunięty', 'success');
       router.push('/crm/events');
       return true;
     } catch (err: any) {
-      showSnackbar(`Błąd: ${err?.message ?? 'Nie udało się usunąć wydarzenia'}`, 'error');
+      showSnackbar(`Błąd: ${err?.message ?? 'Nie udało się usunąć eventu'}`, 'error');
       return false;
     }
   }, [eventId, deleteEventMutation, showSnackbar, router]);

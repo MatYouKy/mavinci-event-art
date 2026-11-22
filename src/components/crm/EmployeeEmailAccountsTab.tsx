@@ -521,7 +521,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                         <option value="none">Brak emaili (tylko powiadomienia w systemie)</option>
                       </select>
                       <p className="mt-1 text-xs text-[#e5e4e2]/50">
-                        Wybierz na jaki adres wysyłać powiadomienia o wydarzeniach i zadaniach
+                        Wybierz na jaki adres wysyłać powiadomienia o eventach i zadaniach
                       </p>
                     </div>
                     <div className="flex gap-2">

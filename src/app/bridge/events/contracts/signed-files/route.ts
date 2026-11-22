@@ -26,7 +26,7 @@ async function context(request: Request, manage: boolean) {
   const { data: contract, error } = await userClient.from('contracts')
     .select('id, event_id, status, company_signed_at').eq('id', contractId).maybeSingle();
   if (error) throw error;
-  if (!contract?.event_id) throw new RequestError('Nie znaleziono umowy wydarzenia.', 404);
+  if (!contract?.event_id) throw new RequestError('Nie znaleziono umowy eventu.', 404);
   const { data: allowed, error: permissionError } = await userClient.rpc('can_view_event_commercials', {
     p_event_id: contract.event_id, p_manage: manage,
   });

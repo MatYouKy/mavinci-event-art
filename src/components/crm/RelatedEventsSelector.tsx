@@ -30,7 +30,7 @@ export default function RelatedEventsSelector({
   value,
   onChange,
   currentEventId,
-  placeholder = 'Wyszukaj powiązane wydarzenia...',
+  placeholder = 'Wyszukaj powiązane eventy...',
   className = '',
 }: RelatedEventsSelectorProps) {
   const [events, setEvents] = useState<Event[]>([]);
@@ -233,8 +233,8 @@ export default function RelatedEventsSelector({
             ) : (
               <div className="px-4 py-8 text-center text-sm text-[#e5e4e2]/50">
                 {inputValue
-                  ? `Brak wydarzeń pasujących do "${inputValue}"`
-                  : 'Brak dostępnych wydarzeń do powiązania'}
+                  ? `Brak eventów pasujących do "${inputValue}"`
+                  : 'Brak dostępnych eventów do powiązania'}
               </div>
             )}
           </div>
@@ -288,7 +288,7 @@ export default function RelatedEventsSelector({
 
       {selectedEvents.length === 0 && (
         <div className="py-4 text-center text-sm text-[#e5e4e2]/50">
-          Brak powiązanych wydarzeń. Rozpocznij wpisywanie aby dodać.
+          Brak powiązanych eventów. Rozpocznij wpisywanie aby dodać.
         </div>
       )}
     </div>

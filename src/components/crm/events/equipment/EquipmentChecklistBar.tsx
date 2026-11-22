@@ -151,7 +151,7 @@ export default function EquipmentChecklistBar({
   const specs: Record<ActionKind, ActionSpec> = {
     request_approval: {
       title: 'Poproś o zgodę na braki',
-      description: `Sprzedawca wydarzenia i administratorzy dostaną powiadomienie z listą braków (${summary.shortages_pending + summary.shortages_rejected}).`,
+      description: `Sprzedawca eventu i administratorzy dostaną powiadomienie z listą braków (${summary.shortages_pending + summary.shortages_rejected}).`,
       label: 'Notatka dla sprzedawcy',
       placeholder: 'np. co proponujesz zamiast brakującego sprzętu',
       required: false,
@@ -209,7 +209,7 @@ export default function EquipmentChecklistBar({
       success: 'Prośba o odblokowanie wysłana do administratorów.',
     },
     confirm_loadback: {
-      title: 'Zatwierdź załadunek po wydarzeniu',
+      title: 'Zatwierdź załadunek po evencie',
       description:
         summary.loadback_missing > 0
           ? `Rozbieżności (${summary.loadback_missing}) trafią do magazynu, sprzedawcy i administratorów.`
@@ -220,7 +220,7 @@ export default function EquipmentChecklistBar({
       maxLength: 2000,
       submitLabel: 'Zatwierdź załadunek',
       call: note => [RPC.confirmLoadback, { p_event: eventId, p_note: note || null }],
-      success: 'Załadunek po wydarzeniu zatwierdzony.',
+      success: 'Załadunek po evencie zatwierdzony.',
     },
     confirm_return: {
       title: 'Zatwierdź zwrot',
@@ -250,7 +250,7 @@ export default function EquipmentChecklistBar({
     },
     reopen: {
       title: `Cofnij etap: ${reopenable ? tabOf(reopenable).label : ''}`,
-      description: 'Etapy cofa się od końca: zwrot → po wydarzeniu → wydanie. Cofnięcie przywraca otwarte kroki realizacji.',
+      description: 'Etapy cofa się od końca: zwrot → po evencie → wydanie. Cofnięcie przywraca otwarte kroki realizacji.',
       label: 'Powód',
       placeholder: 'np. pomyłka w ilości, sprzęt odnaleziony',
       required: true,
@@ -301,7 +301,7 @@ export default function EquipmentChecklistBar({
       return: {
         title: 'Wszystko wróciło sprawne',
         message:
-          'Nieodhaczone pozycje zostaną oznaczone jako sprawne w pełnej wydanej ilości. Pozycje z brakiem po wydarzeniu trzeba wpisać ręcznie z opisem.',
+          'Nieodhaczone pozycje zostaną oznaczone jako sprawne w pełnej wydanej ilości. Pozycje z brakiem po evencie trzeba wpisać ręcznie z opisem.',
         success: 'Nieodhaczone pozycje oznaczono jako sprawne.',
       },
     }[target];
@@ -343,10 +343,10 @@ export default function EquipmentChecklistBar({
       return <span className="text-[#e5e4e2]/55">Etap otworzy się po potwierdzeniu wydania.</span>;
     }
     if (stage === 'loadback' && c.return.confirmed_at) {
-      return <span className="text-[#e5e4e2]/55">Zwrot zatwierdzono bez załadunku po wydarzeniu.</span>;
+      return <span className="text-[#e5e4e2]/55">Zwrot zatwierdzono bez załadunku po evencie.</span>;
     }
     if (stage === 'return' && c.stage === 'loadback') {
-      return <span className="text-[#e5e4e2]/55">Zwrot możesz sprawdzić przed zatwierdzeniem załadunku po wydarzeniu — podstawą jest ilość wydana.</span>;
+      return <span className="text-[#e5e4e2]/55">Zwrot możesz sprawdzić przed zatwierdzeniem załadunku po evencie — podstawą jest ilość wydana.</span>;
     }
     return <span className="text-[#e5e4e2]/55">{EQUIPMENT_STAGE_HINTS[c.stage]}</span>;
   })();
@@ -400,7 +400,7 @@ export default function EquipmentChecklistBar({
           className={equipmentPrimaryButton}
         >
           <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-          Zatwierdź załadunek po wydarzeniu
+          Zatwierdź załadunek po evencie
         </button>,
       );
     }

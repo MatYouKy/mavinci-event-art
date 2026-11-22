@@ -18,7 +18,7 @@ export async function loadInvoiceItemSourceChoices(eventId: string) {
     supabase.rpc('get_event_financial_info', { p_event_id: eventId }),
   ]);
   if (eventResult.error || financialResult.error) {
-    throw new Error('Nie udało się odczytać zaakceptowanych źródeł tego wydarzenia. Nie podstawiono cen.');
+    throw new Error('Nie udało się odczytać zaakceptowanych źródeł tego eventu. Nie podstawiono cen.');
   }
   const event = eventResult.data;
   const financial = financialResult.data?.[0];
@@ -53,7 +53,7 @@ export async function loadInvoiceItemSourceChoices(eventId: string) {
     if (result.status === 'rejected') warnings.push(result.reason instanceof Error ? result.reason.message : 'Nie udało się odczytać źródła pozycji.');
   }
   if (!choices.some((choice) => choice.id === preferredId)) {
-    warnings.push('Brak dostępnego zaakceptowanego źródła finansowego wydarzenia. Wybierz świadomie inne dostępne źródło albo wprowadź pozycje ręcznie.');
+    warnings.push('Brak dostępnego zaakceptowanego źródła finansowego eventu. Wybierz świadomie inne dostępne źródło albo wprowadź pozycje ręcznie.');
   }
   return { choices, preferredId, warning: warnings.join(' '), eventName: event.name || '' };
 }

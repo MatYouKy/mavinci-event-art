@@ -1145,7 +1145,7 @@ export function EventContractTab({
       if (error) {
         if (['42703', 'PGRST204'].includes(error.code || '')) {
           throw new Error(
-            'Brakuje pola klauzul wydarzenia w bazie. Uruchom najnowszą migrację Supabase i spróbuj ponownie.',
+            'Brakuje pola klauzul eventu w bazie. Uruchom najnowszą migrację Supabase i spróbuj ponownie.',
           );
         }
         throw error;
@@ -1508,7 +1508,7 @@ export function EventContractTab({
             <FileText className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
             <h3 className="mb-2 text-xl text-[#e5e4e2]">Wybierz szablon umowy</h3>
             <p className="mb-6 text-[#e5e4e2]/60">
-              Dla tej kategorii wydarzenia nie został przypisany domyślny szablon. Wybierz szablon z listy poniżej.
+              Dla tej kategorii eventu nie został przypisany domyślny szablon. Wybierz szablon z listy poniżej.
             </p>
 
             {availableTemplates.length > 0 ? (
@@ -1556,7 +1556,7 @@ export function EventContractTab({
     ...(isWorkingDraft && unresolvedProductClauseConflicts.length > 0
       ? [{ key: 'conflicts', label: `rozbieżne wersje wspólnych ustaleń: ${unresolvedProductClauseConflicts.length}`, section: 'clauses' as const }]
       : []),
-    ...(contractSourceOutdated ? [{ key: 'outdated', label: 'dane wydarzenia lub oferta zmieniły się — odśwież', section: 'review' as const }] : []),
+    ...(contractSourceOutdated ? [{ key: 'outdated', label: 'dane eventu lub oferta zmieniły się — odśwież', section: 'review' as const }] : []),
   ];
   const contractSectionBadges: Partial<Record<ContractSection, { count: number; warn?: boolean }>> = {
     clauses: isWorkingDraft && unresolvedProductClauseConflicts.length > 0
@@ -1593,13 +1593,13 @@ export function EventContractTab({
           <div className="mb-5 flex flex-col gap-4 md:mb-6 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
               <h2 className="text-xl font-light leading-tight text-[#e5e4e2] md:text-2xl">
-                Umowa na realizację wydarzenia
+                Umowa na realizację eventu
               </h2>
               <p className="mt-1 text-sm text-[#e5e4e2]/50">
                 {contractStatus === 'cancelled'
                   ? 'Umowa anulowana. Zachowano jej treść, PDF i historię. Zapisany PDF jest dokumentem archiwalnym.'
                   : isWorkingDraft
-                  ? 'Podgląd uwzględnia dane wydarzenia, ofertę i klauzule produktów. Aby wystawić finalną umowę, sprawdź uwagi i wybierz status „Wystawiona”.'
+                  ? 'Podgląd uwzględnia dane eventu, ofertę i klauzule produktów. Aby wystawić finalną umowę, sprawdź uwagi i wybierz status „Wystawiona”.'
                   : 'Umowa finalna. Generowany PDF i wysyłka dotyczą umowy, nie wersji roboczej.'}
               </p>
               {selectedTemplateName && (
@@ -1809,7 +1809,7 @@ export function EventContractTab({
           <div className="no-print grid gap-3 text-xs text-[#e5e4e2]/70 md:grid-cols-3">
             <div className="rounded-lg border border-white/10 bg-[#1c1f33] p-3">
               <div className="mb-1 font-medium text-[#e5e4e2]">Treść umowy</div>
-              {contentIndividuallyEdited ? 'Zmieniona indywidualnie dla tego wydarzenia.' : 'Wygenerowana z szablonu, danych wydarzenia i oferty.'}
+              {contentIndividuallyEdited ? 'Zmieniona indywidualnie dla tego eventu.' : 'Wygenerowana z szablonu, danych eventu i oferty.'}
             </div>
             <div className="rounded-lg border border-[#a083dc]/25 bg-[#a083dc]/5 p-3">
               <div className="mb-1 font-medium text-[#e5e4e2]">Warunki umowy</div>
@@ -2014,7 +2014,7 @@ export function EventContractTab({
                       Klauzule tej umowy
                     </div>
                     <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/50">
-                      Edytuj lub wyłącz automatyczne klauzule i dodaj ustalenia klienta tylko dla tego wydarzenia.
+                      Edytuj lub wyłącz automatyczne klauzule i dodaj ustalenia klienta tylko dla tego eventu.
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {EVENT_CONTRACT_CLAUSE_CATEGORY_ORDER.map((category) => {
@@ -2296,7 +2296,7 @@ export function EventContractTab({
             {contractId && (contractStatus !== 'draft' || generatedPdfPath || contractLockedAt) ? (
               <p>Przygotujemy nowy szkic z wybranego szablonu. Dotychczasowa umowa i jej PDF pozostaną w historii. Nową wersję możesz sprawdzić przed wysłaniem klientowi.</p>
             ) : (
-              <p>Treść szkicu zostanie przygotowana z wybranego szablonu i danych wydarzenia. Indywidualne zmiany treści i zmiennych trzeba będzie wprowadzić ponownie.</p>
+              <p>Treść szkicu zostanie przygotowana z wybranego szablonu i danych eventu. Indywidualne zmiany treści i zmiennych trzeba będzie wprowadzić ponownie.</p>
             )}
             <p>Zmiana szablonu nie wysyła wiadomości do klienta.</p>
           </div>

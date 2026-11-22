@@ -511,7 +511,7 @@ export default function EquipmentChecklistPanel({ eventId, onChanged, legacy, re
       description: [
         c.summary.shortages_pending > 0 ? `Braki czekające na zgodę: ${c.summary.shortages_pending}.` : null,
         c.summary.shortages_rejected > 0 ? `Braki bez zgody: ${c.summary.shortages_rejected} — napisz, co się zmieniło.` : null,
-        'Powiadomimy sprzedawcę wydarzenia i administratorów.',
+        'Powiadomimy sprzedawcę eventu i administratorów.',
       ]
         .filter(Boolean)
         .join(' '),
@@ -590,7 +590,7 @@ export default function EquipmentChecklistPanel({ eventId, onChanged, legacy, re
       title: 'Zatwierdź załadunek powrotny',
       description:
         c.summary.loadback_missing > 0
-          ? `Rozbieżności: ${c.summary.loadback_missing} poz. — powiadomimy magazyn, sprzedawcę wydarzenia i administratorów.`
+          ? `Rozbieżności: ${c.summary.loadback_missing} poz. — powiadomimy magazyn, sprzedawcę eventu i administratorów.`
           : 'Wraca komplet — powiadomimy magazyn.',
       label: 'Notatka',
       placeholder: 'opcjonalnie, np. auto, kto wiezie, godzina',
@@ -607,7 +607,7 @@ export default function EquipmentChecklistPanel({ eventId, onChanged, legacy, re
       title: 'Zatwierdź zwrot',
       description:
         issues > 0
-          ? `Rozbieżności: ${issues} poz. — trafią do sprzedawcy wydarzenia i administratorów do przyjęcia z decyzją.`
+          ? `Rozbieżności: ${issues} poz. — trafią do sprzedawcy eventu i administratorów do przyjęcia z decyzją.`
           : 'Bez rozbieżności — krok „Przyjmij zwrot” zamknie się sam.',
       label: 'Notatka',
       placeholder: 'opcjonalnie',

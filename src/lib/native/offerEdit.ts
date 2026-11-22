@@ -142,7 +142,7 @@ export async function offerEditor(ctx: NativeContext, id: string) {
     individuals: ((individuals.data || []) as Row[]).map((row) => ({
       id: String(row.id), name: name(row), email: row.email || null, phone: row.mobile || row.phone || null,
     })),
-    events: ((events.data || []) as Row[]).map((row) => ({ id: String(row.id), name: text(row.name) || 'Wydarzenie bez nazwy', date: row.event_date || null })),
+    events: ((events.data || []) as Row[]).map((row) => ({ id: String(row.id), name: text(row.name) || 'Event bez nazwy', date: row.event_date || null })),
     locations: ((locations.data || []) as Row[]).map((row) => ({
       id: String(row.id),
       label: `${text(row.name)}${row.city ? `, ${row.city}` : ''}${row.postal_code ? `, ${row.postal_code}` : ''}`,
@@ -222,7 +222,7 @@ export async function saveOfferBasic(ctx: NativeContext, body: Row) {
     const raw = text(input.eventDate).trim();
     if (raw) {
       const parsed = new Date(raw);
-      if (!Number.isFinite(parsed.getTime())) fail('Podaj prawidłowy termin wydarzenia');
+      if (!Number.isFinite(parsed.getTime())) fail('Podaj prawidłowy termin eventu');
       eventDate = parsed.toISOString();
     } else {
       eventDate = null;
@@ -329,7 +329,7 @@ export async function saveOfferAssumptions(ctx: NativeContext, body: Row) {
   const offer = await editable(ctx, id, 'id, status, sales_channel, guest_count');
   const items = syncGuestCountAssumptions(normalizeEventAssumptionItems(assumptionItems(body.items)), offer.guest_count ?? null);
   const goal = text(body.goal).trim();
-  if (goal.length > 2000) fail('Cel wydarzenia jest za długi.');
+  if (goal.length > 2000) fail('Cel eventu jest za długi.');
   const { data, error } = await ctx.supabase.from('offers').update({
     event_assumption_items: items,
     event_assumptions: formatEventAssumptionItems(items) || null,
@@ -392,7 +392,7 @@ export async function draftOfferAssumptions(ctx: NativeContext, body: Row) {
   }, []).slice(0, 3);
   if (items.length !== 3) fail('AI nie przygotowało trzech kompletnych założeń. Spróbuj ponownie.');
   const goal = text(result.event_goal).trim();
-  if (generateGoal && !goal) fail('AI nie przygotowało celu wydarzenia. Spróbuj ponownie.');
+  if (generateGoal && !goal) fail('AI nie przygotowało celu eventu. Spróbuj ponownie.');
   const sources = result.source_context as Row | undefined;
   return {
     items: syncGuestCountAssumptions(items, guestCount),

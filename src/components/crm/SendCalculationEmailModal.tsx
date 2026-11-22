@@ -140,7 +140,7 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
       setEventFiles(files);
     } catch (error) {
       console.error('Error fetching event files:', error);
-      showSnackbar('Nie udało się pobrać plików wydarzenia', 'error');
+      showSnackbar('Nie udało się pobrać plików eventu', 'error');
     } finally {
       setLoadingFiles(false);
     }

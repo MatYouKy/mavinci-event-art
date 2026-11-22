@@ -37,7 +37,7 @@ export default function SocialQuickPostScreen() {
     route.params?.assetId ? { id: route.params.assetId, thumbnailUrl: route.params.assetThumb ?? null } : null,
   );
   const [event, setEvent] = useState<{ id: string; name: string } | null>(
-    route.params?.eventId ? { id: route.params.eventId, name: route.params.eventName || 'Wydarzenie' } : null,
+    route.params?.eventId ? { id: route.params.eventId, name: route.params.eventName || 'Event' } : null,
   );
   // Marka z ekranu Social media albo — dla zdjęcia z biblioteki — marka zdjęcia (serwer sprawdza zgodność).
   const [companyId, setCompanyId] = useState<string | null>(route.params?.companyId ?? null);
@@ -136,9 +136,9 @@ export default function SocialQuickPostScreen() {
           </>
         )}
 
-        <Text style={styles.label}>Wydarzenie</Text>
+        <Text style={styles.label}>Event</Text>
         <TouchableOpacity style={styles.input} onPress={() => setEventModal(true)}>
-          <Text style={{ color: event ? colors.text.primary : colors.text.tertiary }}>{event?.name || 'Wybierz wydarzenie (opcjonalnie)'}</Text>
+          <Text style={{ color: event ? colors.text.primary : colors.text.tertiary }}>{event?.name || 'Wybierz event (opcjonalnie)'}</Text>
         </TouchableOpacity>
 
         <Text style={styles.label}>Rodzaj</Text>
@@ -195,7 +195,7 @@ export default function SocialQuickPostScreen() {
         setAsset({ id: value.id, thumbnailUrl: value.thumbnailUrl });
         setCompanyId(value.companyId);
         setPhoto(null);
-        if (!event && value.eventId) setEvent({ id: value.eventId, name: value.eventName || 'Wydarzenie' });
+        if (!event && value.eventId) setEvent({ id: value.eventId, name: value.eventName || 'Event' });
         setLibraryModal(false);
       }} />
       <LibraryModal visible={extraModal} companyId={companyId} onClose={() => setExtraModal(false)} onPick={(value) => {
@@ -237,13 +237,13 @@ function EventModal({ visible, companyId, onClose, onPick }: {
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.container, { paddingTop: Platform.OS === 'ios' ? 50 : spacing.md }]}>
         <View style={styles.modalHeader}>
-          <Text style={styles.title}>Wydarzenie</Text>
+          <Text style={styles.title}>Event</Text>
           <TouchableOpacity onPress={onClose}><Feather name="x" size={22} color={colors.text.primary} /></TouchableOpacity>
         </View>
-        <TextInput style={[styles.input, { marginHorizontal: spacing.md }]} value={query} onChangeText={setQuery} placeholder="Szukaj wydarzenia" placeholderTextColor={colors.text.tertiary} />
+        <TextInput style={[styles.input, { marginHorizontal: spacing.md }]} value={query} onChangeText={setQuery} placeholder="Szukaj eventu" placeholderTextColor={colors.text.tertiary} />
         {!events ? <ActivityIndicator color={colors.primary.gold} style={{ marginTop: spacing.lg }} /> : (
           <FlatList data={events} keyExtractor={(item) => item.id} contentContainerStyle={{ padding: spacing.md, gap: spacing.sm }}
-            ListEmptyComponent={<Text style={styles.muted}>Brak wydarzeń.</Text>}
+            ListEmptyComponent={<Text style={styles.muted}>Brak eventów.</Text>}
             renderItem={({ item }) => (
               <TouchableOpacity style={styles.listRow} onPress={() => onPick(item)}>
                 <Text style={styles.body}>{item.name}</Text>

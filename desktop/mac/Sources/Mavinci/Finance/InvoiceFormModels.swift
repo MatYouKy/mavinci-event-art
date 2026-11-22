@@ -364,14 +364,14 @@ enum InvoiceFormText {
         ("np II", "np II — art. 100 ust. 1 pkt 4 VAT", true), ("oo", "oo — odwrotne obciążenie", true),
     ]
     static let arrangements: [(String, String)] = [
-        ("direct", "Klient wydarzenia — rozliczenie bezpośrednie"), ("hotel", "Hotel"), ("agency", "Agencja lub pośrednik"), ("other", "Inna organizacja"),
+        ("direct", "Klient eventu — rozliczenie bezpośrednie"), ("hotel", "Hotel"), ("agency", "Agencja lub pośrednik"), ("other", "Inna organizacja"),
     ]
     static func arrangementDescription(_ value: String) -> String {
         switch value {
-        case "hotel": return "Hotel będzie nabywcą i płatnikiem faktury. Klient oraz wydarzenie pozostaną powiązane w CRM."
-        case "agency": return "Agencja lub pośrednik będzie nabywcą faktury. Klient oraz wydarzenie pozostaną powiązane w CRM."
-        case "other": return "Inna organizacja będzie nabywcą faktury. Klient oraz wydarzenie pozostaną powiązane w CRM."
-        default: return "Nabywcą faktury jest klient przypisany do wydarzenia."
+        case "hotel": return "Hotel będzie nabywcą i płatnikiem faktury. Klient oraz event pozostaną powiązane w CRM."
+        case "agency": return "Agencja lub pośrednik będzie nabywcą faktury. Klient oraz event pozostaną powiązane w CRM."
+        case "other": return "Inna organizacja będzie nabywcą faktury. Klient oraz event pozostaną powiązane w CRM."
+        default: return "Nabywcą faktury jest klient przypisany do eventu."
         }
     }
     static let correctionTypes: [(Int, String)] = [

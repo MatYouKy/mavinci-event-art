@@ -440,30 +440,30 @@ export function ConvertSheet({ inquiryId, visible, onClose, onSave }: {
       const [day, time] = next.dateLocal.split('T');
       setHasDate(/^\d{4}-\d{2}-\d{2}$/.test(day || ''));
       setDate(/^\d{4}-\d{2}-\d{2}$/.test(day || '') ? warsawDate(day, time || '00:00') : new Date());
-    }).catch((cause) => { if (active) setLoadProblem(cause instanceof Error ? cause.message : 'Nie udało się przygotować wydarzenia.'); });
+    }).catch((cause) => { if (active) setLoadProblem(cause instanceof Error ? cause.message : 'Nie udało się przygotować eventu.'); });
     return () => { active = false; };
   }, [visible, inquiryId]);
   if (!visible) return null;
   const realization = Boolean(setup?.realization);
-  const label = realization ? 'Przygotuj realizację' : 'Utwórz wydarzenie';
+  const label = realization ? 'Przygotuj realizację' : 'Utwórz event';
   return (
-    <Sheet visible title={realization ? 'Przygotuj realizację' : 'Utwórz wydarzenie z zapytania'} onClose={onClose} width={600}
+    <Sheet visible title={realization ? 'Przygotuj realizację' : 'Utwórz event z zapytania'} onClose={onClose} width={600}
       footer={<SheetActions onCancel={onClose} label={label} saving={saving} disabled={!setup || !hasDate || !name.trim()}
         onConfirm={() => void wrap(() => onSave({ name: name.trim(), date: date.toISOString(), categoryId: categoryId || null, companyId: companyId || null }, realization), onClose)} />}>
       {!setup ? (loadProblem ? <Text style={kit.warningText}>{loadProblem}</Text> : <ActivityIndicator color={colors.primary.gold} />) : (
         <>
           <Text style={kit.muted}>
             Dokumenty i zadania zachowają powiązania. Przy zaakceptowanej ofercie przeniesiemy wycenę oraz plan zasobów i dodamy zadanie weryfikacji dostępności.
-            Bez akceptacji utworzymy robocze wydarzenie, pozostawiając sprzedaż otwartą.
+            Bez akceptacji utworzymy roboczy event, pozostawiając sprzedaż otwartą.
           </Text>
           {setup.endNote ? <Text style={kit.text}>{setup.endNote}</Text> : null}
-          {setup.location ? <Text style={kit.text}>Miejsce wydarzenia: {setup.location}</Text> : null}
+          {setup.location ? <Text style={kit.text}>Miejsce eventu: {setup.location}</Text> : null}
           <Label>Nazwa</Label>
-          <TextInput value={name} onChangeText={setName} style={kit.input} placeholder="Nazwa wydarzenia" placeholderTextColor={ink(0.35)} />
+          <TextInput value={name} onChangeText={setName} style={kit.input} placeholder="Nazwa eventu" placeholderTextColor={ink(0.35)} />
           <Label>Termin *</Label>
           {hasDate ? <DateTimeField value={date} onChange={setDate} /> : (
             <View style={kit.between}>
-              <Text style={kit.warningText}>Uzupełnij termin wydarzenia — jest wymagany.</Text>
+              <Text style={kit.warningText}>Uzupełnij termin eventu — jest wymagany.</Text>
               <Chip label="Ustal termin" active={false} onPress={() => { setDate(new Date(plannedAt(7, 18))); setHasDate(true); }} />
             </View>
           )}

@@ -157,7 +157,7 @@ export default function DriveScreen() {
       setEvents(data.events);
       setEventsError('');
     } catch (cause) {
-      setEventsError(driveErrorMessage(cause, 'Nie udało się pobrać wydarzeń.'));
+      setEventsError(driveErrorMessage(cause, 'Nie udało się pobrać eventów.'));
     }
   }, []);
 
@@ -173,7 +173,7 @@ export default function DriveScreen() {
       setEventListing(data);
       setEventError('');
     } catch (cause) {
-      if (request === eventRequest.current) setEventError(driveErrorMessage(cause, 'Nie udało się otworzyć plików wydarzenia.'));
+      if (request === eventRequest.current) setEventError(driveErrorMessage(cause, 'Nie udało się otworzyć plików eventu.'));
     }
   }, []);
 
@@ -429,19 +429,19 @@ export default function DriveScreen() {
       const shown = years.filter(([year]) => matches(year));
       content = shown.length
         ? shown.map(([year, count]) => folderRow(`year:${year}`, 'folder', year, `${count} wydarz.`, () => openEvents({ year })))
-        : placeholderText(years.length ? 'Nic nie pasuje do filtra.' : 'Brak wydarzeń z dostępem.');
+        : placeholderText(years.length ? 'Nic nie pasuje do filtra.' : 'Brak eventów z dostępem.');
     } else if (!location.eventId) {
       const list = events.filter((entry) => eventYear(entry) === location.year && matches(eventLabel(entry)))
         .sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.name.localeCompare(b.name, 'pl'));
       content = list.length
         ? list.map((entry) => folderRow(entry.id, 'calendar', eventLabel(entry), entry.status || '', () => openEvents({ eventId: entry.id, folderId: null })))
-        : placeholderText(needle ? 'Brak wydarzeń o tej nazwie.' : 'Brak wydarzeń w tym roku.');
+        : placeholderText(needle ? 'Brak eventów o tej nazwie.' : 'Brak eventów w tym roku.');
     } else {
       const currentEvent = location.eventId;
       headerActions = (
         <TouchableOpacity style={[styles.secondary, { paddingHorizontal: spacing.md }]} onPress={() => navigateToEvent(currentEvent, 'files')}>
           <Feather name="external-link" size={16} color={colors.primary.gold} />
-          <Text style={styles.secondaryText}>Otwórz wydarzenie</Text>
+          <Text style={styles.secondaryText}>Otwórz event</Text>
         </TouchableOpacity>
       );
       if (eventError && !eventListing) content = placeholderText(eventError);
@@ -457,7 +457,7 @@ export default function DriveScreen() {
             {files.map((file: DriveEventFile) => fileRow(file.id, eventTargetOf(file),
               [formatMaterialBytes(file.size), dateLabel(file.updatedAt || file.createdAt)].filter(Boolean).join(' · '), null, null, currentEvent))}
           </>
-        ) : placeholderText(needle ? 'Nic nie pasuje do filtra.' : 'Ten folder jest pusty — pliki dodasz w zakładce Pliki wydarzenia.');
+        ) : placeholderText(needle ? 'Nic nie pasuje do filtra.' : 'Ten folder jest pusty — pliki dodasz w zakładce Pliki eventu.');
       }
     }
   } else if (location) {
@@ -554,7 +554,7 @@ export default function DriveScreen() {
               <SheetButton icon="external-link" label={DRIVE_RECORD_LABELS[menuRecord.type]} onPress={() => { const file = menu.file!; setMenu(null); openRecord(file); }} />
             ) : null}
             {menu?.eventId ? (
-              <SheetButton icon="external-link" label="Otwórz wydarzenie" onPress={() => { const id = menu.eventId!; setMenu(null); navigateToEvent(id, 'files'); }} />
+              <SheetButton icon="external-link" label="Otwórz event" onPress={() => { const id = menu.eventId!; setMenu(null); navigateToEvent(id, 'files'); }} />
             ) : null}
             <SheetButton icon="x" label="Anuluj" onPress={() => setMenu(null)} />
           </View>

@@ -921,8 +921,8 @@ export async function showcaseImport(ctx: NativeContext, body: Row) {
   let bytes: Buffer;
   if (body.source === 'event') {
     const { data: file, error } = await ctx.supabase.from('event_files').select('file_path, mime_type, file_size').eq('id', fileId).maybeSingle();
-    if (error) fail('Nie masz dostępu do plików tego wydarzenia.', 403);
-    if (!file || !IMAGE_TYPES.includes(text(file.mime_type))) fail('Nie znaleziono zdjęcia w plikach wydarzenia.', 404);
+    if (error) fail('Nie masz dostępu do plików tego eventu.', 403);
+    if (!file || !IMAGE_TYPES.includes(text(file.mime_type))) fail('Nie znaleziono zdjęcia w plikach eventu.', 404);
     bytes = await download(ctx, 'event-files', String(file.file_path), file.file_size);
   } else if (body.source === 'material') {
     const { data: file, error } = await ctx.supabase.from('material_files').select('storage_path, mime_type, size_bytes, status').eq('id', fileId).maybeSingle();
@@ -994,8 +994,8 @@ export async function showcaseEvents(ctx: NativeContext, params: URLSearchParams
   let query = ctx.supabase.from('events').select('id, name, event_date').order('event_date', { ascending: false }).limit(40);
   if (search) query = query.ilike('name', `%${search}%`);
   const { data, error } = await query;
-  check(error, 'Nie udało się pobrać wydarzeń.');
-  return { events: ((data || []) as Row[]).map((row) => ({ id: String(row.id), name: text(row.name) || 'Wydarzenie', date: text(row.event_date) || null })) };
+  check(error, 'Nie udało się pobrać eventów.');
+  return { events: ((data || []) as Row[]).map((row) => ({ id: String(row.id), name: text(row.name) || 'Event', date: text(row.event_date) || null })) };
 }
 
 /**
@@ -1029,7 +1029,7 @@ export async function showcasePhotos(ctx: NativeContext, params: URLSearchParams
     if (!eventId) return { source, photos: [] };
     const { data, error } = await ctx.supabase.from('event_files').select('id, name, original_name, file_path, mime_type, file_size, created_at')
       .eq('event_id', eventId).in('mime_type', IMAGE_TYPES).order('created_at', { ascending: false }).limit(150);
-    if (error) return { source, photos: [], problem: 'Nie masz dostępu do plików tego wydarzenia.' };
+    if (error) return { source, photos: [], problem: 'Nie masz dostępu do plików tego eventu.' };
     const rows = (data || []) as Row[];
     const urls = await signPaths(ctx, 'event-files', rows.map((row) => text(row.file_path)));
     return {

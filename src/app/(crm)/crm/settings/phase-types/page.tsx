@@ -110,9 +110,9 @@ export default function PhaseTypesManagementPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#e5e4e2]">Typy Faz Wydarzeń</h1>
+          <h1 className="text-2xl font-bold text-[#e5e4e2]">Typy Faz Eventów</h1>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
-            Zarządzaj typami faz używanymi w harmonogramie wydarzeń
+            Zarządzaj typami faz używanymi w harmonogramie eventów
           </p>
         </div>
         <button

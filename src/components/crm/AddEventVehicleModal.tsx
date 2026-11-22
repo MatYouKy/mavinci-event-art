@@ -373,7 +373,7 @@ export default function AddEventVehicleModal({
     if (!completePeriod && !Number.isFinite(previewDate.getTime())) {
       setCheckingDrivers(false);
       setDriverState('waiting');
-      setDriverMessage('Uzupełnij datę wydarzenia lub wybierz fazy odbioru i zwrotu.');
+      setDriverMessage('Uzupełnij datę eventu lub wybierz fazy odbioru i zwrotu.');
       return;
     }
     setCheckingDrivers(true);
@@ -381,7 +381,7 @@ export default function AddEventVehicleModal({
     setDriverMessage(
       completePeriod
         ? 'Sprawdzanie dostępności i ważności uprawnień…'
-        : 'Sprawdzanie wymaganych kategorii na dzień wydarzenia…',
+        : 'Sprawdzanie wymaganych kategorii na dzień eventu…',
     );
     const scope = {
       p_vehicle_id: formData.vehicle_id,
@@ -422,10 +422,10 @@ export default function AddEventVehicleModal({
             : available.length
               ? completePeriod
                 ? 'Dostępni w całym terminie rezerwacji, z ważnymi wymaganymi kategoriami.'
-                : 'Możesz przypisać kierowcę już teraz. Uprawnienia sprawdzono na dzień wydarzenia; dostępność czasową sprawdzimy po ustaleniu godzin w Timeline.'
+                : 'Możesz przypisać kierowcę już teraz. Uprawnienia sprawdzono na dzień eventu; dostępność czasową sprawdzimy po ustaleniu godzin w Timeline.'
               : completePeriod
                 ? 'Brak kierowców wolnych w tym terminie z ważnymi wymaganymi kategoriami.'
-                : 'Brak aktywnych pracowników z wymaganymi kategoriami ważnymi w dniu wydarzenia. Kategorie uzupełnisz w Kwalifikacje → Prawa jazdy.',
+                : 'Brak aktywnych pracowników z wymaganymi kategoriami ważnymi w dniu eventu. Kategorie uzupełnisz w Kwalifikacje → Prawa jazdy.',
         );
         if (!error)
           setFormData((previous) =>
@@ -623,7 +623,7 @@ export default function AddEventVehicleModal({
       travel_time_minutes: prev.travel_plan?.outbound.plannedMinutes ?? (travelMinutes || 60),
     }));
 
-    showSnackbar('Zastosowano sugerowane czasy na podstawie faz wydarzenia', 'success');
+    showSnackbar('Zastosowano sugerowane czasy na podstawie faz eventu', 'success');
   };
 
   const checkAvailability = async () => {
@@ -914,7 +914,7 @@ export default function AddEventVehicleModal({
             ? 'Pojazd i trasa zapisane. Fazy logistyczne zostały zsynchronizowane.'
             : editingVehicleId
               ? 'Pojazd został zaktualizowany'
-              : 'Pojazd został dodany do wydarzenia',
+              : 'Pojazd został dodany do eventu',
       phaseSyncFailed ? 'warning' : 'success',
     );
     // The parent closes the modal and refreshes logistics once, after all writes finish.
@@ -959,7 +959,7 @@ export default function AddEventVehicleModal({
             <div className="flex items-center gap-3">
               <Truck className="h-6 w-6 text-[#d3bb73]" />
               <h2 className="text-xl font-bold text-[#e5e4e2]">
-                {editingVehicleId ? 'Edytuj pojazd' : 'Dodaj pojazd do wydarzenia'}
+                {editingVehicleId ? 'Edytuj pojazd' : 'Dodaj pojazd do eventu'}
               </h2>
             </div>
             <button
@@ -1078,7 +1078,7 @@ export default function AddEventVehicleModal({
                     <div className="flex-1">
                       <h4 className="mb-2 font-medium text-orange-400">⚠️ Konflikty rezerwacji</h4>
                       <p className="mb-3 text-sm text-[#e5e4e2]/80">
-                        Ten pojazd jest już zarezerwowany na inne wydarzenia w tym samym czasie:
+                        Ten pojazd jest już zarezerwowany na inne eventy w tym samym czasie:
                       </p>
                       <div className="space-y-2">
                         {conflicts.map((conflict, idx) => (

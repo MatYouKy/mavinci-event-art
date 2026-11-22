@@ -537,7 +537,7 @@ export default function EventFinancesTab({ eventId }: Props) {
         status: 'planned',
       });
       setShowAddCommission(false);
-      showSnackbar('Prowizja została dodana do rentowności wydarzenia', 'success');
+      showSnackbar('Prowizja została dodana do rentowności eventu', 'success');
       await fetchFinancialData();
     } catch (error: any) {
       console.error('Error adding event commission:', error);
@@ -548,7 +548,7 @@ export default function EventFinancesTab({ eventId }: Props) {
   const handleDeleteCommission = async (commissionId: string) => {
     const target = eventCommissions.find((commission) => commission.id === commissionId);
     if (target && isAutomaticCommission(target)) {
-      showSnackbar('Prowizji z podsumowania wydarzenia nie usuwa się — możesz ją anulować.', 'warning');
+      showSnackbar('Prowizji z podsumowania eventu nie usuwa się — możesz ją anulować.', 'warning');
       return;
     }
     const { error } = await supabase.from('event_commissions').delete().eq('id', commissionId);
@@ -875,7 +875,7 @@ export default function EventFinancesTab({ eventId }: Props) {
             <div>
               <h3 className="flex items-center gap-2 text-lg font-medium text-[#e5e4e2]">
                 <BarChart3 className="h-5 w-5 text-[#d3bb73]" />
-                Rentowność wydarzenia
+                Rentowność eventu
               </h3>
               <p className="mt-1 max-w-3xl text-xs text-[#e5e4e2]/45">
                 Plan korzysta z zaakceptowanej oferty i kosztów przewidywanych. Wykonanie korzysta z zatwierdzonych kosztów,
@@ -1047,7 +1047,7 @@ export default function EventFinancesTab({ eventId }: Props) {
                   {isAutomaticCommission(commission) && (
                     <div className="order-last flex w-full flex-wrap items-center justify-between gap-2 text-[11px] text-[#e5e4e2]/45">
                       <span>
-                        Z podsumowania wydarzenia · {AUTOMATIC_COMMISSION_HINT.toLowerCase()} ·{' '}
+                        Z podsumowania eventu · {AUTOMATIC_COMMISSION_HINT.toLowerCase()} ·{' '}
                         <a href={`/crm/events/${eventId}?tab=summary`} className="text-[#d3bb73] hover:underline">Wyliczenie: zakładka Podsumowanie</a>
                       </span>
                       {(isAdmin || financeAccess.canApproveCommissions) && (commission.status === 'planned' || commission.status === 'approved') && (
@@ -1171,7 +1171,7 @@ export default function EventFinancesTab({ eventId }: Props) {
                         <div>{invoice.invoice_number}</div>
                         {Number(invoice.shared_event_count || 1) > 1 && (
                           <div className="mt-1 inline-flex rounded bg-sky-400/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-300">
-                            Wspólna · {invoice.shared_event_count} wydarzenia
+                            Wspólna · {invoice.shared_event_count} eventy
                           </div>
                         )}
                       </td>
@@ -1203,7 +1203,7 @@ export default function EventFinancesTab({ eventId }: Props) {
                         </div>
                         {Number(invoice.shared_event_count || 1) > 1 && (
                           <div className="mt-1 text-[11px] font-normal leading-4 text-sky-300">
-                            Udział wydarzenia:{' '}
+                            Udział eventu:{' '}
                             {Number(invoice.allocated_gross || 0).toLocaleString('pl-PL', {
                               minimumFractionDigits: 2,
                             })}{' '}
@@ -1352,7 +1352,7 @@ export default function EventFinancesTab({ eventId }: Props) {
           <div className="py-8 text-center text-[#e5e4e2]/40">
             {financeAccess.canViewCosts
               ? 'Brak kosztów dla tego eventu'
-              : 'Koszty tego wydarzenia widzi księgowość i opiekun sprzedaży. Marża poniżej może nie uwzględniać wszystkich kosztów.'}
+              : 'Koszty tego eventu widzi księgowość i opiekun sprzedaży. Marża poniżej może nie uwzględniać wszystkich kosztów.'}
           </div>
         ) : (
           <div className="space-y-3">

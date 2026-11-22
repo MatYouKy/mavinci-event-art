@@ -214,7 +214,7 @@ async function itemSourcesOf(ctx: NativeContext, eventId: string) {
     ctx.supabase.rpc('get_event_financial_info', { p_event_id: eventId }),
   ]);
   if (eventResult.error || financialResult.error) {
-    throw new Error('Nie udało się odczytać zaakceptowanych źródeł tego wydarzenia. Nie podstawiono cen.');
+    throw new Error('Nie udało się odczytać zaakceptowanych źródeł tego eventu. Nie podstawiono cen.');
   }
   const event = eventResult.data as Row;
   const financial = (Array.isArray(financialResult.data) ? financialResult.data[0] : null) as Row | null;
@@ -250,7 +250,7 @@ async function itemSourcesOf(ctx: NativeContext, eventId: string) {
     if (result.status === 'rejected') warnings.push(result.reason instanceof Error ? result.reason.message : 'Nie udało się odczytać źródła pozycji.');
   }
   if (!choices.some((choice) => choice.id === preferredId)) {
-    warnings.push('Brak dostępnego zaakceptowanego źródła finansowego wydarzenia. Wybierz świadomie inne dostępne źródło albo wprowadź pozycje ręcznie.');
+    warnings.push('Brak dostępnego zaakceptowanego źródła finansowego eventu. Wybierz świadomie inne dostępne źródło albo wprowadź pozycje ręcznie.');
   }
   return { choices, preferredId, warning: warnings.join(' '), eventName: str(event.name) };
 }
@@ -262,11 +262,11 @@ function eventCompany(event: Row | null, companies: Row[]) {
   return {
     companyId: available ? companyId : '',
     message: !event
-      ? 'Nie udało się odczytać działalności wydarzenia. Sprawdź dane wydarzenia przed wyborem firmy wystawiającej.'
+      ? 'Nie udało się odczytać działalności eventu. Sprawdź dane eventu przed wyborem firmy wystawiającej.'
       : !companyId
-        ? 'Wydarzenie nie ma przypisanej działalności. Wybierz firmę wystawiającą fakturę.'
+        ? 'Event nie ma przypisanej działalności. Wybierz firmę wystawiającą fakturę.'
         : !available
-          ? 'Działalność przypisana do wydarzenia jest nieaktywna lub nie masz uprawnień do wystawiania jej faktur. Nie wybrano innej firmy automatycznie.'
+          ? 'Działalność przypisana do eventu jest nieaktywna lub nie masz uprawnień do wystawiania jej faktur. Nie wybrano innej firmy automatycznie.'
           : null,
   };
 }
@@ -302,8 +302,8 @@ async function eventParties(ctx: NativeContext, event: Row, link: BuyerLink | nu
 export async function invoiceEvent(ctx: NativeContext, idParam: unknown, modeParam: unknown) {
   const access = await issueAccess(ctx);
   const id = trimmed(idParam);
-  if (!UUID.test(id)) fail('Nieprawidłowe wydarzenie.');
-  if (!canUseEvent(access, id)) fail('Nie masz uprawnień do wystawienia faktury dla tego wydarzenia.', 403);
+  if (!UUID.test(id)) fail('Nieprawidłowy event.');
+  if (!canUseEvent(access, id)) fail('Nie masz uprawnień do wystawienia faktury dla tego eventu.', 403);
   const mode = trimmed(modeParam) === 'keep' ? 'keep' : 'new';
   const event = await eventRow(ctx, access, id);
   let link: BuyerLink | null = null;
@@ -340,7 +340,7 @@ export async function invoiceOrganizationEvents(ctx: NativeContext, organization
   let query = ctx.supabase.from('events').select(EVENT_FIELDS).eq('organization_id', organizationId).order('event_date', { ascending: false });
   if (access.scope === 'sales') query = query.in('id', access.soldEventIds);
   const { data, error } = await query;
-  if (error) fail('Nie udało się pobrać wydarzeń nabywcy.', 500);
+  if (error) fail('Nie udało się pobrać eventów nabywcy.', 500);
   const events = ((data || []) as Row[]).map(eventOut);
   const keep = trimmed(keepParam);
   if (keep && !events.some((event) => event.id === keep)) {
@@ -724,7 +724,7 @@ export async function invoiceCreate(ctx: NativeContext, body: Row) {
 
   // Wydarzenie i strony rozliczenia.
   const selectedEventId = type === 'corrective' ? str(original?.event_id) : advance ? str(advance.source.event_id) : trimmed(form.eventId);
-  if (!canUseEvent(access, selectedEventId)) fail('Nie masz uprawnień do wystawienia faktury dla tego wydarzenia.', 403);
+  if (!canUseEvent(access, selectedEventId)) fail('Nie masz uprawnień do wystawienia faktury dla tego eventu.', 403);
   if ((!isPartyDataCorrection && !isPaid && !dueDate) || (isPartyDataCorrection && !getInvoicePaymentDueDate(issueDate, '0'))) {
     fail('Podaj poprawną datę wystawienia i termin płatności w pełnych dniach (0 lub więcej).');
   }
@@ -762,7 +762,7 @@ export async function invoiceCreate(ctx: NativeContext, body: Row) {
     const expected = event.billing_arrangement && event.billing_arrangement !== 'direct'
       ? str(event.billing_organization_id) : link?.buyer.id || str(event.organization_id);
     if (expected && (buyerIsPrivatePerson || (selectedOrgId && selectedOrgId !== expected)) && form.buyerOverrideConfirmed !== true) {
-      fail('Wybrany nabywca różni się od nabywcy przypisanego do rozliczenia wydarzenia. Sprawdź obie strony i potwierdź zmianę w formularzu.');
+      fail('Wybrany nabywca różni się od nabywcy przypisanego do rozliczenia eventu. Sprawdź obie strony i potwierdź zmianę w formularzu.');
     }
   }
 
@@ -1082,7 +1082,7 @@ export async function invoiceCreate(ctx: NativeContext, body: Row) {
   let warning: string | null = null;
   if (!isPartyDataCorrection && invoiceEventId && settlementGroup) {
     const { error: linkError } = await ctx.supabase.rpc('link_invoice_to_event_settlement', { p_invoice_id: invoiceId, p_source_event_id: invoiceEventId });
-    if (linkError) warning = 'Faktura powstała, ale nie udało się przypisać jej do wszystkich wydarzeń grupy';
+    if (linkError) warning = 'Faktura powstała, ale nie udało się przypisać jej do wszystkich eventów grupy';
   }
   return { ok: true, id: str(invoiceId), message: 'Faktura została utworzona', warning };
 }

@@ -68,7 +68,7 @@ import AppKit
     private var left: some View {
         VStack(alignment: .leading, spacing: 16) {
             basics
-            textCard("Opis wydarzenia", text: event["description"], editing: $editingDescription, draft: $description, field: "description")
+            textCard("Opis eventu", text: event["description"], editing: $editingDescription, draft: $description, field: "description")
             textCard("Notatki", text: event["notes"], editing: $editingNotes, draft: $notes, field: "notes")
         }
     }
@@ -180,7 +180,7 @@ import AppKit
         editingDates = true
     }
     private func saveDates() async {
-        if hasEnd && end <= start { dateError = "Zakończenie musi być późniejsze niż rozpoczęcie wydarzenia."; return }
+        if hasEnd && end <= start { dateError = "Zakończenie musi być późniejsze niż rozpoczęcie eventu."; return }
         let changes: [String: JSONValue] = [
             "event_date": .string(MeetingDates.iso(start)),
             "event_end_date": hasEnd ? .string(MeetingDates.iso(end)) : .null,
@@ -287,7 +287,7 @@ import AppKit
             HStack {
                 Text("Budżet").font(.title3.weight(.light))
                 Spacer()
-                Text(data?.source ?? "Źródło: wydarzenie").font(.caption).foregroundStyle(.tertiary)
+                Text(data?.source ?? "Źródło: event").font(.caption).foregroundStyle(.tertiary)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Przychód planowany").font(.caption).foregroundStyle(.secondary)
@@ -396,7 +396,7 @@ import AppKit
     var body: some View {
         if let rooms {
             if rooms.error {
-                Text("Nie udało się pobrać sal wydarzenia.").font(.callout).foregroundStyle(CrmTheme.rgb(0xfca5a5))
+                Text("Nie udało się pobrać sal eventu.").font(.callout).foregroundStyle(CrmTheme.rgb(0xfca5a5))
             } else if canEdit && editing {
                 editor(rooms)
             } else if !rooms.selected.isEmpty {
@@ -444,7 +444,7 @@ import AppKit
             }
             if let error { Text(error).font(.callout).foregroundStyle(CrmTheme.rgb(0xfca5a5)) }
             HStack(spacing: 10) {
-                Button(saving ? "Zapisywanie…" : "Zapisz sale wydarzenia") { Task { await save(rooms) } }.buttonStyle(.borderedProminent).disabled(saving)
+                Button(saving ? "Zapisywanie…" : "Zapisz sale eventu") { Task { await save(rooms) } }.buttonStyle(.borderedProminent).disabled(saving)
                 Button("Anuluj") { reset(rooms); error = nil; editing = false }.disabled(saving)
                 Button("Zarządzaj salami obiektu") { state.showLocation(rooms.locationId) }.buttonStyle(.link).linkCursor().font(.caption)
             }
@@ -571,7 +571,7 @@ import AppKit
     var body: some View {
         let filtered = (store.locations ?? []).filter { $0.matches(query) }
         VStack(alignment: .leading, spacing: 12) {
-            Text("Lokalizacja wydarzenia").font(.title3.weight(.light))
+            Text("Lokalizacja eventu").font(.title3.weight(.light))
             TextField("Wybierz lub wyszukaj lokalizację...", text: $query).textFieldStyle(.roundedBorder)
             HStack {
                 Text("Twoje lokalizacje (\(filtered.count))").font(.caption).foregroundStyle(.secondary)

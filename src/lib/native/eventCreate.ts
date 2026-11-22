@@ -196,11 +196,11 @@ function wizardValues(body: Row) {
  * zapisu — komunikat `eventSaveError` ze szczegółami dla administratora.
  */
 export async function createEvent(ctx: NativeContext, body: Row) {
-  if (!eventsAccess(ctx).canCreate) fail('Nie masz uprawnień do tworzenia wydarzeń.');
+  if (!eventsAccess(ctx).canCreate) fail('Nie masz uprawnień do tworzenia eventów.');
   const { values } = wizardValues(body);
   const context = { statuses: EVENT_STATUSES, pendingContact: false };
   const errors = getValidationErrors(eventWizardSchema, values, context);
-  if (Object.keys(errors).length) fail('Popraw zaznaczone pola przed zapisem wydarzenia.', errors);
+  if (Object.keys(errors).length) fail('Popraw zaznaczone pola przed zapisem eventu.', errors);
   const validated = eventWizardSchema.validateSync(values, { context });
   const start = eventInstant(body.event_date) as { iso: string };
   const end = eventInstant(body.event_end_date) as { iso: string } | null;
@@ -224,11 +224,11 @@ export async function createEvent(ctx: NativeContext, body: Row) {
   };
   const existingId = text(body.id, 64);
   if (existingId) {
-    if (!UUID.test(existingId)) fail('Nieprawidłowe wydarzenie.');
+    if (!UUID.test(existingId)) fail('Nieprawidłowy event.');
     const { created_by: _createdBy, ...changes } = payload;
     const { data: updated, error: updateError } = await ctx.supabase.from('events').update(changes).eq('id', existingId).select('id');
     if (updateError || !updated?.length) {
-      const saveError = eventSaveError(updateError || { code: '42501', message: 'Brak dostępu do wydarzenia' });
+      const saveError = eventSaveError(updateError || { code: '42501', message: 'Brak dostępu do eventu' });
       throw new EventFormError(saveError.message, {}, saveError.details);
     }
     return { ok: true, id: existingId, notice: null };
@@ -259,7 +259,7 @@ export async function createEvent(ctx: NativeContext, body: Row) {
   return {
     ok: true,
     id: eventId,
-    notice: assignmentError ? 'Event utworzony, ale nie udało się automatycznie dodać Cię do zespołu wydarzenia' : null,
+    notice: assignmentError ? 'Event utworzony, ale nie udało się automatycznie dodać Cię do zespołu eventu' : null,
   };
 }
 
@@ -268,7 +268,7 @@ export async function createEvent(ctx: NativeContext, body: Row) {
  * dodaje baza (`sync_offer_equipment_to_event`).
  */
 export async function budgetFromOffer(ctx: NativeContext, eventId: string) {
-  if (!UUID.test(eventId)) fail('Nieprawidłowe wydarzenie.');
+  if (!UUID.test(eventId)) fail('Nieprawidłowy event.');
   const { data: offer } = await ctx.supabase.from('offers').select('id, total_amount').eq('event_id', eventId)
     .order('created_at', { ascending: false }).limit(1).maybeSingle();
   const total = Number((offer as Row | null)?.total_amount);
@@ -281,11 +281,11 @@ export async function budgetFromOffer(ctx: NativeContext, eventId: string) {
 
 async function editableEvent(ctx: NativeContext, eventId: string) {
   const event = await fetchEventByIdWith(ctx.supabase, eventId, ctx.employee.authUserId);
-  if (!event) fail('Nie znaleziono wydarzenia albo nie masz do niego dostępu.');
+  if (!event) fail('Nie znaleziono eventu albo nie masz do niego dostępu.');
   const source = event as Row;
   const pc = (source.permissionContext || {}) as Row;
   const canManage = pc.canManageEvent ?? (pc.isAdmin === true || pc.isCreator === true || ctx.employee.isAdmin || ctx.employee.permissions.includes('events_manage'));
-  if (!canManage) fail('Nie masz uprawnień do edycji tego wydarzenia.');
+  if (!canManage) fail('Nie masz uprawnień do edycji tego eventu.');
   const canEditBudget = pc.access?.areas?.values === true;
   return { source, canEditBudget };
 }
@@ -355,7 +355,7 @@ async function editEvent(ctx: NativeContext, eventId: string, body: Row) {
   if (!start || start === 'invalid') errors.event_date = 'Data rozpoczęcia jest wymagana';
   if (end === 'invalid') errors.event_end_date = 'Wpisz poprawną datę i godzinę zakończenia.';
   else if (end && start && start !== 'invalid' && new Date(end.iso).getTime() <= new Date(start.iso).getTime()) {
-    errors.event_end_date = 'Zakończenie musi być późniejsze niż rozpoczęcie wydarzenia.';
+    errors.event_end_date = 'Zakończenie musi być późniejsze niż rozpoczęcie eventu.';
   }
   if (!location) errors.location = 'Lokalizacja jest wymagana';
   const status = text(body.status, 40);
@@ -401,7 +401,7 @@ async function editEvent(ctx: NativeContext, eventId: string, body: Row) {
   };
   const { data, error } = await ctx.supabase.from('events').update(update).eq('id', eventId).select('id');
   if (error) fail(error.message || 'Błąd podczas aktualizacji eventu');
-  if (!data?.length) fail('Nie masz uprawnień do edycji tego wydarzenia.');
+  if (!data?.length) fail('Nie masz uprawnień do edycji tego eventu.');
   return { ok: true };
 }
 

@@ -129,7 +129,7 @@ struct DriveSidebarContext {
             if store.loading || (store.currentNode.map { store.listLoading.contains($0) } ?? false) { ProgressView().controlSize(.small) }
             if FinderDomain.available {
                 Button { Task { await revealInFinder(section) } } label: { Label("Pokaż w Finderze", systemImage: "folder") }
-                    .help(section == .events ? "Wydarzenie w Finderze: Mavinci → Eventy." : "Ten folder w Finderze: Mavinci → \(store.info(section)?.label ?? "Dysk").")
+                    .help(section == .events ? "Event w Finderze: Mavinci → Eventy." : "Ten folder w Finderze: Mavinci → \(store.info(section)?.label ?? "Dysk").")
             }
             Button { Task { await store.refresh(quiet: false) } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
             if store.currentListing?.canUpload == true, let node = store.currentNode {
@@ -284,9 +284,9 @@ struct DriveSidebarContext {
 
     private static func eventsCount(_ count: Int) -> String {
         let tens = count % 100, ones = count % 10
-        if count == 1 { return "1 wydarzenie" }
-        if (2...4).contains(ones) && !(12...14).contains(tens) { return "\(count) wydarzenia" }
-        return "\(count) wydarzeń"
+        if count == 1 { return "1 event" }
+        if (2...4).contains(ones) && !(12...14).contains(tens) { return "\(count) eventy" }
+        return "\(count) eventów"
     }
 
     @ViewBuilder private var eventsPane: some View {
@@ -297,7 +297,7 @@ struct DriveSidebarContext {
                         .buttonStyle(.plain).foregroundStyle(theme.accent)
                     Text(DriveText.eventFolder(event)).font(.headline).lineLimit(1)
                     Spacer(minLength: 8)
-                    Button { state.showEvent(event.id) } label: { Label("Otwórz wydarzenie", systemImage: "arrow.up.forward.square") }
+                    Button { state.showEvent(event.id) } label: { Label("Otwórz event", systemImage: "arrow.up.forward.square") }
                 }
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 Divider().opacity(0.3)
@@ -337,7 +337,7 @@ struct DriveSidebarContext {
                     }
                 }
             } else {
-                ContentUnavailableView("Brak wydarzeń", systemImage: "calendar", description: Text("Nie masz dostępu do plików żadnego wydarzenia."))
+                ContentUnavailableView("Brak eventów", systemImage: "calendar", description: Text("Nie masz dostępu do plików żadnego eventu."))
             }
         } else if let error = store.eventsError {
             ContentUnavailableView {

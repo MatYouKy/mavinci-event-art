@@ -81,7 +81,7 @@ enum LogisticsLabels {
         case "unloading": return ("Rozładunek", .purple)
         case "setup": return ("Montaż/Setup", .green)
         case "rehearsal": return ("Próba", .yellow)
-        case "event": return ("Wydarzenie", .red)
+        case "event": return ("Event", .red)
         case "breakdown": return ("Demontaż", .orange)
         case "packing": return ("Pakowanie", .cyan)
         default: return (type.isEmpty ? "Zadanie" : type.replacingOccurrences(of: "_", with: " ").capitalized, .gray)
@@ -134,7 +134,7 @@ enum LogisticsLabels {
         .confirmationDialog("Usuń pojazd", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             Button("Usuń", role: .destructive) { if let vehicle = deleting { Task { await delete(vehicle) } } }
             Button("Anuluj", role: .cancel) { deleting = nil }
-        } message: { Text("Czy na pewno chcesz usunąć ten pojazd z wydarzenia?") }
+        } message: { Text("Czy na pewno chcesz usunąć ten pojazd z eventu?") }
     }
 
     private func content(_ data: LogisticsTabData) -> some View {
@@ -570,7 +570,7 @@ private let fuelTypes: [FuelOption] = [FuelOption(id: "benzyna95", label: "Benzy
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Label(editingID != nil ? "Edytuj pojazd" : "Dodaj pojazd do wydarzenia", systemImage: "truck.box").font(.title3.weight(.semibold))
+                Label(editingID != nil ? "Edytuj pojazd" : "Dodaj pojazd do eventu", systemImage: "truck.box").font(.title3.weight(.semibold))
                 Spacer()
                 Button { dismiss() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).keyboardShortcut(.cancelAction).disabled(saving)
             }
@@ -684,7 +684,7 @@ private let fuelTypes: [FuelOption] = [FuelOption(id: "benzyna95", label: "Benzy
     private var conflictsBox: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("⚠️ Konflikty rezerwacji", systemImage: "exclamationmark.triangle").font(.callout.weight(.semibold)).foregroundStyle(.red)
-            Text("Ten pojazd jest już zarezerwowany na inne wydarzenia w tym samym czasie:").font(.caption)
+            Text("Ten pojazd jest już zarezerwowany na inne eventy w tym samym czasie:").font(.caption)
             ForEach(Array(conflicts.enumerated()), id: \.offset) { item in
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
@@ -1023,7 +1023,7 @@ private let fuelTypes: [FuelOption] = [FuelOption(id: "benzyna95", label: "Benzy
         do {
             let reply = try await store.tabAction(eventID, "logistics", "saveVehicle", body, reload: ["logistics", "phases"], success: nil, pending: "Zapisywanie danych pojazdu…")
             struct Reply: Decodable { var message: String? }
-            state.succeed((try? JSONDecoder().decode(Reply.self, from: reply))?.message ?? (editingID != nil ? "Pojazd został zaktualizowany" : "Pojazd został dodany do wydarzenia"))
+            state.succeed((try? JSONDecoder().decode(Reply.self, from: reply))?.message ?? (editingID != nil ? "Pojazd został zaktualizowany" : "Pojazd został dodany do eventu"))
             dismiss()
         } catch {
             state.error = store.failureText(error, "Nie udało się zapisać pojazdu. Spróbuj ponownie.")

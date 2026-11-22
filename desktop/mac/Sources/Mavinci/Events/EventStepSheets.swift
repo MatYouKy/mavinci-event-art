@@ -43,7 +43,7 @@ import SwiftUI
             }
             if action == "skip" { Text("Powód pominięcia będzie widoczny w historii kroku.").font(.callout).foregroundStyle(.secondary) }
             if action == "problem" {
-                Text("Kierownik realizacji i prowadzący wydarzenie dostaną powiadomienie, a krok zostanie oznaczony na czerwono.")
+                Text("Kierownik realizacji i prowadzący event dostaną powiadomienie, a krok zostanie oznaczony na czerwono.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             if orderFields {
@@ -257,8 +257,8 @@ import SwiftUI
                     if let help = store.stepsHelp {
                         let mine = help.ordered(myRoles).mine
                         Text(myRoles == nil ? "Zakres odpowiedzialności każdej roli i jak wykonać swoje kroki."
-                             : !mine.isEmpty ? "Najpierw Twoja rola na tym wydarzeniu, potem pozostałe."
-                             : "Nie masz przypisanej roli na tym wydarzeniu — poniżej zakres wszystkich ról.")
+                             : !mine.isEmpty ? "Najpierw Twoja rola na tym evencie, potem pozostałe."
+                             : "Nie masz przypisanej roli na tym evencie — poniżej zakres wszystkich ról.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }

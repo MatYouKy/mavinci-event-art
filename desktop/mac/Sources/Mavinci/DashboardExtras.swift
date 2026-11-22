@@ -48,12 +48,12 @@ struct WarehouseDashboardData: Decodable {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Magazyn i logistyka").font(.title.weight(.light))
-                Text("Przygotowanie wydarzeń, stan sprzętu i Twoje zadania.").font(.callout).foregroundStyle(.secondary)
+                Text("Przygotowanie eventów, stan sprzętu i Twoje zadania.").font(.callout).foregroundStyle(.secondary)
             }
             MyDayTimelineView()
             HStack(spacing: 12) {
                 shortcut("Sprzęt", "shippingbox") { state.openHref("/crm/equipment") }
-                shortcut("Wydarzenia", "calendar") { state.switchSection(.events) }
+                shortcut("Eventy", "calendar") { state.switchSection(.events) }
                 shortcut("Moje zadania", "checkmark.square") { openMyTasks() }
             }
             HStack(alignment: .top, spacing: 20) {
@@ -111,10 +111,10 @@ struct WarehouseDashboardData: Decodable {
     }
 
     private var eventsPanel: some View {
-        DashboardPanel(title: "Wydarzenia do przygotowania", symbol: "calendar") {
+        DashboardPanel(title: "Eventy do przygotowania", symbol: "calendar") {
             if let events = data?.events {
                 if events.isEmpty {
-                    Text("Brak wydarzeń oczekujących na przygotowanie.").foregroundStyle(.secondary)
+                    Text("Brak eventów oczekujących na przygotowanie.").foregroundStyle(.secondary)
                 } else {
                     ForEach(events) { event in
                         row({ state.showEvent(event.id) }) {
@@ -124,9 +124,9 @@ struct WarehouseDashboardData: Decodable {
                     }
                 }
             } else {
-                Text("Nie udało się pobrać wydarzeń. Odśwież dashboard.").foregroundStyle(.red)
+                Text("Nie udało się pobrać eventów. Odśwież dashboard.").foregroundStyle(.red)
             }
-            Button("Przejdź do wydarzeń →") { state.switchSection(.events) }.buttonStyle(.link)
+            Button("Przejdź do eventów →") { state.switchSection(.events) }.buttonStyle(.link)
         }
     }
 
@@ -234,7 +234,7 @@ struct SellerSalesReport: Decodable {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Moja sprzedaż").font(.title2.weight(.light))
-                    Text("Rok i miesiąc odnoszą się do daty wydarzenia. Kwoty obejmują wszystkie wystawione do niego faktury, także wystawione w innym okresie. To kwoty brutto, a nie zysk firmy.")
+                    Text("Rok i miesiąc odnoszą się do daty eventu. Kwoty obejmują wszystkie wystawione do niego faktury, także wystawione w innym okresie. To kwoty brutto, a nie zysk firmy.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
@@ -269,7 +269,7 @@ struct SellerSalesReport: Decodable {
         let rows = report.events.filter { $0.currency == selected }
         let months = report.months.filter { $0.currency == selected }
         HStack(spacing: 16) {
-            Label { Text("Sprzedane wydarzenia: ") + Text("\(Int(report.soldEvents))").bold() } icon: { Image(systemName: "calendar") }
+            Label { Text("Sprzedane eventy: ") + Text("\(Int(report.soldEvents))").bold() } icon: { Image(systemName: "calendar") }
             Label { Text("Zafakturowane: ") + Text("\(Int(report.invoicedEvents))").bold() } icon: { Image(systemName: "doc.text") }
             Spacer()
             if currencies.count > 1 {
@@ -282,11 +282,11 @@ struct SellerSalesReport: Decodable {
         .font(.callout)
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 12)], spacing: 12) {
             moneyCard("Zafakturowana sprzedaż", totals?.invoicedGross, selected, "Zaliczki i końcowe rozliczenie bez podwójnego liczenia.")
-            moneyCard("Potwierdzone płatności", totals?.paidGross, selected, "Płatności przypisane do faktur tych wydarzeń.")
+            moneyCard("Potwierdzone płatności", totals?.paidGross, selected, "Płatności przypisane do faktur tych eventów.")
             moneyCard("Pozostało do zapłaty", totals?.outstandingGross, selected, "Nierozliczona część faktur Twojej sprzedaży.")
             moneyCard("Po terminie płatności", totals?.overdueGross, selected, "Zaległości dotyczące wyłącznie tych faktur.")
         }
-        DashboardPanel(title: "Sprzedaż według miesiąca wydarzenia", subtitle: "Każda waluta jest pokazywana osobno. Wspólne faktury uwzględniają tylko udział przypisany do Twoich wydarzeń.") {
+        DashboardPanel(title: "Sprzedaż według miesiąca eventu", subtitle: "Każda waluta jest pokazywana osobno. Wspólne faktury uwzględniają tylko udział przypisany do Twoich eventów.") {
             if months.allSatisfy({ $0.invoicedGross == 0 && $0.paidGross == 0 }) {
                 Text("Brak zafakturowanej sprzedaży w wybranym okresie.").foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 160)
             } else {
@@ -304,17 +304,17 @@ struct SellerSalesReport: Decodable {
                 .frame(height: 260)
             }
         }
-        DashboardPanel(title: "Moje sprzedane wydarzenia") {
+        DashboardPanel(title: "Moje sprzedane eventy") {
             HStack {
                 Spacer()
                 Button("Moje faktury") { openInvoices() }.buttonStyle(.link)
             }
             if rows.isEmpty {
-                Text("Brak sprzedanych wydarzeń w tym okresie i walucie.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 12)
+                Text("Brak sprzedanych eventów w tym okresie i walucie.").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.vertical, 12)
             } else {
                 Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
                     GridRow {
-                        Text("Wydarzenie").font(.caption).foregroundStyle(.secondary)
+                        Text("Event").font(.caption).foregroundStyle(.secondary)
                         Text("Data / status").font(.caption).foregroundStyle(.secondary)
                         Text("Zafakturowano").font(.caption).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
                         Text("Opłacono").font(.caption).foregroundStyle(.secondary).gridColumnAlignment(.trailing)

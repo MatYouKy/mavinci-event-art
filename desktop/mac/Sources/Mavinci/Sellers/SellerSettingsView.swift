@@ -742,7 +742,7 @@ struct SellerSettingsRequest: Identifiable {
         card("Cennik i zasady prowizji", symbol: "percent") {
             Button { pricingShown = true } label: { Label("Indywidualne ceny produktów i rozszerzeń", systemImage: "tag") }
                 .help("Ceny produktów, wariantów, konfiguracji i rozszerzeń dla tego sprzedawcy")
-            Text(verbatim: "Każda marka może mieć inną stawkę i sposób rozliczenia. Prowizja to % od zysku netto wydarzenia — po kosztach i po koszcie samej prowizji (wypłata gotówką z zysku razem z podatkiem). Inną stawkę dla jednego wydarzenia ustawisz w jego podsumowaniu.")
+            Text(verbatim: "Każda marka może mieć inną stawkę i sposób rozliczenia. Prowizja to % od zysku netto eventu — po kosztach i po koszcie samej prowizji (wypłata gotówką z zysku razem z podatkiem). Inną stawkę dla jednego eventu ustawisz w jego podsumowaniu.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 4) {
                 Picker("Domyślny cennik nowych ofert w portalu", selection: defaultCompany) {

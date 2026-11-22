@@ -327,7 +327,7 @@ export function EventStepActionModal({
       </Text>
       <Text style={styles.subtitle}>{step.title}</Text>
       {action === 'problem' && (
-        <Text style={styles.info}>Kierownik realizacji i prowadzący wydarzenie dostaną powiadomienie.</Text>
+        <Text style={styles.info}>Kierownik realizacji i prowadzący event dostaną powiadomienie.</Text>
       )}
       {action === 'skip' && <Text style={styles.info}>Powód będzie widoczny w historii kroku.</Text>}
       {action === 'done' && step.key === 'dispatch_out' && (

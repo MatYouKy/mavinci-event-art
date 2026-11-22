@@ -418,7 +418,7 @@ extension ContactsStore {
                 }
                 Section("Preferencje") {
                     TextField("Zainteresowania, oddzielone przecinkami", text: $interests, prompt: Text("DJ, ciężki dym, fotobudka"))
-                    TextField("Typy wydarzeń", text: $eventTypes, prompt: Text("wesele, event firmowy"))
+                    TextField("Typy eventów", text: $eventTypes, prompt: Text("wesele, event firmowy"))
                     TextField("Regiony", text: $regions, prompt: Text("Olsztyn, warmińsko-mazurskie"))
                     TextField("Budżet od", text: $budgetMin, prompt: Text("zł"))
                     TextField("Budżet do", text: $budgetMax, prompt: Text("zł"))
@@ -579,7 +579,7 @@ struct MergeRelation: Identifiable {
 
     /// Relacje z `preview_customer360_contact_merge` w stałej kolejności.
     private static let labels: [(key: String, label: String)] = [
-        ("inquiries", "Zapytania"), ("calls", "Rozmowy"), ("offers", "Oferty"), ("events", "Wydarzenia"), ("meetings", "Spotkania"),
+        ("inquiries", "Zapytania"), ("calls", "Rozmowy"), ("offers", "Oferty"), ("events", "Eventy"), ("meetings", "Spotkania"),
         ("organizations", "Organizacje"), ("contracts", "Umowy"), ("invoices", "Faktury"),
     ]
 

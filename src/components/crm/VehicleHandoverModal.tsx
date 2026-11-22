@@ -128,7 +128,7 @@ export default function VehicleHandoverModal({
     }
 
     if (!isAdHocUsage && !vehicle.id) {
-      showSnackbar('Brak identyfikatora przypisania pojazdu do wydarzenia', 'error');
+      showSnackbar('Brak identyfikatora przypisania pojazdu do eventu', 'error');
       return;
     }
 
@@ -197,7 +197,7 @@ export default function VehicleHandoverModal({
         if (evErr) throw evErr;
 
         if (!evRow) {
-          showSnackbar('Nie znaleziono rekordu przypisania pojazdu do wydarzenia', 'error');
+          showSnackbar('Nie znaleziono rekordu przypisania pojazdu do eventu', 'error');
           return;
         }
 

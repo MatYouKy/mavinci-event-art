@@ -128,11 +128,11 @@ const templateTypes = [
     value: 'cover',
     label: '1. Okładka',
     icon: FileText,
-    description: 'Nazwa wydarzenia, termin, klient i zdjęcie przewodnie',
+    description: 'Nazwa eventu, termin, klient i zdjęcie przewodnie',
   },
   {
     value: 'about',
-    label: '2. Założenia wydarzenia',
+    label: '2. Założenia eventu',
     icon: Building2,
     description: 'Najważniejsze liczby, cel spotkania i rekomendowany zakres',
   },
@@ -381,7 +381,7 @@ export default function OfferPageTemplatesEditor() {
         <div>
           <h2 className="text-xl font-light text-[#e5e4e2]">Projekt oferty PDF</h2>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
-            Jeden spójny proces dla każdej kategorii wydarzenia
+            Jeden spójny proces dla każdej kategorii eventu
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -513,7 +513,7 @@ export default function OfferPageTemplatesEditor() {
                           ? assignedEventCategories.map((item) => item.name).join(', ')
                           : category.is_default
                             ? 'Zestaw domyślny'
-                            : 'Nieprzypisana do kategorii wydarzenia'}
+                            : 'Nieprzypisana do kategorii eventu'}
                       </p>
                     </div>
                     <div>
@@ -1142,11 +1142,11 @@ const AVAILABLE_FIELDS = [
   { value: 'offer_name', label: 'Nazwa oferty', type: 'text' },
   { value: 'offer_date', label: 'Data oferty', type: 'text' },
   { value: 'event_name', label: 'Nazwa eventu', type: 'text' },
-  { value: 'event_category_name', label: 'Kategoria wydarzenia', type: 'text' },
+  { value: 'event_category_name', label: 'Kategoria eventu', type: 'text' },
   { value: 'event_date', label: 'Data eventu', type: 'text' },
   { value: 'event_location', label: 'Lokalizacja eventu', type: 'text' },
-  { value: 'event_assumptions', label: 'Założenia wydarzenia', type: 'text' },
-  { value: 'event_goal', label: 'Cel wydarzenia', type: 'text' },
+  { value: 'event_assumptions', label: 'Założenia eventu', type: 'text' },
+  { value: 'event_goal', label: 'Cel eventu', type: 'text' },
   { value: 'category_hero_image', label: 'Kategoria: zdjęcie hero', type: 'image' },
   { value: 'company_logo', label: 'Firma: logo z my_companies', type: 'image' },
   { value: 'product_name', label: 'Produkt: nazwa', type: 'text' },

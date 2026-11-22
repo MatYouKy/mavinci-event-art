@@ -10,7 +10,7 @@ const KINDS: Record<SalesDaySellersItemKind, { label: string; icon: LucideIcon }
   chat: { label: 'Rozmowa czeka', icon: MessagesSquare },
   inquiry: { label: 'Zapytanie klienta', icon: Inbox },
   wizard: { label: 'Krok realizacji', icon: ClipboardCheck },
-  event: { label: 'Wydarzenie do potwierdzenia', icon: CalendarCheck2 },
+  event: { label: 'Event do potwierdzenia', icon: CalendarCheck2 },
   guest: { label: 'Akceptacja klienta', icon: PartyPopper },
 };
 
@@ -21,7 +21,7 @@ export default function SalesDaySellersCard({ sellers, className }: { sellers: S
     { label: 'Rozmowy', value: sellers.chats_waiting },
     { label: 'Zapytania', value: sellers.inquiries },
     { label: 'Kroki', value: sellers.wizard_steps },
-    { label: 'Wydarzenia', value: sellers.events_pending },
+    { label: 'Eventy', value: sellers.events_pending },
     { label: 'Akceptacje klientów', value: sellers.guest_acceptances },
   ];
   const total = counts.reduce((sum, item) => sum + item.value, 0);

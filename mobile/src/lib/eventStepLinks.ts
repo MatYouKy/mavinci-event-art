@@ -11,6 +11,7 @@ import { EVENT_STEP_TARGET_TAB } from './eventSteps';
 /** Zakładki ekranu wydarzenia w aplikacji (EventDetailScreen). */
 export type EventDetailTab =
   | 'details'
+  | 'steps'
   | 'agenda'
   | 'wedding'
   | 'checklist'
@@ -25,6 +26,7 @@ export type RealizationTab = 'overview' | 'phases' | 'equipment' | 'agenda' | 't
 
 export const EVENT_DETAIL_TAB_LABELS: Record<EventDetailTab, string> = {
   details: 'Szczegóły',
+  steps: 'Kroki realizacji',
   agenda: 'Agenda',
   wedding: 'Karta weselna',
   checklist: 'Checklista',
@@ -75,7 +77,7 @@ function crmLink(
   access?: EventAccess | null,
 ): { kind: 'crm'; path: string; label: string } | null {
   if (access && (!isEventTabId(crmTab) || !eventTabAllowed(access, crmTab))) return null;
-  const label = isEventTabId(crmTab) ? EVENT_TAB_LABELS[crmTab] : 'Wydarzenie';
+  const label = isEventTabId(crmTab) ? EVENT_TAB_LABELS[crmTab] : 'Event';
   return { kind: 'crm', path: `/crm/events/${eventId}?tab=${encodeURIComponent(crmTab)}`, label: `${label} (CRM)` };
 }
 
@@ -111,8 +113,10 @@ export function eventStepDetailLink(
   if (!crmTab) return null;
   switch (crmTab) {
     case 'details':
-    case 'overview':
       return tab('details');
+    // Krok zamyka się w panelu kroków (CRM „Przegląd”) — w aplikacji zakładka „Kroki realizacji”.
+    case 'overview':
+      return tab('steps');
     case 'team':
       return tab('team');
     case 'agenda':

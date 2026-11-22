@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       case 'state': {
         const board = boardOf(q('board'));
         const eventId = board === 'event' ? q('eventId') : null;
-        if (board === 'event' && !uuid.test(eventId || '')) return failure('Nieprawidłowe wydarzenie.');
+        if (board === 'event' && !uuid.test(eventId || '')) return failure('Nieprawidłowy event.');
         const access = await taskAccess(ctx, board, eventId);
         if (board === 'company' && !access.canMove) return failure('Nie masz dostępu do zadań firmowych.', 403);
         const [state, timer] = await Promise.all([tasksState(ctx, board, q('hash') || undefined, eventId), activeTimer(ctx)]);
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
   const board = boardOf(body.board);
   // Tablica zadań wydarzenia (karta wydarzenia na Macu) — zawsze z identyfikatorem wydarzenia.
   const eventId = board === 'event' ? String(body.eventId || '') : null;
-  if (board === 'event' && !uuid.test(eventId || '')) return failure('Nieprawidłowe wydarzenie.');
+  if (board === 'event' && !uuid.test(eventId || '')) return failure('Nieprawidłowy event.');
   const id = body.id ? String(body.id) : '';
   const done = (payload: Record<string, unknown> = {}) => { invalidateTasks(); return nativeJson({ ok: true, ...payload }); };
   try {
@@ -170,7 +170,7 @@ export async function POST(request: Request) {
         if (id && !uuid.test(id)) return failure('Nieprawidłowe zadanie.');
         if (board === 'event') {
           // Jak `EventTasksBoard.handleSubmit`: status równy kolumnie, kolejność na końcu kolumny, autor — pracownik.
-          if (!access.canManage) return failure('Nie masz uprawnień do zarządzania zadaniami wydarzenia.', 403);
+          if (!access.canManage) return failure('Nie masz uprawnień do zarządzania zadaniami eventu.', 403);
           const eventFields = { ...fields, status: column };
           let taskId = id;
           if (id) {

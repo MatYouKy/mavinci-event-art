@@ -729,7 +729,7 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
                 )}
               </Section>
 
-              <Section title="Wydarzenie" icon={<ClipboardList className="h-5 w-5" />}>
+              <Section title="Event" icon={<ClipboardList className="h-5 w-5" />}>
                 {draft.inquiryId ? (
                   <p className="text-[15px] text-[#e5e4e2]/65">
                     Termin, miejsce i ustalenia z zapytania „{selectedInquiry?.title || draft.inquiryTitle || 'klienta'}”
@@ -737,7 +737,7 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
                   </p>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2"><Field label="Nazwa wydarzenia"><input value={draft.event.name} onChange={(event) => update((current) => ({ ...current, event: { ...current.event, name: event.target.value } }))} placeholder="np. Gala firmowa 2027" className={inputClass} /></Field></div>
+                    <div className="col-span-2"><Field label="Nazwa eventu"><input value={draft.event.name} onChange={(event) => update((current) => ({ ...current, event: { ...current.event, name: event.target.value } }))} placeholder="np. Gala firmowa 2027" className={inputClass} /></Field></div>
                     <Field label="Termin"><input type="date" value={datePart} onChange={(event) => setDate(event.target.value, timePart)} className={inputClass} /></Field>
                     <Field label="Godzina (opcjonalnie)"><input type="time" value={timePart} disabled={!datePart} onChange={(event) => setDate(datePart, event.target.value)} className={inputClass} /></Field>
                     <div className="col-span-2">

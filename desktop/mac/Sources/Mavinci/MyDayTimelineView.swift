@@ -16,7 +16,7 @@ struct ScheduleItem: Identifiable, Equatable {
     let url: String
     var id: String { "\(kind)-\(itemID)-\(start.timeIntervalSince1970)" }
     static let kinds: [String: (label: String, symbol: String)] = [
-        "event": ("Wydarzenie", "calendar"), "phase": ("Faza wydarzenia", "square.stack.3d.up"), "meeting": ("Spotkanie", "person.2"),
+        "event": ("Event", "calendar"), "phase": ("Faza eventu", "square.stack.3d.up"), "meeting": ("Spotkanie", "person.2"),
         "inquiry": ("Kontakt w zapytaniu", "tray"), "task": ("Zadanie", "checklist"), "call": ("Oddzwonienie", "phone.arrow.up.right"), "absence": ("Nieobecność", "sun.max"),
     ]
     var kindLabel: String { Self.kinds[kind]?.label ?? "Pozycja" }

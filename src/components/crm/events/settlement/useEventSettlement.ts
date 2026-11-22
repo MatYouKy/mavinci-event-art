@@ -39,7 +39,7 @@ export function useEventSettlement(eventId: string) {
           setLoadError(settlementErrorMessage(error));
           return;
         }
-        setLoadError(settlementErrorMessage(error, 'Nie udało się wczytać podsumowania wydarzenia.'));
+        setLoadError(settlementErrorMessage(error, 'Nie udało się wczytać podsumowania eventu.'));
         setState(current => (current === 'ready' ? 'ready' : 'error'));
         return;
       }

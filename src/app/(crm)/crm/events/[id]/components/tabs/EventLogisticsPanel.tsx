@@ -221,7 +221,7 @@ export default function EventLogisticsPanel({
   const handleDeleteVehicle = async (vehicleId: string) => {
     const confirmed = await showConfirm({
       title: 'Usuń pojazd',
-      message: 'Czy na pewno chcesz usunąć ten pojazd z wydarzenia?',
+      message: 'Czy na pewno chcesz usunąć ten pojazd z eventu?',
     });
 
     if (!confirmed) return;
@@ -277,7 +277,7 @@ export default function EventLogisticsPanel({
       unloading: 'Rozładunek',
       setup: 'Montaż/Setup',
       rehearsal: 'Próba',
-      event: 'Wydarzenie',
+      event: 'Event',
       breakdown: 'Demontaż',
       packing: 'Pakowanie',
     };

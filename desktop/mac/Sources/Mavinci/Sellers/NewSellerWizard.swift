@@ -991,7 +991,7 @@ struct NewSellerTermDraft: Identifiable, Equatable {
 
     private func termsStep(_ setup: NewSellerSetup) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Każda marka może mieć inną stawkę i sposób rozliczenia. Prowizja to % od zysku netto wydarzenia — po kosztach i po koszcie samej prowizji. Hotel zobaczy wynagrodzenie dopiero po jego odsłonięciu w karcie sprzedawcy.")
+            Text("Każda marka może mieć inną stawkę i sposób rozliczenia. Prowizja to % od zysku netto eventu — po kosztach i po koszcie samej prowizji. Hotel zobaczy wynagrodzenie dopiero po jego odsłonięciu w karcie sprzedawcy.")
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             ForEach($model.terms) { $term in
                 VStack(alignment: .leading, spacing: 8) {

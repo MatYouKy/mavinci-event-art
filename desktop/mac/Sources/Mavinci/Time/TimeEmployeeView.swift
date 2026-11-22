@@ -127,7 +127,7 @@ import SwiftUI
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Zadanie").font(.caption).foregroundStyle(.secondary)
                         Text(active.label).font(.title3.weight(.semibold))
-                        if !active.eventName.isEmpty { Text("Wydarzenie: \(active.eventName)").font(.callout).foregroundStyle(.secondary) }
+                        if !active.eventName.isEmpty { Text("Event: \(active.eventName)").font(.callout).foregroundStyle(.secondary) }
                         if !active.description.isEmpty { Text(active.description).font(.callout).foregroundStyle(.secondary) }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -172,7 +172,7 @@ import SwiftUI
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(stat.title).font(.callout.weight(.semibold))
-                            if !stat.eventName.isEmpty { Text("Wydarzenie: \(stat.eventName)").font(.caption).foregroundStyle(.secondary) }
+                            if !stat.eventName.isEmpty { Text("Event: \(stat.eventName)").font(.caption).foregroundStyle(.secondary) }
                             Text("\(stat.entries) wpisów • Ostatnio: \(MeetingDates.parse(stat.last).map { MeetingDates.format($0, "dd.MM.yyyy") } ?? "")")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
@@ -248,7 +248,7 @@ import SwiftUI
                     .width(min: 100, ideal: 120)
                 TableColumn("Zadanie / Tytuł") { (entry: WorkTimeEntry) in Text(entry.label).help(entry.label) }
                     .width(min: 140, ideal: 220)
-                TableColumn("Wydarzenie") { (entry: WorkTimeEntry) in Text(entry.eventName.nonEmpty ?? "—").foregroundStyle(.secondary) }
+                TableColumn("Event") { (entry: WorkTimeEntry) in Text(entry.eventName.nonEmpty ?? "—").foregroundStyle(.secondary) }
                     .width(min: 100, ideal: 160)
                 TableColumn("Opis") { (entry: WorkTimeEntry) in Text(entry.description).lineLimit(1).help(entry.description) }
                     .width(min: 100, ideal: 200)

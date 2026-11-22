@@ -407,7 +407,7 @@ export default function EventAgendaTab({
     }
 
     if (!eventName || !normalizedEventDate) {
-      alert('Nazwa wydarzenia i data są wymagane');
+      alert('Nazwa eventu i data są wymagane');
       return;
     }
 
@@ -1093,7 +1093,7 @@ export default function EventAgendaTab({
     <div className="space-y-6">
       {/* Nagłówek + akcje */}
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-light text-[#e5e4e2]">Agenda wydarzenia</h2>
+        <h2 className="text-2xl font-light text-[#e5e4e2]">Agenda eventu</h2>
         <div className="flex gap-2">
           <ResponsiveActionBar actions={actions} />
         </div>

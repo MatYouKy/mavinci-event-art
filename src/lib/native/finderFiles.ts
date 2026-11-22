@@ -85,7 +85,7 @@ function day(value: unknown): string | null {
 
 const eventItem = (r: any) => ({
   id: r.id as string,
-  name: String(r.name || '').trim() || 'Wydarzenie',
+  name: String(r.name || '').trim() || 'Event',
   date: day(r.event_date),
   endDate: day(r.event_end_date),
   status: r.status ?? null,
@@ -136,7 +136,7 @@ async function fetchAll(build: (from: number, to: number) => Page) {
 async function eventVisible(ctx: NativeContext, eventId: string) {
   const { data, error } = await ctx.supabase.from('events').select('id').eq('id', eventId).maybeSingle();
   if (error) throw error;
-  if (!data) fail('Nie znaleziono wydarzenia.', 404);
+  if (!data) fail('Nie znaleziono eventu.', 404);
 }
 
 async function folderInEvent(ctx: NativeContext, eventId: string, folderId: unknown): Promise<string | null> {
@@ -145,7 +145,7 @@ async function folderInEvent(ctx: NativeContext, eventId: string, folderId: unkn
   const { data, error } = await ctx.supabase.from('event_folders').select('id,event_id').eq('id', id).maybeSingle();
   if (error) throw error;
   if (!data) fail('Nie znaleziono folderu.', 404);
-  if ((data as any).event_id !== eventId) fail('Pliki i foldery można przenosić tylko w obrębie jednego wydarzenia.', 400, { code: 'crossEvent' });
+  if ((data as any).event_id !== eventId) fail('Pliki i foldery można przenosić tylko w obrębie jednego eventu.', 400, { code: 'crossEvent' });
   return id;
 }
 
@@ -179,7 +179,7 @@ export async function finderEvents(ctx: NativeContext) {
 
 /** Zawartość jednego wydarzenia: wszystkie foldery i pliki naraz (Mac układa drzewo sam). */
 export async function finderList(ctx: NativeContext, eventIdValue: string) {
-  const eventId = uuidOf(eventIdValue, 'Nieprawidłowe wydarzenie.');
+  const eventId = uuidOf(eventIdValue, 'Nieprawidłowy event.');
   const cursor = new Date().toISOString();
   const s = ctx.supabase;
   const [event, folders, files] = await Promise.all([
@@ -188,7 +188,7 @@ export async function finderList(ctx: NativeContext, eventIdValue: string) {
     fetchAll((a, b) => s.from('event_files').select(FILE_COLUMNS).eq('event_id', eventId).order('id').range(a, b)),
   ]);
   if (event.error) throw event.error;
-  if (!event.data) fail('Nie znaleziono wydarzenia.', 404);
+  if (!event.data) fail('Nie znaleziono eventu.', 404);
   return { cursor, event: eventItem(event.data), folders: folders.rows.map(folderItem), files: files.rows.map(fileItem) };
 }
 
@@ -230,7 +230,7 @@ export async function finderItem(ctx: NativeContext, kind: string, idValue: stri
   if (kind === 'event') {
     const { data, error } = await s.from('events').select(EVENT_COLUMNS).eq('id', id).maybeSingle();
     if (error) throw error;
-    if (!data) fail('Nie znaleziono wydarzenia.', 404);
+    if (!data) fail('Nie znaleziono eventu.', 404);
     return { item: eventItem(data) };
   }
   if (kind === 'folder') {
@@ -270,7 +270,7 @@ export async function finderDownload(ctx: NativeContext, idValue: string) {
 export async function finderTrash(ctx: NativeContext, eventIdValue: string | null) {
   const s = ctx.supabase;
   let query = s.from('event_file_trash').select(TRASH_COLUMNS).order('deleted_at', { ascending: false }).limit(1000);
-  if (eventIdValue) query = query.eq('event_id', uuidOf(eventIdValue, 'Nieprawidłowe wydarzenie.'));
+  if (eventIdValue) query = query.eq('event_id', uuidOf(eventIdValue, 'Nieprawidłowy event.'));
   const { data, error } = await query;
   if (error) throw error;
   const rows = (data || []) as any[];
@@ -304,21 +304,21 @@ export async function finderTrash(ctx: NativeContext, eventIdValue: string | nul
 
 /** Krok 1 wysyłki: ścieżki w magazynie i jednorazowe podpisane adresy (plik idzie z Maca prosto do magazynu). */
 export async function finderPrepareUpload(ctx: NativeContext, body: Record<string, any>) {
-  const eventId = uuidOf(body.eventId, 'Nieprawidłowe wydarzenie.');
+  const eventId = uuidOf(body.eventId, 'Nieprawidłowy event.');
   await eventVisible(ctx, eventId);
   const names: string[] = (Array.isArray(body.names) ? body.names : [body.name]).map((n: unknown) => String(n ?? '')).slice(0, 50);
   const slots = [];
   for (const name of names) {
     const path = storagePath(eventId, name);
     const { data, error } = await ctx.supabase.storage.from(BUCKET).createSignedUploadUrl(path);
-    if (error || !data?.signedUrl) fail('Nie masz uprawnień do dodawania plików w tym wydarzeniu.', 403, { code: 'forbidden' });
+    if (error || !data?.signedUrl) fail('Nie masz uprawnień do dodawania plików w tym evencie.', 403, { code: 'forbidden' });
     slots.push({ name, path, url: data.signedUrl });
   }
   return { slots };
 }
 
 export async function finderCreateFolder(ctx: NativeContext, body: Record<string, any>) {
-  const eventId = uuidOf(body.eventId, 'Nieprawidłowe wydarzenie.');
+  const eventId = uuidOf(body.eventId, 'Nieprawidłowy event.');
   const name = cleanName(body.name, 'Podaj nazwę folderu.');
   await blockFormal(ctx, eventId, name);
   const parentId = await folderInEvent(ctx, eventId, body.parentId);
@@ -331,7 +331,7 @@ export async function finderCreateFolder(ctx: NativeContext, body: Record<string
 
 /** Krok 2 wysyłki: wpis w `event_files` dla obiektu wysłanego do magazynu (nieudany wpis usuwa obiekt). */
 export async function finderCreateFile(ctx: NativeContext, body: Record<string, any>) {
-  const eventId = uuidOf(body.eventId, 'Nieprawidłowe wydarzenie.');
+  const eventId = uuidOf(body.eventId, 'Nieprawidłowy event.');
   const path = String(body.path || '');
   if (!uploadPattern(eventId).test(path)) fail('Nieprawidłowa ścieżka pliku.');
   const s = ctx.supabase;
@@ -379,7 +379,7 @@ export async function finderUpdate(ctx: NativeContext, body: Record<string, any>
     if (error) throw error;
     if (!current) fail('Nie znaleziono folderu.', 404);
     const folder = current as any;
-    if (body.eventId && body.eventId !== folder.event_id) fail('Foldery można przenosić tylko w obrębie jednego wydarzenia — przenieś pliki.', 400, { code: 'crossEvent' });
+    if (body.eventId && body.eventId !== folder.event_id) fail('Foldery można przenosić tylko w obrębie jednego eventu — przenieś pliki.', 400, { code: 'crossEvent' });
     const patch: Record<string, unknown> = {};
     if (body.name !== undefined) {
       const name = cleanName(body.name, 'Podaj nazwę folderu.');
@@ -408,7 +408,7 @@ export async function finderUpdate(ctx: NativeContext, body: Record<string, any>
   const file = current as any;
   // Plik można przenieść do innego wydarzenia (Finder: przeciągnięcie między folderami wydarzeń) — RLS sprawdza
   // uprawnienia w obu wydarzeniach; obiekt w magazynie zostaje pod dotychczasową ścieżką.
-  const targetEvent = body.eventId ? uuidOf(body.eventId, 'Nieprawidłowe wydarzenie.') : file.event_id;
+  const targetEvent = body.eventId ? uuidOf(body.eventId, 'Nieprawidłowy event.') : file.event_id;
   if (targetEvent !== file.event_id) await eventVisible(ctx, targetEvent);
   const content = body.content && typeof body.content === 'object' ? (body.content as Record<string, any>) : null;
   const uploaded = content ? String(content.path || '') : '';

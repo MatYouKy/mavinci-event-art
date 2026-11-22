@@ -493,7 +493,7 @@ struct ContractDocumentStats {
             Label("Pokaż jako", systemImage: "eye")
         }
         .toggleStyle(.button)
-        .help("Przygasza treść, której nie będzie w umowie dla wybranego klienta, wydarzenia i opcji")
+        .help("Przygasza treść, której nie będzie w umowie dla wybranego klienta, eventu i opcji")
         if let simulation = controller.simulation {
             Picker("Klient", selection: Binding(get: { simulation.client }, set: { controller.simulation?.client = $0 })) {
                 Text("Osoba prywatna").tag("osoba")
@@ -502,7 +502,7 @@ struct ContractDocumentStats {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
-            Picker("Rodzaj wydarzenia", selection: Binding(get: { simulation.category }, set: { controller.simulation?.category = $0 })) {
+            Picker("Rodzaj eventu", selection: Binding(get: { simulation.category }, set: { controller.simulation?.category = $0 })) {
                 Text("Bez kategorii").tag("")
                 ForEach(controller.payload.categories ?? [], id: \.self) { name in Text(name).tag(name) }
             }

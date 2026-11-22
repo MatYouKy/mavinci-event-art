@@ -134,7 +134,7 @@ export const CONTRACT_REQUIREMENT_FIELDS: Record<ContractRequirementType, Contra
     { key: 'connection', label: 'Łącze', kind: 'choice', options: [{ value: 'wifi', label: 'Bezprzewodowe (Wi-Fi)' }, { value: 'cable', label: 'Przewodowe (Ethernet)' }] },
     { key: 'download', label: 'Pobieranie co najmniej', kind: 'number', suffix: 'Mb/s' },
     { key: 'upload', label: 'Wysyłanie co najmniej', kind: 'number', suffix: 'Mb/s' },
-    { key: 'dedicated', label: 'Niewspółdzielone z uczestnikami wydarzenia', kind: 'bool' },
+    { key: 'dedicated', label: 'Niewspółdzielone z uczestnikami eventu', kind: 'bool' },
   ],
   space: [
     { key: 'width', label: 'Szerokość stanowiska', kind: 'number', suffix: 'm' },
@@ -151,10 +151,10 @@ export const CONTRACT_REQUIREMENT_FIELDS: Record<ContractRequirementType, Contra
     { key: 'lift', label: 'Wniesienie bez schodów lub windą towarową', kind: 'bool' },
   ],
   setup: [
-    { key: 'before', label: 'Dostęp przed wydarzeniem', kind: 'number', suffix: 'godz.' },
-    { key: 'after', label: 'Demontaż po wydarzeniu', kind: 'number', suffix: 'godz.' },
-    { key: 'test', label: 'Próba techniczna przed wydarzeniem', kind: 'bool' },
-    { key: 'teardown', label: 'Demontaż po wydarzeniu', kind: 'bool' },
+    { key: 'before', label: 'Dostęp przed eventem', kind: 'number', suffix: 'godz.' },
+    { key: 'after', label: 'Demontaż po evencie', kind: 'number', suffix: 'godz.' },
+    { key: 'test', label: 'Próba techniczna przed eventem', kind: 'bool' },
+    { key: 'teardown', label: 'Demontaż po evencie', kind: 'bool' },
   ],
   backstage: [
     { key: 'people', label: 'Osoby obsługi', kind: 'number' },

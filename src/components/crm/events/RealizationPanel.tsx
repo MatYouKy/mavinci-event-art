@@ -53,7 +53,7 @@ export function RealizationPanel({ eventId }: { eventId: string }) {
       <h3 className="font-medium">Kierownik realizacji</h3>
       <p className="mt-2 text-sm">
         {data?.realization?.manager_name || 'Nie wyznaczono kierownika'}
-        {data?.status && ` · ${OPERATIONAL_LABELS[data.status] || 'Nowe wydarzenie'}`}
+        {data?.status && ` · ${OPERATIONAL_LABELS[data.status] || 'Nowy event'}`}
       </p>
       {data?.is_manager && !data?.realization?.started_at && data?.status === 'ready_for_live' && (
         <button disabled={busy} onClick={() => void run('start')} className={button}>

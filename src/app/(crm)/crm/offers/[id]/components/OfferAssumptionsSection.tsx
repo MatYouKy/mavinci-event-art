@@ -43,7 +43,7 @@ export default function OfferAssumptionsSection({ offer, canEdit, onUpdate, prev
       }).eq('id', offer.id).select('id').single();
       if (error) throw error;
       setEditing(false);
-      showSnackbar('Założenia wydarzenia zapisane', 'success');
+      showSnackbar('Założenia eventu zapisane', 'success');
       onUpdate();
     } catch (error: any) {
       showSnackbar(error.message || 'Nie udało się zapisać założeń', 'error');
@@ -56,7 +56,7 @@ export default function OfferAssumptionsSection({ offer, canEdit, onUpdate, prev
   return (
     <section data-offer-editing={editing} className="mt-4 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-light text-[#e5e4e2]">Założenia wydarzenia</h2>
+        <h2 className="text-lg font-light text-[#e5e4e2]">Założenia eventu</h2>
         {canEdit && (editing ? <div className="flex gap-2">
           <button type="button" disabled={saving || audiencePending} onClick={() => void save()} className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#250914] disabled:opacity-50">{saving ? 'Zapisywanie…' : 'Zapisz'}</button>
           <button type="button" disabled={saving} onClick={() => setEditing(false)} className="rounded-lg bg-white/5 px-4 py-2 text-sm text-[#e5e4e2] disabled:opacity-50">Anuluj</button>
@@ -79,7 +79,7 @@ export default function OfferAssumptionsSection({ offer, canEdit, onUpdate, prev
             if (generatedGoal !== undefined) setGoal(generatedGoal);
           }}
         />
-        <label className="block text-xs text-[#e5e4e2]/60">Cel wydarzenia
+        <label className="block text-xs text-[#e5e4e2]/60">Cel eventu
           <textarea value={goal} onChange={event => setGoal(event.target.value)} rows={3}
             className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1118] px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none"
             placeholder="Rezultat, który klient chce osiągnąć…" />
@@ -87,7 +87,7 @@ export default function OfferAssumptionsSection({ offer, canEdit, onUpdate, prev
       </fieldset> : <div className="space-y-4">
             {assumptionItemsForDisplay.length > 0 ? (
               <div className="border-t border-[#d3bb73]/10 pt-4">
-                <p className="mb-2 text-xs text-[#e5e4e2]/60">Założenia wydarzenia</p>
+                <p className="mb-2 text-xs text-[#e5e4e2]/60">Założenia eventu</p>
                 <div className="grid grid-cols-1 gap-2 xl:grid-cols-3">
                   {assumptionItemsForDisplay.map((item, index) => {
                     const explicitBadge = item.badge_value?.trim() || '';
@@ -127,14 +127,14 @@ export default function OfferAssumptionsSection({ offer, canEdit, onUpdate, prev
               </div>
             ) : legacyEventAssumptions ? (
               <div className="border-t border-[#d3bb73]/10 pt-4">
-                <p className="mb-2 text-xs text-[#e5e4e2]/60">Założenia wydarzenia</p>
+                <p className="mb-2 text-xs text-[#e5e4e2]/60">Założenia eventu</p>
                 <p className="whitespace-pre-wrap text-sm leading-6 text-[#e5e4e2]">{legacyEventAssumptions}</p>
               </div>
             ) : null}
 
             {(offer.event_goal || offer.inquiry?.inquiry_details?.event_goal) && (
               <div className="border-t border-[#d3bb73]/10 pt-4">
-                <p className="mb-2 text-xs text-[#e5e4e2]/60">Cel wydarzenia</p>
+                <p className="mb-2 text-xs text-[#e5e4e2]/60">Cel eventu</p>
                 <p className="whitespace-pre-wrap text-sm leading-6 text-[#e5e4e2]">
                   {offer.event_goal || offer.inquiry?.inquiry_details?.event_goal}
                 </p>

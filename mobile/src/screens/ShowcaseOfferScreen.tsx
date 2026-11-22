@@ -663,7 +663,7 @@ export default function ShowcaseOfferScreen() {
 
             {/* Wydarzenie */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Wydarzenie</Text>
+              <Text style={styles.sectionTitle}>Event</Text>
               {draft.inquiryId ? (
                 <Text style={styles.muted}>
                   Termin, miejsce i ustalenia z zapytania „{selectedInquiry?.title || draft.inquiryTitle || 'klienta'}”
@@ -671,7 +671,7 @@ export default function ShowcaseOfferScreen() {
                 </Text>
               ) : (
                 <View style={styles.gapSm}>
-                  {input(draft.event.name, (name) => update((current) => ({ ...current, event: { ...current.event, name } })), 'Nazwa wydarzenia (np. Gala firmowa 2027)')}
+                  {input(draft.event.name, (name) => update((current) => ({ ...current, event: { ...current.event, name } })), 'Nazwa eventu (np. Gala firmowa 2027)')}
                   <View style={styles.row}>
                     <TouchableOpacity onPress={() => setPicker('date')} style={[styles.input, styles.flex, styles.pickerButton]}>
                       <Feather name="calendar" size={16} color={accent} />

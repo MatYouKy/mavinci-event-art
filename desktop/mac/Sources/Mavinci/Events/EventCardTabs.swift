@@ -85,8 +85,8 @@ import AppKit
 
     private var invitation: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Zaproszenie do zespołu wydarzenia", systemImage: "exclamationmark.circle").font(.headline).foregroundStyle(CrmTheme.rgb(0x60a5fa))
-            Text("Zostałeś zaproszony do udziału w tym wydarzeniu. Po akceptacji zaproszenia uzyskasz dostęp do pełnych szczegółów wydarzenia, w tym sprzętu, zadań i plików.")
+            Label("Zaproszenie do zespołu eventu", systemImage: "exclamationmark.circle").font(.headline).foregroundStyle(CrmTheme.rgb(0x60a5fa))
+            Text("Zostałeś zaproszony do udziału w tym evencie. Po akceptacji zaproszenia uzyskasz dostęp do pełnych szczegółów eventu, w tym sprzętu, zadań i plików.")
                 .foregroundStyle(.secondary)
             HStack {
                 Button("Akceptuj zaproszenie") {
@@ -153,7 +153,7 @@ enum EventCardRichText {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Ta zakładka jest w trakcie przenoszenia do aplikacji — poniżej dane wydarzenia, pełna obsługa w CRM.")
+                Text("Ta zakładka jest w trakcie przenoszenia do aplikacji — poniżej dane eventu, pełna obsługa w CRM.")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Otwórz w CRM", systemImage: "safari") { state.openCRM("/crm/events/\(eventID)?tab=\(tabID)") }.controlSize(.small)

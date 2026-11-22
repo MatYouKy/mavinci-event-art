@@ -65,7 +65,7 @@ function EventDestailsDescriptionInner({
       await logChange(
         eventId,
         'UPDATE',
-        'Zmieniono opis wydarzenia',
+        'Zmieniono opis eventu',
         'description',
         oldDescription,
         newDescription,

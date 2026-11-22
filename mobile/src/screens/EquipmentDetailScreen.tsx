@@ -329,7 +329,7 @@ export default function EquipmentDetailScreen({ equipmentId, isKit, onBack }: Pr
                 {preCheck.instructions || 'Instrukcja testu nie została dodana. Sprawdź działanie sprzętu przed wydaniem.'}
               </Text>
               <Text style={styles.preCheckHint}>
-                Każde wydarzenie z tym sprzętem dostaje krok „Sprawdź stan” dla magazynu.
+                Każdy event z tym sprzętem dostaje krok „Sprawdź stan” dla magazynu.
               </Text>
             </View>
           </View>

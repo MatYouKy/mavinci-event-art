@@ -82,7 +82,7 @@ export async function eventCategoriesData(ctx: NativeContext) {
     s.from('contract_templates').select('id, name').eq('is_active', true).order('name'),
     s.from('offer_template_categories').select('id, name, color').order('is_default', { ascending: false }).order('name'),
   ]);
-  if (categories.error) fail('Nie udało się pobrać kategorii wydarzeń.', 500);
+  if (categories.error) fail('Nie udało się pobrać kategorii eventów.', 500);
   if (icons.error) fail('Nie udało się pobrać ikon.', 500);
   return {
     categories: rows(categories.data).map(categoryOut),

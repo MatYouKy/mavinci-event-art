@@ -553,10 +553,10 @@ private enum SocialPickerTarget: Identifiable {
                 if detail.post.status == .scheduled {
                     Text("Zmiana treści cofnie zaplanowany post do szkicu (wymaga ponownej akceptacji).").font(.caption2).foregroundStyle(.secondary)
                 }
-                Text("Wydarzenie").font(.subheadline).padding(.top, 4)
+                Text("Event").font(.subheadline).padding(.top, 4)
                 HStack {
-                    Button { eventPickerShown = true } label: { Label(draft.eventName ?? "Wybierz wydarzenie", systemImage: "calendar").lineLimit(1) }.disabled(!editable)
-                    if draft.eventID != nil && editable { Button { draft.eventID = nil; draft.eventName = nil } label: { Image(systemName: "xmark") }.help("Bez wydarzenia") }
+                    Button { eventPickerShown = true } label: { Label(draft.eventName ?? "Wybierz event", systemImage: "calendar").lineLimit(1) }.disabled(!editable)
+                    if draft.eventID != nil && editable { Button { draft.eventID = nil; draft.eventName = nil } label: { Image(systemName: "xmark") }.help("Bez eventu") }
                 }
                 if let event = detail.event {
                     Text([event.location.isEmpty ? nil : event.location, event.organizationName].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
@@ -678,7 +678,7 @@ private enum SocialPickerTarget: Identifiable {
                         SocialConsentBadge(consent: asset.consent, compact: true)
                     }
                 }
-                Text("Zgodę ustawisz w Bibliotece (zdjęcie, wydarzenie albo klient).").font(.caption2).foregroundStyle(.secondary)
+                Text("Zgodę ustawisz w Bibliotece (zdjęcie, event albo klient).").font(.caption2).foregroundStyle(.secondary)
             }
             let problems = uniqueProblems(detail)
             if !problems.isEmpty {

@@ -173,8 +173,8 @@ export default function MyCommissionsScreen() {
           </Text>
         )}
 
-        <Text style={styles.sectionTitle}>Prowizje z wydarzeń ({data.commissions.length})</Text>
-        {data.commissions.length === 0 && <Text style={styles.empty}>Nie masz jeszcze prowizji z wydarzeń.</Text>}
+        <Text style={styles.sectionTitle}>Prowizje z eventów ({data.commissions.length})</Text>
+        {data.commissions.length === 0 && <Text style={styles.empty}>Nie masz jeszcze prowizji z eventów.</Text>}
         {data.commissions.map((row) => (
           <CommissionRow
             key={row.id}
@@ -207,7 +207,7 @@ function CommissionRow({ row, onOpen }: { row: MyCommissionRow; onOpen?: () => v
     <TouchableOpacity
       accessibilityRole={onOpen ? 'button' : undefined}
       accessibilityLabel={`${row.event_name}: ${COMMISSION_STATUS_LABELS[row.status] || row.status}, ${formatPln(row.amount)}`}
-      accessibilityHint={onOpen ? 'Otwiera podsumowanie wydarzenia' : undefined}
+      accessibilityHint={onOpen ? 'Otwiera podsumowanie eventu' : undefined}
       activeOpacity={onOpen ? 0.7 : 1}
       disabled={!onOpen}
       onPress={onOpen}

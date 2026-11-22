@@ -93,7 +93,7 @@ enum Module: String, CaseIterable, Identifiable, Codable {
         case .inquiries: return "Zapytania"
         case .tasks: return "Moje zadania"
         case .contacts: return "Kontakty"
-        case .events: return "Wydarzenia"
+        case .events: return "Eventy"
         case .offers: return "Oferty"
         case .tenders: return "Przetargi"
         case .notifications: return "Powiadomienia"

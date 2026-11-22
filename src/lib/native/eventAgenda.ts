@@ -137,7 +137,7 @@ async function saveAgenda(ctx: NativeContext, eventId: string, body: Record<stri
   if (eventError) throw eventError;
   const e = event as any;
   const date = isoToDateInput(e.event_date);
-  if (!e.name || !date) fail('Nazwa wydarzenia i data są wymagane');
+  if (!e.name || !date) fail('Nazwa eventu i data są wymagane');
   const items = sortItems((Array.isArray(body.items) ? body.items : []).map((item: any) => ({
     time: String(item?.time || ''), title: String(item?.title || ''), description: String(item?.description || ''),
   })));

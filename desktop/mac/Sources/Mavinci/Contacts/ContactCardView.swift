@@ -466,7 +466,7 @@ enum ContactCardConfirm: Identifiable {
 
     private func invoicePanel(_ card: ContactCard, _ org: ContactCardOrganization) -> some View {
         panel("Dane do faktury") {
-            Text("Na kogo wystawiamy faktury za tę organizację. Umowę i wydarzenia nadal prowadzisz z nią samą.")
+            Text("Na kogo wystawiamy faktury za tę organizację. Umowę i eventy nadal prowadzisz z nią samą.")
                 .font(.caption).foregroundStyle(.secondary)
             if let buyer = card.buyer {
                 HStack(alignment: .top, spacing: 10) {
@@ -800,7 +800,7 @@ enum ContactCardConfirm: Identifiable {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(event.name).fontWeight(.medium)
-                                Text("Data wydarzenia: \(ContactCardText.day(event.date))").font(.caption).foregroundStyle(.secondary)
+                                Text("Data eventu: \(ContactCardText.day(event.date))").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             pill(EventDetailsActionCard.statusLabel(event.status), theme.accent)
@@ -810,7 +810,7 @@ enum ContactCardConfirm: Identifiable {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help("Otwórz wydarzenie")
+                    .help("Otwórz event")
                 }
             }
         }
@@ -941,7 +941,7 @@ enum ContactCardConfirm: Identifiable {
                     field("Dostarczalność e-maila", ContactDictionaries.label(profile.deliverability, in: ContactCardText.deliverability))
                     field("Częstotliwość", ContactDictionaries.label(profile.frequency, in: ContactCardText.frequency))
                     field("Zainteresowania", profile.interests.joined(separator: ", "))
-                    field("Typy wydarzeń", profile.eventTypes.joined(separator: ", "))
+                    field("Typy eventów", profile.eventTypes.joined(separator: ", "))
                     field("Regiony", profile.regions.joined(separator: ", "))
                     field("Budżet", budget(profile))
                 }

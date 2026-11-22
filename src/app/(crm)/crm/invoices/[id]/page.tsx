@@ -978,7 +978,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
       await fetchInvoice({ background: true });
       showSnackbar(newStatus === 'paid'
-        ? 'Potwierdzono zapłatę. Rozliczenie powiązanego wydarzenia przeliczono automatycznie.'
+        ? 'Potwierdzono zapłatę. Rozliczenie powiązanego eventu przeliczono automatycznie.'
         : 'Status faktury został zmieniony', 'success');
     } catch (err) {
       console.error('Error updating status:', err);
@@ -1364,7 +1364,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   className="inline-flex items-center gap-1.5 text-[#d3bb73] hover:text-[#e5e4e2]"
                 >
                   <Calendar className="h-3.5 w-3.5" />
-                  Wydarzenie: {relatedData.event.name}
+                  Event: {relatedData.event.name}
                 </button>
               )}
               {pdfPath && <span className="inline-flex items-center gap-1.5 text-[#e5e4e2]/55"><FileText className="h-3.5 w-3.5" />PDF gotowy</span>}
@@ -1591,7 +1591,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                         <Building2 className="h-4 w-4 shrink-0 text-sky-300" />
                         <div className="min-w-0">
                           <div className="text-[11px] uppercase tracking-wide text-sky-200/60">
-                            Klient wydarzenia
+                            Klient eventu
                           </div>
                           <div className="truncate text-sm font-medium text-[#e5e4e2]">
                             {relatedData.serviceRecipientOrganization.name}

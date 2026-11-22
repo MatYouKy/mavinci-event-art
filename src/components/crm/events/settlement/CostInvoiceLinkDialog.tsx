@@ -62,7 +62,7 @@ function parseCandidates(data: unknown): Candidate[] {
 }
 
 /** Faktury kosztowe przypisuje tylko osoba z dostępem do finansów wydarzenia (event_finance_can_access w bazie). */
-export const COST_INVOICE_FORBIDDEN_MESSAGE = 'Faktury kosztowe przypisuje osoba z dostępem do finansów tego wydarzenia.';
+export const COST_INVOICE_FORBIDDEN_MESSAGE = 'Faktury kosztowe przypisuje osoba z dostępem do finansów tego eventu.';
 
 /**
  * „Dodaj fakturę kosztową”: wyszukanie faktury (KSeF / spoza KSeF) → opcjonalna część brutto → rodzaj kosztu →
@@ -170,7 +170,7 @@ export default function CostInvoiceLinkDialog({
         p_category: category,
         p_name: name.trim() || null,
       },
-      'Faktura kosztowa przypisana do wydarzenia.',
+      'Faktura kosztowa przypisana do eventu.',
     );
     if (ok) onClose();
   };
@@ -180,7 +180,7 @@ export default function CostInvoiceLinkDialog({
       open
       wide
       title="Dodaj fakturę kosztową"
-      description="Faktury kosztowe marki wydarzenia, najbliższe dacie wydarzenia i jeszcze nie w pełni przypisane."
+      description="Faktury kosztowe marki eventu, najbliższe dacie eventu i jeszcze nie w pełni przypisane."
       onClose={close}
       busy={saving}
     >
@@ -260,7 +260,7 @@ export default function CostInvoiceLinkDialog({
                     </div>
                     {candidate.linked_to_event && (
                       <span className="mt-1.5 inline-block rounded-md bg-amber-400/15 px-2 py-0.5 text-[11px] text-amber-200">
-                        Część tej faktury jest już przypisana do tego wydarzenia
+                        Część tej faktury jest już przypisana do tego eventu
                       </span>
                     )}
                   </button>
@@ -285,7 +285,7 @@ export default function CostInvoiceLinkDialog({
             <p className="mt-0.5 text-xs text-[#d3bb73]/80">Pozostało do przypisania: {formatPln(selected.remaining_gross)} brutto</p>
           </div>
           <label className="block text-sm text-[#e5e4e2]/70">
-            Część brutto dla tego wydarzenia <span className="text-[#e5e4e2]/40">(opcjonalnie)</span>
+            Część brutto dla tego eventu <span className="text-[#e5e4e2]/40">(opcjonalnie)</span>
             <input
               data-autofocus
               type="number"

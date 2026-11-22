@@ -135,7 +135,7 @@ export function ProductMavinciLiveModules({
           </p>
           <h2 className="text-lg font-medium text-[#e5e4e2]">Zawartość uruchamiana przez produkt</h2>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-[#e5e4e2]/55">
-            Gdy ten produkt znajdzie się w ofercie wydarzenia, pojawi się zakładka Mavinci LIVE
+            Gdy ten produkt znajdzie się w ofercie eventu, pojawi się zakładka Mavinci LIVE
             z wybranymi modułami. Brak wyboru oznacza, że produkt nie wymaga tej części realizacji.
           </p>
         </div>

@@ -155,7 +155,7 @@ export default function SocialMediaScreen() {
       });
     }
     actions.push({ text: 'Anuluj', style: 'cancel' });
-    Alert.alert(asset.title || asset.originalName || 'Zdjęcie', asset.eventName ? `Wydarzenie: ${asset.eventName}` : undefined, actions);
+    Alert.alert(asset.title || asset.originalName || 'Zdjęcie', asset.eventName ? `Event: ${asset.eventName}` : undefined, actions);
   };
 
   if (loading && !home) {

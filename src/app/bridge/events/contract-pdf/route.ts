@@ -53,7 +53,7 @@ async function authorize(ctx: NativeContext, eventId: string, contractId: string
     if (error || !data) throw new ContractPdfError('Nie masz uprawnień do generowania tej umowy.', 403);
   } else {
     const { data, error } = await ctx.supabase.from('events').select('id').eq('id', eventId).maybeSingle();
-    if (error || !data) throw new ContractPdfError('Nie znaleziono wydarzenia.', 404);
+    if (error || !data) throw new ContractPdfError('Nie znaleziono eventu.', 404);
   }
   const { data: canManage, error } = await ctx.supabase.rpc('crm_contract_permission', { p_action: 'manage' });
   if (error || !canManage) throw new ContractPdfError('Nie masz uprawnień do generowania tej umowy.', 403);

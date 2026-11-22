@@ -111,12 +111,12 @@ export function EventAssumptionsEditor({
         throw new Error('AI nie przygotowało trzech kompletnych założeń. Spróbuj ponownie.');
       }
       const goal = String(data?.result?.event_goal || '').trim();
-      if (generateGoal && !goal) throw new Error('AI nie przygotowało celu wydarzenia. Spróbuj ponownie.');
+      if (generateGoal && !goal) throw new Error('AI nie przygotowało celu eventu. Spróbuj ponownie.');
       onChange(guestCount === undefined ? assumptions : syncGuestCountAssumptions(assumptions, guestCount), generateGoal ? goal : undefined);
       const sources = data?.result?.source_context;
       setSourceInfo(sources ? `Wykorzystano analizy: ${sources.analysis_count}, wiadomości: ${sources.correspondence_count}. ${sources.approved_summary_current ? 'Uwzględniono aktualne zatwierdzone podsumowanie.' : 'Brak aktualnego zatwierdzonego podsumowania — propozycja wymaga sprawdzenia.'}` : 'Propozycja na podstawie kontekstu oferty, bez powiązanego zapytania.');
       setShowAiDialog(false);
-      showSnackbar(generateGoal ? 'AI uzupełniło wybrane założenia i cel wydarzenia' : 'AI uzupełniło wybrane założenia', 'success');
+      showSnackbar(generateGoal ? 'AI uzupełniło wybrane założenia i cel eventu' : 'AI uzupełniło wybrane założenia', 'success');
     } catch (error: any) {
       showSnackbar(error?.message || 'Nie udało się przygotować założeń przez AI', 'error');
     } finally {
@@ -163,7 +163,7 @@ export function EventAssumptionsEditor({
             <p className="mt-2 text-sm leading-6 text-[#e5e4e2]/65">AI uzupełni kategorie wybrane w trzech kartach, w tej samej kolejności. Wykorzysta ustalenia, historię analiz z zakładki „Analiza i AI”, aktualne zatwierdzone podsumowanie, korespondencję oraz wybrane produkty. Brakujące fakty oznaczy jako wymagające doprecyzowania.</p>
           </div>
           <ol className="mt-3 space-y-1 text-sm text-[#d3bb73]">{value.map((item, index) => <li key={index}>{index + 1}. {item.label || getEventAssumptionOption(item.key).label}</li>)}</ol>
-          <label className="mt-4 flex items-center gap-2 text-sm text-[#e5e4e2]"><input type="checkbox" checked={generateGoal} disabled={generating} onChange={event => setGenerateGoal(event.target.checked)} />Uzupełnij również cel wydarzenia</label>
+          <label className="mt-4 flex items-center gap-2 text-sm text-[#e5e4e2]"><input type="checkbox" checked={generateGoal} disabled={generating} onChange={event => setGenerateGoal(event.target.checked)} />Uzupełnij również cel eventu</label>
           <label htmlFor={instructionsId} className="mb-2 mt-5 block text-sm text-[#e5e4e2]">Co chcesz osiągnąć? <span className="text-[#e5e4e2]/45">(opcjonalnie)</span></label>
           <textarea
             id={instructionsId}
@@ -173,11 +173,11 @@ export function EventAssumptionsEditor({
             value={aiInstructions}
             disabled={generating}
             onChange={(event) => setAiInstructions(event.target.value)}
-            placeholder="Np. podkreśl prestiż wydarzenia, komfort prelegentów i widoczność prezentacji. Chcę przekonać organizatora, że zadbamy o każdy szczegół. Ton profesjonalny, bez przesadnych sloganów."
+            placeholder="Np. podkreśl prestiż eventu, komfort prelegentów i widoczność prezentacji. Chcę przekonać organizatora, że zadbamy o każdy szczegół. Ton profesjonalny, bez przesadnych sloganów."
             className="w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#15070d] px-3 py-3 text-sm leading-6 text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73]/50 focus:outline-none disabled:opacity-60"
           />
           <div className="mt-1 flex justify-between gap-3 text-xs text-[#e5e4e2]/45"><span>Puste pole = propozycja według bazowej instrukcji.</span><span>{aiInstructions.length}/2000</span></div>
-          <p className="mt-4 text-xs leading-5 text-[#e5e4e2]/50">Propozycja zastąpi treści trzech wybranych założeń oraz — jeśli zaznaczono — cel wydarzenia. Przed zapisaniem oferty możesz je poprawić.</p>
+          <p className="mt-4 text-xs leading-5 text-[#e5e4e2]/50">Propozycja zastąpi treści trzech wybranych założeń oraz — jeśli zaznaczono — cel eventu. Przed zapisaniem oferty możesz je poprawić.</p>
           <div className="mt-6 flex justify-end gap-3">
             <button type="button" disabled={generating} onClick={() => setShowAiDialog(false)} className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2]/70 disabled:opacity-40">Anuluj</button>
             <button type="button" disabled={generating} onClick={generateWithAi} className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1b0710] disabled:cursor-wait disabled:opacity-60">

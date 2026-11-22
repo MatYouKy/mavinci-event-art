@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
   const access = eventsAccess(ctx);
-  if (!access.canView) return failure('Nie masz dostępu do wydarzeń.', 403);
+  if (!access.canView) return failure('Nie masz dostępu do eventów.', 403);
   const url = new URL(request.url);
   try {
     if (url.searchParams.get('op') === 'state') {
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
     }
     switch (url.searchParams.get('op')) {
       case 'createSetup':
-        if (!access.canCreate) return failure('Nie masz uprawnień do tworzenia wydarzeń.', 403);
+        if (!access.canCreate) return failure('Nie masz uprawnień do tworzenia eventów.', 403);
         return nativeJson(await eventCreateSetup(ctx));
       case 'rooms':
         return nativeJson(await locationRooms(ctx, url.searchParams.get('locationId') || ''));
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
   } catch (error) {
     if (error instanceof EventFormError) return formFailure(error);
     console.error('[native-events]', error);
-    return failure(errorText(error, 'Nie udało się pobrać wydarzeń.'), 500);
+    return failure(errorText(error, 'Nie udało się pobrać eventów.'), 500);
   }
 }
 
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
   const access = eventsAccess(ctx);
-  if (!access.canView) return failure('Nie masz dostępu do wydarzeń.', 403);
+  if (!access.canView) return failure('Nie masz dostępu do eventów.', 403);
   let body: Record<string, any>;
   try {
     body = await readJson(request, 64_000);
@@ -77,25 +77,25 @@ export async function POST(request: Request) {
         return nativeJson(await eventsItems(ctx, Array.isArray(body.buckets) ? body.buckets : []));
 
       case 'status': {
-        if (!uuid.test(id)) return failure('Nieprawidłowe wydarzenie.');
+        if (!uuid.test(id)) return failure('Nieprawidłowy event.');
         const status = String(body.status || '');
         if (!STATUSES.includes(status)) return failure('Nieznany status.');
         const { data, error } = await ctx.supabase.from('events').update({ status, updated_at: new Date().toISOString() }).eq('id', id).select('id');
         if (error) return failure(error.message || 'Błąd podczas zmiany statusu');
-        if (!data?.length) return failure('Nie masz uprawnień do zmiany statusu tego wydarzenia.', 403);
+        if (!data?.length) return failure('Nie masz uprawnień do zmiany statusu tego eventu.', 403);
         invalidateEvents();
         return nativeJson({ ok: true });
       }
 
       case 'delete': {
-        if (!uuid.test(id)) return failure('Nieprawidłowe wydarzenie.');
+        if (!uuid.test(id)) return failure('Nieprawidłowy event.');
         const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/delete-event-safe`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: request.headers.get('authorization') || '' },
           body: JSON.stringify({ eventId: id }),
         });
         const result = await response.json().catch(() => ({}));
-        if (!response.ok || !result?.success) return failure(result?.error || 'Nie udało się usunąć wydarzenia.');
+        if (!response.ok || !result?.success) return failure(result?.error || 'Nie udało się usunąć eventu.');
         invalidateEvents();
         return nativeJson({ ok: true });
       }
@@ -107,11 +107,11 @@ export async function POST(request: Request) {
       }
 
       case 'createContact':
-        if (!access.canCreate) return failure('Nie masz uprawnień do tworzenia wydarzeń.', 403);
+        if (!access.canCreate) return failure('Nie masz uprawnień do tworzenia eventów.', 403);
         return nativeJson(await createEventContact(ctx, body));
 
       case 'createLocation':
-        if (!access.canCreate) return failure('Nie masz uprawnień do tworzenia wydarzeń.', 403);
+        if (!access.canCreate) return failure('Nie masz uprawnień do tworzenia eventów.', 403);
         return nativeJson(await locationCreate(ctx, '', body));
 
       case 'budgetFromOffer': {

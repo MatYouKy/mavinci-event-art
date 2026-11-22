@@ -99,7 +99,7 @@ export default function SocialSettingsModal({ companyId, settings, templates: in
           <label className="flex items-start gap-3 rounded-lg bg-[#0f1119] p-3 text-sm">
             <input type="checkbox" checked={ai} onChange={(e) => setAi(e.target.checked)} className="mt-1" />
             <span>Opisy AI z danych realizacji
-              <span className="mt-1 block text-xs text-[#e5e4e2]/55">Do usługi AI (OpenAI, konfiguracja marketingu) trafia rodzaj wydarzenia, miejsce, miesiąc, opis realizacji ze strony i robocza treść posta. Nazwa wydarzenia i klient — tylko przy zgodzie klienta. Bez danych osobowych i kontaktowych.</span>
+              <span className="mt-1 block text-xs text-[#e5e4e2]/55">Do usługi AI (OpenAI, konfiguracja marketingu) trafia rodzaj eventu, miejsce, miesiąc, opis realizacji ze strony i robocza treść posta. Nazwa eventu i klient — tylko przy zgodzie klienta. Bez danych osobowych i kontaktowych.</span>
               {settings.aiConsentAt && <span className="mt-1 block text-xs text-[#e5e4e2]/40">Włączone: {new Date(settings.aiConsentAt).toLocaleString('pl-PL')}</span>}
             </span>
           </label>

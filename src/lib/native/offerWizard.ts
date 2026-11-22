@@ -168,13 +168,13 @@ const productView = (row: Row, imageUrl: string | null) => {
  */
 export async function offerWizardSetup(ctx: NativeContext, eventId: string) {
   requireCreate(ctx);
-  const id = uuid(eventId, 'Nie znaleziono wydarzenia.');
+  const id = uuid(eventId, 'Nie znaleziono eventu.');
   const { data: event, error } = await ctx.supabase.from('events').select(`
     id, name, description, event_date, event_end_date, location, location_id,
     client_type, organization_id, contact_person_id,
     locations(name, city, postal_code, formatted_address, address), event_categories(name)
   `).eq('id', id).maybeSingle();
-  if (error || !event) fail('Nie udało się pobrać danych wydarzenia. Spróbuj ponownie, aby uzupełnić ofertę zapisanymi informacjami.');
+  if (error || !event) fail('Nie udało się pobrać danych eventu. Spróbuj ponownie, aby uzupełnić ofertę zapisanymi informacjami.');
   const row = event as Row;
   const venue = Array.isArray(row.locations) ? row.locations[0] : row.locations;
   const location = venue
@@ -413,7 +413,7 @@ const conflictView = (row: Row) => ({
 /** Podgląd kreatora: wycena pozycji, gotowość produktów, stoły, cena docelowa i braki sprzętu w terminie. */
 export async function previewOfferWizard(ctx: NativeContext, body: Row) {
   requireCreate(ctx);
-  const eventId = uuid(body.eventId, 'Nie znaleziono wydarzenia.');
+  const eventId = uuid(body.eventId, 'Nie znaleziono eventu.');
   const audience = audienceFrom(body);
   const items = await evaluateItems(ctx, body, audience);
   const conflicts = await conflictsOf(ctx, eventId, items);
@@ -446,7 +446,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** „Utwórz ofertę” (`handleSubmit` + `submitOfferWizard`): oferta, pozycje, dokładne podsumowanie i znacznik braków. */
 export async function createOfferFromWizard(ctx: NativeContext, body: Row) {
   requireCreate(ctx);
-  const eventId = uuid(body.eventId, 'Nie znaleziono wydarzenia.');
+  const eventId = uuid(body.eventId, 'Nie znaleziono eventu.');
   const raw = Array.isArray(body.items) ? body.items : [];
   if (!raw.length) fail('Dodaj przynajmniej jedną pozycję do oferty');
   const clientType = body.clientType === 'individual' ? 'individual' : body.clientType === 'business' ? 'business' : '';
@@ -463,7 +463,7 @@ export async function createOfferFromWizard(ctx: NativeContext, body: Row) {
   if (audience.guest_count != null && audienceTables(audience) == null) fail('Podaj poprawną liczbę osób i ustawienia stołów.');
 
   const { data: eventRow, error: eventError } = await ctx.supabase.from('events').select('id, name, description').eq('id', eventId).maybeSingle();
-  if (eventError || !eventRow) fail('Nie znaleziono wydarzenia.');
+  if (eventError || !eventRow) fail('Nie znaleziono eventu.');
   const event = eventRow as Row;
 
   const items = await evaluateItems(ctx, body, audience);

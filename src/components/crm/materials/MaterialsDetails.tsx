@@ -125,7 +125,7 @@ export default function MaterialsDetails({ file, canManage, onClose, onPreview, 
           ))}
           {detail?.event && (
             <div className="flex gap-3">
-              <dt className="w-24 shrink-0 text-[#e5e4e2]/40">Wydarzenie</dt>
+              <dt className="w-24 shrink-0 text-[#e5e4e2]/40">Event</dt>
               <dd className="min-w-0">
                 <Link href={`/crm/events/${detail.event.id}?tab=files`} className="inline-flex items-center gap-1 text-[#d3bb73] hover:underline">
                   <CalendarDays className="h-3.5 w-3.5" />{detail.event.name}{detail.event.date ? ` (${dateLabel(detail.event.date)})` : ''}

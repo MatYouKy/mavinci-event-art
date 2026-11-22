@@ -69,7 +69,7 @@ struct SocialAssistantPanel: View {
             Button("Włącz asystenta") { Task { await store.enableAssistant(companyID: detail.post.companyId) } }
             Button("Anuluj", role: .cancel) {}
         } message: {
-            Text("Do OpenAI trafią: temat i opis wpisane w kreatorze, rodzaj wydarzenia, miejsce, miesiąc i opis realizacji; nazwa wydarzenia i klient — tylko przy zgodzie klienta na publikację; zdjęcie — tylko gdy zaznaczysz „Uwzględnij zdjęcie” i ma ono zgodę klienta. Zgoda zostanie zapisana z Twoim nazwiskiem i datą; wyłączysz ją w „Szablony i AI”.")
+            Text("Do OpenAI trafią: temat i opis wpisane w kreatorze, rodzaj eventu, miejsce, miesiąc i opis realizacji; nazwa eventu i klient — tylko przy zgodzie klienta na publikację; zdjęcie — tylko gdy zaznaczysz „Uwzględnij zdjęcie” i ma ono zgodę klienta. Zgoda zostanie zapisana z Twoim nazwiskiem i datą; wyłączysz ją w „Szablony i AI”.")
         }
     }
 
@@ -92,7 +92,7 @@ struct SocialAssistantPanel: View {
             if let reply, reply.mode != "hashtags" {
                 ForEach(Array(reply.suggestions.enumerated()), id: \.offset) { _, suggestion in suggestionCard(suggestion) }
             }
-            Text("Do AI trafia temat i opis z kreatora, rodzaj wydarzenia, miejsce, miesiąc i opis realizacji; nazwa wydarzenia i klient — tylko przy zgodzie klienta; zdjęcie — tylko gdy zaznaczysz i ma zgodę klienta na publikację. Propozycje nie zmieniają posta, dopóki ich nie użyjesz.\(reply?.usedPhoto == true ? " Ta odpowiedź uwzględnia zdjęcie." : "")")
+            Text("Do AI trafia temat i opis z kreatora, rodzaj eventu, miejsce, miesiąc i opis realizacji; nazwa eventu i klient — tylko przy zgodzie klienta; zdjęcie — tylko gdy zaznaczysz i ma zgodę klienta na publikację. Propozycje nie zmieniają posta, dopóki ich nie użyjesz.\(reply?.usedPhoto == true ? " Ta odpowiedź uwzględnia zdjęcie." : "")")
                 .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }

@@ -144,7 +144,7 @@ const KIND_LABELS: Record<ItemKind | 'obligation', string> = {
   receivable: 'Należność',
   receivable_ksef_paid: 'Do wyjaśnienia',
   proforma: 'Pro forma',
-  milestone: 'Harmonogram wydarzenia',
+  milestone: 'Harmonogram eventu',
   payable: 'Faktura kosztowa',
   recurring_income: 'Umowa stała',
   recurring_cost: 'Umowa stała',
@@ -691,7 +691,7 @@ export default function FinanceCenterPanel({ filterCompanyIds = null }: { filter
             </div>
             <div className="space-y-1 border-t border-[#d3bb73]/10 px-4 py-2 text-[10px] text-[#e5e4e2]/45">
               <p>
-                Wpływy: należności, pro formy i harmonogramy płatności wydarzeń bez faktury. Wydatki: faktury kosztowe, umowy stałe,
+                Wpływy: należności, pro formy i harmonogramy płatności eventów bez faktury. Wydatki: faktury kosztowe, umowy stałe,
                 wynagrodzenia z umów personelu (do 10. następnego miesiąca) oraz ZUS i podatki (kwota z deklaracji, bez niej — szacunek
                 VAT albo ostatnia zapłata; „~” = szacunek). Tylko kwoty w PLN.
               </p>

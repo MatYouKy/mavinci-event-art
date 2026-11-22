@@ -27,7 +27,7 @@ export function contractWizardIssues(f:ContractWizardForm):WizardIssue[] {
   if(!['fixed','indefinite'].includes(f.contract_term))add(1,'term','Wybierz czas trwania umowy.');
   if(!validQuestionDate(f.start_date))add(1,'start','Podaj prawidłowy początek umowy.');
   if((f.contract_term==='fixed'||f.term_ended)&&(!validQuestionDate(f.end_date)||f.end_date<f.start_date))add(1,'end','Podaj prawidłowy koniec umowy, nie wcześniejszy od początku.');
-  if(f.engagement_scope==='event'&&(!f.event_id||f.contract_term!=='fixed'))add(1,'event','Jedna realizacja wymaga wybranego wydarzenia i okresu od–do.');
+  if(f.engagement_scope==='event'&&(!f.event_id||f.contract_term!=='fixed'))add(1,'event','Jedna realizacja wymaga wybranego eventu i okresu od–do.');
   if(f.settlement_cycle==='on_completion'&&(!f.end_date||f.start_date.slice(0,7)!==f.end_date.slice(0,7)))add(1,'cycle','Pracę na przełomie miesięcy rozliczaj miesięcznie.');
   if(f.contract_kind==='employment'&&f.agreement_form!=='written')add(1,'written','Etat wymaga pisemnych warunków zatrudnienia.');
   if(f.agreement_form==='oral'&&!f.payroll_profile.oral_confirmed)add(1,'oral','Potwierdź dopuszczalność formy ustnej. Gotówka nie zmienia podatków ani składek.');

@@ -33,7 +33,7 @@ export default function PortfolioEventPicker({ visible, title, onClose, onPick, 
       setLoading(true);
       portfolioGet<{ events: PortfolioEvent[] }>('events', { q: query.trim() })
         .then((data) => { if (active) { setEvents(data.events); setProblem(''); } })
-        .catch((cause) => { if (active) { setEvents([]); setProblem(portfolioErrorMessage(cause, 'Nie udało się pobrać wydarzeń.')); } })
+        .catch((cause) => { if (active) { setEvents([]); setProblem(portfolioErrorMessage(cause, 'Nie udało się pobrać eventów.')); } })
         .finally(() => { if (active) setLoading(false); });
     }, query ? 250 : 0);
     return () => { active = false; clearTimeout(timer); };
@@ -47,7 +47,7 @@ export default function PortfolioEventPicker({ visible, title, onClose, onPick, 
             <Text style={styles.title}>{title}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={10}><Feather name="x" size={22} color={colors.text.primary} /></TouchableOpacity>
           </View>
-          <TextInput style={styles.input} value={query} onChangeText={setQuery} placeholder="Szukaj wydarzenia" placeholderTextColor={colors.text.tertiary} />
+          <TextInput style={styles.input} value={query} onChangeText={setQuery} placeholder="Szukaj eventu" placeholderTextColor={colors.text.tertiary} />
           {loading && <ActivityIndicator color={colors.primary.gold} style={{ marginVertical: spacing.sm }} />}
           {!!problem && <Text style={styles.muted}>{problem}</Text>}
           <FlatList
@@ -55,7 +55,7 @@ export default function PortfolioEventPicker({ visible, title, onClose, onPick, 
             keyExtractor={(event) => event.id}
             keyboardShouldPersistTaps="handled"
             style={{ flexGrow: 0, maxHeight: 360 }}
-            ListEmptyComponent={!loading && !problem ? <Text style={styles.muted}>Brak wydarzeń.</Text> : null}
+            ListEmptyComponent={!loading && !problem ? <Text style={styles.muted}>Brak eventów.</Text> : null}
             renderItem={({ item }) => (
               <TouchableOpacity style={styles.row} onPress={() => onPick(item)}>
                 <Feather name="calendar" size={16} color={colors.primary.gold} />

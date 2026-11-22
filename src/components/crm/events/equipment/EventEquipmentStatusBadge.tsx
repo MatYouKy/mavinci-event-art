@@ -61,7 +61,7 @@ export default function EventEquipmentStatusBadge({
       } else if (row?.loadback_confirmed_at) {
         setState({ label: 'Sprzęt: czeka na zwrot', cls: 'bg-amber-400/15 text-amber-200' });
       } else if (row?.dispatch_confirmed_at) {
-        setState({ label: 'Sprzęt: wydany — czeka na załadunek po wydarzeniu', cls: 'bg-sky-400/15 text-sky-200' });
+        setState({ label: 'Sprzęt: wydany — czeka na załadunek po evencie', cls: 'bg-sky-400/15 text-sky-200' });
       } else if ((lines.count ?? 0) > 0 && PREPARATION_STATUSES.has(eventStatus || '')) {
         setState({ label: 'Sprzęt: do wydania', cls: 'bg-white/10 text-[#e5e4e2]/75' });
       } else {

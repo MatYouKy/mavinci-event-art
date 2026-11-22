@@ -227,11 +227,11 @@ export default function InquiryWorkspaceScreen() {
   const moreItems: MenuItem[] = [
     ...(canManage ? [{ key: 'client', label: hasClient ? 'Klient i organizacja…' : 'Dodaj lub powiąż klienta…', icon: 'user-plus' as const }] : []),
     ...(canManage ? [{ key: 'task', label: 'Nowe zadanie', icon: 'check-square' as const }] : []),
-    ...(canLead && !info.eventId && !info.acceptedOfferId ? [{ key: 'convert', label: 'Utwórz wydarzenie…', icon: 'star' as const, detail: 'Robocze wydarzenie — sprzedaż pozostaje otwarta' }] : []),
+    ...(canLead && !info.eventId && !info.acceptedOfferId ? [{ key: 'convert', label: 'Utwórz event…', icon: 'star' as const, detail: 'Roboczy event — sprzedaż pozostaje otwarta' }] : []),
     ...(canLead && info.ownerId && open ? [{ key: 'handoff', label: 'Przekaż / oddaj…', icon: 'share' as const }] : []),
     ...(canLead ? [{ key: 'edit', label: 'Opiekun, wartość i termin działania…', icon: 'sliders' as const }] : []),
     ...(canLead && info.acceptedOfferId ? [{ key: 'reopen', label: 'Otwórz negocjacje ponownie…', icon: 'rotate-ccw' as const }] : []),
-    ...(info.eventId ? [{ key: 'event', label: 'Otwórz wydarzenie', icon: 'star' as const }] : []),
+    ...(info.eventId ? [{ key: 'event', label: 'Otwórz event', icon: 'star' as const }] : []),
     ...(canManage ? [{ key: 'analysis', label: 'Analiza i rozmowa z AI', icon: 'zap' as const }] : []),
     { key: 'crm', label: 'Otwórz w CRM', icon: 'external-link' },
     { key: 'refresh', label: 'Odśwież', icon: 'refresh-cw' },
@@ -369,7 +369,7 @@ export default function InquiryWorkspaceScreen() {
       {data.client.phone ? (
         <View style={kit.between}><Text style={[kit.text, kit.flex]} selectable>{data.client.phone}</Text><SmallButton label="Zadzwoń" icon="phone" onPress={call} /></View>
       ) : null}
-      {!hasClient ? <Text style={kit.warningText}>Klient nie jest powiązany z bazą — oferta i wydarzenie go wymagają.</Text> : null}
+      {!hasClient ? <Text style={kit.warningText}>Klient nie jest powiązany z bazą — oferta i event go wymagają.</Text> : null}
       <View style={kit.row}>
         {info.contactId ? <SmallButton label="Karta klienta 360°" icon="user-check" onPress={() => void showClient360()} /> : null}
         {info.organizationId ? <SmallButton label="Organizacja w CRM" icon="external-link" onPress={() => openInCrmWeb(`/crm/contacts/${info.organizationId}`)} /> : null}
@@ -540,8 +540,8 @@ export default function InquiryWorkspaceScreen() {
       <ClientSheet inquiryId={info.id} visible={overlay === 'client'} onClose={() => { setOverlay(null); setAfterClient(null); }} onSaved={() => void clientSaved()} />
       <ConvertSheet inquiryId={info.id} visible={overlay === 'convert'} onClose={() => setOverlay(null)}
         onSave={async (form, prepare) => {
-          const reply = await act(prepare ? 'Przygotowuję realizację…' : 'Tworzę wydarzenie…', () => convertWorkspace(info.id, form),
-            prepare ? 'Realizacja przygotowana' : 'Wydarzenie zostało utworzone');
+          const reply = await act(prepare ? 'Przygotowuję realizację…' : 'Tworzę event…', () => convertWorkspace(info.id, form),
+            prepare ? 'Realizacja przygotowana' : 'Event został utworzony');
           if (reply?.eventId) afterModal(() => navigateToEvent(reply.eventId));
           return Boolean(reply);
         }} />

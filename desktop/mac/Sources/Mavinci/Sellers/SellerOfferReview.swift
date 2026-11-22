@@ -190,7 +190,7 @@ struct SellerEquipmentReview: Decodable {
             return false
         }
         workspace.succeed(decision == "approved"
-            ? "Oferta zaakceptowana i powiązana z wydarzeniem w CRM. Możesz przygotować Timeline, zespół, agendę i logistykę. Realizacja nadal oczekuje na potwierdzenie."
+            ? "Oferta zaakceptowana i powiązana z eventem w CRM. Możesz przygotować Timeline, zespół, agendę i logistykę. Realizacja nadal oczekuje na potwierdzenie."
             : "Decyzja i wiadomość dla sprzedawcy zostały zapisane.")
         await load(offerID)
         return true
@@ -295,7 +295,7 @@ struct SellerEquipmentReview: Decodable {
             VStack(alignment: .leading, spacing: 2) {
                 Text(store.data?.realization?.accepted == true || store.data?.realization?.confirmed == true ? "Oferta z portalu sprzedawcy — realizacja" : "Oferta z portalu sprzedawcy — ocena opiekuna")
                     .font(.callout.weight(.semibold))
-                Text("Sprawdź zakres i PDF, potwierdź termin, zespół i sprzęt, potem zapisz decyzję. Potwierdzenie wydarzenia to następny krok.")
+                Text("Sprawdź zakres i PDF, potwierdź termin, zespół i sprzęt, potem zapisz decyzję. Potwierdzenie eventu to następny krok.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -477,7 +477,7 @@ struct SellerEquipmentReview: Decodable {
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("Sprawdzono termin w kalendarzu", isOn: $dateChecked)
                 Toggle("Sprawdzono dostępność zespołu", isOn: $capacityChecked)
-                if decision.pastDate { Toggle("Termin jest w przeszłości — świadomie oceniam wydarzenie historyczne", isOn: $pastDateConfirmed) }
+                if decision.pastDate { Toggle("Termin jest w przeszłości — świadomie oceniam event historyczny", isOn: $pastDateConfirmed) }
                 if let error = decision.dateError { Text(error).font(.caption).foregroundStyle(.orange) }
             }
             .toggleStyle(.checkbox)
@@ -501,7 +501,7 @@ struct SellerEquipmentReview: Decodable {
                 Button("Nie przyjmuj", role: .destructive) { rejecting = true }
                     .disabled(!blockers.isEmpty || response.isEmpty || !state.canWrite)
                 Spacer()
-                Text("Akceptacja tworzy wydarzenie w CRM do przygotowania. Nie rezerwuje sprzętu i nie potwierdza terminu.").font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                Text("Akceptacja tworzy event w CRM do przygotowania. Nie rezerwuje sprzętu i nie potwierdza terminu.").font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
             }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
@@ -581,7 +581,7 @@ struct SellerEquipmentReview: Decodable {
     private func periodText(_ period: SellerEquipmentReview.Period) -> String {
         var text = Labels.date(period.start) + " — " + Labels.date(period.end) + " · czas polski."
         if period.whole_days { text += " Brak godzin: sprawdzamy pełne dni." }
-        text += " Sprzęt jest liczony na cały okres, także pomiędzy dniami wydarzenia."
+        text += " Sprzęt jest liczony na cały okres, także pomiędzy dniami eventu."
         text += period.includes_preparation ? " Uwzględniamy zapisany montaż i demontaż." : " Montaż i demontaż trzeba jeszcze uwzględnić po ich ustaleniu."
         return text
     }
@@ -616,18 +616,18 @@ struct SellerEquipmentReview: Decodable {
             Image(systemName: realization.cancelled ? "xmark.circle" : realization.confirmed ? "checkmark.seal" : "calendar.badge.clock")
                 .foregroundStyle(realization.cancelled ? Color.red : realization.confirmed ? Color.green : theme.accent)
             VStack(alignment: .leading, spacing: 3) {
-                Text(realization.cancelled ? "Wydarzenie anulowane" : realization.confirmed ? "Termin potwierdzony — przygotowanie realizacji" : "Oferta przyjęta — termin czeka na potwierdzenie")
+                Text(realization.cancelled ? "Event anulowany" : realization.confirmed ? "Termin potwierdzony — przygotowanie realizacji" : "Oferta przyjęta — termin czeka na potwierdzenie")
                     .font(.callout.weight(.medium))
                 Text(realization.confirmed || realization.cancelled
-                     ? "Timeline, zespół, agendę i logistykę prowadzisz w wydarzeniu."
+                     ? "Timeline, zespół, agendę i logistykę prowadzisz w evencie."
                      : realization.eventId != nil && realization.canViewEvent
-                     ? "Sprawdź dane i potwierdź realizację w zakładce „Ustalenia” wydarzenia. Hotel zobaczy wtedy „Potwierdzone” i swoje kroki przygotowania."
+                     ? "Sprawdź dane i potwierdź realizację w zakładce „Ustalenia” eventu. Hotel zobaczy wtedy „Potwierdzone” i swoje kroki przygotowania."
                      : "Sprawdź dane i potwierdź realizację w karcie oferty w CRM. Hotel zobaczy wtedy „Potwierdzone” i swoje kroki przygotowania.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             if let eventID = realization.eventId, realization.canViewEvent {
-                Button("Otwórz wydarzenie") {
+                Button("Otwórz event") {
                     state.sellerFocus = SellerArrangementsFocus(eventID: eventID, offerID: offerID, conversationID: nil, step: nil)
                     state.showEvent(eventID, cardTab: "seller-arrangements")
                 }

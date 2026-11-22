@@ -16,13 +16,13 @@ interface InvoiceBillingContextProps {
 }
 
 const ARRANGEMENT_DESCRIPTION: Record<BillingArrangement, string> = {
-  direct: 'Nabywcą faktury jest klient przypisany do wydarzenia.',
+  direct: 'Nabywcą faktury jest klient przypisany do eventu.',
   hotel:
-    'Hotel będzie nabywcą i płatnikiem faktury. Klient oraz wydarzenie pozostaną powiązane w CRM.',
+    'Hotel będzie nabywcą i płatnikiem faktury. Klient oraz event pozostaną powiązane w CRM.',
   agency:
-    'Agencja lub pośrednik będzie nabywcą faktury. Klient oraz wydarzenie pozostaną powiązane w CRM.',
+    'Agencja lub pośrednik będzie nabywcą faktury. Klient oraz event pozostaną powiązane w CRM.',
   other:
-    'Inna organizacja będzie nabywcą faktury. Klient oraz wydarzenie pozostaną powiązane w CRM.',
+    'Inna organizacja będzie nabywcą faktury. Klient oraz event pozostaną powiązane w CRM.',
 };
 
 export default function InvoiceBillingContext({
@@ -43,7 +43,7 @@ export default function InvoiceBillingContext({
           <CalendarDays className="mt-0.5 h-5 w-5 shrink-0 text-[#d3bb73]" />
           <div className="min-w-0">
             <div className="text-xs uppercase tracking-wide text-[#e5e4e2]/45">
-              Rozliczenie wydarzenia
+              Rozliczenie eventu
             </div>
             <div className="truncate font-medium text-[#e5e4e2]">{eventName}</div>
             <div className="mt-1 text-xs text-[#e5e4e2]/55">
@@ -69,13 +69,13 @@ export default function InvoiceBillingContext({
       </div>
 
       <label className="block text-sm text-[#e5e4e2]/70">
-        Kto opłaca wydarzenie?
+        Kto opłaca event?
         <select
           value={arrangement}
           onChange={(event) => onArrangementChange(event.target.value as BillingArrangement)}
           className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
         >
-          <option value="direct">Klient wydarzenia — rozliczenie bezpośrednie</option>
+          <option value="direct">Klient eventu — rozliczenie bezpośrednie</option>
           <option value="hotel">Hotel</option>
           <option value="agency">Agencja lub pośrednik</option>
           <option value="other">Inna organizacja</option>
@@ -84,7 +84,7 @@ export default function InvoiceBillingContext({
 
       <p className="mt-2 text-xs leading-5 text-[#e5e4e2]/55">
         {!indirect && jstBuyerName
-          ? `Klient wydarzenia jest rozliczany na ${jstBuyerName} (karta klienta → Dane do faktury): nabywcą będzie ${jstBuyerName}, a klient odbiorcą faktury.`
+          ? `Klient eventu jest rozliczany na ${jstBuyerName} (karta klienta → Dane do faktury): nabywcą będzie ${jstBuyerName}, a klient odbiorcą faktury.`
           : ARRANGEMENT_DESCRIPTION[arrangement]}
       </p>
 

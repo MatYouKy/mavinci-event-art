@@ -523,7 +523,7 @@ struct FinScope {
 struct FinCenterModel {
     static let kindLabels: [String: String] = [
         "receivable": "Należność", "receivable_ksef_paid": "Do wyjaśnienia", "proforma": "Pro forma",
-        "milestone": "Harmonogram wydarzenia", "payable": "Faktura kosztowa", "recurring_income": "Umowa stała",
+        "milestone": "Harmonogram eventu", "payable": "Faktura kosztowa", "recurring_income": "Umowa stała",
         "recurring_cost": "Umowa stała", "payroll": "Wynagrodzenie", "obligation": "ZUS i podatki",
     ]
 

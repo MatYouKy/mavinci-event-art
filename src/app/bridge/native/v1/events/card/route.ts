@@ -43,11 +43,11 @@ const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
 export async function GET(request: Request) {
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
-  if (!eventsAccess(ctx).canView) return nativeJson({ error: 'Nie masz dostępu do wydarzeń.' }, 403);
+  if (!eventsAccess(ctx).canView) return nativeJson({ error: 'Nie masz dostępu do eventów.' }, 403);
   const url = new URL(request.url);
   // Wydarzenie w `eventId` (Mac) albo `id` — przy `tabQuery` parametr `id` może należeć do odczytu (np. rezerwacje sprzętu).
   const id = url.searchParams.get('eventId') || url.searchParams.get('id') || '';
-  if (!uuid.test(id)) return nativeJson({ error: 'Nieprawidłowe wydarzenie.' }, 400);
+  if (!uuid.test(id)) return nativeJson({ error: 'Nieprawidłowy event.' }, 400);
   try {
     if (url.searchParams.get('op') === 'stepsHelp') return nativeJson({ help: EVENT_STEPS_HELP, rules: EVENT_STEPS_RULES });
     // Katalog „Dodaj sprzęt” — skrót zbioru i skróty koszyków (Mac pobiera tylko zmienione koszyki).
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
         const result = await eventCardDetailsWithHash(ctx, id, url.searchParams.get('hash'), {
           canManageStatus: url.searchParams.get('status') === '1', canEquipment: url.searchParams.get('equipment') === '1',
         });
-        return result ? nativeJson(result) : nativeJson({ error: 'Nie znaleziono wydarzenia albo nie masz do niego dostępu.' }, 404);
+        return result ? nativeJson(result) : nativeJson({ error: 'Nie znaleziono eventu albo nie masz do niego dostępu.' }, 404);
       }
       case 'companies': return nativeJson({ companies: await realizationCompanies(ctx) });
       case 'locations': return nativeJson({ locations: await eventLocations(ctx) });
@@ -108,10 +108,10 @@ export async function GET(request: Request) {
       }
     }
     const result = await eventCardPageWithHash(ctx, id, url.searchParams.get('hash'));
-    return result ? nativeJson(result) : nativeJson({ error: 'Nie znaleziono wydarzenia albo nie masz do niego dostępu.' }, 404);
+    return result ? nativeJson(result) : nativeJson({ error: 'Nie znaleziono eventu albo nie masz do niego dostępu.' }, 404);
   } catch (error) {
     console.error('[native-event-card]', error);
-    return nativeJson({ error: (error as { message?: string })?.message || 'Nie udało się pobrać wydarzenia.' }, 500);
+    return nativeJson({ error: (error as { message?: string })?.message || 'Nie udało się pobrać eventu.' }, 500);
   }
 }
 
@@ -128,12 +128,12 @@ const EVENT_KEYS = ['event_date', 'event_end_date', 'location_id', 'location', '
 export async function POST(request: Request) {
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
-  if (!eventsAccess(ctx).canView) return nativeJson({ error: 'Nie masz dostępu do wydarzeń.' }, 403);
+  if (!eventsAccess(ctx).canView) return nativeJson({ error: 'Nie masz dostępu do eventów.' }, 403);
   // Zdjęcie zwrotu sprzętu (multipart: `file`, `line`, `ok`, `damaged`, `note`, `photos`) — przed odczytem JSON.
   const query = new URL(request.url).searchParams;
   if (query.get('op') === 'equipmentPhoto') {
     const eventId = query.get('id') || '';
-    if (!uuid.test(eventId)) return nativeJson({ error: 'Nieprawidłowe wydarzenie.' }, 400);
+    if (!uuid.test(eventId)) return nativeJson({ error: 'Nieprawidłowy event.' }, 400);
     try {
       const result = await uploadReturnPhoto(ctx, eventId, await request.formData());
       invalidateEvents();
@@ -161,7 +161,7 @@ export async function POST(request: Request) {
     invalidateEvents();
     return nativeJson({ data: data ?? null });
   }
-  if (!uuid.test(id)) return nativeJson({ error: 'Nieprawidłowe wydarzenie.' }, 400);
+  if (!uuid.test(id)) return nativeJson({ error: 'Nieprawidłowy event.' }, 400);
   try {
     if (body.op === 'update') {
       const data = body.data && typeof body.data === 'object' ? (body.data as Record<string, unknown>) : {};
@@ -169,7 +169,7 @@ export async function POST(request: Request) {
       if (!Object.keys(changes).length) return nativeJson({ error: 'Brak zmian.' }, 400);
       const { data: rows, error } = await ctx.supabase.from('events').update(changes).eq('id', id).select('id');
       if (error) return nativeJson({ error: `Błąd: ${error.message}` }, 400);
-      if (!rows?.length) return nativeJson({ error: 'Nie masz uprawnień do zmiany tego wydarzenia.' }, 403);
+      if (!rows?.length) return nativeJson({ error: 'Nie masz uprawnień do zmiany tego eventu.' }, 403);
       invalidateEvents();
       return nativeJson({ ok: true });
     }
@@ -184,7 +184,7 @@ export async function POST(request: Request) {
       const now = new Date().toISOString();
       const { data: rows, error } = await ctx.supabase.from('events').update({ status, updated_at: now }).eq('id', id).select('id');
       if (error) return nativeJson({ error: error.message || 'Błąd podczas zmiany statusu' }, 400);
-      if (!rows?.length) return nativeJson({ error: 'Nie masz uprawnień do zmiany statusu tego wydarzenia.' }, 403);
+      if (!rows?.length) return nativeJson({ error: 'Nie masz uprawnień do zmiany statusu tego eventu.' }, 403);
       if (status === 'settled' && previous !== 'settled') {
         const { error: invoiceError } = await ctx.supabase.from('invoices')
           .update({ status: 'paid', payment_status: 'paid', paid_at: now, updated_at: now })
@@ -201,7 +201,7 @@ export async function POST(request: Request) {
       const { data: rows, error } = await ctx.supabase.from('events')
         .update({ category_id: categoryId, updated_at: new Date().toISOString() }).eq('id', id).select('id');
       if (error) return nativeJson({ error: error.message || 'Błąd podczas zmiany kategorii' }, 400);
-      if (!rows?.length) return nativeJson({ error: 'Nie masz uprawnień do zmiany tego wydarzenia.' }, 403);
+      if (!rows?.length) return nativeJson({ error: 'Nie masz uprawnień do zmiany tego eventu.' }, 403);
       invalidateEvents();
       return nativeJson({ ok: true });
     }
@@ -210,7 +210,7 @@ export async function POST(request: Request) {
       if (!uuid.test(companyId)) return nativeJson({ error: 'Wybierz firmę realizującą.' }, 400);
       const { data: rows, error } = await ctx.supabase.from('events').update({ my_company_id: companyId }).eq('id', id).select('id');
       if (error) return nativeJson({ error: error.message }, 400);
-      if (!rows?.length) return nativeJson({ error: 'Nie masz uprawnień do zmiany tego wydarzenia.' }, 403);
+      if (!rows?.length) return nativeJson({ error: 'Nie masz uprawnień do zmiany tego eventu.' }, 403);
       invalidateEvents();
       return nativeJson({ ok: true });
     }
@@ -227,7 +227,7 @@ export async function POST(request: Request) {
       query = originalStage ? query.eq('stage_room_id', originalStage) : query.is('stage_room_id', null);
       const { data, error } = await query.select('id').maybeSingle();
       if (error) return nativeJson({ error: error.message || 'Nie udało się zapisać sal.' }, 400);
-      if (!data) return nativeJson({ error: 'Dane wydarzenia zmieniły się lub nie masz uprawnień. Odśwież stronę.' }, 409);
+      if (!data) return nativeJson({ error: 'Dane eventu zmieniły się lub nie masz uprawnień. Odśwież stronę.' }, 409);
       invalidateEvents();
       return nativeJson({ ok: true });
     }

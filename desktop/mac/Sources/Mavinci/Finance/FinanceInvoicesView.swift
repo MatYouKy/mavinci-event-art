@@ -525,7 +525,7 @@ enum FinInvoiceText {
                 } label: {
                     Label(invoice.hasPdf ? "Regeneruj PDF" : "Generuj PDF", systemImage: invoice.hasPdf ? "arrow.clockwise" : "arrow.down.doc")
                 }
-                .help("Wydruk z aktualnych danych faktury zapisany w plikach (faktura wydarzenia — w folderze „Faktury” wydarzenia)")
+                .help("Wydruk z aktualnych danych faktury zapisany w plikach (faktura eventu — w folderze „Faktury” eventu)")
                 if d.actions.canEmail ?? (invoice.rawStatus != "cancelled") {
                     Button { emailing = true } label: {
                         Label(emailsSent > 0 ? "Wyślij email ponownie" : "Wyślij email", systemImage: "envelope")

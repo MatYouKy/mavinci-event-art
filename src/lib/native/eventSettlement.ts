@@ -8,7 +8,7 @@ import { parseEventSettlement } from '@/lib/events/settlement/eventSettlement';
  * każda zwraca pełne podsumowanie, które aplikacja podmienia bez ponownego odczytu. Kwot nie liczymy tutaj (liczy baza).
  */
 
-const MIGRATION_NOTICE = 'Podsumowanie wydarzenia wymaga aktualizacji bazy danych.';
+const MIGRATION_NOTICE = 'Podsumowanie eventu wymaga aktualizacji bazy danych.';
 const MISSING = new Set(['PGRST202', '42883']);
 type DbError = { code?: string | null; message?: string | null } | null | undefined;
 
@@ -26,7 +26,7 @@ async function summaryTab(ctx: NativeContext, eventId: string) {
   if (error) {
     if (MISSING.has(error.code ?? '')) return { state: 'missing', message: MIGRATION_NOTICE, settlement: null };
     if (error.code === '42501') return { state: 'forbidden', message: message(error), settlement: null };
-    return { state: 'error', message: message(error, 'Nie udało się wczytać podsumowania wydarzenia.'), settlement: null };
+    return { state: 'error', message: message(error, 'Nie udało się wczytać podsumowania eventu.'), settlement: null };
   }
   const settlement = parseEventSettlement(data);
   if (!settlement) return { state: 'error', message: 'Baza zwróciła nieczytelne podsumowanie. Odśwież stronę.', settlement: null };
@@ -51,7 +51,7 @@ async function write(ctx: NativeContext, eventId: string, body: Record<string, a
     const lineId = String(params.p_line_id || '');
     const current = await summaryTab(ctx, eventId);
     const owned = current.settlement?.lines.some((line) => line.line_id === lineId);
-    if (!owned) throw new Error('Nie znaleziono pozycji w podsumowaniu tego wydarzenia.');
+    if (!owned) throw new Error('Nie znaleziono pozycji w podsumowaniu tego eventu.');
     for (const key of Object.keys(params)) if (key !== 'p_line_id') delete params[key];
   } else {
     params.p_event_id = eventId;
@@ -91,7 +91,7 @@ async function invoices(ctx: NativeContext, eventId: string, params: URLSearchPa
   const { data, error } = await ctx.supabase.rpc('list_event_cost_invoice_candidates', { p_event_id: eventId, p_search: search || null, p_limit: 30 });
   if (error) {
     if (error.code === '42501') {
-      return { forbidden: error.message?.trim() || 'Faktury kosztowe przypisuje osoba z dostępem do finansów tego wydarzenia.', error: null, candidates: [] };
+      return { forbidden: error.message?.trim() || 'Faktury kosztowe przypisuje osoba z dostępem do finansów tego eventu.', error: null, candidates: [] };
     }
     return { forbidden: null, error: message(error, 'Nie udało się wczytać faktur kosztowych.'), candidates: [] };
   }

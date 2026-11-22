@@ -27,12 +27,12 @@ struct EventPageView: View {
                 if store.selectedTab == .overview { overview(page) }
                 else { EventDataView(store:store,form:$form).id(store.selectedTab) }
             } else if store.loading {
-                ProgressView("Pobieranie wydarzenia…").frame(maxWidth:.infinity,maxHeight:.infinity)
+                ProgressView("Pobieranie eventu…").frame(maxWidth:.infinity,maxHeight:.infinity)
             } else {
-                ContentUnavailableView("Nie można otworzyć wydarzenia",systemImage:"calendar.badge.exclamationmark",description:Text("Sprawdź połączenie i aktualny dostęp do tej sprawy."))
+                ContentUnavailableView("Nie można otworzyć eventu",systemImage:"calendar.badge.exclamationmark",description:Text("Sprawdź połączenie i aktualny dostęp do tej sprawy."))
             }
         }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.topLeading)
-        .navigationTitle(store.page?.event.title ?? "Wydarzenie")
+        .navigationTitle(store.page?.event.title ?? "Event")
         .toolbar {
             ToolbarItem(placement:.navigation) {
                 Button { workspace.eventRoute=nil } label: { Label("Wróć",systemImage:"chevron.left") }.help("Wróć do poprzedniego widoku")
@@ -60,8 +60,8 @@ struct EventPageView: View {
             }
             Spacer()
             if page.access.manage {
-                Button("Edytuj wydarzenie",systemImage:"square.and.pencil") {
-                    form=EventForm(title:"Edytuj wydarzenie",table:"events",fields:EventSchema.overviewFields,record:page.event)
+                Button("Edytuj event",systemImage:"square.and.pencil") {
+                    form=EventForm(title:"Edytuj event",table:"events",fields:EventSchema.overviewFields,record:page.event)
                 }.disabled(!workspace.canWrite || store.loading || store.saving)
             }
         }.padding(20)
@@ -70,7 +70,7 @@ struct EventPageView: View {
         ScrollView {
             VStack(alignment:.leading,spacing:22) {
                 if let assignment=page.access.assignment,assignment["status"] == "pending" {
-                    GroupBox("Zaproszenie do wydarzenia") {
+                    GroupBox("Zaproszenie do eventu") {
                         HStack {
                             Text("Potwierdź swój udział.")
                             Spacer()
@@ -219,15 +219,15 @@ struct EventDataView: View {
                     .disabled(!workspace.canWrite || store.saving || uploading)
             }
             if store.selectedTab == .tasks {
-                Button("Nowe zadanie",systemImage:"plus") { form=EventForm(title:"Nowe zadanie wydarzenia",table:"tasks",fields:EventSchema.taskFields) }
+                Button("Nowe zadanie",systemImage:"plus") { form=EventForm(title:"Nowe zadanie eventu",table:"tasks",fields:EventSchema.taskFields) }
                     .disabled(!workspace.canWrite || store.loading || store.saving)
             }
             if store.selectedTab == .team {
-                Button("Dodaj osobę",systemImage:"person.badge.plus") { form=EventForm(title:"Zaproś osobę do wydarzenia",table:"employee_assignments",fields:EventSchema.teamFields) }
+                Button("Dodaj osobę",systemImage:"person.badge.plus") { form=EventForm(title:"Zaproś osobę do eventu",table:"employee_assignments",fields:EventSchema.teamFields) }
                     .disabled(!workspace.canWrite || store.loading || store.saving)
             }
             if store.selectedTab == .agenda, page.sections["event_agendas"]?.isEmpty != false {
-                Button("Utwórz agendę",systemImage:"plus") {form=EventForm(title:"Utwórz agendę wydarzenia",table:"event_agendas",fields:EventSchema.agendaHeaderFields)}.disabled(!workspace.canWrite || store.loading || store.saving)
+                Button("Utwórz agendę",systemImage:"plus") {form=EventForm(title:"Utwórz agendę eventu",table:"event_agendas",fields:EventSchema.agendaHeaderFields)}.disabled(!workspace.canWrite || store.loading || store.saving)
             }
             if store.selectedTab == .agenda,let agenda=page.sections["event_agendas"]?.first {
                 Menu("Dodaj") {
@@ -237,7 +237,7 @@ struct EventDataView: View {
             }
         }
         if page.access.canManageCosts,store.selectedTab == .finances {
-            Button("Zaplanuj koszt",systemImage:"plus") { form=EventForm(title:"Zaplanuj koszt wydarzenia",table:"event_costs",fields:EventSchema.costFields) }
+            Button("Zaplanuj koszt",systemImage:"plus") { form=EventForm(title:"Zaplanuj koszt eventu",table:"event_costs",fields:EventSchema.costFields) }
                 .disabled(!workspace.canWrite || store.loading || store.saving)
         }
     }
@@ -342,7 +342,7 @@ struct EventValueView: View {
             if EventSchema.moneyFields.contains(key),let amount=Double(s) {return amount.formatted(.currency(code:"PLN").locale(Locale(identifier:"pl_PL")))}
             if EventSchema.stateFields.contains(key) { return Labels.values[s] ?? (key == "role" ? s : "Inny stan") }
             if key.hasSuffix("_at") || key.hasSuffix("_date") || ["event_date","event_end_date","due_date","start_time","end_time","departure_time","arrival_time","return_departure_time","return_arrival_time","valid_until","assignment_start","assignment_end","assigned_start","assigned_end"].contains(key) { return Labels.date(s) }
-            if ["file_path","generated_pdf_path"].contains(key) { return "Dokument dostępny w plikach wydarzenia" }
+            if ["file_path","generated_pdf_path"].contains(key) { return "Dokument dostępny w plikach eventu" }
             return s
         default: return "—"
         }

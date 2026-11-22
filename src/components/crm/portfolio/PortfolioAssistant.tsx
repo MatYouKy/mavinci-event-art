@@ -119,7 +119,7 @@ export default function PortfolioAssistant({ itemId, content, eventId, onSite, b
           ))}
         </div>
       )}
-      <p className="text-[11px] text-[#e5e4e2]/40">Do AI trafia treść realizacji, rodzaj, miejsce i data wydarzenia oraz — gdy zaznaczysz — zdjęcia ze strony. Bez danych osobowych.</p>
+      <p className="text-[11px] text-[#e5e4e2]/40">Do AI trafia treść realizacji, rodzaj, miejsce i data eventu oraz — gdy zaznaczysz — zdjęcia ze strony. Bez danych osobowych.</p>
     </section>
   );
 }

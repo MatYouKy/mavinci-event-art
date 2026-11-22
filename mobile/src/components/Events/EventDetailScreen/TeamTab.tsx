@@ -67,8 +67,8 @@ export function TeamTab({ employees, currentEmployeeId }: Props) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Zespół wydarzenia</Text>
-      <Text style={styles.description}>Osoby przypisane do wydarzenia i status ich udziału.</Text>
+      <Text style={styles.heading}>Zespół eventu</Text>
+      <Text style={styles.description}>Osoby przypisane do eventu i status ich udziału.</Text>
 
       <View style={styles.list}>
         {employees.map((teamMember) => {

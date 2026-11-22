@@ -48,7 +48,7 @@ const SELLER_COUNTS: { key: SellerCountKey; label: string }[] = [
   { key: 'chats_waiting', label: 'Rozmowy bez odpowiedzi' },
   { key: 'inquiries', label: 'Zapytania' },
   { key: 'wizard_steps', label: 'Kroki realizacji' },
-  { key: 'events_pending', label: 'Wydarzenia do potwierdzenia' },
+  { key: 'events_pending', label: 'Eventy do potwierdzenia' },
   { key: 'guest_acceptances', label: 'Akceptacje klientów' },
 ];
 const SELLER_ITEM: Record<SalesDaySellersItemKind, { icon: keyof typeof Feather.glyphMap; label: string }> = {
@@ -56,7 +56,7 @@ const SELLER_ITEM: Record<SalesDaySellersItemKind, { icon: keyof typeof Feather.
   chat: { icon: 'message-circle', label: 'Rozmowa bez odpowiedzi' },
   inquiry: { icon: 'inbox', label: 'Zapytanie sprzedawcy' },
   wizard: { icon: 'clipboard', label: 'Krok realizacji' },
-  event: { icon: 'calendar', label: 'Wydarzenie do potwierdzenia' },
+  event: { icon: 'calendar', label: 'Event do potwierdzenia' },
   guest: { icon: 'check-circle', label: 'Akceptacja klienta' },
 };
 

@@ -387,7 +387,7 @@ import SwiftUI
                 await selectCompany(prefill.companyId)
                 companyMessage = prefill.message
             } else if useEventCompany && context.event == nil {
-                companyMessage = "Nie udało się odczytać działalności wydarzenia. Sprawdź dane wydarzenia przed wyborem firmy wystawiającej."
+                companyMessage = "Nie udało się odczytać działalności eventu. Sprawdź dane eventu przed wyborem firmy wystawiającej."
             }
             if initial, let date = context.event?.date { saleDate = date }
             if itemsRevision == itemRevision {
@@ -401,7 +401,7 @@ import SwiftUI
             guard request == eventRequest else { return }
             if useEventCompany {
                 companyID = ""
-                companyMessage = "Nie udało się ustalić firmy wystawiającej na podstawie wydarzenia. Odśwież formularz, aby ponownie wczytać dane."
+                companyMessage = "Nie udało się ustalić firmy wystawiającej na podstawie eventu. Odśwież formularz, aby ponownie wczytać dane."
             }
             pricingError = failureText(error, "Nie udało się odczytać źródła pozycji.")
         }
@@ -691,8 +691,8 @@ import SwiftUI
     /// Wystawienie; `id` nowej faktury albo `nil` (komunikat w formularzu).
     func submit() async -> String? {
         if isCorrective && originalLoading { problem = "Poczekaj na odczyt faktury pierwotnej, danych stron i numeru KSeF."; return nil }
-        if companyLoading { problem = "Poczekaj na wczytanie działalności przypisanej do wydarzenia."; return nil }
-        if !isNextAdvance && !isCorrective && itemSourcesLoading { problem = "Poczekaj na wczytanie źródeł pozycji i kwot wydarzenia."; return nil }
+        if companyLoading { problem = "Poczekaj na wczytanie działalności przypisanej do eventu."; return nil }
+        if !isNextAdvance && !isCorrective && itemSourcesLoading { problem = "Poczekaj na wczytanie źródeł pozycji i kwot eventu."; return nil }
         if isNextAdvance && (advance == nil || advanceError != nil) { problem = advanceError ?? "Poczekaj na wczytanie zamówienia i wcześniejszych zaliczek."; return nil }
         guard let workspace, let api else { return nil }
         guard workspace.canWrite else { problem = "Zapis wymaga połączenia z serwerem CRM."; return nil }

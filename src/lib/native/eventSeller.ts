@@ -26,7 +26,7 @@ function fail(message: string): never {
 async function sellerTab(ctx: NativeContext, eventId: string) {
   const { data, error } = await ctx.supabase.rpc('get_event_seller_correspondence', { p_event: eventId });
   if (error) {
-    return { error: 'Nie udało się wczytać ustaleń. Wymagane są uprawnienia do wydarzenia i sprzedawcy oraz migracja rozmów ofert i realizacji.', offers: [] };
+    return { error: 'Nie udało się wczytać ustaleń. Wymagane są uprawnienia do eventu i sprzedawcy oraz migracja rozmów ofert i realizacji.', offers: [] };
   }
   return {
     error: null,
@@ -46,7 +46,7 @@ registerEventTab('seller-arrangements', sellerTab);
 async function conversationOfEvent(ctx: NativeContext, eventId: string, conversationId: string) {
   if (!UUID.test(conversationId)) fail('Nieprawidłowa rozmowa.');
   const tab = await sellerTab(ctx, eventId);
-  if (!tab.offers.some((offer: any) => offer.conversation?.id === conversationId)) fail('Ta rozmowa nie należy do ofert tego wydarzenia.');
+  if (!tab.offers.some((offer: any) => offer.conversation?.id === conversationId)) fail('Ta rozmowa nie należy do ofert tego eventu.');
 }
 
 async function messages(ctx: NativeContext, eventId: string, params: URLSearchParams) {
@@ -88,7 +88,7 @@ async function open(ctx: NativeContext, eventId: string, body: Record<string, an
   const offerId = String(body.offerId || '');
   const tab = await sellerTab(ctx, eventId);
   const offer = tab.offers.find((item: any) => item.id === offerId);
-  if (!offer) fail('Ta oferta nie należy do tego wydarzenia.');
+  if (!offer) fail('Ta oferta nie należy do tego eventu.');
   if (!offer.canStart) fail('Masz dostęp tylko do odczytu. Rozmowę może rozpocząć sprzedawca lub uprawniony opiekun.');
   const { error } = await ctx.supabase.rpc('open_seller_conversation', { p_partner: offer.partnerId, p_company: offer.companyId, p_offer: offer.id });
   if (error) fail('Nie udało się otworzyć rozmowy. Sprawdź uprawnienia do tej marki i spróbuj ponownie.');
@@ -119,7 +119,7 @@ async function offerOfEvent(ctx: NativeContext, eventId: string, offerId: string
   const tab = await sellerTab(ctx, eventId);
   if (tab.error) fail(tab.error);
   const offer = tab.offers.find((item: any) => item.id === offerId);
-  if (!offer) fail('Ta oferta nie należy do tego wydarzenia albo jest poza Twoimi uprawnieniami.');
+  if (!offer) fail('Ta oferta nie należy do tego eventu albo jest poza Twoimi uprawnieniami.');
   return offer;
 }
 
@@ -140,7 +140,7 @@ async function managedHandoff(ctx: NativeContext, eventId: string, offerId: stri
   const version = await ctx.supabase.rpc('seller_offer_handoff_version');
   checkHandoff(version.error);
   if (Number(version.data) < 4) {
-    fail('Automatyczne wydarzenie po akceptacji wymaga migracji 20261028170000_seller_acceptance_event_handoff.sql. Nie zapisano nowej akceptacji.');
+    fail('Automatyczny event po akceptacji wymaga migracji 20261028170000_seller_acceptance_event_handoff.sql. Nie zapisano nowej akceptacji.');
   }
   if ((state.data as any).can_manage !== true) fail('Brak uprawnień');
 }
@@ -195,7 +195,7 @@ async function preparation(ctx: NativeContext, eventId: string, params: URLSearc
       const view = await ctx.supabase.rpc('get_seller_offer_arrangements', { p_offer: offerId });
       // Odnośniki CRM nie mogą sugerować dostępu, gdy wydarzenie jest poza zakresem czytającego.
       if (view.error) fail(view.error.message || 'Nie udało się wczytać stanu przygotowania.');
-      if (!(view.data as any)?.event) fail('Nie udało się ustalić etapu powiązanego wydarzenia. Odśwież status.');
+      if (!(view.data as any)?.event) fail('Nie udało się ustalić etapu powiązanego eventu. Odśwież status.');
       linked = { id: String(event.data.id), status: String((view.data as any).event.status) };
       canViewEvent = canManage && (view.data as any).event.can_view_crm === true;
     }
@@ -255,7 +255,7 @@ async function eventDraft(ctx: NativeContext, eventId: string, params: URLSearch
     logistics: str(arrangements.logistics_requirements),
     items: list(raw.items).map((item) => ({ id: str(item.id), name: str(item.name), quantity: Number(item.quantity || 0), unit: opt(item.unit) })),
     categories: categories.error ? [] : (categories.data || []).map((row: any) => ({ id: String(row.id), name: str(row.name) })),
-    categoryError: categories.error ? 'Nie udało się wczytać kategorii. Możesz ją uzupełnić później w wydarzeniu.' : null,
+    categoryError: categories.error ? 'Nie udało się wczytać kategorii. Możesz ją uzupełnić później w evencie.' : null,
     locations: locations.rows,
     locationsError: locations.error,
   };
@@ -265,8 +265,8 @@ async function eventDraft(ctx: NativeContext, eventId: string, params: URLSearch
 async function confirmRealization(ctx: NativeContext, eventId: string, body: Record<string, any>) {
   const offerId = str(body.offerId);
   await managedHandoff(ctx, eventId, offerId);
-  if (body.confirm !== true) fail('Potwierdź osobno realizację wydarzenia.');
-  if (!Number.isSafeInteger(body.revision) || body.revision < 0) fail('Wydarzenie, oferta lub ustalenia zmieniły się. Zamknij formularz i wczytaj aktualne dane.');
+  if (body.confirm !== true) fail('Potwierdź osobno realizację eventu.');
+  if (!Number.isSafeInteger(body.revision) || body.revision < 0) fail('Event, oferta lub ustalenia zmieniły się. Zamknij formularz i wczytaj aktualne dane.');
   const input = obj(body.values);
   const schedule = obj(input.schedule);
   const values: Record<string, unknown> = {
@@ -286,17 +286,17 @@ async function confirmRealization(ctx: NativeContext, eventId: string, body: Rec
     if (date && (!validSellerDay(date) || !TIME.test(time))) fail('Popraw daty zaznaczone w formularzu.');
     values[key] = date ? `${date}T${time}` : null;
   }
-  if (!values.name || !values.starts_at || !values.ends_at) fail('Uzupełnij nazwę oraz daty i godziny rozpoczęcia i zakończenia wydarzenia.');
-  if (String(values.ends_at) <= String(values.starts_at)) fail('Koniec musi być późniejszy niż początek wydarzenia.');
+  if (!values.name || !values.starts_at || !values.ends_at) fail('Uzupełnij nazwę oraz daty i godziny rozpoczęcia i zakończenia eventu.');
+  if (String(values.ends_at) <= String(values.starts_at)) fail('Koniec musi być późniejszy niż początek eventu.');
   const result = await ctx.supabase.rpc('complete_seller_event_handoff', {
     p_offer_id: offerId, p_source_key: str(body.sourceKey), p_revision: body.revision, p_values: values,
   });
   if (result.error && MISSING.slice(0, 2).includes(result.error.code || '')) {
-    fail('Potwierdzenie wydarzenia wymaga migracji 20261028170000_seller_acceptance_event_handoff.sql. Dane formularza pozostają zachowane.');
+    fail('Potwierdzenie eventu wymaga migracji 20261028170000_seller_acceptance_event_handoff.sql. Dane formularza pozostają zachowane.');
   }
   checkHandoff(result.error);
   const created = obj(result.data);
-  if (!created.event_id) fail('Nie otrzymano potwierdzenia zapisu wydarzenia. Odśwież status przed ponowieniem.');
+  if (!created.event_id) fail('Nie otrzymano potwierdzenia zapisu eventu. Odśwież status przed ponowieniem.');
   return { eventId: String(created.event_id) };
 }
 

@@ -511,7 +511,7 @@ extension OffersStore {
                         Spacer()
                         Button("Odśwież stan") { model.reload() }.buttonStyle(.link).font(.caption)
                     }
-                    Text("Stan własnego sprzętu, bez odjęcia rezerwacji na termin wydarzenia. Braki nie blokują konfiguracji. Informacja wewnętrzna.")
+                    Text("Stan własnego sprzętu, bez odjęcia rezerwacji na termin eventu. Braki nie blokują konfiguracji. Informacja wewnętrzna.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(10).frame(maxWidth: .infinity, alignment: .leading)

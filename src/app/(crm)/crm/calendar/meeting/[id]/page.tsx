@@ -647,7 +647,7 @@ export default function MeetingDetailPage() {
                 }}
                 className="h-4 w-4"
               />
-              <span className="text-[#e5e4e2]">Wydarzenie całodniowe</span>
+              <span className="text-[#e5e4e2]">Event całodniowy</span>
             </label>
           )}
 
@@ -1063,7 +1063,7 @@ export default function MeetingDetailPage() {
 
           {meeting.events && (
             <div className="rounded-lg border border-[#d3bb73]/20 bg-[#13161f] p-4">
-              <p className="text-sm text-[#d3bb73]">Powiązane wydarzenie:</p>
+              <p className="text-sm text-[#d3bb73]">Powiązany event:</p>
               <button
                 onClick={() => router.push(`/crm/events/${meeting.event_id}`)}
                 className="mt-1 text-[#e5e4e2] hover:underline"

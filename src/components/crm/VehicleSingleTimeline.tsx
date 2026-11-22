@@ -163,7 +163,7 @@ export default function VehicleSingleTimeline({ vehicleId }: VehicleSingleTimeli
         <div>
           <h3 className="text-lg font-semibold text-[#e5e4e2]">Timeline wykorzystania</h3>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
-            Widok wykorzystania pojazdu na wydarzeniach i w serwisie
+            Widok wykorzystania pojazdu na eventach i w serwisie
           </p>
         </div>
 
@@ -294,7 +294,7 @@ export default function VehicleSingleTimeline({ vehicleId }: VehicleSingleTimeli
               {timeline.length === 0 ? (
                 <div className="flex h-32 items-center justify-center">
                   <p className="text-sm text-[#e5e4e2]/60">
-                    Brak wydarzeń w wybranym okresie czasu
+                    Brak eventów w wybranym okresie czasu
                   </p>
                 </div>
               ) : (
@@ -355,11 +355,11 @@ export default function VehicleSingleTimeline({ vehicleId }: VehicleSingleTimeli
       <div className="flex flex-wrap gap-4 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-4">
         <div className="flex items-center gap-2">
           <div className="h-4 w-4 rounded bg-[#3b82f6]" />
-          <span className="text-sm text-[#e5e4e2]/80">Wydarzenie zaplanowane</span>
+          <span className="text-sm text-[#e5e4e2]/80">Event zaplanowany</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="h-4 w-4 rounded bg-[#10b981]" />
-          <span className="text-sm text-[#e5e4e2]/80">Wydarzenie potwierdzone</span>
+          <span className="text-sm text-[#e5e4e2]/80">Event potwierdzony</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="h-4 w-4 rounded bg-[#f59e0b]" />

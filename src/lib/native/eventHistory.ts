@@ -33,9 +33,9 @@ function normalize(action: string): Action {
 }
 
 const ENTITY: Record<string, string> = {
-  events: 'Wydarzenie', tasks: 'Zadanie', employee_assignments: 'Przypisanie pracownika', event_vehicles: 'Pojazd',
+  events: 'Event', tasks: 'Zadanie', employee_assignments: 'Przypisanie pracownika', event_vehicles: 'Pojazd',
   vehicle_handovers: 'Przekazanie pojazdu', event_agendas: 'Agenda', event_agenda_items: 'Pozycja agendy', event_agenda_notes: 'Notatka agendy',
-  event_equipment: 'Sprzęt', event_files: 'Plik', contracts: 'Umowa', offers: 'Oferta', event_phases: 'Faza wydarzenia',
+  event_equipment: 'Sprzęt', event_files: 'Plik', contracts: 'Umowa', offers: 'Oferta', event_phases: 'Faza eventu',
 };
 const LABEL: Record<Action, string> = {
   create: 'Utworzono', update: 'Zaktualizowano', delete: 'Usunięto', status_changed: 'Zmieniono status', vehicle_assigned: 'Przypisano pojazd',
@@ -59,7 +59,7 @@ const color = (a: Action) => (a.includes('create') || a.includes('added') ? 'gre
 const icon = (a: Action) => (a.includes('create') || a.includes('added') ? 'plus' : a.includes('update') ? 'pencil' : a.includes('delete') || a.includes('removed') ? 'trash' : ICON[a] || 'waveform.path.ecg');
 
 const FIELD: Record<string, string> = {
-  name: 'Nazwa', title: 'Tytuł', description: 'Opis', event_date: 'Data wydarzenia', location: 'Lokalizacja', status: 'Status', budget: 'Budżet',
+  name: 'Nazwa', title: 'Tytuł', description: 'Opis', event_date: 'Data eventu', location: 'Lokalizacja', status: 'Status', budget: 'Budżet',
   notes: 'Notatki', client_type: 'Typ klienta', requires_subcontractors: 'Wymaga podwykonawców',
 };
 

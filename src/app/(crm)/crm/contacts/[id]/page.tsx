@@ -2213,7 +2213,7 @@ export default function OrganizationDetailPage() {
                               </span>
                             </div>
                             <div className="text-sm text-gray-400">
-                              Data wydarzenia:{' '}
+                              Data eventu:{' '}
                               {new Date(event.event_date).toLocaleDateString('pl-PL')}
                             </div>
                           </div>

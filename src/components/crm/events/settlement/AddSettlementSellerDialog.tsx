@@ -125,7 +125,7 @@ export default function AddSettlementSellerDialog({
         return;
       }
       if (reason.trim().length < 3) {
-        setFormError('Podaj powód stawki dla tego wydarzenia (widoczny w historii prowizji).');
+        setFormError('Podaj powód stawki dla tego eventu (widoczny w historii prowizji).');
         return;
       }
     }
@@ -151,7 +151,7 @@ export default function AddSettlementSellerDialog({
       open
       wide
       title="Dodaj sprzedawcę zewnętrznego"
-      description="Prowizja sprzedawcy to % od zysku netto wydarzenia — po kosztach i po koszcie samej prowizji. Sprzedawca zobaczy podsumowanie w portalu, gdy ma widoczne wynagrodzenie."
+      description="Prowizja sprzedawcy to % od zysku netto eventu — po kosztach i po koszcie samej prowizji. Sprzedawca zobaczy podsumowanie w portalu, gdy ma widoczne wynagrodzenie."
       onClose={close}
       busy={saving}
     >
@@ -172,7 +172,7 @@ export default function AddSettlementSellerDialog({
             />
           </div>
           {!search.trim() && (
-            <p className="text-xs text-[#e5e4e2]/45">Podpowiedzi: osoba kontaktowa, kontakt rozliczeniowy i pracownicy klienta tego wydarzenia.</p>
+            <p className="text-xs text-[#e5e4e2]/45">Podpowiedzi: osoba kontaktowa, kontakt rozliczeniowy i pracownicy klienta tego eventu.</p>
           )}
           {listError && (
             <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-200">
@@ -188,7 +188,7 @@ export default function AddSettlementSellerDialog({
             <p className="py-6 text-center text-sm text-[#e5e4e2]/45">
               {search.trim()
                 ? 'Brak aktywnych sprzedawców pasujących do wyszukiwania.'
-                : 'Nikt z osób związanych z wydarzeniem nie jest sprzedawcą. Wyszukaj sprzedawcę albo mianuj kontakt sprzedawcą na jego karcie.'}
+                : 'Nikt z osób związanych z eventem nie jest sprzedawcą. Wyszukaj sprzedawcę albo mianuj kontakt sprzedawcą na jego karcie.'}
             </p>
           ) : (
             <ul className="max-h-[50dvh] space-y-1.5 overflow-y-auto" aria-busy={loading}>
@@ -232,7 +232,7 @@ export default function AddSettlementSellerDialog({
                               )}
                             </>
                           ) : (
-                            <p className="text-amber-200/85">Brak prowizji dla marki wydarzenia</p>
+                            <p className="text-amber-200/85">Brak prowizji dla marki eventu</p>
                           )}
                         </div>
                       </div>
@@ -289,7 +289,7 @@ export default function AddSettlementSellerDialog({
                 className="mt-0.5 h-4 w-4 shrink-0 accent-[#d3bb73]"
               />
               <span className="min-w-0">
-                <span className="block text-sm text-[#e5e4e2]">Inna stawka dla tego wydarzenia</span>
+                <span className="block text-sm text-[#e5e4e2]">Inna stawka dla tego eventu</span>
                 <span className="mt-0.5 block text-xs text-[#e5e4e2]/55">Karta sprzedawcy zostaje bez zmian.</span>
               </span>
             </label>

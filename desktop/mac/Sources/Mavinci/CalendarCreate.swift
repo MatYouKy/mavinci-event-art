@@ -9,16 +9,16 @@ enum CalendarCreateKind: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .business: return "Wydarzenie biznesowe"
-        case .individual: return "Wydarzenie indywidualne"
+        case .business: return "Event biznesowy"
+        case .individual: return "Event indywidualny"
         case .meeting: return "Spotkanie"
         case .inquiry: return "Zapytanie"
         }
     }
     var subtitle: String {
         switch self {
-        case .business: return "Pełne wydarzenie z organizacją/firmą"
-        case .individual: return "Pełne wydarzenie z osobą prywatną"
+        case .business: return "Pełny event z organizacją/firmą"
+        case .individual: return "Pełny event z osobą prywatną"
         case .meeting: return "Szybkie spotkanie lub przypomnienie"
         case .inquiry: return "Szybka notatka z rozmowy z klientem"
         }

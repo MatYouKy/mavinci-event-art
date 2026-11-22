@@ -293,7 +293,7 @@ export default function EventsScreen({ onEventPress }: Props) {
         setEvents(nextEvents);
       } catch (error) {
         console.error('Error fetching events:', error);
-        setLoadError('Nie udało się pobrać wydarzeń. Odśwież listę i spróbuj ponownie.');
+        setLoadError('Nie udało się pobrać eventów. Odśwież listę i spróbuj ponownie.');
       } finally {
         setIsLoading(false);
         setRefreshing(false);
@@ -396,7 +396,7 @@ export default function EventsScreen({ onEventPress }: Props) {
           ]}
         >
           <Text style={[styles.statusText, { color: STATUS_COLORS[displayStatus(item)] || '#6b7280' }]}>
-            {(operational ? OPERATIONAL_LABELS : STATUS_LABELS)[displayStatus(item)] || 'Nowe wydarzenie'}
+            {(operational ? OPERATIONAL_LABELS : STATUS_LABELS)[displayStatus(item)] || 'Nowy event'}
           </Text>
         </View>
       </View>
@@ -481,7 +481,7 @@ export default function EventsScreen({ onEventPress }: Props) {
         <Feather name="search" size={16} color={colors.text.tertiary} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Szukaj wydarzeń..."
+          placeholder="Szukaj eventów..."
           placeholderTextColor={colors.text.tertiary}
           value={search}
           onChangeText={setSearch}
@@ -537,12 +537,12 @@ export default function EventsScreen({ onEventPress }: Props) {
           />
 
           <View>
-            <Text style={styles.pastEventsToggleTitle}>Pokaż przeszłe wydarzenia</Text>
+            <Text style={styles.pastEventsToggleTitle}>Pokaż przeszłe eventy</Text>
 
             <Text style={styles.pastEventsToggleDescription}>
               {showPastEvents
-                ? 'Przeszłe wydarzenia są widoczne na końcu listy'
-                : 'Lista pokazuje tylko wydarzenia aktualne i nadchodzące'}
+                ? 'Przeszłe eventy są widoczne na końcu listy'
+                : 'Lista pokazuje tylko eventy aktualne i nadchodzące'}
             </Text>
           </View>
         </View>
@@ -578,7 +578,7 @@ export default function EventsScreen({ onEventPress }: Props) {
               size={48}
               color={loadError ? colors.status.error : colors.text.tertiary}
             />
-            <Text style={styles.emptyText}>{loadError || 'Brak wydarzeń'}</Text>
+            <Text style={styles.emptyText}>{loadError || 'Brak eventów'}</Text>
             {loadError && (
               <TouchableOpacity style={styles.retryButton} onPress={() => void fetchEvents(true)}>
                 <Feather name="refresh-cw" size={14} color={colors.background.primary} />

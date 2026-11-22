@@ -124,7 +124,7 @@ const mapCalendarEvent = (event: any): CalendarEvent => ({
     : null,
 
   category_id: event.category_id,
-  category_name: event.category?.name ?? 'Wydarzenie',
+  category_name: event.category?.name ?? 'Event',
   category_color: event.category?.color ?? colors.primary.gold,
   category_icon_svg: event.category?.icon?.svg_code ?? null,
 
@@ -214,7 +214,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
             location: colleague.location ?? undefined,
             creator_name: colleague.sold_by.length ? colleague.sold_by.join(', ') : null,
             category_id: colleague.category?.id ?? null,
-            category_name: colleague.category?.name ?? 'Wydarzenie',
+            category_name: colleague.category?.name ?? 'Event',
             category_color: colleague.category?.color ?? colors.primary.gold,
             category_icon_svg: null,
             is_meeting: false,
@@ -397,7 +397,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
   const renderEvent = ({ item }: { item: CalendarEvent }) => {
     const badgeColor = item.category_color || STATUS_COLORS[item.status] || colors.text.tertiary;
 
-    const badgeLabel = operational && !item.is_meeting && !item.is_inquiry ? OPERATIONAL_LABELS[displayStatus(item)] : item.category_name || STATUS_LABELS[item.status] || 'Wydarzenie';
+    const badgeLabel = operational && !item.is_meeting && !item.is_inquiry ? OPERATIONAL_LABELS[displayStatus(item)] : item.category_name || STATUS_LABELS[item.status] || 'Event';
 
     const time = new Date(item.event_date).toLocaleTimeString('pl-PL', {
       hour: '2-digit',
@@ -546,7 +546,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
         {eventsForSelectedDate.length === 0 ? (
           <View style={styles.emptyState}>
             <Feather name="calendar" size={32} color={colors.text.tertiary} />
-            <Text style={styles.emptyText}>Brak wydarzeń w tym dniu</Text>
+            <Text style={styles.emptyText}>Brak eventów w tym dniu</Text>
           </View>
         ) : (
           <FlatList

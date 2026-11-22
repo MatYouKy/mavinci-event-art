@@ -107,7 +107,7 @@ export default function SellerManagerCockpit({ onTodayCount }: Props) {
         <h2 className="text-xl font-light">Kokpit opiekuna</h2>
         <p className="mt-1 text-sm text-white/50">{isAdmin
           ? (selectedManagerName ? `Sprzedawcy opiekuna: ${selectedManagerName}.` : managerFilter && managerFilter === cockpit?.viewer.employee_id ? 'Sprzedawcy przypisani do Ciebie.' : 'Wszyscy sprzedawcy zewnętrzni.')
-          : 'Twoi sprzedawcy zewnętrzni — sprawy na dziś, lejek, wydarzenia i ostrzeżenia.'}</p>
+          : 'Twoi sprzedawcy zewnętrzni — sprawy na dziś, lejek, eventy i ostrzeżenia.'}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {isAdmin && <label className="flex items-center gap-2 text-xs text-white/50">
@@ -151,7 +151,7 @@ export default function SellerManagerCockpit({ onTodayCount }: Props) {
           { label: 'Sprawy na dziś', value: stats.today, helper: stats.today ? 'czekają na Ciebie' : 'wszystko załatwione', icon: Sparkles, href: '#cockpit-today-heading' },
           { label: isAdmin ? 'Sprzedawcy' : 'Moi sprzedawcy', value: stats.sellers, helper: `${stats.active} aktywnych · ${stats.portal} w portalu`, icon: Users, href: '#cockpit-sellers-heading' },
           { label: 'Oferty w toku', value: stats.inProgress, helper: `${stats.review} do sprawdzenia`, icon: FileText, href: '#cockpit-pipeline-heading' },
-          { label: 'Wydarzenia w 14 dni', value: stats.upcoming, helper: 'najbliższe realizacje', icon: CalendarDays, href: '#cockpit-upcoming-heading' },
+          { label: 'Eventy w 14 dni', value: stats.upcoming, helper: 'najbliższe realizacje', icon: CalendarDays, href: '#cockpit-upcoming-heading' },
           { label: 'Do wypłaty', value: sellerPln(stats.payable), helper: `prognoza ${sellerPln(stats.forecast)}`, icon: WalletCards, href: '#cockpit-sellers-heading' },
         ] as const).map(tile => <a key={tile.label} href={tile.href} className="rounded-2xl bg-[#1c1f33] p-4 transition-colors hover:bg-[#232741]">
           <span className="flex items-center justify-between text-xs text-white/45">{tile.label}<tile.icon className="h-4 w-4 text-[#d3bb73]/60" /></span>

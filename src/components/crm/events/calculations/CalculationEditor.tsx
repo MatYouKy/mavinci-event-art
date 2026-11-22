@@ -695,7 +695,7 @@ export function CalculationEditor({
 
       setGeneratedPdfPath(data.storagePath);
       showSnackbar(
-        eventId ? 'PDF kalkulacji zapisany w plikach wydarzenia' : 'PDF kalkulacji zapisany przy zapytaniu',
+        eventId ? 'PDF kalkulacji zapisany w plikach eventu' : 'PDF kalkulacji zapisany przy zapytaniu',
         'success',
       );
     } catch (e: any) {

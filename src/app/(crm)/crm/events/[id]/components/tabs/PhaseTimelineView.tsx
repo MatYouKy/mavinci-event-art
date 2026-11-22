@@ -275,7 +275,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
                 left: `${((new Date(eventStartDate).getTime() - timelineBounds.start.getTime()) / totalDuration) * 100}%`,
                 width: `${((new Date(eventEndDate).getTime() - new Date(eventStartDate).getTime()) / totalDuration) * 100}%`,
               }}
-              title="Główne godziny wydarzenia (agenda dla klienta)"
+              title="Główne godziny eventu (agenda dla klienta)"
             >
               <div className="absolute left-2 top-0 rounded-b bg-[#1c1f33] px-1 text-[10px] font-semibold text-[#d3bb73]">
                 Agenda

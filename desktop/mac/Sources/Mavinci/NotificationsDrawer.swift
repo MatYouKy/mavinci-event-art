@@ -23,7 +23,7 @@ import AppKit
                     if row.fields["metadata"]?.object["kind"]?.text == "event_workflow_digest" {
                         ForEach(Array((row.fields["metadata"]?.object["actions"]?.array ?? []).enumerated()), id: \.offset) { _, action in
                             if let eventID=action.object["event_id"]?.text,UUID(uuidString:eventID) != nil {
-                                Button(action.object["event_name"]?.text ?? "Otwórz wydarzenie") {state.showEvent(eventID)}.font(.caption)
+                                Button(action.object["event_name"]?.text ?? "Otwórz event") {state.showEvent(eventID)}.font(.caption)
                             }
                         }
                     }
@@ -58,7 +58,7 @@ import AppKit
         var tab=metadata["tab"]?.text ?? metadata["event_tab"]?.text ?? ""
         let raw=row["action_url"]
         if raw == "/crm/events/actions" || metadata["kind"]?.text == "event_workflow_digest" {
-            guard employee?.canView(.events)==true else{notice="Nie masz dostępu do wydarzeń.";return false}
+            guard employee?.canView(.events)==true else{notice="Nie masz dostępu do eventów.";return false}
             selection = .events
             return true
         }
@@ -166,7 +166,7 @@ import AppKit
         }
         switch type {
         case "event","events":
-            guard employee?.canView(.events)==true else{notice="Nie masz dostępu do wydarzeń.";return false}
+            guard employee?.canView(.events)==true else{notice="Nie masz dostępu do eventów.";return false}
             showEvent(id,cardTab:tab);return true
         case "task","tasks":return await navigate(.tasks,id:id)
         case "inquiry","inquiries":return await navigate(.inquiries,id:id)

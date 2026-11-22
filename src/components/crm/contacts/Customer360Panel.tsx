@@ -98,7 +98,7 @@ const KIND_CONFIG: Record<
   inquiry: { label: 'Zapytanie', className: 'bg-amber-500/15 text-amber-300', icon: Target },
   meeting: { label: 'Spotkanie', className: 'bg-violet-500/15 text-violet-300', icon: Calendar },
   offer: { label: 'Oferta', className: 'bg-[#d3bb73]/15 text-[#d3bb73]', icon: FileText },
-  event: { label: 'Wydarzenie', className: 'bg-fuchsia-500/15 text-fuchsia-300', icon: Briefcase },
+  event: { label: 'Event', className: 'bg-fuchsia-500/15 text-fuchsia-300', icon: Briefcase },
 };
 
 const normalizeEmail = (value?: string | null) => value?.trim().toLocaleLowerCase('pl-PL') || '';
@@ -300,7 +300,7 @@ export default function Customer360Panel({ contact, onOwnerSaved }: { contact: C
           ...events.map((event: any) => ({
             id: `event-${event.id}`,
             kind: 'event' as const,
-            title: event.name || 'Wydarzenie',
+            title: event.name || 'Event',
             description: `Termin: ${new Date(event.event_date).toLocaleString('pl-PL')}`,
             date: event.event_date || event.created_at,
             href: `/crm/events/${event.id}`,
@@ -424,7 +424,7 @@ export default function Customer360Panel({ contact, onOwnerSaved }: { contact: C
   const metrics = [
     { label: 'Otwarte zapytania', value: data.openInquiries, icon: Target },
     { label: 'Wartość szans', value: `${data.pipelineValue.toLocaleString('pl-PL')} zł`, icon: Briefcase },
-    { label: 'Nadchodzące wydarzenia', value: data.upcomingEvents, icon: Calendar },
+    { label: 'Nadchodzące eventy', value: data.upcomingEvents, icon: Calendar },
     { label: 'Zaległe działania', value: data.dueActions, icon: Clock3 },
   ];
 
@@ -468,7 +468,7 @@ export default function Customer360Panel({ contact, onOwnerSaved }: { contact: C
             <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-gray-300">{data.timeline.length}</span>
           </div>
           {data.timeline.length === 0 ? (
-            <div className="flex min-h-64 flex-col items-center justify-center px-5 text-center"><MessageSquareText className="h-9 w-9 text-gray-600" /><p className="mt-3 text-gray-300">Brak powiązanych aktywności</p><p className="mt-1 text-sm text-gray-500">Połączenia, maile, zapytania, spotkania, oferty i wydarzenia pojawią się tutaj automatycznie.</p></div>
+            <div className="flex min-h-64 flex-col items-center justify-center px-5 text-center"><MessageSquareText className="h-9 w-9 text-gray-600" /><p className="mt-3 text-gray-300">Brak powiązanych aktywności</p><p className="mt-1 text-sm text-gray-500">Połączenia, maile, zapytania, spotkania, oferty i eventy pojawią się tutaj automatycznie.</p></div>
           ) : (
             <div className="divide-y divide-gray-800">
               {data.timeline.map((item) => {

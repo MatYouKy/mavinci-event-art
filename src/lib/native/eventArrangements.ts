@@ -9,7 +9,7 @@ import { registerEventActions, registerEventTab } from './eventTabs';
  * `get_event_realization_assignment`. Bez migracji 20261111220000_event_arrangements_handoff.sql — komunikat zamiast danych.
  */
 
-const MIGRATION = 'Ustalenia w karcie wydarzenia wymagają migracji 20261111220000_event_arrangements_handoff.sql (uruchom ją w Supabase).';
+const MIGRATION = 'Ustalenia w karcie eventu wymagają migracji 20261111220000_event_arrangements_handoff.sql (uruchom ją w Supabase).';
 
 const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : null);
 

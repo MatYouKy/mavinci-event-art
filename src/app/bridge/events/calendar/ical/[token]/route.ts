@@ -259,7 +259,7 @@ export async function GET(_req: Request, { params }: { params: { token: string }
     }
 
     for (const e of events) {
-      const summary = e.name?.trim() ? e.name : 'Wydarzenie';
+      const summary = e.name?.trim() ? e.name : 'Event';
       const location = e.location?.trim() ? e.location : undefined;
 
       // opis: status + description + notes (ładnie)

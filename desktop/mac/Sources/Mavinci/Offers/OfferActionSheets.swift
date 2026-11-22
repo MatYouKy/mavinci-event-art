@@ -350,11 +350,11 @@ extension OffersStore {
                 selected = nil
                 search = ""
             })) {
-                Text("Wydarzenia").tag("event").disabled(detail.offer.eventId != nil)
+                Text("Eventy").tag("event").disabled(detail.offer.eventId != nil)
                 Text("Moje zapytania").tag("inquiry").disabled(detail.offer.inquiryId != nil)
             }
             .pickerStyle(.segmented).labelsHidden().fixedSize()
-            TextField("", text: $search, prompt: Text(kind == "event" ? "Wyszukaj wydarzenie…" : "Wyszukaj moje zapytanie…"))
+            TextField("", text: $search, prompt: Text(kind == "event" ? "Wyszukaj event…" : "Wyszukaj moje zapytanie…"))
                 .textFieldStyle(.roundedBorder)
             ScrollView {
                 VStack(spacing: 6) {
@@ -515,11 +515,11 @@ extension OffersStore {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Utwórz wydarzenie z zapytania").font(.title3.weight(.semibold))
+            Text("Utwórz event z zapytania").font(.title3.weight(.semibold))
             Text("Dokumenty i zadania zachowają powiązania. Przy zaakceptowanej ofercie przeniesiemy wycenę oraz plan zasobów i dodamy zadanie weryfikacji dostępności.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let note = setup.endNote { Text(note).font(.callout).foregroundStyle(.secondary) }
-            if let location = setup.location, !location.isEmpty { Text("Miejsce wydarzenia: \(location)").font(.callout).foregroundStyle(.secondary) }
+            if let location = setup.location, !location.isEmpty { Text("Miejsce eventu: \(location)").font(.callout).foregroundStyle(.secondary) }
             ProductField(label: "Nazwa") { TextField("", text: $name).textFieldStyle(.roundedBorder) }
             ProductField(label: "Termin *") {
                 HStack {
@@ -551,7 +551,7 @@ extension OffersStore {
             HStack {
                 Spacer()
                 Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
-                Button(saving ? "Tworzenie…" : "Utwórz wydarzenie") { Task { await create() } }
+                Button(saving ? "Tworzenie…" : "Utwórz event") { Task { await create() } }
                     .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                     .disabled(saving || name.trimmingCharacters(in: .whitespaces).isEmpty || !hasDate)
             }
@@ -568,11 +568,11 @@ extension OffersStore {
         do {
             let eventId = try await store.createEvent(offerID, name: name.trimmingCharacters(in: .whitespaces), date: date,
                                                       categoryId: categoryId.isEmpty ? nil : categoryId, companyId: companyId.isEmpty ? nil : companyId)
-            store.workspace?.succeed("Zapytanie zostało przekształcone w wydarzenie")
+            store.workspace?.succeed("Zapytanie zostało przekształcone w event")
             dismiss()
             if let eventId { state.showEvent(eventId) }
         } catch {
-            problem = store.failureText(error, "Nie udało się utworzyć wydarzenia")
+            problem = store.failureText(error, "Nie udało się utworzyć eventu")
         }
     }
 }

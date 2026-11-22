@@ -16,6 +16,16 @@ export const SELLER_JOURNEY_STAGES = [
 ] as const;
 
 export type SellerJourneyStageKey = typeof SELLER_JOURNEY_STAGES[number]['key'];
+
+/**
+ * Te same etapy w widoku pracowników MAVINCI (CRM, Mac, aplikacja mobilna): etap `event` nazywa się „Event”, jak w całym
+ * interfejsie pracowników. Portal hotelu zostaje przy nazwach z SELLER_JOURNEY_STAGES („Wydarzenie”).
+ */
+export const SELLER_JOURNEY_STAGES_TEAM: readonly { key: SellerJourneyStageKey; label: string; hint: string }[] = SELLER_JOURNEY_STAGES.map((item) => (
+  item.key === 'event' ? { ...item, label: 'Event' }
+    : item.key === 'settlement' ? { ...item, hint: 'Po evencie: podsumowanie i wynagrodzenie' }
+      : item
+));
 /** Kto teraz działa. `none` — sprawa zakończona albo nikt nie musi nic robić. */
 export type SellerJourneyActor = 'seller' | 'client' | 'manager' | 'none';
 export type SellerJourneyTone = 'action' | 'waiting' | 'success' | 'danger' | 'neutral';
@@ -68,9 +78,10 @@ const CLOSED_EVENT = ['completed', 'invoiced', 'settled'];
 const CONFIRMED_EVENT = ['offer_accepted', 'in_preparation', 'ready_for_live', 'in_progress'];
 const PAUSED_EVENT = ['on_hold', 'paused'];
 
-function stage(index: number) {
-  const item = SELLER_JOURNEY_STAGES[Math.max(0, Math.min(SELLER_JOURNEY_STAGES.length - 1, index))];
-  return { index: SELLER_JOURNEY_STAGES.indexOf(item), key: item.key as SellerJourneyStageKey, stageLabel: item.label };
+function stage(index: number, team: boolean) {
+  const stages: readonly { key: SellerJourneyStageKey; label: string }[] = team ? SELLER_JOURNEY_STAGES_TEAM : SELLER_JOURNEY_STAGES;
+  const position = Math.max(0, Math.min(stages.length - 1, index));
+  return { index: position, key: stages[position].key, stageLabel: stages[position].label };
 }
 
 /**
@@ -83,7 +94,7 @@ export function sellerJourney(input: SellerJourneyInput, options: { viewer?: Sel
   const manager = (options.managerName || '').trim().split(/\s+/)[0] || 'Opiekun';
   const seller = viewer === 'seller';
   const result = (index: number, state: string, actor: SellerJourneyActor, now: string, tone: SellerJourneyTone, ended = false): SellerJourney => ({
-    ...stage(index), state, actor, now, tone, ended,
+    ...stage(index, !seller), state, actor, now, tone, ended,
     needsAction: !ended && ((seller && actor === 'seller') || (!seller && actor === 'manager')),
   });
   const event = input.eventStatus || '';
@@ -92,19 +103,19 @@ export function sellerJourney(input: SellerJourneyInput, options: { viewer?: Sel
 
   if (realization) {
     if (event === 'cancelled' || input.realizationStage === 'cancelled') {
-      return result(3, 'Anulowane', 'none', 'Wydarzenie zostało anulowane. Historia, dokumenty i rozmowa pozostają dostępne.', 'danger', true);
+      return result(3, 'Anulowane', 'none', seller ? 'Wydarzenie zostało anulowane. Historia, dokumenty i rozmowa pozostają dostępne.' : 'Event został anulowany. Historia, dokumenty i rozmowa pozostają dostępne.', 'danger', true);
     }
     if (PAUSED_EVENT.includes(event)) {
-      return result(3, 'Wstrzymane', 'manager', seller ? 'Wydarzenie jest wstrzymane. Dalsze kroki ustalicie z opiekunem w rozmowie.' : 'Wydarzenie jest wstrzymane. Ustal dalsze kroki ze sprzedawcą.', 'waiting');
+      return result(3, 'Wstrzymane', 'manager', seller ? 'Wydarzenie jest wstrzymane. Dalsze kroki ustalicie z opiekunem w rozmowie.' : 'Event jest wstrzymany. Ustal dalsze kroki ze sprzedawcą.', 'waiting');
     }
     if (CLOSED_EVENT.includes(event)) {
-      return result(4, event === 'settled' ? 'Rozliczone' : 'Po wydarzeniu', event === 'settled' ? 'none' : 'manager',
+      return result(4, event === 'settled' ? 'Rozliczone' : seller ? 'Po wydarzeniu' : 'Po evencie', event === 'settled' ? 'none' : 'manager',
         seller ? (event === 'settled' ? 'Wydarzenie jest rozliczone. Dokumenty i historia pozostają dostępne.' : 'Wydarzenie się odbyło. Możesz przekazać opiekunowi podsumowanie i uwagi klienta.')
-          : (event === 'settled' ? 'Wydarzenie rozliczone.' : 'Rozlicz wydarzenie i — jeśli dotyczy — wynagrodzenie sprzedawcy.'),
+          : (event === 'settled' ? 'Event rozliczony.' : 'Rozlicz event i — jeśli dotyczy — wynagrodzenie sprzedawcy.'),
         'success');
     }
     if (event === 'in_progress') {
-      return result(3, 'Trwa', 'none', seller ? 'Wydarzenie trwa. W sprawach bieżących korzystaj z kontaktów do zespołu.' : 'Wydarzenie trwa.', 'success');
+      return result(3, 'Trwa', 'none', seller ? 'Wydarzenie trwa. W sprawach bieżących korzystaj z kontaktów do zespołu.' : 'Event trwa.', 'success');
     }
     if (input.realizationStage === 'confirmed' || CONFIRMED_EVENT.includes(event)) {
       return result(3, 'Potwierdzone', 'seller',
@@ -112,7 +123,7 @@ export function sellerJourney(input: SellerJourneyInput, options: { viewer?: Sel
         'success');
     }
     return result(3, 'Czeka na potwierdzenie terminu', 'manager',
-      seller ? `${manager} potwierdza termin i przygotowanie wydarzenia. Dostaniesz powiadomienie.` : 'Oferta przyjęta. Potwierdź termin i przygotowanie wydarzenia.',
+      seller ? `${manager} potwierdza termin i przygotowanie wydarzenia. Dostaniesz powiadomienie.` : 'Oferta przyjęta. Potwierdź termin i przygotowanie eventu.',
       'waiting');
   }
 
@@ -131,7 +142,7 @@ export function sellerJourney(input: SellerJourneyInput, options: { viewer?: Sel
         'danger');
     case 'approved':
       return result(3, 'Czeka na potwierdzenie terminu', 'manager',
-        seller ? `Oferta przyjęta. ${manager} potwierdza termin — dostaniesz powiadomienie.` : 'Oferta przyjęta. Potwierdź termin i przygotowanie wydarzenia.',
+        seller ? `Oferta przyjęta. ${manager} potwierdza termin — dostaniesz powiadomienie.` : 'Oferta przyjęta. Potwierdź termin i przygotowanie eventu.',
         'waiting');
     default:
       break;
@@ -182,11 +193,11 @@ export function sellerJourney(input: SellerJourneyInput, options: { viewer?: Sel
     'action');
 }
 
-/** Filtry listy ofert — po etapach osi i po tym, kto działa. */
+/** Filtry listy ofert sprzedawcy w aplikacji pracowników — po etapach osi i po tym, kto działa. */
 export const SELLER_JOURNEY_FILTERS: { value: string; label: string }[] = [
   { value: 'all', label: 'Wszystkie etapy' },
   { value: 'mine', label: 'Wymaga mojej reakcji' },
-  ...SELLER_JOURNEY_STAGES.slice(0, 4).map((item) => ({ value: item.key, label: item.label })),
+  ...SELLER_JOURNEY_STAGES_TEAM.slice(0, 4).map((item) => ({ value: item.key, label: item.label })),
   { value: 'ended', label: 'Zakończone bez realizacji' },
 ];
 

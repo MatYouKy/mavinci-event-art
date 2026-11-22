@@ -286,7 +286,7 @@ import SwiftUI
                         Text("Oferta").tag("offer")
                         Text("U klienta").tag("client")
                         Text("U opiekuna").tag("manager")
-                        Text("Wydarzenie").tag("event")
+                        Text("Event").tag("event")
                         Text("Zakończone bez realizacji").tag("ended")
                     }
                     .labelsHidden().frame(maxWidth: 240)
@@ -362,7 +362,7 @@ import SwiftUI
 
 /// Oś oferty w 5 etapach (Oferta → U klienta → U opiekuna → Wydarzenie → Rozliczenie) — kreski jak w portalu i CRM.
 struct SellerJourneyBar: View {
-    static let labels = ["Oferta", "U klienta", "U opiekuna", "Wydarzenie", "Rozliczenie"]
+    static let labels = ["Oferta", "U klienta", "U opiekuna", "Event", "Rozliczenie"]
     let index: Int
     let tone: Color
     let ended: Bool

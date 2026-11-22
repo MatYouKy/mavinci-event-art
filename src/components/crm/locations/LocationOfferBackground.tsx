@@ -219,7 +219,7 @@ export function LocationOfferBackground({ locationId, readOnly = false, onGaller
         )}
       </div>
       <p className="mb-4 text-sm leading-6 text-[#e5e4e2]/60">
-        Zdjęcie miejsca na okładkę ofert wydarzeń w tej lokalizacji — także gdy klientem jest inna firma (np. impreza firmowa
+        Zdjęcie miejsca na okładkę ofert eventów w tej lokalizacji — także gdy klientem jest inna firma (np. impreza firmowa
         w hotelu: oferta dla firmy, w tle zdjęcie hotelu). Wgrane zdjęcie trafia też do galerii obiektu. Po zmianie tła wcześniej
         wygenerowane PDF ofert z tego miejsca są oznaczone jako nieaktualne. Oferta z własną grafiką hero zachowuje swoją, oferty
         sprzedawców hotelowych — okładkę z profilu sprzedawcy.

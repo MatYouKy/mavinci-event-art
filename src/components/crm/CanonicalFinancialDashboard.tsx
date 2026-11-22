@@ -497,7 +497,7 @@ function CompanyFinancialDashboard({
 
             <section className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 sm:p-6">
               <h3 className="text-lg font-light text-[#e5e4e2]">Na czym zarabiamy najwięcej</h3>
-              <p className="mt-1 text-xs text-[#e5e4e2]/40">Przychód i koszty powiązane z wydarzeniami, pogrupowane według ich kategorii.</p>
+              <p className="mt-1 text-xs text-[#e5e4e2]/40">Przychód i koszty powiązane z eventami, pogrupowane według ich kategorii.</p>
               <div className="mt-5 space-y-3">
                 {report.profitability_areas?.length ? report.profitability_areas.slice(0, 8).map((area) => (
                   <div key={area.name} className="rounded-lg border border-[#d3bb73]/8 bg-[#0f1119] p-3">
@@ -507,7 +507,7 @@ function CompanyFinancialDashboard({
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#e5e4e2]/40"><span>Przychód {money.format(area.revenue)}</span><span>Koszty {money.format(area.costs)}</span><span>Marża {Number(area.margin_percent || 0).toLocaleString('pl-PL')}%</span></div>
                   </div>
-                )) : <p className="text-sm text-[#e5e4e2]/40">Powiąż przychody i koszty z wydarzeniami, aby policzyć rentowność obszarów.</p>}
+                )) : <p className="text-sm text-[#e5e4e2]/40">Powiąż przychody i koszty z eventami, aby policzyć rentowność obszarów.</p>}
               </div>
             </section>
 

@@ -229,7 +229,7 @@ extension OffersStore {
                     if withoutEquipment {
                         VStack(alignment: .leading, spacing: 4) {
                             Label("Bez rezerwacji sprzętu", systemImage: "info.circle").font(.callout.weight(.semibold)).foregroundStyle(.blue)
-                            Text("Nie zaznaczono żadnego sprzętu. Oferta zostanie zaakceptowana bez rezerwacji — sprzęt z produktów tej oferty nie trafi do wydarzenia. W razie potrzeby dodasz go później w zakładce Sprzęt wydarzenia.")
+                            Text("Nie zaznaczono żadnego sprzętu. Oferta zostanie zaakceptowana bez rezerwacji — sprzęt z produktów tej oferty nie trafi do eventu. W razie potrzeby dodasz go później w zakładce Sprzęt eventu.")
                                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
@@ -309,9 +309,9 @@ extension OffersStore {
                     if let email = preview.recipientEmail {
                         Text("Odbiorca: \(email)\((preview.recipientName ?? "").isEmpty ? "" : " · \(preview.recipientName ?? "")")").font(.callout)
                     } else {
-                        Text("Brak e-maila kontaktu i organizacji wydarzenia. Akceptacja jest możliwa bez wiadomości.").font(.caption).foregroundStyle(.orange)
+                        Text("Brak e-maila kontaktu i organizacji eventu. Akceptacja jest możliwa bez wiadomości.").font(.caption).foregroundStyle(.orange)
                     }
-                    Text("Potwierdzenie realizacji korzysta z danych wydarzenia: terminu, miejsca, harmonogramu i zaakceptowanej oferty. To ten sam szablon co przy zmianie statusu wydarzenia. Nie wystawia ani nie wysyła faktury.")
+                    Text("Potwierdzenie realizacji korzysta z danych eventu: terminu, miejsca, harmonogramu i zaakceptowanej oferty. To ten sam szablon co przy zmianie statusu eventu. Nie wystawia ani nie wysyła faktury.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(10).frame(maxWidth: .infinity, alignment: .leading)

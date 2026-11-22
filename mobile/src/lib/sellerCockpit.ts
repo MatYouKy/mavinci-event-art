@@ -6,7 +6,7 @@
  * Oś w 5 etapach pochodzi z offerJourney.ts (też kopia 1:1, ten sam katalog w CRM i w aplikacji).
  */
 
-import { SELLER_JOURNEY_STAGES, type SellerJourneyStageKey } from './offerJourney';
+import { SELLER_JOURNEY_STAGES_TEAM, type SellerJourneyStageKey } from './offerJourney';
 
 export type SellerPortalAccount = 'none' | 'invited' | 'active';
 export type SellerInquirySource = 'portal' | 'qr';
@@ -224,7 +224,7 @@ export function parseSellerCockpit(data: unknown): SellerCockpit {
       })),
       events_pending: list(today.events_pending).map(item => ({
         event_id: str(item.event_id),
-        name: str(item.name, 'Wydarzenie'),
+        name: str(item.name, 'Event'),
         event_date: strOrNull(item.event_date),
         sales_partner_id: str(item.sales_partner_id),
         seller_name: str(item.seller_name, 'Sprzedawca'),
@@ -308,7 +308,7 @@ export function parseSellerCockpit(data: unknown): SellerCockpit {
     pipeline,
     upcoming: list(raw.upcoming).map(item => ({
       event_id: str(item.event_id),
-      name: str(item.name, 'Wydarzenie'),
+      name: str(item.name, 'Event'),
       event_date: strOrNull(item.event_date),
       status: str(item.status),
       sales_partner_id: str(item.sales_partner_id),
@@ -373,7 +373,7 @@ export const SELLER_EVENT_TYPE_LABELS: Record<string, string> = {
   conference: 'Konferencja',
   gala: 'Gala',
   party: 'Impreza',
-  corporate: 'Wydarzenie firmowe',
+  corporate: 'Event firmowy',
   other: 'Inne',
 };
 
@@ -391,7 +391,7 @@ export const SELLER_REALIZATION_STEP_LABELS: Record<string, string> = {
   contact: 'Osoba na miejscu',
   organization: 'Sala, dostęp i liczba gości',
   materials: 'Materiały i wymagania',
-  plan: 'Plan wydarzenia',
+  plan: 'Plan eventu',
 };
 
 /** Ile godzin czeka rozmowa — czytelnie po polsku. */
@@ -442,15 +442,15 @@ export function sellerCockpitJourneyStages(pipeline: Record<SellerPipelineStage,
     offer: { count: pipeline.draft, detail: 'bez PDF dla klienta' },
     client: { count: pipeline.pdf, detail: 'PDF lub link u klienta' },
     manager: { count: pipeline.review, detail: 'czekają na ocenę opiekuna' },
-    event: { count: pipeline.accepted + pipeline.confirmed, detail: 'przyjęte, przed wydarzeniem' },
+    event: { count: pipeline.accepted + pipeline.confirmed, detail: 'przyjęte, przed eventem' },
     settlement: { count: pipeline.completed + pipeline.settled, detail: `${pipeline.completed} do rozliczenia · ${pipeline.settled} rozliczone` },
   };
-  return SELLER_JOURNEY_STAGES.map(stage => ({ key: stage.key, label: stage.label, hint: stage.hint, ...counts[stage.key] }));
+  return SELLER_JOURNEY_STAGES_TEAM.map(stage => ({ key: stage.key, label: stage.label, hint: stage.hint, ...counts[stage.key] }));
 }
 
 /** Oferty jednego sprzedawcy na osi: trzy pierwsze etapy i „Realizacje” (wydarzenie i rozliczenie razem — tak liczy baza). */
 export function sellerCockpitSellerStages(offers: SellerCockpitSeller['offers']): { key: SellerJourneyStageKey; label: string; count: number }[] {
-  const label = (key: SellerJourneyStageKey) => SELLER_JOURNEY_STAGES.find(stage => stage.key === key)?.label || '';
+  const label = (key: SellerJourneyStageKey) => SELLER_JOURNEY_STAGES_TEAM.find(stage => stage.key === key)?.label || '';
   return [
     { key: 'offer', label: label('offer'), count: offers.draft },
     { key: 'client', label: label('client'), count: offers.pdf },

@@ -186,7 +186,7 @@ import SwiftUI
             errors[id] = nil
             scheduleSave()
         } catch {
-            errors[id] = failureText(error, "Nie udało się pobrać wydarzenia.")
+            errors[id] = failureText(error, "Nie udało się pobrać eventu.")
         }
     }
 
@@ -229,7 +229,7 @@ import SwiftUI
         }
         return ok
     }
-    func update(_ id: String, _ changes: [String: JSONValue], success: String = "Wydarzenie zaktualizowane") async -> Bool {
+    func update(_ id: String, _ changes: [String: JSONValue], success: String = "Event zaktualizowany") async -> Bool {
         await run(id, "Zapisywanie…", "update", ["data": .object(changes)], success: success)
     }
 
@@ -261,7 +261,7 @@ import SwiftUI
             overviewErrors[id] = nil
             scheduleSave()
         } catch {
-            overviewErrors[id] = failureText(error, "Nie udało się pobrać przeglądu wydarzenia.")
+            overviewErrors[id] = failureText(error, "Nie udało się pobrać przeglądu eventu.")
         }
     }
 

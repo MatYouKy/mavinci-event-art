@@ -53,7 +53,7 @@ const isWideScreen = width >= 700;
             style={styles.logo}
             resizeMode="contain"
           />
-          <Text style={styles.subtitle}>System zarządzania wydarzeniami</Text>
+          <Text style={styles.subtitle}>System zarządzania eventami</Text>
         </View>
 
         {/* Login Form */}

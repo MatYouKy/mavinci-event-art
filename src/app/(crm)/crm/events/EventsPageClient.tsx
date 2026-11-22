@@ -788,17 +788,17 @@ export default function EventsPageClient({
       }
 
       if (!sourceEvent) {
-        throw new Error('Nie znaleziono wydarzenia do zduplikowania');
+        throw new Error('Nie znaleziono eventu do zduplikowania');
       }
       // Kwoty są w event_financials (tylko z obszarem „kwoty”); bez dostępu kopia startuje bez kwot.
       const sourceFinancials = await fetchEventFinancials(supabase, sourceEvent.id);
       if (changeDuplicateDate && !duplicateStartDate) {
-        showSnackbar('Wybierz datę rozpoczęcia wydarzenia', 'error');
+        showSnackbar('Wybierz datę rozpoczęcia eventu', 'error');
         return;
       }
 
       if (changeDuplicateLocation && !duplicateLocationId) {
-        showSnackbar('Wybierz nowe miejsce wydarzenia', 'error');
+        showSnackbar('Wybierz nowe miejsce eventu', 'error');
         return;
       }
 
@@ -909,19 +909,19 @@ export default function EventsPageClient({
 
       if (assignmentError) {
         console.warn(
-          'Nie udało się przypisać użytkownika do zduplikowanego wydarzenia:',
+          'Nie udało się przypisać użytkownika do zduplikowanego eventu:',
           assignmentError,
         );
       }
 
-      let successMessage = 'Wydarzenie zostało zduplikowane.';
+      let successMessage = 'Event został zduplikowany.';
 
       if (copiedFinancialSource === 'calculation') {
         successMessage += ' Skopiowano zaakceptowaną kalkulację wraz z pozycjami.';
       } else if (copiedFinancialSource === 'offer') {
         successMessage += ' Skopiowano zaakceptowaną ofertę wraz z pozycjami.';
       } else {
-        successMessage += ' Oryginalne wydarzenie nie miało zaakceptowanej kalkulacji ani oferty.';
+        successMessage += ' Oryginalny event nie miał zaakceptowanej kalkulacji ani oferty.';
       }
 
       showSnackbar(successMessage, 'success');
@@ -950,7 +950,7 @@ export default function EventsPageClient({
         }
       }
 
-      showSnackbar(err?.message || 'Wystąpił błąd podczas duplikowania wydarzenia', 'error');
+      showSnackbar(err?.message || 'Wystąpił błąd podczas duplikowania eventu', 'error');
     } finally {
       setDuplicatingEvent(false);
     }
@@ -972,7 +972,7 @@ export default function EventsPageClient({
   const visualState=(event:any)=> event?.sales_colleague
     ? { state: 'scheduled', label: '', days: 0 }
     : operational
-    ? { state: displayStatus(event)==='settled' ? 'settled' : displayStatus(event)==='in_progress' ? 'live' : displayStatus(event)==='cancelled' ? 'cancelled' : 'scheduled', label: OPERATIONAL_LABELS[displayStatus(event)] || 'Nowe wydarzenie', days: 0 }
+    ? { state: displayStatus(event)==='settled' ? 'settled' : displayStatus(event)==='in_progress' ? 'live' : displayStatus(event)==='cancelled' ? 'cancelled' : 'scheduled', label: OPERATIONAL_LABELS[displayStatus(event)] || 'Nowy event', days: 0 }
     : eventListState(event,listPayments[event.id]||[]);
   const getPastUrgency=(event:any):PastUrgency=>{const state=visualState(event).state;return ['late','overdue'].includes(state)?'red':['completed','settlement','awaiting'].includes(state)?'orange':null;};
 
@@ -997,7 +997,7 @@ export default function EventsPageClient({
       }
     } catch (error) {
       console.error('Error refreshing events:', error);
-      showSnackbar('Nie udało się odświeżyć listy wydarzeń. Wyświetlam ostatnie pobrane dane.', 'error');
+      showSnackbar('Nie udało się odświeżyć listy eventów. Wyświetlam ostatnie pobrane dane.', 'error');
     } finally { refreshingList.current = false; }
   }, [showSnackbar]);
 
@@ -1158,7 +1158,7 @@ export default function EventsPageClient({
 
       if (error) throw error;
 
-      showSnackbar('Status wydarzenia został zmieniony', 'success');
+      showSnackbar('Status eventu został zmieniony', 'success');
       setStatusModalOpen(false);
       setEventToChangeStatus(null);
       await fetchEvents();
@@ -1174,7 +1174,7 @@ export default function EventsPageClient({
     try {
       if (!currentEmployee?.id) throw new Error('Nie znaleziono profilu pracownika. Odśwież stronę.');
       if (currentEmployee?.company_access_mode === 'selected' && !eventData.my_company_id) {
-        showSnackbar('Wybierz markę realizującą wydarzenie', 'warning');
+        showSnackbar('Wybierz markę realizującą event', 'warning');
         return;
       }
 
@@ -1256,7 +1256,7 @@ export default function EventsPageClient({
       );
       router.replace('/crm/events');
     } else if (info === 'invitation_rejected') {
-      showSnackbar(`Zaproszenie do wydarzenia "${eventName}" zostało odrzucone`, 'info');
+      showSnackbar(`Zaproszenie do eventu "${eventName}" zostało odrzucone`, 'info');
       router.replace('/crm/events');
     } else if (error === 'update_failed') {
       showSnackbar('Nie udało się zaktualizować statusu zaproszenia', 'error');
@@ -1434,11 +1434,11 @@ export default function EventsPageClient({
             <div>
               <div className="text-sm font-medium">
                 {eventsAwaitingConfirmation.length === 1
-                  ? '1 wydarzenie wymaga potwierdzenia operacyjnego'
-                  : `${eventsAwaitingConfirmation.length} wydarzeń wymaga potwierdzenia operacyjnego`}
+                  ? '1 event wymaga potwierdzenia operacyjnego'
+                  : `${eventsAwaitingConfirmation.length} eventów wymaga potwierdzenia operacyjnego`}
               </div>
               <p className="mt-1 text-xs leading-5 text-amber-100/70">
-                Termin przypada w ciągu 72 godzin lub już minął, a wydarzenie nadal jest zapytaniem albo ofertą do wysłania. Magazyn nie otrzyma go do planowania, dopóki oferta nie zostanie wysłana.
+                Termin przypada w ciągu 72 godzin lub już minął, a event nadal jest zapytaniem albo ofertą do wysłania. Magazyn nie otrzyma go do planowania, dopóki oferta nie zostanie wysłana.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {eventsAwaitingConfirmation.slice(0, 5).map((event) => (
@@ -2378,8 +2378,8 @@ export default function EventsPageClient({
         title="Wczytuję event"
         description={
           openingEventName
-            ? `Pobieram dane wydarzenia: ${openingEventName}`
-            : 'Pobieram dane wydarzenia...'
+            ? `Pobieram dane eventu: ${openingEventName}`
+            : 'Pobieram dane eventu...'
         }
       />
 
@@ -2398,7 +2398,7 @@ export default function EventsPageClient({
           setEventToDuplicate(null);
           resetDuplicateOptions();
         }}
-        title="Duplikuj wydarzenie"
+        title="Duplikuj event"
       >
         <div className="space-y-6">
           {/* INFORMACJA O WYDARZENIU */}
@@ -2408,14 +2408,14 @@ export default function EventsPageClient({
             </div>
 
             <div className="min-w-0 flex-1">
-              <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">Duplikowanie wydarzenia</h3>
+              <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">Duplikowanie eventu</h3>
 
               <p className="text-sm text-[#e5e4e2]/70">
                 Event: <strong className="text-[#d3bb73]">{eventToDuplicate?.name || '—'}</strong>
               </p>
 
               <p className="mt-2 text-sm leading-relaxed text-[#e5e4e2]/50">
-                Domyślnie zostaną zachowane termin, miejsce i klient oryginalnego wydarzenia.
+                Domyślnie zostaną zachowane termin, miejsce i klient oryginalnego eventu.
                 Zaznacz wybrane opcje, aby je zmienić.
               </p>
             </div>
@@ -2435,7 +2435,7 @@ export default function EventsPageClient({
                 />
 
                 <div>
-                  <div className="font-medium text-[#e5e4e2]">Zmień termin wydarzenia</div>
+                  <div className="font-medium text-[#e5e4e2]">Zmień termin eventu</div>
 
                   <div className="text-xs text-[#e5e4e2]/50">
                     Ustaw nową datę rozpoczęcia i zakończenia.
@@ -2496,7 +2496,7 @@ export default function EventsPageClient({
                 />
 
                 <div>
-                  <div className="font-medium text-[#e5e4e2]">Zmień miejsce wydarzenia</div>
+                  <div className="font-medium text-[#e5e4e2]">Zmień miejsce eventu</div>
 
                   <div className="text-xs text-[#e5e4e2]/50">
                     Wybierz inne miejsce zapisane w bazie.
@@ -2662,7 +2662,7 @@ export default function EventsPageClient({
           {/* INFORMACJA O KOPIOWANYCH DANYCH */}
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#d3bb73]/5 p-4">
             <p className="text-sm leading-relaxed text-[#e5e4e2]/60">
-              Skopiowane zostaną dane wydarzenia oraz aktywne źródło finansowe: zaakceptowana
+              Skopiowane zostaną dane eventu oraz aktywne źródło finansowe: zaakceptowana
               kalkulacja albo, gdy jej nie ma, zaakceptowana oferta.
             </p>
 
@@ -2709,7 +2709,7 @@ export default function EventsPageClient({
               ) : (
                 <>
                   <Copy className="h-4 w-4" />
-                  Duplikuj wydarzenie
+                  Duplikuj event
                 </>
               )}
             </button>
@@ -2724,7 +2724,7 @@ export default function EventsPageClient({
           setStatusModalOpen(false);
           setEventToChangeStatus(null);
         }}
-        title="Zmień status wydarzenia"
+        title="Zmień status eventu"
       >
         <div className="space-y-6">
           <div>

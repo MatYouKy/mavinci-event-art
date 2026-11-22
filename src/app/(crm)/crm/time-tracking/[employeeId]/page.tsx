@@ -86,14 +86,14 @@ const FIELD_LABELS: Record<string, string> = {
   hourly_rate: 'Stawka godzinowa',
   tags: 'Tagi',
       task_id: 'Powiązane zadanie',
-      event_id: 'Powiązane wydarzenie',
+      event_id: 'Powiązany event',
       employee_id: 'Pracownik',
       personnel_contract_id: 'Umowa pracownika',
       personnel_rate_snapshot: 'Warunki rozliczenia',
       compensation_snapshot: 'Warunki wynagrodzenia',
       created_at: 'Data utworzenia',
   task_id: 'Zadanie',
-  event_id: 'Wydarzenie',
+  event_id: 'Event',
 };
 
 export default function EmployeeTimeTrackingPage() {
@@ -545,7 +545,7 @@ export default function EmployeeTimeTrackingPage() {
                 </div>
                 {(activeEntry.tasks?.events?.name || activeEntry.events?.name) && (
                   <div className="mt-1 text-sm text-[#e5e4e2]/60">
-                    Wydarzenie: {activeEntry.tasks?.events?.name || activeEntry.events?.name}
+                    Event: {activeEntry.tasks?.events?.name || activeEntry.events?.name}
                   </div>
                 )}
                 {activeEntry.description && (
@@ -704,7 +704,7 @@ export default function EmployeeTimeTrackingPage() {
                     <h4 className="font-medium text-[#e5e4e2]">{stat.task_title}</h4>
                     {stat.event_name && (
                       <p className="mt-1 text-sm text-[#e5e4e2]/60">
-                        Wydarzenie: {stat.event_name}
+                        Event: {stat.event_name}
                       </p>
                     )}
                     <div className="mt-1 text-xs text-[#e5e4e2]/40">
@@ -808,7 +808,7 @@ export default function EmployeeTimeTrackingPage() {
                     )}
                     {(entry.tasks?.events?.name || entry.events?.name) && (
                       <p className="text-xs text-[#e5e4e2]/40">
-                        Wydarzenie: {entry.tasks?.events?.name || entry.events?.name}
+                        Event: {entry.tasks?.events?.name || entry.events?.name}
                       </p>
                     )}
                     <div className="mt-2 flex items-center gap-4 text-sm text-[#e5e4e2]/60">
@@ -870,7 +870,7 @@ export default function EmployeeTimeTrackingPage() {
                     <th className="px-3 py-3 font-medium">Data</th>
                     <th className="px-3 py-3 font-medium">Godziny</th>
                     <th className="px-3 py-3 font-medium">Zadanie / Tytuł</th>
-                    <th className="px-3 py-3 font-medium">Wydarzenie</th>
+                    <th className="px-3 py-3 font-medium">Event</th>
                     <th className="px-3 py-3 font-medium">Opis</th>
                     <th className="px-3 py-3 text-center font-medium">Czas</th>
                     <th className="px-3 py-3 text-center font-medium">Stawka</th>

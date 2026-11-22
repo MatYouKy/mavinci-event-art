@@ -20,7 +20,7 @@ export const MANAGER_HELP: HelpManual = {
       steps: [
         'Odpowiadasz na rozmowy i zapytania hotelu.',
         'Zatwierdzasz ceny spoza cennika i oceniasz oferty.',
-        'Potwierdzasz termin i prowadzisz przygotowanie wydarzenia.',
+        'Potwierdzasz termin i prowadzisz przygotowanie eventu.',
         'Decydujesz, kiedy hotel zobaczy swoje wynagrodzenie.',
       ],
       notes: [
@@ -31,13 +31,13 @@ export const MANAGER_HELP: HelpManual = {
     {
       id: 'os',
       title: 'Oś oferty w pięciu etapach',
-      summary: 'Hotel i Ty widzicie tę samą oś: Oferta, U klienta, U opiekuna, Wydarzenie, Rozliczenie. Pod osią jest zdanie „Teraz”.',
+      summary: 'Hotel i Ty widzicie tę samą oś: Oferta, U klienta, U opiekuna, Event, Rozliczenie. Pod osią jest zdanie „Teraz”.',
       steps: [
         'Oferta — hotel przygotowuje ofertę w kreatorze.',
         'U klienta — hotel przekazuje PDF (zwykle jako wkładkę do swojej oferty) albo link.',
         'U opiekuna — hotel wysłał ofertę po zgodzie klienta. Teraz Twoja ocena.',
-        'Wydarzenie — po przyjęciu oferty potwierdzasz termin i przygotowujecie realizację.',
-        'Rozliczenie — po wydarzeniu rozliczasz wydarzenie i wynagrodzenie hotelu.',
+        'Event — po przyjęciu oferty potwierdzasz termin i przygotowujecie realizację.',
+        'Rozliczenie — po evencie rozliczasz event i wynagrodzenie hotelu.',
       ],
       notes: ['W rozmowie z hotelem używaj nazw etapów z osi — hotel widzi dokładnie te same.'],
     },
@@ -84,7 +84,7 @@ export const MANAGER_HELP: HelpManual = {
         'Ceny do zgody — hotel dodał pozycję własną albo cenę poniżej stawki. Zatwierdź albo poproś o zmianę.',
         'Oferty do sprawdzenia — hotel wysłał ofertę po zgodzie klienta albo klient zaakceptował ją pod linkiem.',
         'Kroki realizacji — hotel uzupełnił krok przygotowania; zatwierdź go albo przekaż uwagi.',
-        'Wydarzenia do potwierdzenia — oferta przyjęta, termin czeka na potwierdzenie.',
+        'Eventy do potwierdzenia — oferta przyjęta, termin czeka na potwierdzenie.',
         'Rozmowy bez odpowiedzi — hotel czeka na Twoją odpowiedź.',
         'Zapytania klientów — z portalu i z kodów QR.',
         'Akceptacje klientów — klient zaakceptował ofertę online.',
@@ -107,7 +107,7 @@ export const MANAGER_HELP: HelpManual = {
         'Zaakceptuj ofertę, poproś o zmiany albo jej nie przyjmuj. Przy zmianach i odmowie napisz uzasadnienie.',
       ],
       notes: [
-        'Akceptacja tworzy wydarzenie w CRM do przygotowania. Nie rezerwuje sprzętu i nie potwierdza terminu.',
+        'Akceptacja tworzy event w CRM do przygotowania. Nie rezerwuje sprzętu i nie potwierdza terminu.',
         'Nie zmieniasz ceny klienta, treści ani brandingu hotelu. Poprawki robi hotel.',
         'Do zgody na cenę hotel nie pobierze PDF dla klienta ani nie wyśle linku. Zgoda dotyczy tych pozycji i cen.',
         'Lista „Do odblokowania akceptacji” pokazuje wszystkie brakujące warunki naraz.',
@@ -115,13 +115,13 @@ export const MANAGER_HELP: HelpManual = {
     },
     {
       id: 'potwierdzenie',
-      title: 'Potwierdzenie wydarzenia i przygotowanie',
+      title: 'Potwierdzenie eventu i przygotowanie',
       summary: 'Po przyjęciu oferty potwierdź termin. Hotel zobaczy wtedy „Potwierdzone” i swoje kroki przygotowania.',
       steps: [
         'W ofercie kliknij „Sprawdź dane i potwierdź realizację”.',
         'Hotel uzupełnia: osobę na miejscu, salę i dostęp, materiały.',
         'Zatwierdzasz kroki albo przekazujesz uwagi. Potem przygotowujesz plan do potwierdzenia przez hotel.',
-        'Timeline, zespół, agendę i logistykę prowadzisz w wydarzeniu CRM.',
+        'Timeline, zespół, agendę i logistykę prowadzisz w evencie CRM.',
       ],
     },
     {
@@ -137,16 +137,16 @@ export const MANAGER_HELP: HelpManual = {
     {
       id: 'wynagrodzenie',
       title: 'Wynagrodzenie hotelu',
-      summary: 'Prowizja to procent zysku z wydarzenia po kosztach. Hotel widzi kwoty dopiero po odsłonięciu dla marki.',
+      summary: 'Prowizja to procent zysku z eventu po kosztach. Hotel widzi kwoty dopiero po odsłonięciu dla marki.',
       steps: [
         'Stawkę ustawiasz w warunkach marki sprzedawcy.',
-        'Prowizję przypisujesz do wydarzenia w jego podsumowaniu.',
-        'Naliczenie jest wypłacalne po rozliczeniu wydarzenia, bez czekania na płatność klienta.',
+        'Prowizję przypisujesz do eventu w jego podsumowaniu.',
+        'Naliczenie jest wypłacalne po rozliczeniu eventu, bez czekania na płatność klienta.',
         'W karcie sprzedawcy włącz „Pokaż wynagrodzenie w portalu” dla marki.',
       ],
       notes: [
         'Do odsłonięcia portal nie pokazuje hotelowi zakładki „Moje wynagrodzenie” ani kwot prowizji. Naliczenia powstają niezależnie od widoczności.',
-        'Kokpit przypomni o odsłonięciu ostrzeżeniem „Wynagrodzenie do odsłonięcia”, gdy hotel ma pierwsze rozliczone wydarzenie z naliczoną prowizją.',
+        'Kokpit przypomni o odsłonięciu ostrzeżeniem „Wynagrodzenie do odsłonięcia”, gdy hotel ma pierwszy rozliczony event z naliczoną prowizją.',
         'Gdy świadomie ukryjesz wynagrodzenie po odsłonięciu, kokpit już nie przypomina.',
       ],
     },
@@ -155,16 +155,16 @@ export const MANAGER_HELP: HelpManual = {
       title: 'Gdzie co jest: CRM, Mac, telefon',
       summary: 'Kokpit, karty sprzedawców, nowego sprzedawcę, zgodę na cenę i ocenę oferty masz w CRM i na Macu. Ustawienia istniejącego sprzedawcy, potwierdzenie realizacji i wynagrodzenie prowadzisz w CRM w przeglądarce.',
       steps: [
-        'CRM — kokpit, ocena oferty, potwierdzenie wydarzenia, ustawienia sprzedawcy, „Gotowość do pracy”, wynagrodzenie.',
+        'CRM — kokpit, ocena oferty, potwierdzenie eventu, ustawienia sprzedawcy, „Gotowość do pracy”, wynagrodzenie.',
         'Aplikacja na Maca — „Sprzedawcy”: kokpit „Dziś”, oferty na osi, karta sprzedawcy z „Gotowością do pracy”, kreator „Nowy sprzedawca”, odpowiedzi na zapytania klientów i ta instrukcja.',
         'Na Macu karta oferty z portalu ma oś, zgodę na cenę i ocenę: PDF z wysłania, termin, zespół, analizę sprzętu i decyzję. Potwierdzenie realizacji — w CRM.',
         'Aplikacja mobilna — Profil → „Moi sprzedawcy”: sprawy „Dziś”, oś w 5 etapach, karta sprzedawcy z „Gotowością do pracy” i ofertami na osi, ponowne zaproszenie i ta instrukcja. W „Moim dniu” karta „Sprzedawcy — do zrobienia”.',
-        'Na telefonie rozmowy i wydarzenia otwierają się w aplikacji. Ocena oferty, zgoda na cenę i ustawienia sprzedawcy otwierają CRM w przeglądarce.',
+        'Na telefonie rozmowy i eventy otwierają się w aplikacji. Ocena oferty, zgoda na cenę i ustawienia sprzedawcy otwierają CRM w przeglądarce.',
       ],
     },
   ],
   tips: {
-    review: { text: 'Oceniasz zapisany PDF z wysłania. Akceptacja tworzy wydarzenie do przygotowania, ale nie potwierdza terminu.', chapter: 'ocena' },
+    review: { text: 'Oceniasz zapisany PDF z wysłania. Akceptacja tworzy event do przygotowania, ale nie potwierdza terminu.', chapter: 'ocena' },
     approval: { text: 'Pozycja własna albo cena poniżej stawki. Do Twojej zgody hotel nie pobierze PDF dla klienta ani nie wyśle linku.', chapter: 'ocena' },
   },
   chapterFor(pathname) {

@@ -72,37 +72,37 @@ const defaultAccessConfig: AccessConfig = {
 
 const accessConfigLabels: Record<string, { label: string; description: string }> = {
   view_full_event: {
-    label: 'Pełny widok wydarzenia',
-    description: 'Widzi komplet danych wydarzenia dostępny dla przypisanego członka zespołu.',
+    label: 'Pełny widok eventu',
+    description: 'Widzi komplet danych eventu dostępny dla przypisanego członka zespołu.',
   },
-  view_agenda: { label: 'Agenda wydarzenia', description: 'Widzi harmonogram i punkty agendy.' },
+  view_agenda: { label: 'Agenda eventu', description: 'Widzi harmonogram i punkty agendy.' },
   view_files: {
-    label: 'Pliki wydarzenia',
-    description: 'Widzi dozwolone pliki wydarzenia; dokumenty poufne nadal chronią osobne reguły.',
+    label: 'Pliki eventu',
+    description: 'Widzi dozwolone pliki eventu; dokumenty poufne nadal chronią osobne reguły.',
   },
-  view_team: { label: 'Zespół wydarzenia', description: 'Widzi osoby przypisane do realizacji.' },
-  view_equipment: { label: 'Sprzęt wydarzenia', description: 'Widzi sprzęt przypisany do realizacji.' },
-  view_client_info: { label: 'Dane klienta', description: 'Widzi dane kontaktowe klienta w wydarzeniu.' },
-  view_budget: { label: 'Budżet wydarzenia', description: 'Widzi wartości finansowe wydarzenia.' },
-  edit_tasks: { label: 'Edycja zadań wydarzenia', description: 'Może aktualizować zadania w ramach przypisanej realizacji.' },
-  manage_equipment: { label: 'Obsługa sprzętu wydarzenia', description: 'Może zarządzać sprzętem przypisanym do realizacji.' },
+  view_team: { label: 'Zespół eventu', description: 'Widzi osoby przypisane do realizacji.' },
+  view_equipment: { label: 'Sprzęt eventu', description: 'Widzi sprzęt przypisany do realizacji.' },
+  view_client_info: { label: 'Dane klienta', description: 'Widzi dane kontaktowe klienta w evencie.' },
+  view_budget: { label: 'Budżet eventu', description: 'Widzi wartości finansowe eventu.' },
+  edit_tasks: { label: 'Edycja zadań eventu', description: 'Może aktualizować zadania w ramach przypisanej realizacji.' },
+  manage_equipment: { label: 'Obsługa sprzętu eventu', description: 'Może zarządzać sprzętem przypisanym do realizacji.' },
 };
 
 const availableEventTabs: TabDefinition[] = [
-  { value: 'overview', label: 'Przegląd', description: 'Podstawowe informacje o wydarzeniu.' },
-  { value: 'details', label: 'Szczegóły', description: 'Pełne dane organizacyjne wydarzenia.' },
+  { value: 'overview', label: 'Przegląd', description: 'Podstawowe informacje o evencie.' },
+  { value: 'details', label: 'Szczegóły', description: 'Pełne dane organizacyjne eventu.' },
   { value: 'phases', label: 'Timeline', description: 'Fazy i przebieg przygotowań.' },
-  { value: 'agenda', label: 'Agenda', description: 'Harmonogram realizacji wydarzenia.' },
+  { value: 'agenda', label: 'Agenda', description: 'Harmonogram realizacji eventu.' },
   { value: 'offer', label: 'Oferta', description: 'Oferta i przypisane produkty.' },
   { value: 'finances', label: 'Finanse', description: 'Budżet, płatności i koszty.' },
   { value: 'contract', label: 'Umowa', description: 'Umowy i ich statusy.' },
-  { value: 'equipment', label: 'Sprzęt', description: 'Sprzęt przypisany do wydarzenia.' },
-  { value: 'team', label: 'Zespół', description: 'Pracownicy przypisani do wydarzenia.' },
+  { value: 'equipment', label: 'Sprzęt', description: 'Sprzęt przypisany do eventu.' },
+  { value: 'team', label: 'Zespół', description: 'Pracownicy przypisani do eventu.' },
   { value: 'logistics', label: 'Flota', description: 'Pojazdy, kierowcy i transport.' },
   { value: 'subcontractors', label: 'Podwykonawcy', description: 'Zewnętrzni wykonawcy i usługi.' },
   { value: 'files', label: 'Pliki', description: 'Dokumenty i załączniki.' },
-  { value: 'tasks', label: 'Zadania', description: 'Zadania powiązane z wydarzeniem.' },
-  { value: 'history', label: 'Historia', description: 'Dziennik zmian wydarzenia.' },
+  { value: 'tasks', label: 'Zadania', description: 'Zadania powiązane z eventem.' },
+  { value: 'history', label: 'Historia', description: 'Dziennik zmian eventu.' },
   { value: 'mavinci-live', label: 'Mavinci LIVE', description: 'Zawartość interaktywna wymagana przez produkty z oferty.' },
 ];
 
@@ -116,7 +116,7 @@ const availableOrganizationTabs: TabDefinition[] = [
   { value: 'details', label: 'Szczegóły', description: 'Dane podstawowe organizacji.' },
   { value: 'contacts', label: 'Kontakty', description: 'Osoby kontaktowe organizacji.' },
   { value: 'invoices', label: 'Faktury', description: 'Faktury powiązane z organizacją.' },
-  { value: 'events', label: 'Realizacje', description: 'Wydarzenia powiązane z organizacją.' },
+  { value: 'events', label: 'Realizacje', description: 'Eventy powiązane z organizacją.' },
   { value: 'notes', label: 'Notatki', description: 'Notatki dotyczące organizacji.' },
   { value: 'history', label: 'Historia', description: 'Historia relacji i zmian.' },
 ];
@@ -416,7 +416,7 @@ export default function AccessLevelsPage() {
                   </div>
 
                   <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119]/55 p-4">
-                    <div className="flex items-center justify-between gap-3"><h3 className="text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/50">Widoczność w wydarzeniu</h3><span className="text-xs text-blue-300">{level.event_tabs.length} zakładek</span></div>
+                    <div className="flex items-center justify-between gap-3"><h3 className="text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/50">Widoczność w evencie</h3><span className="text-xs text-blue-300">{level.event_tabs.length} zakładek</span></div>
                     {enabledConfig.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{enabledConfig.map(([key]) => <span key={key} title={accessConfigLabels[key]?.description} className="rounded-md border border-emerald-400/15 bg-emerald-400/10 px-2 py-1 text-xs text-emerald-300">{accessConfigLabels[key]?.label || key.replace(/_/g, ' ')}</span>)}</div>}
                     <div className="mt-3 flex flex-wrap gap-2">{level.event_tabs.map((tab) => <span key={tab} className="rounded-md border border-blue-400/15 bg-blue-400/10 px-2 py-1 text-xs text-blue-300">{availableEventTabs.find((item) => item.value === tab)?.label || tab}</span>)}</div>
                   </div>
@@ -449,7 +449,7 @@ export default function AccessLevelsPage() {
               </section>
 
               <section className="rounded-xl border border-[#d3bb73]/15 bg-[#0f1119]/55 p-4">
-                <div><h3 className="text-sm font-medium">Widoczność i czynności w przypisanym wydarzeniu</h3><p className="mt-1 text-xs leading-5 text-[#e5e4e2]/45">Te ustawienia uzupełniają zakresy systemowe dla pracownika przypisanego do konkretnego wydarzenia.</p></div>
+                <div><h3 className="text-sm font-medium">Widoczność i czynności w przypisanym evencie</h3><p className="mt-1 text-xs leading-5 text-[#e5e4e2]/45">Te ustawienia uzupełniają zakresy systemowe dla pracownika przypisanego do konkretnego eventu.</p></div>
                 <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{Object.keys(formData.config).map((key) => { const definition = accessConfigLabels[key]; const checked = Boolean(formData.config[key]); return <label key={key} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${checked ? 'border-emerald-400/25 bg-emerald-400/10' : 'border-[#d3bb73]/10 bg-[#0f1119]'}`}><input type="checkbox" checked={checked} onChange={(event) => setFormData((current) => ({ ...current, config: { ...current.config, [key]: event.target.checked } }))} className="mt-0.5 h-4 w-4" /><span><span className="block text-sm">{definition?.label || key.replace(/_/g, ' ')}</span><span className="mt-1 block text-xs leading-4 text-[#e5e4e2]/40">{definition?.description || 'Dodatkowe ustawienie widoczności.'}</span></span></label>; })}</div>
               </section>
 
@@ -468,7 +468,7 @@ export default function AccessLevelsPage() {
                 {formData.default_permissions.some((scope) => !getPermissionDefinition(scope)) && <div className="mt-4 rounded-lg border border-amber-400/20 bg-amber-400/10 p-3 text-xs text-amber-200"><strong className="font-medium">Nieopisane starsze zakresy:</strong> {formData.default_permissions.filter((scope) => !getPermissionDefinition(scope)).join(', ')}. Zostaną zachowane przy zapisie.</div>}
               </section>
 
-              {renderTabSelector('Zakładki wydarzenia', 'Widoczne w szczegółach wydarzenia, o ile dodatkowe reguły bezpieczeństwa nie ograniczają danych.', availableEventTabs, 'event_tabs')}
+              {renderTabSelector('Zakładki eventu', 'Widoczne w szczegółach eventu, o ile dodatkowe reguły bezpieczeństwa nie ograniczają danych.', availableEventTabs, 'event_tabs')}
               <div className="grid gap-4 xl:grid-cols-2">
                 {renderTabSelector('Zakładki kontaktu', 'Domyślna widoczność na karcie osoby kontaktowej.', availableContactTabs, 'contact_tabs')}
                 {renderTabSelector('Zakładki organizacji', 'Domyślna widoczność na karcie organizacji.', availableOrganizationTabs, 'organization_tabs')}

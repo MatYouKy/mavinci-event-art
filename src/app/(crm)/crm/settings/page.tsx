@@ -106,7 +106,7 @@ const modules = [
   { key: 'clients', label: 'Klienci' },
   { key: 'equipment', label: 'Sprzęt' },
   { key: 'kits', label: 'Zestawy Sprzętu' },
-  { key: 'events', label: 'Wydarzenia' },
+  { key: 'events', label: 'Eventy' },
   { key: 'tasks', label: 'Zadania' },
   { key: 'offers', label: 'Oferty' },
   { key: 'offerProductPicker', label: 'Wybór produktów do oferty i propozycji' },
@@ -125,7 +125,7 @@ type MyMailbox = { id: string; account_name: string; email_address: string; acco
 
 const notificationCategories = [
   { key: 'messages', label: 'Wiadomości', desc: 'Nowe wiadomości od klientów' },
-  { key: 'events', label: 'Wydarzenia', desc: 'Aktualizacje dotyczące wydarzeń' },
+  { key: 'events', label: 'Eventy', desc: 'Aktualizacje dotyczące eventów' },
   { key: 'tasks', label: 'Zadania', desc: 'Przypomnienia o zadaniach' },
   { key: 'clients', label: 'Klienci', desc: 'Zmiany danych klientów' },
   { key: 'equipment', label: 'Sprzęt', desc: 'Statusy i dostępność sprzętu' },
@@ -913,7 +913,7 @@ export default function SettingsPage() {
                       disabled={saving} className="mt-1 h-4 w-4 shrink-0 accent-[#d3bb73]" />
                   </label>
                   <p className="mt-3 text-xs leading-5 text-[#e5e4e2]/45">
-                    Dotyczy Twojego konta na tablicach zadań, zapytań i wydarzeń. Ręczny pomiar czasu pozostaje dostępny.
+                    Dotyczy Twojego konta na tablicach zadań, zapytań i eventów. Ręczny pomiar czasu pozostaje dostępny.
                     Wyłączenie nie zatrzymuje już działającego licznika. Użyj „Zapisz zmiany” poniżej.
                   </p>
                 </section>
@@ -1280,7 +1280,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-3">
                   <Workflow className="h-5 w-5 text-[#d3bb73]" />
                   <div className="text-left">
-                    <div className="font-medium text-[#e5e4e2]">Procesy wydarzeń</div>
+                    <div className="font-medium text-[#e5e4e2]">Procesy eventów</div>
                     <div className="text-xs text-[#e5e4e2]/60">
                       Etapy, terminy, bramki gotowości i automatyczne zadania
                     </div>
@@ -1392,8 +1392,8 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-3">
                   <LayoutList className="h-5 w-5 text-[#d3bb73]" />
                   <div className="text-left">
-                    <div className="font-medium text-[#e5e4e2]">Kategorie wydarzeń</div>
-                    <div className="text-xs text-[#e5e4e2]/60">Zarządzaj typami wydarzeń</div>
+                    <div className="font-medium text-[#e5e4e2]">Kategorie eventów</div>
+                    <div className="text-xs text-[#e5e4e2]/60">Zarządzaj typami eventów</div>
                   </div>
                 </div>
                 <ArrowRight className="h-5 w-5 text-[#e5e4e2]/40" />

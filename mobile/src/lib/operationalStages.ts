@@ -1,5 +1,5 @@
 export const OPERATIONAL_LABELS: Record<string, string> = {
-  inquiry: 'Nowe wydarzenie',
+  inquiry: 'Nowy event',
   offer_accepted: 'Do potwierdzenia',
   in_preparation: 'W przygotowaniu',
   ready_for_live: 'Gotowe do realizacji',

@@ -394,7 +394,7 @@ export default function DashboardScreen() {
           <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
             {[
               { screen: 'Equipment', label: 'Sprzęt' },
-              { screen: 'Events', label: 'Wydarzenia' },
+              { screen: 'Events', label: 'Eventy' },
               { screen: 'Tasks', label: 'Moje zadania' },
             ].map((item) => (
               <TouchableOpacity
@@ -453,7 +453,7 @@ export default function DashboardScreen() {
         <View style={[styles.statCard, { borderLeftColor: colors.primary.gold }]}>
           <Feather name="calendar" color={colors.primary.gold} size={24} />
           <Text style={styles.statValue}>{upcomingEvents.length}</Text>
-          <Text style={styles.statLabel}>Nadchodzące wydarzenia</Text>
+          <Text style={styles.statLabel}>Nadchodzące eventy</Text>
         </View>
 
         <View style={[styles.statCard, { borderLeftColor: colors.status.info }]}>
@@ -466,11 +466,11 @@ export default function DashboardScreen() {
       <View style={isTablet ? styles.tabletColumns : undefined}>
         {/* Upcoming Events */}
         <View style={[styles.section, isTablet && styles.tabletColumn]}>
-          <Text style={styles.sectionTitle}>Nadchodzące wydarzenia</Text>
+          <Text style={styles.sectionTitle}>Nadchodzące eventy</Text>
           {upcomingEvents.length === 0 ? (
             <View style={styles.emptyState}>
               <Feather name="calendar" color={colors.text.tertiary} size={48} />
-              <Text style={styles.emptyText}>Brak nadchodzących wydarzeń</Text>
+              <Text style={styles.emptyText}>Brak nadchodzących eventów</Text>
             </View>
           ) : (
             upcomingEvents.map((event) => (
@@ -528,7 +528,7 @@ export default function DashboardScreen() {
                     >
                       {(operational
                         ? OPERATIONAL_LABELS[stage(event)]
-                        : EVENT_STATUS_LABELS[event.status]) || 'Wydarzenie'}
+                        : EVENT_STATUS_LABELS[event.status]) || 'Event'}
                     </Text>
                   </View>
                 </View>

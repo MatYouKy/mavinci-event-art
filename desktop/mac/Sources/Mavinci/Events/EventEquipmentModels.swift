@@ -245,11 +245,11 @@ struct EquipmentImportResult: Decodable {
 enum EquipmentStage: String, CaseIterable, Identifiable {
     case dispatch, loadback, giveBack = "return"
     var id: String { rawValue }
-    var label: String { self == .dispatch ? "Wydanie" : self == .loadback ? "Po wydarzeniu" : "Zwrot" }
+    var label: String { self == .dispatch ? "Wydanie" : self == .loadback ? "Po evencie" : "Zwrot" }
     var owner: String { self == .loadback ? "Kierownik realizacji" : "Magazyn" }
-    var done: String { self == .dispatch ? "Załadowane" : self == .loadback ? "Załadowane po wydarzeniu" : "Zwrócone" }
+    var done: String { self == .dispatch ? "Załadowane" : self == .loadback ? "Załadowane po evencie" : "Zwrócone" }
     var fullLabel: String { self == .dispatch ? "Spakowane w całości" : self == .loadback ? "Wraca komplet" : "Wróciło sprawne" }
-    var qtyTitle: String { self == .dispatch ? "Spakowana ilość" : self == .loadback ? "Ile wraca po wydarzeniu" : "Ile wróciło sprawne" }
+    var qtyTitle: String { self == .dispatch ? "Spakowana ilość" : self == .loadback ? "Ile wraca po evencie" : "Ile wróciło sprawne" }
 }
 
 struct EquipmentChecklistTab: Decodable {
@@ -392,11 +392,11 @@ enum EquipmentRules {
         "issues": "Rozbieżności do przyjęcia", "done": "Zakończone",
     ]
     static let stageHints: [String: String] = [
-        "empty": "Wydarzenie nie ma sprzętu na liście.",
+        "empty": "Event nie ma sprzętu na liście.",
         "dispatch": "Magazyn odhacza spakowane ilości. Brak oznacz mniejszą ilością z powodem — wydanie czeka na zgodę sprzedawcy lub administratora.",
-        "loadback": "Kierownik realizacji przy załadunku po wydarzeniu odhacza, co wraca z wydanego sprzętu, i zatwierdza listę.",
+        "loadback": "Kierownik realizacji przy załadunku po evencie odhacza, co wraca z wydanego sprzętu, i zatwierdza listę.",
         "return": "Magazyn wpisuje, ile wróciło sprawne, uszkodzone i czego brakuje (z opisem i zdjęciami), i zatwierdza zwrot.",
-        "issues": "Zwrot ma rozbieżności — sprzedawca wydarzenia lub administrator przyjmuje je z decyzją, co dalej.",
+        "issues": "Zwrot ma rozbieżności — sprzedawca eventu lub administrator przyjmuje je z decyzją, co dalej.",
         "done": "Sprzęt wrócił i został sprawdzony.",
     ]
     static let logLabels: [String: String] = [

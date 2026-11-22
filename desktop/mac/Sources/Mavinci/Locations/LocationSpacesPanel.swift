@@ -57,13 +57,13 @@ import SwiftUI
                 }
                 Button("Anuluj", role: .cancel) {}
             }
-        } message: { Text("Czy usunąć salę „\(removingRoom?.name ?? "")”? Sali przypisanej do wydarzenia nie można usunąć.") }
+        } message: { Text("Czy usunąć salę „\(removingRoom?.name ?? "")”? Sali przypisanej do eventu nie można usunąć.") }
     }
 
     private func rooms(_ detail: CrmLocationDetail) -> some View {
         LocationPanel(title: "Sale i przestrzenie zewnętrzne", symbol: "square.split.2x2") {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Dodaj sale oraz tereny na zewnątrz, np. ogród lub miejsce teambuildingu. Ta sama baza jest dostępna w wydarzeniach i ofertach sprzedawcy hotelowego.")
+                Text("Dodaj sale oraz tereny na zewnątrz, np. ogród lub miejsce teambuildingu. Ta sama baza jest dostępna w eventach i ofertach sprzedawcy hotelowego.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if detail.rooms.isEmpty {
                     Text("Nie dodano jeszcze pomieszczeń.").foregroundStyle(.secondary).padding(.vertical, 8)

@@ -1,7 +1,7 @@
 // Polskie etykiety ról — ten sam słownik co src/lib/ui/systemLabels.ts (role) w CRM.
 // Nie wyświetlamy surowych kodów z bazy (zasada z AGENTS.md).
 const ROLE_LABELS: Record<string, string> = {
-  admin: 'Administrator', administrator: 'Administrator', manager: 'Menedżer', event_manager: 'Kierownik wydarzenia',
+  admin: 'Administrator', administrator: 'Administrator', manager: 'Menedżer', event_manager: 'Kierownik eventu',
   sales: 'Sprzedaż', salesperson: 'Sprzedawca', seller: 'Sprzedawca', sales_manager: 'Kierownik sprzedaży',
   logistics: 'Logistyka', technician: 'Technik', support: 'Wsparcie', freelancer: 'Współpracownik',
   dj: 'DJ', mc: 'Konferansjer', host: 'Prowadzący', assistant: 'Asystent', unassigned: 'Nieprzypisany',

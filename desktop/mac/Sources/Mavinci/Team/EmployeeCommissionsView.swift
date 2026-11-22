@@ -162,11 +162,11 @@ private struct CommissionHistoryEntry: Identifiable {
 
     private func intro(_ account: EmployeeCommissionAccount) -> String {
         if kind == .partner {
-            return "Wszystkie prowizje i narzuty sprzedawcy ze wszystkich wydarzeń: prowizje liczone przez podsumowanie (polecenie, kontakt rozliczeniowy, oferty z portalu, wskazanie w podsumowaniu), narzuty z ofert z narzutem w naszej fakturze i wpisy ręczne — także zapisane na jego kontakt. Planowana kwota to prognoza — do wypłaty staje się po zatwierdzeniu podsumowania wydarzenia. Każda wypłata trafia do rejestru, więc tej samej należności nie zapłacisz dwa razy."
+            return "Wszystkie prowizje i narzuty sprzedawcy ze wszystkich eventów: prowizje liczone przez podsumowanie (polecenie, kontakt rozliczeniowy, oferty z portalu, wskazanie w podsumowaniu), narzuty z ofert z narzutem w naszej fakturze i wpisy ręczne — także zapisane na jego kontakt. Planowana kwota to prognoza — do wypłaty staje się po zatwierdzeniu podsumowania eventu. Każda wypłata trafia do rejestru, więc tej samej należności nie zapłacisz dwa razy."
         }
         return account.own
-            ? "Twoje prowizje ze wszystkich wydarzeń: udział w sprzedaży (z podsumowania wydarzenia) i wpisy ręczne. Planowana prowizja to prognoza — do wypłaty staje się po zatwierdzeniu podsumowania wydarzenia, a wypłatę zapisuje osoba rozliczająca."
-            : "Wszystkie prowizje pracownika ze wszystkich wydarzeń: udział w sprzedaży (z podsumowania wydarzenia), wpisy ręczne i prowizje z jego profilu sprzedawcy. Planowana prowizja to prognoza — do wypłaty staje się po zatwierdzeniu podsumowania wydarzenia. Kwoty dla osoby, bez kosztów spółki."
+            ? "Twoje prowizje ze wszystkich eventów: udział w sprzedaży (z podsumowania eventu) i wpisy ręczne. Planowana prowizja to prognoza — do wypłaty staje się po zatwierdzeniu podsumowania eventu, a wypłatę zapisuje osoba rozliczająca."
+            : "Wszystkie prowizje pracownika ze wszystkich eventów: udział w sprzedaży (z podsumowania eventu), wpisy ręczne i prowizje z jego profilu sprzedawcy. Planowana prowizja to prognoza — do wypłaty staje się po zatwierdzeniu podsumowania eventu. Kwoty dla osoby, bez kosztów spółki."
     }
 
     private func summaryCard(_ account: EmployeeCommissionAccount, rows: [EmployeeCommission], stats: EmployeeCommissionStats?) -> some View {
@@ -217,7 +217,7 @@ private struct CommissionHistoryEntry: Identifiable {
 
     private func tiles(_ s: EmployeeCommissionStats) -> some View {
         var items = [
-            CommissionTile(label: "Zarobione / zatwierdzone", cents: s.earnedCents, detail: "Nominalne prowizje za wydarzenia", color: theme.accent),
+            CommissionTile(label: "Zarobione / zatwierdzone", cents: s.earnedCents, detail: "Nominalne prowizje za eventy", color: theme.accent),
             CommissionTile(label: "Wypłacone", cents: s.paidCents, detail: "Przelewy i wypłaty, także częściowe (bez potrąceń)", color: green),
             CommissionTile(label: "Pozostało do wypłaty", cents: s.outstandingCents, detail: "Tylko zatwierdzone, po odjęciu wypłat i potrąceń", color: violet),
             CommissionTile(label: "Planowane (prognoza)", cents: s.plannedCents, detail: "Jeszcze niezatwierdzone — poza saldem", color: Color.primary.opacity(0.75)),
@@ -247,7 +247,7 @@ private struct CommissionHistoryEntry: Identifiable {
             notes.append("Oczekujące na zaakceptowaną ofertę: \(s.waitingCount). Bez ustalonej podstawy nie powiększają zarobków ani kwoty do wypłaty.")
         }
         var undated: [String] = []
-        if s.undatedEarnedCents > 0 { undated.append(CommissionText.money(cents: s.undatedEarnedCents) + " prowizji bez daty wydarzenia") }
+        if s.undatedEarnedCents > 0 { undated.append(CommissionText.money(cents: s.undatedEarnedCents) + " prowizji bez daty eventu") }
         if s.undatedPaidCents > 0 { undated.append(CommissionText.money(cents: s.undatedPaidCents) + " wypłat bez potwierdzonej daty płatności") }
         if !undated.isEmpty {
             notes.append("W sumach, lecz poza wykresem: " + undated.joined(separator: " oraz ") + ". Brakujących dat nie zastępujemy datą utworzenia wpisu.")
@@ -286,7 +286,7 @@ private struct CommissionHistoryEntry: Identifiable {
         return TeamCard(title: "Zarobki i wypłaty miesięcznie", symbol: "chart.bar") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .top) {
-                    Text("Zarobione według daty wydarzenia; wypłacone według faktycznej daty płatności. Zmiana roku nie zmienia sum powyżej.")
+                    Text("Zarobione według daty eventu; wypłacone według faktycznej daty płatności. Zmiana roku nie zmienia sum powyżej.")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     if !years.isEmpty {
@@ -349,7 +349,7 @@ private struct CommissionHistoryEntry: Identifiable {
     private func termsCard(_ account: EmployeeCommissionAccount) -> some View {
         TeamCard(title: "Prowizja od sprzedaży", symbol: "person.badge.shield.checkmark") {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Procent od zysku netto wydarzeń, w których pracownik jest sprzedawcą wydarzenia (domyślnie autor zaakceptowanej oferty; udziały ustala się w podsumowaniu). Wyższa stawka, gdy w dniu akceptacji oferty był opiekunem klienta.")
+                Text("Procent od zysku netto eventów, w których pracownik jest sprzedawcą eventu (domyślnie autor zaakceptowanej oferty; udziały ustala się w podsumowaniu). Wyższa stawka, gdy w dniu akceptacji oferty był opiekunem klienta.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if let t = account.terms {
                     termRow("Status", t.enabled ? "Włączona" : "Wyłączona", color: t.enabled ? green : Color.secondary)
@@ -360,7 +360,7 @@ private struct CommissionHistoryEntry: Identifiable {
                         termRow("Składki pracodawcy", CommissionText.percent(rate) + " — koszt firmy")
                     }
                     if !t.enabled {
-                        Text("Prowizja się nie nalicza, nawet gdy pracownik jest sprzedawcą wydarzenia — sama rola w zespole nie wystarczy, potrzebne jest włączenie tutaj.")
+                        Text("Prowizja się nie nalicza, nawet gdy pracownik jest sprzedawcą eventu — sama rola w zespole nie wystarczy, potrzebne jest włączenie tutaj.")
                             .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
                     }
                     if t.editable {
@@ -408,7 +408,7 @@ private struct CommissionHistoryEntry: Identifiable {
                     }
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                     Spacer(minLength: 8)
-                    TextField("", text: $query, prompt: Text(mode == .history ? "Wydarzenie, opis lub numer wypłaty…" : "Wydarzenie lub beneficjent…"))
+                    TextField("", text: $query, prompt: Text(mode == .history ? "Event, opis lub numer wypłaty…" : "Event lub beneficjent…"))
                         .textFieldStyle(.roundedBorder).frame(width: 260)
                 }
                 switch mode {
@@ -436,13 +436,13 @@ private struct CommissionHistoryEntry: Identifiable {
 
     private func commissionRow(_ row: EmployeeCommission) -> some View {
         let chip = CommissionText.chip(row, accent: theme.accent)
-        let dateLine = [row.day.isEmpty ? "Bez daty wydarzenia" : row.day, row.companyName ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
+        let dateLine = [row.day.isEmpty ? "Bez daty eventu" : row.day, row.companyName ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
         return HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Button { state.showEvent(row.eventId) } label: {
-                    Text(verbatim: row.eventName.isEmpty ? "Wydarzenie" : row.eventName).fontWeight(.medium).multilineTextAlignment(.leading)
+                    Text(verbatim: row.eventName.isEmpty ? "Event" : row.eventName).fontWeight(.medium).multilineTextAlignment(.leading)
                 }
-                .buttonStyle(.plain).linkCursor().help("Otwórz wydarzenie")
+                .buttonStyle(.plain).linkCursor().help("Otwórz event")
                 Text(verbatim: dateLine).font(.caption).foregroundStyle(.secondary)
                 if !row.beneficiaryName.isEmpty && row.beneficiaryName != employeeName {
                     Text(verbatim: row.beneficiaryName).font(.caption).foregroundStyle(.secondary)
@@ -485,7 +485,7 @@ private struct CommissionHistoryEntry: Identifiable {
             Text(verbatim: "Termin rozliczenia: " + CommissionText.day(due)).font(.caption).foregroundStyle(.secondary)
         }
         if row.automatic {
-            Button("Wyliczenie: rozliczenie wydarzenia") { state.showEvent(row.eventId, cardTab: "summary") }
+            Button("Wyliczenie: rozliczenie eventu") { state.showEvent(row.eventId, cardTab: "summary") }
                 .buttonStyle(.link).linkCursor().font(.caption)
         }
     }
@@ -539,7 +539,7 @@ private struct CommissionHistoryEntry: Identifiable {
         } else if row.canManage && !row.waiting && row.status == "approved" && row.remainingAmount > 0 {
             Button("Zapisz wypłatę…") { payout = row }
         } else {
-            Text(row.waiting ? "Ustal podstawę w wydarzeniu" : row.status == "paid" ? "Rozliczona" : "—").font(.caption).foregroundStyle(.tertiary)
+            Text(row.waiting ? "Ustal podstawę w evencie" : row.status == "paid" ? "Rozliczona" : "—").font(.caption).foregroundStyle(.tertiary)
         }
     }
 
@@ -550,7 +550,7 @@ private struct CommissionHistoryEntry: Identifiable {
         let date = payment.paymentDate.map { CommissionText.day($0) } ?? ""
         return HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: (date.isEmpty ? "Data nie została zapisana" : date) + " · " + (row.eventName.isEmpty ? "Wydarzenie" : row.eventName)).fontWeight(.medium)
+                Text(verbatim: (date.isEmpty ? "Data nie została zapisana" : date) + " · " + (row.eventName.isEmpty ? "Event" : row.eventName)).fontWeight(.medium)
                 Text(verbatim: [row.beneficiaryName, row.companyName ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
                 if let reference = payment.reference, !reference.isEmpty {
                     Text(verbatim: "Numer przelewu / dokumentu: " + reference).font(.caption).textSelection(.enabled)

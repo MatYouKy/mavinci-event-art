@@ -67,7 +67,7 @@ async function latestContract(ctx: NativeContext, eventId: string) {
 async function contractOfEvent(ctx: NativeContext, eventId: string, contractId: string) {
   if (!UUID.test(contractId)) fail('Nieprawidłowy identyfikator umowy.');
   const { data } = await ctx.supabase.from('contracts').select(CONTRACT_FIELDS).eq('id', contractId).eq('event_id', eventId).maybeSingle();
-  if (!data) fail('Nie znaleziono umowy dla tego wydarzenia.');
+  if (!data) fail('Nie znaleziono umowy dla tego eventu.');
   return data as Row;
 }
 
@@ -127,7 +127,7 @@ function contractClauses(flow: string) {
       ?? { category, label: (CONTRACT_CLAUSE_CATEGORY_LABELS as Record<string, string>)[category] || 'Pozostałe', items: [] };
     const topic = attribute(tag, 'data-clause-topic');
     group.items.push({
-      topic: topic === 'event_custom' ? 'Ustalenie dla tego wydarzenia' : topic ? getContractClauseTopicLabel(topic) : '',
+      topic: topic === 'event_custom' ? 'Ustalenie dla tego eventu' : topic ? getContractClauseTopicLabel(topic) : '',
       product: attribute(tag, 'data-product-name'),
       text: text.length > 240 ? `${text.slice(0, 239).trimEnd()}…` : text,
     });
@@ -402,7 +402,7 @@ async function registerSigned(ctx: NativeContext, eventId: string, body: Row) {
  */
 async function template(ctx: NativeContext, eventId: string, body: Row) {
   const templateId = String(body.templateId || '');
-  if (!UUID.test(templateId)) fail('Brak identyfikatora wydarzenia lub szablonu.');
+  if (!UUID.test(templateId)) fail('Brak identyfikatora eventu lub szablonu.');
   const contractId = body.contractId ? String(body.contractId) : null;
   if (contractId && !UUID.test(contractId)) fail('Nieprawidłowy identyfikator umowy.');
   const { data: canManage, error: permissionError } = await ctx.supabase.rpc('can_manage_event_workflows', { p_event_id: eventId });
@@ -411,7 +411,7 @@ async function template(ctx: NativeContext, eventId: string, body: Row) {
     ctx.supabase.from('events').select('id').eq('id', eventId).maybeSingle(),
     ctx.supabase.rpc('crm_contract_permission', { p_action: 'manage' }),
   ]);
-  if (eventAccessError || !eventAccess || !contractManage) fail('Brak dostępu do umowy wydarzenia.');
+  if (eventAccessError || !eventAccess || !contractManage) fail('Brak dostępu do umowy eventu.');
   const admin = createSupabaseAdminClient();
   const { data: row, error: templateError } = await admin.from('contract_templates').select('id, name, is_active').eq('id', templateId).maybeSingle();
   if (templateError) fail(templateError.message);
@@ -450,7 +450,7 @@ async function cancel(ctx: NativeContext, eventId: string, body: Row) {
   }
   const { data: contract, error: contractError } = await admin.from('contracts').select('id').eq('id', contractId).eq('event_id', eventId).maybeSingle();
   if (contractError) fail('Nie udało się odczytać umowy.');
-  if (!contract) fail('Nie znaleziono umowy dla tego wydarzenia.');
+  if (!contract) fail('Nie znaleziono umowy dla tego eventu.');
   // Adres e-mail wyłącznie z konta zweryfikowanego tokenem — nigdy z treści żądania.
   const { data: account, error: accountError } = await admin.auth.admin.getUserById(ctx.employee.authUserId);
   const email = account?.user?.email;

@@ -6,9 +6,9 @@ import AppKit
 // e-mailem, rola i obowiązki, uprawnienia w wydarzeniu, usuwanie; dodawanie osoby. Zespół na dysku (osobny skrót).
 
 private let teamPermissions: [(key: String, title: String, detail: String)] = [
-    ("can_edit_event", "Edycja wydarzenia", "Może edytować podstawowe informacje o wydarzeniu"),
-    ("can_edit_agenda", "Edycja agendy", "Może edytować fazy wydarzenia"),
-    ("can_edit_phases", "Edycja harmonogramu", "Może edytować harmonogram wydarzenia"),
+    ("can_edit_event", "Edycja eventu", "Może edytować podstawowe informacje o evencie"),
+    ("can_edit_agenda", "Edycja agendy", "Może edytować fazy eventu"),
+    ("can_edit_phases", "Edycja harmonogramu", "Może edytować harmonogram eventu"),
     ("can_edit_tasks", "Zarządzanie zadaniami", "Może tworzyć, edytować i usuwać zadania"),
     ("can_edit_files", "Zarządzanie plikami", "Może dodawać i usuwać pliki"),
     ("can_edit_equipment", "Zarządzanie sprzętem", "Może dodawać i usuwać sprzęt"),
@@ -105,7 +105,7 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
         let lp = Dictionary(members.enumerated().map { ($0.element.id, $0.offset + 1) }, uniquingKeysWith: { first, _ in first })
         if team.members.isEmpty {
             ContentUnavailableView("Brak przypisanych pracowników", systemImage: "person.2",
-                                   description: Text(canManageTeam ? "Dodaj osoby przyciskiem „Dodaj osobę”." : "Do wydarzenia nie przypisano jeszcze nikogo."))
+                                   description: Text(canManageTeam ? "Dodaj osoby przyciskiem „Dodaj osobę”." : "Do eventu nie przypisano jeszcze nikogo."))
         } else {
             Table(members, selection: $selectedID) {
                 TableColumn("") { (member: EventTeamMember) in
@@ -296,7 +296,7 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
                 editResponsibilities = member.responsibilities ?? ""
                 editing = member
             }))
-            list.append(MemberAction(title: "Uprawnienia w wydarzeniu", symbol: "person", run: { permissionsFor = member }))
+            list.append(MemberAction(title: "Uprawnienia w evencie", symbol: "person", run: { permissionsFor = member }))
             list.append(MemberAction(title: "Usuń z zespołu", symbol: "trash", destructive: true, run: { removing = member }))
         }
         return list
@@ -458,7 +458,7 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
                             }
                         }
                         .labelsHidden().disabled(loading)
-                        Text("Dodanie do zespołu od razu nadaje dostęp do wydarzenia. Timeline możesz uzupełnić później.").font(.caption).foregroundStyle(.tertiary)
+                        Text("Dodanie do zespołu od razu nadaje dostęp do eventu. Timeline możesz uzupełnić później.").font(.caption).foregroundStyle(.tertiary)
                     }
                     if !phases.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
@@ -483,7 +483,7 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
                             }
                     }
                     // Zakres widoczności wynika z roli pracownika (ustawienia pracownika) — bez wyboru przy dodawaniu.
-                    Label("Co ta osoba widzi w wydarzeniu, wynika z jej roli w ustawieniach pracownika. Poniżej możesz dodatkowo nadać uprawnienia do edycji w tym wydarzeniu.",
+                    Label("Co ta osoba widzi w evencie, wynika z jej roli w ustawieniach pracownika. Poniżej możesz dodatkowo nadać uprawnienia do edycji w tym evencie.",
                           systemImage: "person.badge.shield.checkmark")
                         .font(.caption).foregroundStyle(.secondary)
                     Divider()
@@ -526,7 +526,7 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
             }
             .frame(maxHeight: 520)
             HStack {
-                Button(submitting ? "Dodawanie..." : "Dodaj do wydarzenia") { Task { await submit() } }
+                Button(submitting ? "Dodawanie..." : "Dodaj do eventu") { Task { await submit() } }
                     .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(submitting)
                 Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction).disabled(submitting)
                 Spacer()
@@ -546,7 +546,7 @@ private let teamPermissions: [(key: String, title: String, detail: String)] = [
     }
 
     private static let addLabels: [(String, String)] = [
-        ("can_edit_event", "Edycja wydarzenia (nazwa, data, lokalizacja)"), ("can_edit_phases", "Edycja faz i timeline"),
+        ("can_edit_event", "Edycja eventu (nazwa, data, lokalizacja)"), ("can_edit_phases", "Edycja faz i timeline"),
         ("can_edit_agenda", "Edycja agendy"), ("can_edit_tasks", "Zarządzanie zadaniami"), ("can_edit_files", "Zarządzanie plikami"),
         ("can_edit_equipment", "Zarządzanie sprzętem"), ("can_invite_members", "Zapraszanie członków zespołu"), ("can_view_budget", "Widok budżetu"),
     ]

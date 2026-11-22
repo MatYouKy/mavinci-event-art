@@ -622,7 +622,7 @@ import SwiftUI
                 .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.red.opacity(0.25)))
             } else if !preview.conflictsChecked {
-                Text("Nie udało się sprawdzić dostępności sprzętu w terminie wydarzenia.").font(.caption).foregroundStyle(.orange)
+                Text("Nie udało się sprawdzić dostępności sprzętu w terminie eventu.").font(.caption).foregroundStyle(.orange)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }

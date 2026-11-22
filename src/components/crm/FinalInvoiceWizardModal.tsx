@@ -510,9 +510,9 @@ export default function FinalInvoiceWizardModal({
   const currencyCode = referenceInvoice?.currency_code || eventOrder?.currencyCode || 'PLN';
   const eventOrderError = (eventOrderState?.eventId === linkedEventId ? eventOrderState.error : null)
     || (eventOrder && referenceInvoice && eventOrder.currencyCode !== currencyCode
-      ? 'Waluta zamówienia wydarzenia różni się od waluty zaliczek. Sprawdź dokumenty przed rozliczeniem.' : null)
+      ? 'Waluta zamówienia eventu różni się od waluty zaliczek. Sprawdź dokumenty przed rozliczeniem.' : null)
     || (eventOrder?.myCompanyId && referenceInvoice?.my_company_id && eventOrder.myCompanyId !== referenceInvoice.my_company_id
-      ? 'Wydarzenie i zaliczki mają różne firmy wystawiające. Sprawdź rozliczenie wydarzenia.' : null);
+      ? 'Event i zaliczki mają różne firmy wystawiające. Sprawdź rozliczenie eventu.' : null);
 
   useEffect(() => {
     let cancelled = false;
@@ -529,7 +529,7 @@ export default function FinalInvoiceWizardModal({
         if (!cancelled) setEventOrderState({
           eventId: linkedEventId,
           order: null,
-          error: error instanceof Error ? error.message : 'Nie udało się pobrać pełnego zamówienia wydarzenia.',
+          error: error instanceof Error ? error.message : 'Nie udało się pobrać pełnego zamówienia eventu.',
         });
       });
     return () => { cancelled = true; };
@@ -845,7 +845,7 @@ export default function FinalInvoiceWizardModal({
         if (settlementLinkError) {
           console.error('Error linking final invoice to settlement group:', settlementLinkError);
           showSnackbar(
-            'Faktura końcowa powstała, ale nie udało się przypisać jej do całej grupy wydarzeń',
+            'Faktura końcowa powstała, ale nie udało się przypisać jej do całej grupy eventów',
             'warning',
           );
         }
@@ -896,7 +896,7 @@ export default function FinalInvoiceWizardModal({
                 {linkedEventId && (
                   <span className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-[#d3bb73]" />
-                    Wydarzenie: <strong>{eventOrder?.eventName ?? sourceAdvance?.event?.name ?? 'Ładowanie…'}</strong>
+                    Event: <strong>{eventOrder?.eventName ?? sourceAdvance?.event?.name ?? 'Ładowanie…'}</strong>
                   </span>
                 )}
                 {initialOrganizationId && (
@@ -1070,14 +1070,14 @@ export default function FinalInvoiceWizardModal({
           <section aria-label="Podsumowanie rozliczenia" className="space-y-3">
             {loadingEventOrder ? (
               <p role="status" className="flex items-center gap-2 text-sm text-[#e5e4e2]/70">
-                <Loader className="h-4 w-4 animate-spin" /> Pobieranie pełnego zamówienia z wydarzenia…
+                <Loader className="h-4 w-4 animate-spin" /> Pobieranie pełnego zamówienia z eventu…
               </p>
             ) : eventOrderError ? (
               <p role="alert" className="rounded-lg bg-red-500/10 p-3 text-sm text-red-300">{eventOrderError}</p>
             ) : (
               <p className="text-sm text-[#e5e4e2]/65">
                 {eventOrder
-                  ? `Źródło kwot: ${eventOrder.sourceLabel}. Pełna wartość została pobrana z ${eventOrder.eventIds.length > 1 ? 'wydarzeń we wspólnym rozliczeniu' : 'powiązanego wydarzenia'} z uwzględnieniem uzgodnionych rabatów.`
+                  ? `Źródło kwot: ${eventOrder.sourceLabel}. Pełna wartość została pobrana z ${eventOrder.eventIds.length > 1 ? 'eventów we wspólnym rozliczeniu' : 'powiązanego eventu'} z uwzględnieniem uzgodnionych rabatów.`
                   : orderItems
                     ? 'Źródło kwot: pełne zamówienie zapisane przy dokumentach. Zaliczki pomniejszają wyłącznie kwotę do zapłaty.'
                     : 'Brak powiązanego zamówienia. Uzupełnij jego pełne pozycje poniżej — kwota zaliczki nie określa wartości całej usługi.'}
@@ -1098,7 +1098,7 @@ export default function FinalInvoiceWizardModal({
                   className="rounded-md bg-[#d3bb73]/10 px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/15 disabled:opacity-50"
                 >
                   {presentationMode === 'inherited'
-                    ? eventOrder ? 'Zamiast tego użyj pozycji z wydarzenia' : 'Zamiast tego użyj pozycji pełnego zamówienia'
+                    ? eventOrder ? 'Zamiast tego użyj pozycji z eventu' : 'Zamiast tego użyj pozycji pełnego zamówienia'
                     : 'Przywróć nazwy i układ z zaliczki'}
                 </button>
               </div>
@@ -1130,7 +1130,7 @@ export default function FinalInvoiceWizardModal({
               </p>
             )}
             {eventOrderEdited && !orderUnavailable && (
-              <p className="text-sm text-[#d3bb73]">Zmieniono pozycje na fakturze. Podsumowanie uwzględnia te zmiany; wartość zapisana w wydarzeniu pozostaje bez zmian.</p>
+              <p className="text-sm text-[#d3bb73]">Zmieniono pozycje na fakturze. Podsumowanie uwzględnia te zmiany; wartość zapisana w evencie pozostaje bez zmian.</p>
             )}
           </section>
 

@@ -116,7 +116,7 @@ export default function CockpitToday({ cockpit, onChanged }: { cockpit: SellerCo
             <span className="shrink-0 text-[11px] text-white/45">{formatSellerRelative(step.submitted_at, '')}</span>
           </Link></li>
         )} />
-        <TodayGroup title="Wydarzenia do potwierdzenia" icon={CalendarCheck2} tone="warning" items={today.events_pending} empty="Brak wydarzeń czekających na potwierdzenie." render={(event) => (
+        <TodayGroup title="Eventy do potwierdzenia" icon={CalendarCheck2} tone="warning" items={today.events_pending} empty="Brak eventów czekających na potwierdzenie." render={(event) => (
           <li key={event.event_id}><Link href={`/crm/events/${event.event_id}`} className={rowClass}>
             <span className="min-w-0">
               <span className="block truncate text-sm group-hover:text-[#d3bb73]">{event.name}</span>
@@ -144,7 +144,7 @@ export default function CockpitToday({ cockpit, onChanged }: { cockpit: SellerCo
               <span className="min-w-0">
                 <span className="block truncate text-sm">{inquiry.guest_name}</span>
                 <Meta>
-                  {[inquiry.event_type ? SELLER_EVENT_TYPE_LABELS[inquiry.event_type] || 'Wydarzenie' : null,
+                  {[inquiry.event_type ? SELLER_EVENT_TYPE_LABELS[inquiry.event_type] || 'Event' : null,
                     inquiry.event_date ? formatSellerDate(inquiry.event_date) : 'termin do ustalenia',
                     inquiry.guest_count ? `${inquiry.guest_count} os.` : null].filter(Boolean).join(' · ')}
                 </Meta>

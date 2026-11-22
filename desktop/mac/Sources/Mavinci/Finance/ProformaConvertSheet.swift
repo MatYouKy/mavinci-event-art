@@ -337,7 +337,7 @@ struct ProformaSetup: Decodable {
                     Text("Pozycja na nowej fakturze: \(item.name)").font(.callout)
                 }
                 if model.targetType == "advance" {
-                    Text("Faktura końcowa odziedziczy nazwy i układ tej zaliczki. Pełną wartość rozliczenia pobierze osobno z zamówienia, w pierwszej kolejności z powiązanego wydarzenia; nie będzie to ponowne naliczenie samej kwoty zaliczki.")
+                    Text("Faktura końcowa odziedziczy nazwy i układ tej zaliczki. Pełną wartość rozliczenia pobierze osobno z zamówienia, w pierwszej kolejności z powiązanego eventu; nie będzie to ponowne naliczenie samej kwoty zaliczki.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

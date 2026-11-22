@@ -471,7 +471,7 @@ enum ContractConditionText {
                 let labels = values.map { $0.lowercased() == "osoba" ? "osoba prywatna" : $0.lowercased() == "firma" ? "firma" : $0 }
                 return negate ? "Klient inny niż \(list(labels))" : "Klient: \(list(labels))"
             case "kategoria":
-                return negate ? "Wydarzenie inne niż \(list(values))" : "Wydarzenie: \(list(values))"
+                return negate ? "Event inny niż \(list(values))" : "Event: \(list(values))"
             default:
                 let label = fieldLabels[variable] ?? variable
                 return "\(label) \(negate ? "≠" : "=") \(list(values))"

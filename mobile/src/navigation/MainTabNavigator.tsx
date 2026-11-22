@@ -335,7 +335,7 @@ export default function MainTabNavigator() {
           name="Events"
           component={EventsStackNavigator}
           options={{
-            title: 'Wydarzenia',
+            title: 'Eventy',
             tabBarButton: () => null,
             tabBarIcon: ({ color, size }) => <Feather name="star" color={color} size={size} />,
           }}

@@ -55,8 +55,8 @@ export default function EventStepsHelpModal({
     myRoles == null
       ? 'Zakres odpowiedzialności każdej roli i jak wykonać swoje kroki.'
       : mine.length
-        ? 'Najpierw Twoja rola na tym wydarzeniu, potem pozostałe.'
-        : 'Nie masz przypisanej roli na tym wydarzeniu — poniżej zakres wszystkich ról.';
+        ? 'Najpierw Twoja rola na tym evencie, potem pozostałe.'
+        : 'Nie masz przypisanej roli na tym evencie — poniżej zakres wszystkich ról.';
 
   const tabId = (role: EventStepsHelpRole) => `${baseId}-tab-${role}`;
   const panelId = `${baseId}-panel`;

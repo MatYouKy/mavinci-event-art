@@ -108,8 +108,8 @@ export async function sellerOfferReview(ctx: NativeContext, request: Request, of
   }
   const approvalBlockers: string[] = [];
   if (canDecide) {
-    if (!realization?.auto_event_ready) approvalBlockers.push('Automatyczne tworzenie wydarzenia wymaga migracji 20261028170000_seller_acceptance_event_handoff.sql.');
-    if (!realization?.can_create_event) approvalBlockers.push('Akceptacja tworzy wydarzenie — potrzebujesz uprawnień do ofert i wydarzeń tej marki.');
+    if (!realization?.auto_event_ready) approvalBlockers.push('Automatyczne tworzenie eventu wymaga migracji 20261028170000_seller_acceptance_event_handoff.sql.');
+    if (!realization?.can_create_event) approvalBlockers.push('Akceptacja tworzy event — potrzebujesz uprawnień do ofert i eventów tej marki.');
     if (state.review_context?.date_error) approvalBlockers.push(state.review_context.date_error);
     if (!state.offer_summary) approvalBlockers.push('Odśwież status — nie udało się wczytać zakresu oferty.');
     else if (!state.offer_summary.items.length) approvalBlockers.push('Sprzedawca musi uzupełnić pozycje oferty.');

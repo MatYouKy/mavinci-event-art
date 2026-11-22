@@ -69,7 +69,7 @@ interface Props {
 }
 
 const arrangementLabels: Record<BillingArrangement, string> = {
-  direct: 'Bezpośrednio przez klienta wydarzenia',
+  direct: 'Bezpośrednio przez klienta eventu',
   hotel: 'Przez hotel',
   agency: 'Przez agencję',
   other: 'Przez inną organizację',
@@ -111,7 +111,7 @@ export default function EventBillingContextCard({
   const [saving, setSaving] = useState(false);
   const [settlementLoading, setSettlementLoading] = useState(true);
   const [settlementGroupId, setSettlementGroupId] = useState<string | null>(null);
-  const [settlementName, setSettlementName] = useState('Wspólne rozliczenie wydarzeń');
+  const [settlementName, setSettlementName] = useState('Wspólne rozliczenie eventów');
   const [settlementEvents, setSettlementEvents] = useState<SettlementEvent[]>([]);
   const [selectedSettlementEventIds, setSelectedSettlementEventIds] = useState<string[]>([
     eventId,
@@ -199,7 +199,7 @@ export default function EventBillingContextCard({
             const term = termsResult.data?.find((item) => item.sales_partner_id === row.id);
             const label = employee ? [employee.name, employee.surname].filter(Boolean).join(' ') : contact?.full_name;
             const commissionReady = Boolean(term?.is_active && term.commission_enabled && Number(term.default_commission_rate) > 0);
-            const termsLabel = !event.my_company_id ? 'Wybierz markę wydarzenia'
+            const termsLabel = !event.my_company_id ? 'Wybierz markę eventu'
               : commissionReady ? `Domyślna prowizja: ${Number(term!.default_commission_rate)}%`
               : 'Warunki prowizji wymagają uzupełnienia';
             options.push({
@@ -277,7 +277,7 @@ export default function EventBillingContextCard({
         if (!active) return;
         if (groupResult.data && membersResult.data) {
           setSettlementGroupId(groupId);
-          setSettlementName(groupResult.data.name || 'Wspólne rozliczenie wydarzeń');
+          setSettlementName(groupResult.data.name || 'Wspólne rozliczenie eventów');
           setSelectedSettlementEventIds(membersResult.data.map((member) => member.event_id));
           setPrimarySettlementEventId(
             groupResult.data.primary_event_id ||
@@ -496,7 +496,7 @@ export default function EventBillingContextCard({
       return;
     }
     if (editingBilling && referralEnabled && !referralPartnerId) {
-      showSnackbar('Wybierz sprzedawcę, który pozyskał wydarzenie, albo odznacz pole polecenia.', 'error');
+      showSnackbar('Wybierz sprzedawcę, który pozyskał event, albo odznacz pole polecenia.', 'error');
       return;
     }
     if (editingBilling && referralEnabled && referralPartnerId !== savedReferralPartnerId
@@ -505,15 +505,15 @@ export default function EventBillingContextCard({
       return;
     }
     if (arrangement !== 'direct' && !billingOrganizationId) {
-      showSnackbar('Wybierz organizację, która będzie rozliczać wydarzenie', 'error');
+      showSnackbar('Wybierz organizację, która będzie rozliczać event', 'error');
       return;
     }
 
     if (editingSettlement && selectedSettlementEventIds.length < 2) {
       showSnackbar(
         settlementGroupId
-          ? 'Grupa musi zawierać co najmniej dwa wydarzenia. Aby ją usunąć, wybierz „Rozłącz grupę”.'
-          : 'Wybierz co najmniej dwa wydarzenia do wspólnego rozliczenia.',
+          ? 'Grupa musi zawierać co najmniej dwa eventy. Aby ją usunąć, wybierz „Rozłącz grupę”.'
+          : 'Wybierz co najmniej dwa eventy do wspólnego rozliczenia.',
         'warning',
       );
       return;
@@ -589,10 +589,10 @@ export default function EventBillingContextCard({
       });
       setBillingSnapshot(null);
       setEditingBilling(false);
-      showSnackbar('Sposób rozliczenia wydarzenia został zapisany', 'success');
+      showSnackbar('Sposób rozliczenia eventu został zapisany', 'success');
     } catch (error: any) {
       console.error('Error saving event billing context:', error);
-      showSnackbar(error?.message || 'Nie udało się zapisać rozliczenia wydarzenia', 'error');
+      showSnackbar(error?.message || 'Nie udało się zapisać rozliczenia eventu', 'error');
     } finally {
       setSaving(false);
     }
@@ -607,16 +607,16 @@ export default function EventBillingContextCard({
       });
       if (error) throw error;
       setSettlementGroupId(null);
-      setSettlementName('Wspólne rozliczenie wydarzeń');
+      setSettlementName('Wspólne rozliczenie eventów');
       setSelectedSettlementEventIds([eventId]);
       setPrimarySettlementEventId(eventId);
       setSettlementSnapshot(null);
       setEditingSettlement(false);
       setEventSearch('');
-      showSnackbar('Wydarzenia zostały rozłączone. Historia faktur pozostała zachowana.', 'success');
+      showSnackbar('Eventy zostały rozłączone. Historia faktur pozostała zachowana.', 'success');
     } catch (error: any) {
       console.error('Error dissolving event settlement:', error);
-      showSnackbar(error?.message || 'Nie udało się rozłączyć wydarzeń', 'error');
+      showSnackbar(error?.message || 'Nie udało się rozłączyć eventów', 'error');
     } finally {
       setSaving(false);
     }
@@ -630,7 +630,7 @@ export default function EventBillingContextCard({
             <ReceiptText className="h-5 w-5 text-[#d3bb73]" />
           </div>
           <div>
-            <h2 className="text-lg font-light text-[#e5e4e2]">Rozliczenie wydarzenia</h2>
+            <h2 className="text-lg font-light text-[#e5e4e2]">Rozliczenie eventu</h2>
             <p className="mt-1 text-sm text-[#e5e4e2]/50">
               Określ nabywcę faktur i osoby odpowiedzialne za rozliczenie.
             </p>
@@ -714,7 +714,7 @@ export default function EventBillingContextCard({
                     <p className="mt-1 text-sm text-[#e5e4e2]">
                       {clientInvoiceBuyer
                         ? clientInvoiceBuyer.buyer.alias || clientInvoiceBuyer.buyer.name
-                        : clientOrganizationName || 'Klient przypisany do wydarzenia'}
+                        : clientOrganizationName || 'Klient przypisany do eventu'}
                     </p>
                     {clientInvoiceBuyerNote && (
                       <p className="mt-1 text-xs text-[#e5e4e2]/50">
@@ -752,7 +752,7 @@ export default function EventBillingContextCard({
                     onChange={(event) => setReferralEnabled(event.target.checked)}
                     className="mt-0.5 h-4 w-4 shrink-0 accent-[#d3bb73]"
                   />
-                  <span>Wydarzenie pozyskane przez sprzedawcę</span>
+                  <span>Event pozyskany przez sprzedawcę</span>
                 </label>
                 <p className="mt-2 text-xs leading-5 text-[#e5e4e2]/50">
                   Sprzedawca może otrzymać prowizję także wtedy, gdy klient rozlicza się bezpośrednio. Przypisanie nie zmienia nabywcy faktury ani osoby kontaktowej klienta.
@@ -764,7 +764,7 @@ export default function EventBillingContextCard({
                     onChange={setReferralPartnerId}
                     disabled={!canEdit || saving || referralLoading || Boolean(referralError)}
                     placeholder="Wyszukaj sprzedawcę po nazwisku, firmie lub e-mailu…"
-                    ariaLabel="Sprzedawca, który pozyskał wydarzenie"
+                    ariaLabel="Sprzedawca, który pozyskał event"
                     emptyLabel="Brak sprzedawcy — dodaj profil w kartotece sprzedawców"
                   />
                   {selectedReferralSeller && <p className="text-xs text-[#d3bb73]/80">{selectedReferralSeller.description}</p>}
@@ -772,7 +772,7 @@ export default function EventBillingContextCard({
                     Przypisanie osoby nie ustala kwoty do wypłaty. Uzupełnij warunki dla marki lub ustal prowizję ręcznie w sekcji „Sprzedawcy i prowizje”.
                   </p>}
                   <p className="text-xs leading-5 text-[#e5e4e2]/45">
-                    Po zapisie obowiązują warunki sprzedawcy dla marki wydarzenia, z uwzględnieniem uzgodnień zaakceptowanej oferty. Prowizję umowną możesz edytować poniżej. Bez zaakceptowanej oferty naliczenie oczekuje na podstawę netto po rabacie.
+                    Po zapisie obowiązują warunki sprzedawcy dla marki eventu, z uwzględnieniem uzgodnień zaakceptowanej oferty. Prowizję umowną możesz edytować poniżej. Bez zaakceptowanej oferty naliczenie oczekuje na podstawę netto po rabacie.
                   </p>
                 </div>}
                 {savedReferralPartnerId && (!referralEnabled || referralPartnerId !== savedReferralPartnerId) && <p className="mt-3 text-xs leading-5 text-amber-200/80">
@@ -789,7 +789,7 @@ export default function EventBillingContextCard({
                     </p>
                   </div>
                   <p className="mb-3 text-xs leading-5 text-[#e5e4e2]/50">
-                    Jeśli zaznaczona osoba jest sprzedawcą z aktywną prowizją dla marki wydarzenia, zapis doda ją automatycznie do sekcji „Sprzedawcy i prowizje”. Kwota jest liczona od wartości netto zaakceptowanej oferty. Bez niej zapisujemy stawkę i oczekiwanie na podstawę.
+                    Jeśli zaznaczona osoba jest sprzedawcą z aktywną prowizją dla marki eventu, zapis doda ją automatycznie do sekcji „Sprzedawcy i prowizje”. Kwota jest liczona od wartości netto zaakceptowanej oferty. Bez niej zapisujemy stawkę i oczekiwanie na podstawę.
                   </p>
 
                   {contactsLoading ? (
@@ -852,7 +852,7 @@ export default function EventBillingContextCard({
                 <p className="text-xs uppercase tracking-wide text-[#d3bb73]/60">Rozlicza</p>
                 <p className="mt-1 truncate text-sm text-[#e5e4e2]">
                   {arrangement === 'direct'
-                    ? clientOrganizationName || 'Klient przypisany do wydarzenia'
+                    ? clientOrganizationName || 'Klient przypisany do eventu'
                     : selectedOrganization?.alias || selectedOrganization?.name || 'Nie wybrano organizacji'}
                 </p>
                 <p className="mt-1 text-xs text-[#e5e4e2]/40">{arrangementLabels[arrangement]}</p>
@@ -877,7 +877,7 @@ export default function EventBillingContextCard({
             <button type="button" disabled={saving} onClick={() => setReferralReload((value) => value + 1)} className="mt-2 rounded-md bg-white/5 px-3 py-1.5 text-[#d3bb73]">Odśwież sprzedawców</button>
           </div>}
           {!editingBilling && !referralLoading && !referralError && savedReferralPartnerId && <div className="rounded-lg bg-white/[0.035] p-4">
-            <p className="text-xs uppercase tracking-wide text-[#d3bb73]/60">Sprzedawca pozyskujący wydarzenie</p>
+            <p className="text-xs uppercase tracking-wide text-[#d3bb73]/60">Sprzedawca pozyskujący event</p>
             <p className="mt-1 text-sm text-[#e5e4e2]">{referralSellers.find((seller) => seller.id === savedReferralPartnerId)?.label || 'Przypisany sprzedawca'}</p>
             <p className="mt-1 text-xs text-[#e5e4e2]/45">Prowizja niezależna od nabywcy faktury — szczegóły poniżej.</p>
           </div>}
@@ -908,7 +908,7 @@ export default function EventBillingContextCard({
                   <p className="mt-1 max-w-2xl text-xs leading-5 text-[#e5e4e2]/50">
                     Połącz osobne realizacje, gdy mają otrzymać jedną fakturę. Timeline, zespół,
                     sprzęt i koszty pozostają oddzielne, a przychód faktury jest przypisywany do
-                    każdego wydarzenia.
+                    każdego eventu.
                   </p>
                 </div>
               </div>
@@ -920,7 +920,7 @@ export default function EventBillingContextCard({
                   className="flex items-center gap-2 rounded-lg border border-sky-400/20 px-3 py-2 text-xs text-sky-200 transition-colors hover:bg-sky-400/10 disabled:opacity-50"
                 >
                   <Link2 className="h-3.5 w-3.5" />
-                  {settlementGroupId ? 'Edytuj powiązanie' : 'Połącz wydarzenia'}
+                  {settlementGroupId ? 'Edytuj powiązanie' : 'Połącz eventy'}
                 </button>
               )}
             </div>
@@ -950,12 +950,12 @@ export default function EventBillingContextCard({
                   </div>
                 ) : (
                   <p className="rounded-lg border border-[#e5e4e2]/10 bg-[#0a0d1a] px-3 py-3 text-xs text-[#e5e4e2]/45">
-                    To wydarzenie jest obecnie rozliczane samodzielnie.
+                    Ten event jest obecnie rozliczany samodzielnie.
                   </p>
                 )}
 
                 {(editingSettlement || settlementGroupId) && <div>
-                  <p className="mb-2 text-xs text-[#e5e4e2]/50">Wydarzenia w rozliczeniu</p>
+                  <p className="mb-2 text-xs text-[#e5e4e2]/50">Eventy w rozliczeniu</p>
                   <div className="space-y-2">
                     {selectedSettlementEvents.map((settlementEvent) => (
                       <div
@@ -967,7 +967,7 @@ export default function EventBillingContextCard({
                           <p className="mt-0.5 flex items-center gap-1 text-xs text-[#e5e4e2]/40">
                             <CalendarDays className="h-3 w-3" />
                             {formatEventDate(settlementEvent.event_date)}
-                            {settlementEvent.id === eventId && ' · aktualne wydarzenie'}
+                            {settlementEvent.id === eventId && ' · aktualny event'}
                           </p>
                         </div>
                         {editingSettlement && settlementEvent.id !== eventId && canEdit && (
@@ -992,7 +992,7 @@ export default function EventBillingContextCard({
                 {canEdit && editingSettlement && (
                   <div>
                     <label className="mb-2 block text-xs text-[#e5e4e2]/50">
-                      Dodaj wydarzenie tego klienta lub płatnika
+                      Dodaj event tego klienta lub płatnika
                     </label>
                     <div className="relative">
                       <Search className="absolute left-3 top-3 h-4 w-4 text-[#e5e4e2]/30" />
@@ -1021,7 +1021,7 @@ export default function EventBillingContextCard({
                           ))
                         ) : (
                           <p className="px-3 py-2 text-xs text-[#e5e4e2]/35">
-                            Brak kolejnych wydarzeń tego klienta lub płatnika.
+                            Brak kolejnych eventów tego klienta lub płatnika.
                           </p>
                         )}
                       </div>
@@ -1032,7 +1032,7 @@ export default function EventBillingContextCard({
                 {editingSettlement && selectedSettlementEventIds.length > 1 && (
                   <div>
                     <label className="mb-2 block text-xs text-[#e5e4e2]/50">
-                      Wydarzenie główne dla faktury
+                      Event główny dla faktury
                     </label>
                     <select
                       value={primarySettlementEventId}
@@ -1047,7 +1047,7 @@ export default function EventBillingContextCard({
                       ))}
                     </select>
                     <p className="mt-2 text-xs text-[#e5e4e2]/35">
-                      Dokument pozostaje jeden. W pozostałych wydarzeniach będzie widoczny jako
+                      Dokument pozostaje jeden. W pozostałych eventach będzie widoczny jako
                       faktura wspólna wraz z przypisaną częścią przychodu.
                     </p>
                   </div>

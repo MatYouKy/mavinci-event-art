@@ -102,7 +102,7 @@ export default function CreateClientFromSellerOffer({ offerId, linkedContactId, 
       wide
       onClose={() => setOpen(false)}
       title={result ? 'Klient zapisany w CRM' : 'Utwórz klienta z danych oferty'}
-      description={result ? undefined : 'Dane klienta wpisane przez sprzedawcę trafią do kartoteki CRM. Istniejący kontakt lub organizacja zostaną powiązane zamiast duplikowania; puste dane klienta w wydarzeniu zostaną uzupełnione.'}
+      description={result ? undefined : 'Dane klienta wpisane przez sprzedawcę trafią do kartoteki CRM. Istniejący kontakt lub organizacja zostaną powiązane zamiast duplikowania; puste dane klienta w evencie zostaną uzupełnione.'}
       footer={result
         ? <button type="button" onClick={() => setOpen(false)} className={sellerPrimaryButton}>Zamknij</button>
         : <>

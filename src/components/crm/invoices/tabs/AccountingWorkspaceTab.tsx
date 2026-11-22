@@ -606,7 +606,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
           <div className="rounded-xl border border-[#d3bb73]/15 bg-[#d3bb73]/[0.05] px-5 py-4 text-sm leading-6 text-[#e5e4e2]/65">
             Rejestr obejmuje umowy o pracę, zlecenia i umowy o dzieło. Powiązanie z pracownikiem
             lub podwykonawcą jest opcjonalne — dane osoby pozostają w umowie również po usunięciu jej z CRM.
-            Umowy, oferty i kalkulacje wydarzeń nie są tutaj wyświetlane.
+            Umowy, oferty i kalkulacje eventów nie są tutaj wyświetlane.
           </div>
           <PersonnelContractsRegistry
             filterCompanyIds={filterCompanyIds}

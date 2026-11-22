@@ -113,9 +113,9 @@ export default function OfferActions({
       if (companiesResult.error) throw companiesResult.error;
       const inquiry = inquiryResult.data;
       if (inquiry.event_id) { router.push(`/crm/events/${inquiry.event_id}`); return; }
-      if (inquiry.accepted_offer_id !== offer.id) throw new Error('W zapytaniu wybierz tę ofertę jako zaakceptowaną przed utworzeniem wydarzenia.');
+      if (inquiry.accepted_offer_id !== offer.id) throw new Error('W zapytaniu wybierz tę ofertę jako zaakceptowaną przed utworzeniem eventu.');
       setConversionData({ inquiry: { ...inquiry, title: offer.title || inquiry.title }, categories: categoriesResult.data || [], companies: companiesResult.data || [] });
-    } catch (error: any) { showSnackbar(error.message || 'Nie udało się otworzyć formularza wydarzenia', 'error'); }
+    } catch (error: any) { showSnackbar(error.message || 'Nie udało się otworzyć formularza eventu', 'error'); }
     finally { conversionLock.current = false; setLoadingConversion(false); }
   };
   const [deletingPdf, setDeletingPdf] = useState(false);
@@ -405,7 +405,7 @@ export default function OfferActions({
             .eq('id', conversionData.inquiry.id).eq('is_inquiry', true).is('archived_at', null).single();
           if (error) throw error;
           if (data.accepted_offer_id !== offer.id) throw new Error('Zaakceptowana oferta w zapytaniu zmieniła się. Otwórz formularz ponownie.');
-          if (!data.contact_id && !data.organization_id) throw new Error('Uzupełnij klienta w powiązanym zapytaniu przed utworzeniem wydarzenia.');
+          if (!data.contact_id && !data.organization_id) throw new Error('Uzupełnij klienta w powiązanym zapytaniu przed utworzeniem eventu.');
         }}
         onConverted={(eventId) => { setConversionData(null); onOfferUpdated?.(); router.push(`/crm/events/${eventId}`); }} />}
       {showLinkModal && <OfferLinkModal offer={offer} onClose={() => setShowLinkModal(false)}
@@ -457,14 +457,14 @@ export default function OfferActions({
             <button type="button" disabled={loadingConversion} onClick={() => void openEventCreation()}
               className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-black disabled:opacity-50">
               <Calendar className="h-4 w-4" />
-              {loadingConversion ? 'Wczytywanie…' : 'Utwórz wydarzenie'}
+              {loadingConversion ? 'Wczytywanie…' : 'Utwórz event'}
             </button>
           )}
           {canSendEmail && offer.sales_channel !== 'seller_portal' && (!offer.event_id || !offer.inquiry_id) && (
             <button type="button" onClick={() => setShowLinkModal(true)}
               className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20">
               <Calendar className="h-4 w-4" />
-              {!offer.event_id ? 'Powiąż z wydarzeniem lub zapytaniem' : 'Powiąż z zapytaniem'}
+              {!offer.event_id ? 'Powiąż z eventem lub zapytaniem' : 'Powiąż z zapytaniem'}
             </button>
           )}
           {source && <button

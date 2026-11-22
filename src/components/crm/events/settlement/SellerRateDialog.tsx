@@ -46,7 +46,7 @@ export default function SellerRateDialog({
       'seller-rate',
       'set_event_settlement_seller_rate',
       { p_event_id: eventId, p_sales_partner_id: seller.partner_id, p_rate: value, p_reason: value === null ? null : reason.trim() },
-      value === null ? 'Przywrócono stawkę z karty sprzedawcy.' : 'Stawka dla wydarzenia zapisana — prowizja przeliczona.',
+      value === null ? 'Przywrócono stawkę z karty sprzedawcy.' : 'Stawka dla eventu zapisana — prowizja przeliczona.',
     );
     if (ok) onClose();
   };
@@ -60,7 +60,7 @@ export default function SellerRateDialog({
       return;
     }
     if (reason.trim().length < 3) {
-      setError('Podaj powód stawki dla tego wydarzenia (widoczny w historii prowizji).');
+      setError('Podaj powód stawki dla tego eventu (widoczny w historii prowizji).');
       return;
     }
     setError('');
@@ -70,8 +70,8 @@ export default function SellerRateDialog({
   return (
     <EventStepDialog
       open
-      title={`Stawka dla wydarzenia — ${seller.name}`}
-      description={`Karta sprzedawcy: ${seller.card_rate != null ? `${formatPercent(seller.card_rate)} od zysku` : 'brak stawki'}. Zmiana dotyczy tylko tego wydarzenia.`}
+      title={`Stawka dla eventu — ${seller.name}`}
+      description={`Karta sprzedawcy: ${seller.card_rate != null ? `${formatPercent(seller.card_rate)} od zysku` : 'brak stawki'}. Zmiana dotyczy tylko tego eventu.`}
       onClose={close}
       busy={saving}
     >

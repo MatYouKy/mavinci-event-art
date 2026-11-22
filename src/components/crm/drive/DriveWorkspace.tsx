@@ -119,7 +119,7 @@ export default function DriveWorkspace() {
       setEvents(data.events);
       setEventsError('');
     } catch (error) {
-      setEventsError(errorMessage(error, 'Nie udało się pobrać wydarzeń.'));
+      setEventsError(errorMessage(error, 'Nie udało się pobrać eventów.'));
     }
   }, []);
 

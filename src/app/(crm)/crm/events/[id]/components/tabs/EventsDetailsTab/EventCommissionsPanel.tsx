@@ -409,7 +409,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
         (item) => item.sales_partner_id === partner.id && item.my_company_id === eventCompanyId && item.commission_enabled,
       );
       if (!term || partner.status !== 'active') {
-        showSnackbar('Uzupełnij warunki sprzedawcy dla marki wydarzenia w kartotece sprzedawców.', 'warning');
+        showSnackbar('Uzupełnij warunki sprzedawcy dla marki eventu w kartotece sprzedawców.', 'warning');
         return;
       }
       setCustomizeTerms(false);
@@ -526,7 +526,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
           showSnackbar(result.message || 'Uzupełnij dane potrzebne do naliczenia.', 'warning');
           return;
         }
-        showSnackbar(result.created ? 'Sprzedawca dodany — kwotę prowizji liczy podsumowanie wydarzenia' : 'Prowizja dla tej osoby jest już zapisana', 'success');
+        showSnackbar(result.created ? 'Sprzedawca dodany — kwotę prowizji liczy podsumowanie eventu' : 'Prowizja dla tej osoby jest już zapisana', 'success');
         resetForm();
         await loadData();
       } catch (error) {
@@ -656,7 +656,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
       return;
     }
     await loadData();
-    showSnackbar('Prowizja przywrócona — kwotę ustali podsumowanie wydarzenia', 'success');
+    showSnackbar('Prowizja przywrócona — kwotę ustali podsumowanie eventu', 'success');
   };
 
   const handleCancelCommission = async (commission: Commission) => {
@@ -727,7 +727,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
           <div>
             <h3 className="text-sm font-medium text-[#e5e4e2]">Sprzedawcy i prowizje</h3>
             <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/45">
-              Prowizje automatyczne (sprzedawca wydarzenia, polecenie, kontakt rozliczeniowy, pośrednik, sprzedawca z portalu) liczy podsumowanie wydarzenia — kwota, podstawa i stawka zmieniają się tam. Tutaj dodasz sprzedawcę z kartoteki albo wpis ręczny w innych przypadkach.
+              Prowizje automatyczne (sprzedawca eventu, polecenie, kontakt rozliczeniowy, pośrednik, sprzedawca z portalu) liczy podsumowanie eventu — kwota, podstawa i stawka zmieniają się tam. Tutaj dodasz sprzedawcę z kartoteki albo wpis ręczny w innych przypadkach.
             </p>
             <Link href={`/crm/events/${eventId}?tab=summary`} className="mt-1 inline-block text-xs text-[#d3bb73] hover:underline">
               Wyliczenie: zakładka Podsumowanie
@@ -780,7 +780,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
         <div className="mt-4 space-y-4 rounded-xl border border-white/10 bg-[#0a0d1a] p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-medium text-[#e5e4e2]">
-              {editingId ? 'Edytuj warunki dla tego wydarzenia' : 'Wybierz osobę — warunki uzupełnią się automatycznie'}
+              {editingId ? 'Edytuj warunki dla tego eventu' : 'Wybierz osobę — warunki uzupełnią się automatycznie'}
             </p>
             <button type="button" onClick={resetForm} className="rounded p-1 text-[#e5e4e2]/45 hover:bg-white/5">
               <X className="h-4 w-4" />
@@ -790,7 +790,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
           {editingAutomatic && (
             <div className="space-y-3">
               <p className="rounded-lg bg-white/[0.03] p-3 text-xs leading-5 text-[#e5e4e2]/60">
-                Kwotę, podstawę i odbiorcę tej prowizji ustala podsumowanie wydarzenia. Tutaj zmienisz tylko termin wypłaty i notatkę.
+                Kwotę, podstawę i odbiorcę tej prowizji ustala podsumowanie eventu. Tutaj zmienisz tylko termin wypłaty i notatkę.
               </p>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="text-xs text-[#e5e4e2]/55">
@@ -898,13 +898,13 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
           {!showDetails && selectedPartner && (
             <div className="rounded-lg bg-white/[0.025] p-4 text-xs text-[#e5e4e2]/65">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p>Warunki z kartoteki sprzedawcy dla marki wydarzenia</p>
+                <p>Warunki z kartoteki sprzedawcy dla marki eventu</p>
                 <button data-crm-action="secondary" type="button" onClick={() => setCustomizeTerms(true)} className="flex items-center gap-1.5 rounded px-2 py-1 text-[#d3bb73] hover:bg-white/5">
                   <Pencil className="h-3.5 w-3.5" /> Edytuj
                 </button>
               </div>
               <p className="mt-3">{form.rate}% · {commissionPaymentLabels[form.paymentMethod]}</p>
-              <p className="mt-1 text-[#e5e4e2]/45">Kwotę policzy podsumowanie wydarzenia: % od zysku netto (po kosztach i koszcie samej prowizji).</p>
+              <p className="mt-1 text-[#e5e4e2]/45">Kwotę policzy podsumowanie eventu: % od zysku netto (po kosztach i koszcie samej prowizji).</p>
               {form.organizationId && <p className="mt-1">{organizations.find((item) => item.id === form.organizationId)?.name}</p>}
               {offerCommission?.partnerId === selectedPartner.id && <p className="mt-2 text-[#e5e4e2]/40">Procent zgodny z zaakceptowaną ofertą sprzedawcy.</p>}
             </div>
@@ -1178,7 +1178,7 @@ export default function EventCommissionsPanel({ eventId }: { eventId: string }) 
         })}
         {commissions.length === 0 && !showForm && (
           <div className="flex items-center gap-3 rounded-lg border border-dashed border-white/10 px-4 py-5 text-xs text-[#e5e4e2]/35">
-            <Banknote className="h-4 w-4" /> Brak naliczonych prowizji dla tego wydarzenia.
+            <Banknote className="h-4 w-4" /> Brak naliczonych prowizji dla tego eventu.
           </div>
         )}
       </div>

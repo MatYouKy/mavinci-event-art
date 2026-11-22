@@ -215,7 +215,7 @@ enum MaterialsSort: String, CaseIterable, Identifiable {
 enum MaterialsScope: String, CaseIterable, Identifiable {
     case materials, events
     var id: String { rawValue }
-    var label: String { self == .materials ? "Materiały" : "Pliki wydarzeń" }
+    var label: String { self == .materials ? "Materiały" : "Pliki eventów" }
 }
 
 // MARK: Wspólne z CRM (`materialsShared.ts`)

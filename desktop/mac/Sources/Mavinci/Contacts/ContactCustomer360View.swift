@@ -97,7 +97,7 @@ enum Customer360Format {
         case "meeting": return ("Spotkanie", "calendar", CrmTheme.rgb(0xc4b5fd))
         case "offer": return ("Oferta", "doc.text", CrmTheme.rgb(0xd3bb73))
         case "invoice": return ("Faktura", "dollarsign.circle", CrmTheme.rgb(0xf0abfc))
-        default: return ("Wydarzenie", kind == "event" ? "briefcase" : "circle", CrmTheme.rgb(0xf0abfc))
+        default: return ("Event", kind == "event" ? "briefcase" : "circle", CrmTheme.rgb(0xf0abfc))
         }
     }
 }
@@ -193,7 +193,7 @@ struct Customer360BadgeView: View {
         let items: [(String, String, String)] = [
             ("Otwarte zapytania", "\(data.metrics.openInquiries)", "scope"),
             ("Wartość szans", Customer360Format.money(data.metrics.pipelineValue), isOrganization ? "dollarsign.circle" : "briefcase"),
-            (isOrganization ? "Nadchodzące eventy" : "Nadchodzące wydarzenia", "\(data.metrics.upcomingEvents)", "calendar"),
+            (isOrganization ? "Nadchodzące eventy" : "Nadchodzące eventy", "\(data.metrics.upcomingEvents)", "calendar"),
             ("Zaległe działania", "\(data.metrics.dueActions)", "clock"),
         ]
         return LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
@@ -220,7 +220,7 @@ struct Customer360BadgeView: View {
                     Image(systemName: "text.bubble").font(.title).foregroundStyle(.secondary)
                     Text("Brak powiązanych aktywności").foregroundStyle(.secondary)
                     if !isOrganization {
-                        Text("Połączenia, maile, zapytania, spotkania, oferty i wydarzenia pojawią się tutaj automatycznie.").font(.caption).foregroundStyle(.tertiary)
+                        Text("Połączenia, maile, zapytania, spotkania, oferty i eventy pojawią się tutaj automatycznie.").font(.caption).foregroundStyle(.tertiary)
                     }
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 24)

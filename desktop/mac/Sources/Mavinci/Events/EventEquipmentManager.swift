@@ -404,7 +404,7 @@ struct EquipmentReservations: Decodable {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Zarządzaj sprzętem").font(.title3.weight(.semibold))
-                        Text("W wydarzeniu: \(inEvent.count) poz. · \(pieces) szt. · ilość zmienioną przyciskami − / + zatwierdzasz ✓")
+                        Text("W evencie: \(inEvent.count) poz. · \(pieces) szt. · ilość zmienioną przyciskami − / + zatwierdzasz ✓")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -456,7 +456,7 @@ struct EquipmentReservations: Decodable {
                     .padding(.horizontal, 14).padding(.top, 8)
                 }
                 HStack(spacing: 10) {
-                    Text("Dwuklik dodaje 1 szt. · + / − zmienia ilość zaznaczonej pozycji, ✓ albo ↩ zatwierdza · 0 usuwa z wydarzenia")
+                    Text("Dwuklik dodaje 1 szt. · + / − zmienia ilość zaznaczonej pozycji, ✓ albo ↩ zatwierdza · 0 usuwa z eventu")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button("Gotowe") { close() }.buttonStyle(.borderedProminent).keyboardShortcut(.cancelAction)
@@ -496,7 +496,7 @@ struct EquipmentReservations: Decodable {
         List(selection: $scope) {
             Section {
                 Label("Cały katalog", systemImage: "square.grid.2x2").badge(all.count).tag("all")
-                Label("W wydarzeniu", systemImage: "checklist").badge(inEvent).tag("event")
+                Label("W evencie", systemImage: "checklist").badge(inEvent).tag("event")
                 Label("Zestawy", systemImage: "shippingbox.fill").badge(all.filter(\.isKit).count).tag("kits")
             }
             Section("Kategorie") {
@@ -515,7 +515,7 @@ struct EquipmentReservations: Decodable {
                 // Pozycja już w wydarzeniu — zielony znacznik (poza tym, że jest na górze listy).
                 if line.current > 0 {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(CrmTheme.rgb(0x4ade80))
-                        .help("W wydarzeniu: \(line.current) \(line.isKit ? "kpl." : "szt.")")
+                        .help("W evencie: \(line.current) \(line.isKit ? "kpl." : "szt.")")
                 }
             }.width(18)
             TableColumn("") { (line: Line) in thumb(line) }.width(40)
@@ -535,9 +535,9 @@ struct EquipmentReservations: Decodable {
             }.width(min: 56, ideal: 70)
             TableColumn("W terminie") { (line: Line) in
                 Text("\(line.inTerm)").monospacedDigit().foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
-                    .help("Dostępne w terminie wydarzenia (magazyn minus rezerwacje innych wydarzeń)")
+                    .help("Dostępne w terminie eventu (magazyn minus rezerwacje innych eventów)")
             }.width(min: 64, ideal: 80)
-            TableColumn("Inne wydarzenia") { (line: Line) in
+            TableColumn("Inne eventy") { (line: Line) in
                 if line.reserved > 0 {
                     Button { selection = line.id } label: {
                         Label("\(line.reserved) szt.", systemImage: "person.2").monospacedDigit()
@@ -549,7 +549,7 @@ struct EquipmentReservations: Decodable {
                 }
             }.width(min: 90, ideal: 120)
             TableColumn("Dostępność w terminie") { (line: Line) in availability(line) }.width(min: 120, ideal: 170)
-            TableColumn("W wydarzeniu") { (line: Line) in stepper(line) }.width(min: 160, ideal: 180)
+            TableColumn("W evencie") { (line: Line) in stepper(line) }.width(min: 160, ideal: 180)
         }
         .contextMenu(forSelectionType: String.self) { ids in
             if let id = ids.first, let line = lines.first(where: { $0.id == id }) { menu(line) }
@@ -607,7 +607,7 @@ struct EquipmentReservations: Decodable {
             label = "można dodać \(line.maxAdd)"
         } else if line.current > 0 {
             color = CrmTheme.rgb(0xfacc15)
-            label = "całość w wydarzeniu"
+            label = "całość w evencie"
         } else {
             color = CrmTheme.rgb(0xf87171)
             label = "brak w terminie"
@@ -668,7 +668,7 @@ struct EquipmentReservations: Decodable {
         }
         if value(line) > 0 && line.rows <= 1 {
             Button("Odejmij 1 szt.", systemImage: "minus") { add(line, by: -1) }
-            Button("Usuń z wydarzenia", systemImage: "trash", role: .destructive) { editor.set(line.target, to: 0, immediate: true) }
+            Button("Usuń z eventu", systemImage: "trash", role: .destructive) { editor.set(line.target, to: 0, immediate: true) }
         }
         Divider()
         if line.reserved > 0 {
@@ -715,10 +715,10 @@ struct EquipmentReservations: Decodable {
                     }
                     .frame(width: 340, alignment: .leading)
                     Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
-                        GridRow { Text("W wydarzeniu").foregroundStyle(.secondary); Text("\(line.current) szt.").fontWeight(.semibold) }
+                        GridRow { Text("W evencie").foregroundStyle(.secondary); Text("\(line.current) szt.").fontWeight(.semibold) }
                         GridRow { Text("Można dodać").foregroundStyle(.secondary); Text("\(max(0, line.maxAdd)) szt.") }
                         GridRow { Text("Dostępne w terminie").foregroundStyle(.secondary); Text("\(line.inTerm) szt.") }
-                        GridRow { Text("Inne wydarzenia").foregroundStyle(.secondary); Text("\(line.reserved) szt.") }
+                        GridRow { Text("Inne eventy").foregroundStyle(.secondary); Text("\(line.reserved) szt.") }
                         GridRow { Text("Magazyn").foregroundStyle(.secondary); Text("\(Int(line.entry.total)) szt.") }
                     }
                     .font(.callout).monospacedDigit()
@@ -728,7 +728,7 @@ struct EquipmentReservations: Decodable {
                 .padding(16)
             }
         } else {
-            Text("Zaznacz pozycję, aby zobaczyć szczegóły i to, kto rezerwuje ją w terminie wydarzenia.")
+            Text("Zaznacz pozycję, aby zobaczyć szczegóły i to, kto rezerwuje ją w terminie eventu.")
                 .foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -737,11 +737,11 @@ struct EquipmentReservations: Decodable {
         VStack(alignment: .leading, spacing: 6) {
             Text("Kto rezerwuje w tym terminie").font(.callout.weight(.semibold))
             if line.reserved <= 0 {
-                Text("Żadne inne wydarzenie nie rezerwuje tej pozycji w terminie.").font(.callout).foregroundStyle(.secondary)
+                Text("Żaden inny event nie rezerwuje tej pozycji w terminie.").font(.callout).foregroundStyle(.secondary)
             } else if let data = reservations[line.id] {
                 ForEach(data.reservations) { reservation in reservationRow(reservation, line) }
                 if data.hiddenQuantity > 0 {
-                    Text("+ \(Int(data.hiddenQuantity)) szt. w wydarzeniach, których nie widzisz").font(.caption).foregroundStyle(.secondary)
+                    Text("+ \(Int(data.hiddenQuantity)) szt. w eventach, których nie widzisz").font(.caption).foregroundStyle(.secondary)
                 }
                 if data.reservations.isEmpty && data.hiddenQuantity <= 0 {
                     Text("Brak szczegółów rezerwacji (mogły zostać zwolnione — odśwież okno).").font(.caption).foregroundStyle(.secondary)
@@ -778,7 +778,7 @@ struct EquipmentReservations: Decodable {
                         close()
                         state.showEvent(reservation.eventId, cardTab: "equipment")
                     }
-                    .buttonStyle(.link).linkCursor().lineLimit(1).help("Otwórz kartę tego wydarzenia (zakładka Sprzęt)")
+                    .buttonStyle(.link).linkCursor().lineLimit(1).help("Otwórz kartę tego eventu (zakładka Sprzęt)")
                 }
                 Text(from + " – " + to).font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
@@ -826,7 +826,7 @@ struct EquipmentCatalogPreview: View {
                 if let category = entry.category?.nonEmpty { Text(category).font(.caption).foregroundStyle(.secondary) }
             }
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 4) {
-                GridRow { Text("W wydarzeniu").foregroundStyle(.secondary); Text("\(inEvent) szt.") }
+                GridRow { Text("W evencie").foregroundStyle(.secondary); Text("\(inEvent) szt.") }
                 GridRow { Text("Można dodać").foregroundStyle(.secondary); Text("\(max(0, maxAdd)) szt.") }
                 GridRow { Text("Dostępne w terminie").foregroundStyle(.secondary); Text("\(Int(entry.availableInTerm)) szt.") }
                 GridRow { Text("Zarezerwowane").foregroundStyle(.secondary); Text("\(Int(entry.reserved)) szt.") }

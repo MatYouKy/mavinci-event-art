@@ -344,7 +344,7 @@ actor FinderCatalog {
             return (folder.eventId, id)
         default:
             // Mavinci, Eventy i lata to struktura z CRM — pliki dodaje się w folderach wydarzeń.
-            throw NSFileProviderError(.cannotSynchronize, userInfo: [NSLocalizedDescriptionKey: "Pliki i foldery dodawaj w folderze wydarzenia."])
+            throw NSFileProviderError(.cannotSynchronize, userInfo: [NSLocalizedDescriptionKey: "Pliki i foldery dodawaj w folderze eventu."])
         }
     }
 
