@@ -41,6 +41,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 import AssignMessageModal from '@/components/crm/AssignMessageModal';
 import CreateInquiryFromMessageModal from '@/components/crm/CreateInquiryFromMessageModal';
+import { addMessageInquiryAsMe } from '@/lib/CRM/messages/quickInquiry';
 import CreateTaskFromMessageModal from '@/components/crm/CreateTaskFromMessageModal';
 import { supabase } from '@/lib/supabase/browser';
 import { useDialog } from '@/contexts/DialogContext';
@@ -90,6 +91,7 @@ export default function MessageDetailPage({ params }: PageProps) {
   const [previousConversationCount, setPreviousConversationCount] = useState(0);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showCreateInquiryModal, setShowCreateInquiryModal] = useState(false);
+  const [addingInquiry, setAddingInquiry] = useState(false);
   const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
   const [linkedInquiryId, setLinkedInquiryId] = useState<string | null>(null);
   const { data: emailAccountsData } = useGetEmailAccountsQuery();
@@ -545,11 +547,23 @@ export default function MessageDetailPage({ params }: PageProps) {
                     {new Date(message.date).toLocaleString('pl-PL')}
                   </p>
                   <MessageSalesBadge sales={message.sales} onOpen={id => router.push(`/crm/inquiries/${id}`)} />
-                  {!message.isDeleted && (message.type === 'received' || message.type === 'contact_form') && <button className="rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-sm text-[#d3bb73]" onClick={() => {
+                  {!message.isDeleted && (message.type === 'received' || message.type === 'contact_form') && <button disabled={addingInquiry} className="rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-sm text-[#d3bb73] disabled:cursor-wait disabled:opacity-60" onClick={async () => {
                     const links = message.sales?.inquiries || [];
-                    if (links.length === 1 && !canClaimMessageInquiry(message.sales)) router.push(`/crm/inquiries/${links[0].id}`);
-                    else setShowCreateInquiryModal(true);
-                  }}>{canClaimMessageInquiry(message.sales) ? 'Przypisz mnie do zapytania' : message.sales?.inquiries.length ? 'Otwórz zapytanie' : 'Dodaj do zapytań i przypisz mnie'}</button>}
+                    if (links.length === 1 && !canClaimMessageInquiry(message.sales)) { router.push(`/crm/inquiries/${links[0].id}`); return; }
+                    // Nowe zapytanie albo zapytanie z puli — od razu z opiekunem: osobą, która kliknęła (bez dodatkowego okna).
+                    if (!employee?.id || (links.length && !canClaimMessageInquiry(message.sales))) { setShowCreateInquiryModal(true); return; }
+                    setAddingInquiry(true);
+                    try {
+                      const result = await addMessageInquiryAsMe(message, employee.id);
+                      showSnackbar(result.feedback, result.assigned ? 'success' : 'warning');
+                      setLinkedInquiryId(result.id);
+                      router.push(`/crm/inquiries/${result.id}`);
+                    } catch (error) {
+                      showSnackbar((error as { message?: string })?.message || 'Nie udało się utworzyć zapytania', 'error');
+                    } finally {
+                      setAddingInquiry(false);
+                    }
+                  }}>{addingInquiry ? 'Zapisywanie…' : canClaimMessageInquiry(message.sales) ? 'Przypisz mnie do zapytania' : message.sales?.inquiries.length ? 'Otwórz zapytanie' : 'Dodaj do zapytań i przypisz mnie'}</button>}
                   {!message.sales?.inquiries.length && message.assigned_employee && (
                     <p>
                       <strong className="text-white">Przypisano:</strong>{' '}

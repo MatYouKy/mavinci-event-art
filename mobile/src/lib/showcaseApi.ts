@@ -1,9 +1,14 @@
 import { supabase } from './supabase';
-import type {
-  ShowcaseBrand, ShowcaseConfigEdit, ShowcaseHome, ShowcaseItemDetail, ShowcaseOfferApproval, ShowcaseOfferClientContext, ShowcaseOfferClientHit,
-  ShowcaseOfferConfiguration, ShowcaseOfferDiscountDisplay, ShowcaseOfferDraft,
-  ShowcaseOfferEmailSetup, ShowcaseOfferLocation, ShowcaseOfferPreview, ShowcaseOfferResult, ShowcaseOfferSetup, ShowcaseOfferStatus,
-  ShowcaseProductView, ShowcaseUrls,
+import {
+  localizeShowcaseUrls, offlineShowcaseHome, offlineShowcaseItem, openShowcaseOffline, saveOfflineShowcaseItem, syncShowcaseOffline,
+  updateOfflineShowcaseHome,
+} from './showcaseOffline';
+import {
+  showcaseLayoutOf, showcaseVisibleForMe,
+  type ShowcaseBrand, type ShowcaseConfigEdit, type ShowcaseHome, type ShowcaseItemDetail, type ShowcaseOfferApproval, type ShowcaseOfferClientContext,
+  type ShowcaseOfferClientHit, type ShowcaseOfferConfiguration, type ShowcaseOfferDiscountDisplay, type ShowcaseOfferDraft,
+  type ShowcaseOfferEmailSetup, type ShowcaseOfferLocation, type ShowcaseOfferPreview, type ShowcaseOfferResult, type ShowcaseOfferSetup, type ShowcaseOfferStatus,
+  type ShowcaseProductView, type ShowcaseUrls,
 } from './showcaseShared';
 
 /*
@@ -11,6 +16,8 @@ import type {
  * pracownika, `x-mavinci-client: phone`). Zakres (działy i karty widoczne na spotkaniach, ukryte — tylko przy przygotowaniu)
  * sprawdza serwer i baza (RLS). Oferta ze spotkania (`offer*`) — to samo co pokaz w CRM i na Macu: wycena, klient i zapytanie,
  * oferta z PDF (`/bridge/offers/generate-pdf`), akceptacja rabatu, wysyłka e-mailem.
+ * Lista i karty zapisują się w pamięci urządzenia (`showcaseOffline`): karta otwiera się od razu z dysku, bez internetu działa
+ * cały pokaz. Układ (kolejność działów i kart, ukryte) jest własny dla pracownika — `saveLayout` / `resetLayout`, jak w CRM.
  */
 
 const CRM_URL = (process.env.EXPO_PUBLIC_CRM_URL || 'https://mavinci.pl').replace(/\/+$/, '');
@@ -19,28 +26,48 @@ const ENDPOINT = `${CRM_URL}/bridge/native/v1/showcase`;
 /** Marka z ostatniego odczytu listy (kolory i logo karty bez ponownego pobierania). */
 let lastBrand: ShowcaseBrand | null = null;
 export const showcaseBrand = () => lastBrand;
-/** Ostatnia lista działów i kart — kolejność kart działu do przesuwania palcem w karcie. */
+/** Ostatnia lista działów i kart (w układzie pracownika) — kolejność kart działu do przesuwania palcem w karcie. */
 let lastHome: ShowcaseHome | null = null;
 
 /** Karta działu do przeglądania w bok (kolejność jak na liście). */
 export type ShowcasePage = { id: string; title: string; sectionTitle: string; thumb: string | null };
 
-/** Karty działu, do którego należy `id` (jak na liście); bez listy w pamięci — sama karta. */
+/** Karty działu, do którego należy `id` (jak na liście, bez ukrytych w układzie pracownika); bez listy w pamięci — sama karta. */
 export function showcaseSiblings(id: string, title = ''): ShowcasePage[] {
   const home = lastHome;
   const item = home?.items.find((entry) => entry.id === id);
   if (!home || !item) return [{ id, title, sectionTitle: '', thumb: null }];
   const sectionTitle = home.sections.find((section) => section.id === item.sectionId)?.title || '';
+  const urls = localizeShowcaseUrls(home.urls);
+  const visible = new Set(showcaseVisibleForMe(home).items.map((entry) => entry.id));
   return home.items
-    .filter((entry) => entry.sectionId === item.sectionId)
+    .filter((entry) => entry.sectionId === item.sectionId && (visible.has(entry.id) || entry.id === id))
     .sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, 'pl'))
-    .map((entry) => ({ id: entry.id, title: entry.title, sectionTitle, thumb: entry.thumbKey ? home.urls[entry.thumbKey]?.thumb || null : null }));
+    .map((entry) => ({ id: entry.id, title: entry.title, sectionTitle, thumb: entry.thumbKey ? urls[entry.thumbKey]?.thumb || null : null }));
 }
 
+/** Brak połączenia z serwerem (a nie błąd serwera) — wtedy prezentacje z pamięci urządzenia. */
+const OFFLINE_MESSAGE = 'Brak połączenia z internetem.';
+const offlineError = () => Object.assign(new Error(OFFLINE_MESSAGE), { offline: true });
+export const isShowcaseOffline = (cause: unknown) => (cause as { offline?: unknown } | null)?.offline === true;
+
 async function headers(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Zaloguj się ponownie.');
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (!session) {
+    // Sesja wygasła, a odświeżenie nie doszło do serwera (brak internetu) — to brak połączenia, nie wylogowanie.
+    if ((error as { name?: string } | null)?.name === 'AuthRetryableFetchError') throw offlineError();
+    throw new Error('Zaloguj się ponownie.');
+  }
   return { Authorization: `Bearer ${session.access_token}`, 'x-mavinci-client': 'phone', Accept: 'application/json' };
+}
+
+/** Zapytanie do serwera; brak połączenia — błąd z `offline` (pokaz z pamięci urządzenia). */
+async function request(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch {
+    throw offlineError();
+  }
 }
 
 async function get<T>(op: string, params: Record<string, string | null | undefined> = {}): Promise<T> {
@@ -48,7 +75,7 @@ async function get<T>(op: string, params: Record<string, string | null | undefin
     .filter(([, value]) => value !== null && value !== undefined && value !== '')
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
     .join('&');
-  const response = await fetch(`${ENDPOINT}?${query}`, { headers: await headers() });
+  const response = await request(`${ENDPOINT}?${query}`, { headers: await headers() });
   const body = (await response.json().catch(() => null)) as (T & { error?: string }) | null;
   if (!response.ok) throw new Error(body?.error || `Operacja nie powiodła się (HTTP ${response.status}).`);
   return body as T;
@@ -58,7 +85,7 @@ async function get<T>(op: string, params: Record<string, string | null | undefin
 export type ShowcaseOfferFailure = Error & { inquiryId?: string; organizationId?: string; contactId?: string };
 
 async function post<T>(op: string, body: Record<string, unknown>): Promise<T> {
-  const response = await fetch(ENDPOINT, {
+  const response = await request(ENDPOINT, {
     method: 'POST',
     headers: { ...(await headers()), 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, op }),
@@ -74,14 +101,86 @@ async function post<T>(op: string, body: Record<string, unknown>): Promise<T> {
   return reply as T;
 }
 
-export async function showcaseHome(): Promise<ShowcaseHome> {
-  const home = await get<ShowcaseHome>('home');
+const remember = (home: ShowcaseHome) => {
   lastBrand = home.brand;
   lastHome = home;
-  return home;
+};
+
+const fetchItem = (id: string) => get<ShowcaseItemDetail>('item', { id });
+
+/**
+ * Lista działów i kart w układzie pracownika. Z internetem — z serwera, zapis w pamięci urządzenia i pobieranie kart oraz zdjęć
+ * w tle (`offline: false`); bez internetu — lista z pamięci (`offline: true`). `user` — zalogowany pracownik (auth).
+ */
+export async function showcaseHome(user: string | null): Promise<{ home: ShowcaseHome; offline: boolean }> {
+  await openShowcaseOffline(user);
+  try {
+    const home = await get<ShowcaseHome>('home');
+    remember(home);
+    if (user) void syncShowcaseOffline(user, home, fetchItem);
+    return { home: { ...home, urls: localizeShowcaseUrls(home.urls) }, offline: false };
+  } catch (cause) {
+    if (!isShowcaseOffline(cause)) throw cause;
+    const saved = await offlineShowcaseHome(user).catch(() => null);
+    if (!saved) throw new Error('Brak internetu, a prezentacje nie są jeszcze zapisane w pamięci urządzenia. Otwórz je raz z internetem.');
+    remember(saved);
+    return { home: saved, offline: true };
+  }
 }
 
-export const showcaseItem = (id: string) => get<ShowcaseItemDetail>('item', { id });
+/** Karta zapisana w pamięci urządzenia (od razu, bez czekania na internet); `null` — jeszcze niezapisana. */
+export const showcaseSavedItem = (id: string, user: string | null) => offlineShowcaseItem(user, id).catch(() => null);
+
+/** Karta z serwera (zdjęcia już zapisane — z dysku); od razu trafia do pamięci urządzenia. */
+export async function showcaseItem(id: string, user: string | null): Promise<ShowcaseItemDetail> {
+  const detail = await fetchItem(id);
+  if (user) await saveOfflineShowcaseItem(user, detail).catch(() => undefined);
+  return { ...detail, urls: localizeShowcaseUrls(detail.urls) };
+}
+
+// Własny układ pracownika ------------------------------------------------------------------------------------------------
+
+/** Kolejność i ukryte z `next` w zapisanej liście (adresy zdjęć zostają z zapisu). */
+function arranged(saved: ShowcaseHome, next: ShowcaseHome): ShowcaseHome {
+  const sections = new Map(next.sections.map((section) => [section.id, section]));
+  const items = new Map(next.items.map((item) => [item.id, item]));
+  return {
+    ...saved,
+    layout: showcaseLayoutOf(next),
+    sections: saved.sections.map((section) => {
+      const change = sections.get(section.id);
+      return change ? { ...section, sortOrder: change.sortOrder, hiddenForMe: change.hiddenForMe === true } : section;
+    }),
+    items: saved.items.map((item) => {
+      const change = items.get(item.id);
+      return change ? { ...item, sortOrder: change.sortOrder, hiddenForMe: change.hiddenForMe === true } : item;
+    }),
+  };
+}
+
+/** Lista po zmianie układu: świeża z serwera do pamięci urządzenia (karty pokazane z powrotem pobierają się, ukryte znikają). */
+function refreshSaved(user: string | null) {
+  void get<ShowcaseHome>('home')
+    .then((home) => {
+      remember(home);
+      if (user) void syncShowcaseOffline(user, home, fetchItem);
+    })
+    .catch(() => undefined);
+}
+
+/** Zapis własnego układu (kolejność działów i kart, ukryte u pracownika) — ten sam w CRM, na Macu, telefonie i iPadzie. */
+export async function saveShowcaseLayout(next: ShowcaseHome, user: string | null): Promise<void> {
+  await post<{ ok: boolean }>('saveLayout', { layout: showcaseLayoutOf(next) });
+  if (lastHome) lastHome = arranged(lastHome, next);
+  if (user) await updateOfflineShowcaseHome(user, (saved) => arranged(saved, next)).catch(() => undefined);
+  refreshSaved(user);
+}
+
+/** „Układ domyślny” — kolejność z przygotowania, nic nie jest ukryte; zwraca listę od nowa. */
+export async function resetShowcaseLayout(user: string | null): Promise<{ home: ShowcaseHome; offline: boolean }> {
+  await post<{ ok: boolean }>('resetLayout', {});
+  return showcaseHome(user);
+}
 
 // Oferta ze spotkania ----------------------------------------------------------------------------------------------------
 

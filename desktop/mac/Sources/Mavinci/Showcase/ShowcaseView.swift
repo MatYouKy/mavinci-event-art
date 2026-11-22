@@ -110,13 +110,33 @@ enum ShowcaseDrag {
             .layoutPriority(1)
             Spacer(minLength: 16)
             if store.loading { ProgressView().controlSize(.small) }
+            if let offline = store.offlineState { offlineBadge(offline) }
             Button { store.preview = ShowcasePreviewRequest() } label: { Label("Podgląd na iPadzie", systemImage: "ipad.landscape") }
             Button { Task { await store.load() } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
+            if home.layout != nil {
+                Button { Task { await store.resetLayout() } } label: { Label("Układ domyślny", systemImage: "arrow.counterclockwise") }
+                    .help("Kolejność ustalona przy przygotowaniu, bez działów i kart ukrytych u Ciebie")
+            }
             if home.access.manage {
                 Button { store.sectionSheet = ShowcaseSectionDraft(nil) } label: { Label("Nowy dział", systemImage: "folder.badge.plus") }
                 Button { store.creating = true } label: { Label("Nowa karta", systemImage: "plus") }
                     .buttonStyle(.borderedProminent).disabled(store.selectedSection == nil)
             }
+        }
+    }
+
+    /// Zapis prezentacji na dysku (karty i zdjęcia) — podgląd pokazu działa bez internetu.
+    @ViewBuilder private func offlineBadge(_ offline: ShowcaseOfflineState) -> some View {
+        if offline.saving {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Na dysk \(min(offline.done, offline.total))/\(offline.total)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
+            .help(offline.label)
+        } else {
+            Label(offline.failed == 0 ? "Na dysku" : "Częściowo na dysku", systemImage: offline.failed == 0 ? "checkmark.circle" : "exclamationmark.triangle")
+                .font(.caption).foregroundStyle(offline.failed == 0 ? Color.secondary : Color.orange)
+                .help(offline.label)
         }
     }
 
@@ -138,8 +158,9 @@ enum ShowcaseDrag {
                 }
                 .padding(12)
                 .background(RoundedRectangle(cornerRadius: 10).fill(theme.card))
-            } else if home.access.manage && store.sections.count > 1 {
-                Text("Przeciągnij dział, żeby zmienić kolejność; przeciągnij kartę na dział, żeby ją przenieść.")
+            } else {
+                Text("Kolejność działów i kart (przeciąganie) i „Ukryj u mnie” (menu podręczne) to Twój układ — w CRM, na Macu, telefonie i iPadzie; inni widzą swój."
+                     + (home.access.manage ? " Kartę przeciągniętą na dział przenosisz do niego dla wszystkich." : ""))
                     .font(.caption2).foregroundStyle(.tertiary).padding(.horizontal, 4)
             }
         }
@@ -148,7 +169,8 @@ enum ShowcaseDrag {
     private func sectionRow(_ section: ShowcaseSection, manage: Bool) -> some View {
         let selected = store.selectedSection?.id == section.id && store.query.isEmpty
         let count = store.items(in: section.id).count
-        let countText = "\(count) \(ShowcaseShared.plural(count, "karta", "karty", "kart"))" + (section.isActive ? "" : " · ukryty")
+        let countText = "\(count) \(ShowcaseShared.plural(count, "karta", "karty", "kart"))" + (section.isActive ? "" : " · ukryty dla wszystkich")
+            + (section.hiddenForMe == true ? " · ukryty u Ciebie" : "")
         let targeted = sectionTarget == section.id
         return HStack(spacing: 8) {
             Image(systemName: ShowcaseIconInfo.symbol(section.icon))
@@ -161,30 +183,41 @@ enum ShowcaseDrag {
             }
             Spacer(minLength: 4)
             if !section.isActive { Image(systemName: "eye.slash").font(.caption).foregroundStyle(.secondary) }
+            Button { Task { await store.setHidden(section: section.id, section.hiddenForMe != true) } } label: {
+                Image(systemName: section.hiddenForMe == true ? "eye.slash.circle" : "eye.circle")
+            }
+            .buttonStyle(.borderless).foregroundStyle(.secondary)
+            .help(section.hiddenForMe == true ? "Pokaż u mnie" : "Ukryj u mnie (inni widzą swój układ)")
             if manage {
                 Button { store.sectionSheet = ShowcaseSectionDraft(section) } label: { Image(systemName: "pencil") }
                     .buttonStyle(.borderless).help("Edytuj dział")
             }
         }
+        .opacity(section.hiddenForMe == true ? 0.5 : 1)
         .padding(.horizontal, 8).padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 10).fill(selected ? theme.card : Color.clear))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(targeted ? theme.accent : (selected ? theme.accent.opacity(0.6) : Color.clear), lineWidth: targeted ? 2 : 1))
         .contentShape(Rectangle())
         .onTapGesture { store.query = ""; store.sectionID = section.id }
-        .modifier(ShowcaseDraggable(enabled: manage, value: ShowcaseDrag.section + section.id))
+        // Kolejność działów — własny układ każdego pracownika; karta upuszczona na dział — przeniesienie (przygotowanie).
+        .modifier(ShowcaseDraggable(enabled: true, value: ShowcaseDrag.section + section.id))
         .onDrop(of: ShowcaseDrag.types, isTargeted: Binding(
             get: { sectionTarget == section.id },
             set: { inside in if inside { sectionTarget = section.id } else if sectionTarget == section.id { sectionTarget = nil } }
         )) { providers in
-            guard manage else { return false }
             sectionTarget = nil
             ShowcaseDrag.read(providers) { text in dropOnSection(text, section) }
             return true
+        }
+        .contextMenu {
+            Button(section.hiddenForMe == true ? "Pokaż u mnie" : "Ukryj u mnie") { Task { await store.setHidden(section: section.id, section.hiddenForMe != true) } }
+            if manage { Button("Edytuj dział…") { store.sectionSheet = ShowcaseSectionDraft(section) } }
         }
     }
 
     private func dropOnSection(_ text: String, _ section: ShowcaseSection) {
         if let itemID = ShowcaseDrag.value(text, ShowcaseDrag.item) {
+            guard store.canManage else { return }
             Task { await store.moveItem(itemID, toSection: section) }
         } else if let sectionID = ShowcaseDrag.value(text, ShowcaseDrag.section), sectionID != section.id {
             let ids = store.sections.map(\.id)
@@ -201,7 +234,7 @@ enum ShowcaseDrag {
             TextField("Szukaj we wszystkich kartach", text: $store.query).textFieldStyle(.roundedBorder)
             ScrollView {
                 LazyVStack(spacing: 6) {
-                    ForEach(items) { item in itemRow(item, manage: home.access.manage && !searching, searching: searching) }
+                    ForEach(items) { item in itemRow(item, manage: !searching, searching: searching) }
                     if items.isEmpty && store.selectedSection != nil {
                         VStack(alignment: .leading, spacing: 8) {
                             Text(searching ? "Brak kart pasujących do wyszukiwania." : "Ten dział nie ma jeszcze kart.").font(.callout).foregroundStyle(.secondary)
@@ -247,8 +280,10 @@ enum ShowcaseDrag {
                     if unsaved { Label("niezapisane", systemImage: "circle.fill").font(.caption2).foregroundStyle(theme.accent) }
                 }
                 if !sectionName.isEmpty { Text(sectionName).font(.caption2).foregroundStyle(.tertiary) }
+                if item.hiddenForMe == true { Text("Ukryta u Ciebie — nie pokazuje się na Twoich spotkaniach").font(.caption2).foregroundStyle(.secondary) }
             }
         }
+        .opacity(item.hiddenForMe == true ? 0.5 : 1)
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(theme.card))
@@ -267,6 +302,7 @@ enum ShowcaseDrag {
         }
         .contextMenu {
             Button("Podgląd na iPadzie") { store.preview = ShowcasePreviewRequest(sectionID: item.sectionId, itemID: item.id) }
+            Button(item.hiddenForMe == true ? "Pokaż u mnie" : "Ukryj u mnie") { Task { await store.setHidden(item: item.id, item.hiddenForMe != true) } }
             if store.canManage {
                 Button("Kopia karty") { Task { await store.duplicateItem(item.id) } }
             }
@@ -282,18 +318,18 @@ enum ShowcaseDrag {
         }
     }
 
-    /// Karta upuszczona na kartę: to miejsce w dziale (karta z innego działu przechodzi do tego działu).
+    /// Karta upuszczona na kartę: to miejsce w dziale — kolejność w układzie pracownika; karta z innego działu przechodzi do tego
+    /// działu dla wszystkich (tylko przygotowanie prezentacji).
     private func dropOnItem(_ text: String, _ target: ShowcaseItemSummary) {
         guard let draggedID = ShowcaseDrag.value(text, ShowcaseDrag.item), draggedID != target.id else { return }
         var ids = store.items(in: target.sectionId).map(\.id)
         if let from = ids.firstIndex(of: draggedID), let to = ids.firstIndex(of: target.id) {
             ids = ShowcaseShared.move(ids, from: from, to: to)
-        } else if let to = ids.firstIndex(of: target.id) {
+            Task { await store.reorderItems(sectionID: target.sectionId, ids: ids, success: "Zmieniono kolejność kart w Twoim układzie") }
+        } else if let to = ids.firstIndex(of: target.id), store.canManage {
             ids.insert(draggedID, at: to)
-        } else {
-            return
+            Task { await store.moveItems(sectionID: target.sectionId, ids: ids, success: "Przeniesiono kartę do działu") }
         }
-        Task { await store.reorderItems(sectionID: target.sectionId, ids: ids, success: "Zmieniono kolejność kart") }
     }
 
     private func placeholder(_ home: ShowcaseHome) -> some View {
@@ -313,7 +349,7 @@ enum ShowcaseDrag {
     }
 }
 
-/// Przeciąganie elementu listy (tylko z uprawnieniem do przygotowania prezentacji).
+/// Przeciąganie elementu listy (kolejność we własnym układzie; przenoszenie kart między działami — przygotowanie prezentacji).
 struct ShowcaseDraggable: ViewModifier {
     let enabled: Bool
     let value: String

@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 import { canClaimMessageInquiry } from '@/lib/CRM/messages/salesContext';
 import MessageSalesBadge from '@/components/crm/MessageSalesBadge';
 import { useRouter } from 'next/navigation';
@@ -38,6 +39,8 @@ interface MessagePreviewPaneProps {
   onForward: (message: MessageDetails) => void;
   onAssign: (message: MessageDetails) => void;
   onCreateInquiry: (message: MessageDetails) => void;
+  /** „Dodaj do zapytań i przypisz mnie” jednym kliknięciem — opiekunem zostaje osoba, która kliknęła. */
+  onQuickInquiry?: (message: MessageDetails) => Promise<void>;
   onCreateTask?: (message: MessageDetails) => void;
   onDelete: (message: MessageDetails) => void;
 }
@@ -59,10 +62,12 @@ export function MessagePreviewPane({
   onForward,
   onAssign,
   onCreateInquiry,
+  onQuickInquiry,
   onCreateTask,
   onDelete,
 }: MessagePreviewPaneProps) {
   const router = useRouter();
+  const [addingInquiry, setAddingInquiry] = useState(false);
   const previewable = Boolean(message && message.type !== 'draft');
   const { currentData: details, isFetching, error, refetch } = useGetMessageDetailsQuery(
     {
@@ -229,11 +234,17 @@ export function MessagePreviewPane({
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <MessageSalesBadge sales={message.sales || details.sales} onOpen={id => router.push(`/crm/inquiries/${id}`)} />
-          {canActOnInbound && <button type="button" className="rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-sm text-[#d3bb73]" onClick={() => {
-            const linked = (message.sales || details.sales)?.inquiries;
-            if (linked?.length === 1 && !canClaimMessageInquiry(message.sales || details.sales)) router.push(`/crm/inquiries/${linked[0].id}`);
-            else onCreateInquiry({ ...details, sales: message.sales || details.sales });
-          }}>{canClaimMessageInquiry(message.sales || details.sales) ? 'Przypisz mnie do zapytania' : (message.sales || details.sales)?.inquiries.length ? 'Otwórz zapytanie' : 'Dodaj do zapytań i przypisz mnie'}</button>}
+          {canActOnInbound && <button type="button" disabled={addingInquiry} className="rounded-lg bg-[#d3bb73]/15 px-3 py-2 text-sm text-[#d3bb73] disabled:cursor-wait disabled:opacity-60" onClick={() => {
+            const sales = message.sales || details.sales;
+            const linked = sales?.inquiries;
+            if (linked?.length === 1 && !canClaimMessageInquiry(sales)) { router.push(`/crm/inquiries/${linked[0].id}`); return; }
+            const target = { ...details, sales };
+            // Nowe zapytanie albo zapytanie z puli — od razu z opiekunem: osobą, która kliknęła (bez dodatkowego okna).
+            if (onQuickInquiry && (!linked?.length || canClaimMessageInquiry(sales))) {
+              setAddingInquiry(true);
+              void onQuickInquiry(target).finally(() => setAddingInquiry(false));
+            } else onCreateInquiry(target);
+          }}>{addingInquiry ? 'Zapisywanie…' : canClaimMessageInquiry(message.sales || details.sales) ? 'Przypisz mnie do zapytania' : (message.sales || details.sales)?.inquiries.length ? 'Otwórz zapytanie' : 'Dodaj do zapytań i przypisz mnie'}</button>}
         </div>
       </header>
 

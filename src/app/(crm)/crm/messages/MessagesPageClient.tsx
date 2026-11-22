@@ -24,6 +24,7 @@ import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 import MessageActionsMenu from '@/components/crm/MessageActionsMenu';
 import AssignMessageModal from '@/components/crm/AssignMessageModal';
 import CreateInquiryFromMessageModal from '@/components/crm/CreateInquiryFromMessageModal';
+import { addMessageInquiryAsMe } from '@/lib/CRM/messages/quickInquiry';
 import CreateTaskFromMessageModal from '@/components/crm/CreateTaskFromMessageModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -610,6 +611,26 @@ export default function MessagesPageClient({
   const handleCreateInquiry = (message: MessageListItem) => {
     if (message.sales?.inquiries.length === 1 && !canClaimMessageInquiry(message.sales)) { router.push(`/crm/inquiries/${message.sales.inquiries[0].id}`); return; }
     setInquiryMessage(message);
+  };
+
+  /** Po zapisie zapytania z wiadomości: świeże powiązanie w liście (etykieta lejka) i odświeżenie skrzynki. */
+  const refreshMessageSales = async (source: MessageListItem) => {
+    const context = await readMessageSalesContext(supabase, [source]);
+    const sales = context[`${source.type}:${source.id}`];
+    setAllMessages(previous => previous.map(item => item.id === source.id && item.type === source.type ? { ...item, sales } : item));
+    refetchDebounced();
+  };
+
+  /** „Dodaj do zapytań i przypisz mnie” jednym kliknięciem — opiekunem zostaje zalogowany pracownik. */
+  const handleQuickInquiry = async (message: MessageListItem) => {
+    if (!currentEmployee?.id) { setInquiryMessage(message); return; }
+    try {
+      const result = await addMessageInquiryAsMe(message, currentEmployee.id);
+      showSnackbar(result.feedback, result.assigned ? 'success' : 'warning');
+      await refreshMessageSales(message);
+    } catch (error) {
+      showSnackbar((error as { message?: string })?.message || 'Nie udało się utworzyć zapytania', 'error');
+    }
   };
 
   const handleCreateTask = async (message: MessageListItem | MessageDetails) => {
@@ -1294,6 +1315,7 @@ export default function MessagesPageClient({
                   }
                 }}
                 onCreateInquiry={handleCreateInquiry}
+                onQuickInquiry={handleQuickInquiry}
                 onCreateTask={canCreateTasks ? handleCreateTask : undefined}
                 onDelete={(message) => handleDelete(message.id, message.type, Boolean(message.isDeleted))}
                 canTrash={Boolean(allMessages.find((message) => message.id === selectedMessageId && canTrashMessage(message)))}
@@ -1393,10 +1415,7 @@ export default function MessagesPageClient({
             const source = inquiryMessage;
             if (!source) return;
             setInquiryMessage(null);
-            const context = await readMessageSalesContext(supabase, [source]);
-            const sales = context[`${source.type}:${source.id}`];
-            setAllMessages(previous => previous.map(item => item.id === source.id && item.type === source.type ? { ...item, sales } : item));
-            refetchDebounced();
+            await refreshMessageSales(source);
           }}
         />
       )}

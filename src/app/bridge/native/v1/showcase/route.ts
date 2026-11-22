@@ -5,7 +5,7 @@ import { SHOWCASE_LIMITS } from '@/lib/showcase/showcaseShared';
 import {
   showcaseAssist, showcaseCreateItem, showcaseDeleteItem, showcaseDeleteSection, showcaseDuplicateItem, showcaseEvents, showcaseHome, showcaseImport,
   showcaseItem, showcasePhotoBase, showcasePhotos, showcaseProductDetail, showcaseProducts, showcaseRealizations, showcaseReorderItems, showcaseReorderSections, showcaseSaveItem,
-  showcaseSaveSection, showcaseUpload,
+  showcaseResetLayout, showcaseSaveLayout, showcaseSaveSection, showcaseUpload,
 } from '@/lib/showcase/showcase.server';
 import {
   showcaseOfferApproval, showcaseOfferClientContext, showcaseOfferClients, showcaseOfferConfigure, showcaseOfferCreate, showcaseOfferDiscountDisplay, showcaseOfferEmail,
@@ -27,7 +27,9 @@ export const maxDuration = 300;
  * POST ?op=upload&item=<karta> | &section=<dział> [&caption] [&base=1&name=<plik>] — bajty zdjęcia (JPEG / PNG / WebP do 40 MB)
  *   → `{photo, urls, stored: materials | presentation, existing, file}` (z `base=1` — do Materiałów → Zdjęcia, karta: odnośnik).
  * POST JSON op=saveSection {id?, version?, title, subtitle, icon, isActive, cover?} | deleteSection {id, withItems} |
- *   reorderSections {ids[]} | reorderItems {sectionId, ids[]} (karta z innego działu przechodzi do tego działu) |
+ *   reorderSections {ids[]} | reorderItems {sectionId, ids[]} (karta z innego działu przechodzi do tego działu) — kolejność domyślna |
+ *   saveLayout {layout: {sections: [{id, hidden}], items: {<dział>: [{id, hidden}]}}} | resetLayout — własny układ pracownika
+ *   (kolejność działów i kart, ukryte u niego; `home` zwraca listę już w tym układzie, z `hiddenForMe`) |
  *   createItem {sectionId, title?, productId?} („Utwórz z produktu” — treść z katalogu) |
  *   saveItem {id, version, title, tagline, isActive, productIds[], content} | duplicateItem {id} | deleteItem {id} |
  *   import {itemId | sectionId, source: product | site | material | event | social, productId+path | realizationId+path | fileId,
@@ -128,6 +130,10 @@ export async function POST(request: Request) {
         return nativeJson(await showcaseReorderSections(ctx, body));
       case 'reorderItems':
         return nativeJson(await showcaseReorderItems(ctx, body));
+      case 'saveLayout':
+        return nativeJson(await showcaseSaveLayout(ctx, body));
+      case 'resetLayout':
+        return nativeJson(await showcaseResetLayout(ctx));
       case 'createItem':
         return nativeJson(await showcaseCreateItem(ctx, body));
       case 'saveItem':

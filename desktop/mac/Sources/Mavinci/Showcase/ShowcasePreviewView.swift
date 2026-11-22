@@ -368,8 +368,9 @@ private struct ShowcaseLightbox: Equatable {
         if let detail = await store.fetchDetail(id) { details[id] = detail } else { problem = "Nie udało się otworzyć karty." }
     }
 
-    private var visibleSections: [ShowcaseSection] { store.sections.filter(\.isActive) }
-    private func visibleItems(_ sectionID: String) -> [ShowcaseItemSummary] { store.items(in: sectionID).filter(\.isActive) }
+    /// Na spotkaniu: widoczne dla wszystkich i nieukryte w układzie pracownika.
+    private var visibleSections: [ShowcaseSection] { store.sectionsForMe.filter(\.isActive) }
+    private func visibleItems(_ sectionID: String) -> [ShowcaseItemSummary] { store.itemsForMe(in: sectionID).filter(\.isActive) }
     private var columns: Int { device.wide ? 3 : 2 }
 
     // MARK: Strona startowa i dział

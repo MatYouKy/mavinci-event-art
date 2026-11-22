@@ -42,6 +42,7 @@ import QuickLook
     let detail: MessageDetail
     let actions: MessageActions
     @Environment(\.crmTheme) private var theme
+    @State private var addingInquiry = false
     var body: some View {
         let inbound = !message.isDeleted && message.inbound
         let manage = store.info?.canManage == true
@@ -124,12 +125,33 @@ import QuickLook
                 }
                 if inbound {
                     let claim = sales?.canClaim == true
-                    Button(claim ? "Przypisz mnie do zapytania" : sales?.hasInquiry == true ? "Otwórz zapytanie" : "Dodaj do zapytań i przypisz mnie") {
+                    Button(addingInquiry ? "Zapisywanie…" : claim ? "Przypisz mnie do zapytania" : sales?.hasInquiry == true ? "Otwórz zapytanie" : "Dodaj do zapytań i przypisz mnie") {
                         if !claim, let sales, sales.hasInquiry, sales.inquiries.count == 1, let first = sales.inquiries.first { store.openInquiry(first.id) }
+                        else if claim || sales?.hasInquiry != true { addAsMe() }
                         else { actions.inquiry(message) }
-                    }.controlSize(.small)
+                    }.controlSize(.small).disabled(addingInquiry)
                 }
                 Spacer()
+            }
+        }
+    }
+
+    /// „Dodaj do zapytań i przypisz mnie” / „Przypisz mnie do zapytania” jednym kliknięciem (jak w CRM i w aplikacji):
+    /// opiekunem zostaje zalogowany pracownik. Inny opiekun albo dołączenie do zapytania — „Dodaj do zapytań” w pasku.
+    private func addAsMe() {
+        guard let me = store.info?.employeeId, !me.isEmpty else { actions.inquiry(message); return }
+        addingInquiry = true
+        Task {
+            defer { addingInquiry = false }
+            do {
+                let reply = try await store.perform([
+                    "op": .string("inquiry"), "id": .string(message.id), "type": .string(message.type), "owner": .string(me), "guestCount": .null,
+                ])
+                let text = reply["message"]?.text.nonEmpty ?? "Utworzono i przypisano zapytanie."
+                if reply["warning"]?.flag == true { store.workspace?.error = text } else { store.workspace?.succeed(text) }
+                await store.reloadAfterChange(message)
+            } catch {
+                store.workspace?.error = store.failureText(error, "Nie udało się utworzyć zapytania")
             }
         }
     }

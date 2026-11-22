@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type DragEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertTriangle, EyeOff, FolderOpen, Images, Package, Pencil, Plus, Presentation, RefreshCw, Search, Tablet, Trash2, Upload, X } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, FolderOpen, Images, Package, Pencil, Plus, Presentation, RefreshCw, RotateCcw, Search, Tablet, Trash2, Upload, X } from 'lucide-react';
 import { Modal } from '@/components/UI/Modal';
 import { HelpButton, HelpDrawerHost } from '@/components/help/HelpDrawer';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
 import { useDialog } from '@/contexts/DialogContext';
 import {
-  SHOWCASE_ICONS, SHOWCASE_LIMITS, showcaseMediaKey,
+  SHOWCASE_ICONS, SHOWCASE_LIMITS, showcaseLayoutHide, showcaseLayoutOf, showcaseLayoutReorder, showcaseMediaKey, showcaseVisibleForMe,
   type ShowcaseHome, type ShowcaseIcon, type ShowcaseItemDetail, type ShowcaseItemSummary, type ShowcaseMedia, type ShowcaseSectionView, type ShowcaseUrls,
 } from '@/lib/showcase/showcaseShared';
 import { cardClass, dangerButton, inputClass, primaryButton, secondaryButton } from '../social/socialUi';
@@ -21,8 +21,9 @@ import ShowcasePresenter from './ShowcasePresenter';
 import { SectionIcon, Toggle, hasFiles, imageFiles, useDragList } from './showcaseUi';
 
 /*
- * Strefa sprzedawcy → „Prezentacje” w CRM (pełna szerokość): działy (kolejność przeciąganiem, edycja, okładka), karty działu
- * (kolejność przeciąganiem; karta upuszczona na inny dział przechodzi do niego), edytor karty obok i podgląd jak na iPadzie.
+ * Strefa sprzedawcy → „Prezentacje” w CRM (pełna szerokość): działy (edycja, okładka), karty działu (karta upuszczona na inny dział
+ * przechodzi do niego), edytor karty obok i podgląd jak na iPadzie. Kolejność działów i kart (przeciąganiem) i ukrywanie u siebie to
+ * własny układ każdego pracownika (`saveLayout`, ten sam w CRM, na Macu, telefonie i iPadzie) — inni widzą swój układ.
  * Osoby z samym podglądem widzą działy i karty i otwierają je w podglądzie (tak, jak na spotkaniu). Odnośnik
  * `/crm/presentations?section=<dział>&id=<karta>`. To samo API co Mac i iPad (`/bridge/native/v1/showcase`).
  */
@@ -135,16 +136,33 @@ export default function ShowcaseWorkspace() {
     }
   };
 
+  // Własny układ pracownika ----------------------------------------------------------------------------------------------------
+
+  /** Zapis własnego układu (kolejność, ukryte) od razu na liście; błąd — lista z serwera. */
+  const saveLayout = (next: ShowcaseHome, message: string) => {
+    setHome(next);
+    void showcasePost('saveLayout', { layout: showcaseLayoutOf(next) })
+      .then(() => showSnackbar(message, 'success'))
+      .catch((cause) => { showSnackbar(errorMessage(cause, 'Nie udało się zapisać układu.'), 'error'); void load(true); });
+  };
+
+  const toggleHidden = (kind: 'section' | 'item', id: string, hidden: boolean) => {
+    if (!home) return;
+    saveLayout(showcaseLayoutHide(home, kind, id, hidden), hidden
+      ? `${kind === 'section' ? 'Dział' : 'Karta'} ukryty${kind === 'section' ? '' : 'a'} w Twoim układzie (inni widzą swój układ).`
+      : `${kind === 'section' ? 'Dział' : 'Karta'} znów widoczn${kind === 'section' ? 'y' : 'a'} w Twoim układzie.`);
+  };
+
+  const resetLayout = async () => {
+    const done = await run('Przywracam układ domyślny', () => showcasePost('resetLayout', {}), 'Przywrócono układ domyślny');
+    if (done) void load(true);
+  };
+
   // Działy -------------------------------------------------------------------------------------------------------------------
 
   const sectionDrag = useDragList<ShowcaseSectionView>({
     items: sections, keyOf: (section) => section.id, group: 'showcase-sections',
-    onMove: (next) => {
-      setHome((current) => (current ? { ...current, sections: current.sections.map((section) => ({ ...section, sortOrder: next.findIndex((entry) => entry.id === section.id) })) } : current));
-      void showcasePost('reorderSections', { ids: next.map((section) => section.id) })
-        .then(() => showSnackbar('Zmieniono kolejność działów', 'success'))
-        .catch((cause) => { showSnackbar(errorMessage(cause, 'Nie udało się zmienić kolejności.'), 'error'); void load(true); });
-    },
+    onMove: (next) => { if (home) saveLayout(showcaseLayoutReorder(home, null, next.map((section) => section.id)), 'Zmieniono kolejność działów w Twoim układzie'); },
   });
 
   const editSection = (section: ShowcaseSectionView | null) => setSectionDraft(section
@@ -261,7 +279,9 @@ export default function ShowcaseWorkspace() {
 
   const itemDrag = useDragList<ShowcaseItemSummary>({
     items, keyOf: (item) => item.id, group: 'showcase-items',
-    onMove: (next) => { if (selected && !needle) void reorderItems(selected.id, next.map((item) => item.id), 'Zmieniono kolejność kart'); },
+    onMove: (next) => {
+      if (selected && !needle && home) saveLayout(showcaseLayoutReorder(home, selected.id, next.map((item) => item.id)), 'Zmieniono kolejność kart w Twoim układzie');
+    },
   });
 
   /** Karta przeciągnięta na dział w lewej kolumnie — na koniec tego działu. */
@@ -334,6 +354,11 @@ export default function ShowcaseWorkspace() {
           <Tablet className="h-4 w-4" />Podgląd na iPadzie
         </button>
         <button type="button" className={secondaryButton} onClick={() => void load()}><RefreshCw className="h-4 w-4" />Odśwież</button>
+        {home?.layout && (
+          <button type="button" className={secondaryButton} onClick={() => void resetLayout()} title="Kolejność ustalona przy przygotowaniu, bez ukrytych u Ciebie">
+            <RotateCcw className="h-4 w-4" />Układ domyślny
+          </button>
+        )}
         {manage && <button type="button" className={secondaryButton} onClick={() => editSection(null)}><Plus className="h-4 w-4" />Nowy dział</button>}
         {manage && <button type="button" className={primaryButton} disabled={!selected} onClick={() => setCreating(true)}><Plus className="h-4 w-4" />Nowa karta</button>}
       </div>
@@ -345,17 +370,23 @@ export default function ShowcaseWorkspace() {
             const active = selected?.id === section.id && !needle;
             const count = sectionItems(section.id).length;
             return (
-              <div key={section.id} {...(manage ? sectionRowProps(section) : {})}
-                className={`group relative flex items-center gap-2 rounded-xl border px-2 py-2 transition-colors ${rail ? 'lg:justify-center lg:px-1' : ''} ${active ? 'border-[#d3bb73]/60 bg-[#1c1f33]' : 'border-transparent hover:bg-[#1c1f33]/70'} ${dropSection === section.id ? 'ring-2 ring-[#d3bb73]' : ''} ${sectionDrag.indicator(section)} ${sectionDrag.dragging(section) ? 'opacity-40' : ''}`}>
-                <button type="button" {...(manage ? sectionDrag.handleProps(section) : {})} onClick={() => void selectSection(section)}
-                  className={`flex min-w-0 flex-1 items-center gap-2 text-left ${rail ? 'lg:flex-none' : ''} ${manage ? 'cursor-grab active:cursor-grabbing' : ''}`}
-                  title={rail ? `${section.title}${manage ? ' — przeciągnij, żeby zmienić kolejność' : ''}` : manage ? 'Przeciągnij, żeby zmienić kolejność' : undefined}>
+              <div key={section.id} {...(manage ? sectionRowProps(section) : sectionDrag.rowProps(section))}
+                className={`group relative flex items-center gap-2 rounded-xl border px-2 py-2 transition-colors ${rail ? 'lg:justify-center lg:px-1' : ''} ${active ? 'border-[#d3bb73]/60 bg-[#1c1f33]' : 'border-transparent hover:bg-[#1c1f33]/70'} ${dropSection === section.id ? 'ring-2 ring-[#d3bb73]' : ''} ${sectionDrag.indicator(section)} ${sectionDrag.dragging(section) ? 'opacity-40' : ''} ${section.hiddenForMe ? 'opacity-50' : ''}`}>
+                <button type="button" {...sectionDrag.handleProps(section)} onClick={() => void selectSection(section)}
+                  className={`flex min-w-0 flex-1 cursor-grab items-center gap-2 text-left active:cursor-grabbing ${rail ? 'lg:flex-none' : ''}`}
+                  title={rail ? `${section.title} — przeciągnij, żeby zmienić kolejność w Twoim układzie` : 'Przeciągnij, żeby zmienić kolejność w Twoim układzie'}>
                   <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-[#d3bb73] ${section.isActive ? '' : 'opacity-60'}`}><SectionIcon icon={section.icon} className="h-4 w-4" /></span>
                   <span className={`min-w-0 flex-1 ${railOnly}`}>
                     <span className="block truncate text-sm">{section.title}</span>
-                    <span className="block text-[11px] text-[#e5e4e2]/40"><span style={DIGITS}>{count}</span> {count === 1 ? 'karta' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'karty' : 'kart'}{section.isActive ? '' : ' · ukryty'}</span>
+                    <span className="block text-[11px] text-[#e5e4e2]/40"><span style={DIGITS}>{count}</span> {count === 1 ? 'karta' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'karty' : 'kart'}{section.isActive ? '' : ' · ukryty dla wszystkich'}{section.hiddenForMe ? ' · ukryty u Ciebie' : ''}</span>
                   </span>
                   {!section.isActive && <EyeOff className={`h-3.5 w-3.5 shrink-0 text-[#e5e4e2]/40 ${railOnly}`} />}
+                </button>
+                <button type="button" onClick={() => toggleHidden('section', section.id, !section.hiddenForMe)}
+                  aria-label={section.hiddenForMe ? `Pokaż dział ${section.title} w swoim układzie` : `Ukryj dział ${section.title} w swoim układzie`}
+                  title={section.hiddenForMe ? 'Pokaż u mnie' : 'Ukryj u mnie (inni widzą swój układ)'}
+                  className={`rounded-lg p-1.5 text-[#e5e4e2]/40 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73] ${section.hiddenForMe ? '' : 'opacity-0 group-hover:opacity-100'} ${railOnly}`}>
+                  {section.hiddenForMe ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                 </button>
                 {rail && <span className="pointer-events-none absolute right-0.5 top-0.5 hidden min-w-[16px] rounded-full bg-[#0f1119] px-1 text-center text-[10px] leading-4 text-[#e5e4e2]/60 lg:block" style={DIGITS}>{count}</span>}
                 {manage && (
@@ -371,7 +402,11 @@ export default function ShowcaseWorkspace() {
               {manage && <button type="button" className={primaryButton} onClick={() => editSection(null)}><Plus className="h-4 w-4" />Nowy dział</button>}
             </div>
           )}
-          {manage && sections.length > 1 && <p className={`px-1 text-[11px] text-[#e5e4e2]/35 ${railOnly}`}>Przeciągnij dział, żeby zmienić kolejność; przeciągnij kartę na dział, żeby ją przenieść.</p>}
+          {sections.length > 0 && (
+            <p className={`px-1 text-[11px] text-[#e5e4e2]/35 ${railOnly}`}>
+              Kolejność działów i kart (przeciąganie) i ukrywanie ikoną oka to Twój układ — w CRM, na Macu, telefonie i iPadzie; inni widzą swój.{manage ? ' Kartę przeciągniętą na dział przenosisz do niego dla wszystkich.' : ''}
+            </p>
+          )}
         </aside>
 
         <section className="min-w-0 space-y-2 lg:sticky lg:top-0 lg:self-start">
@@ -382,9 +417,9 @@ export default function ShowcaseWorkspace() {
           <div className="space-y-2 lg:max-h-[calc(100vh-200px)] lg:overflow-y-auto lg:pr-1">
             {items.map((item) => {
               const thumb = item.thumbKey ? urls[item.thumbKey]?.thumb : null;
-              const handle = manage && !needle ? itemDrag.handleProps(item) : null;
+              const handle = !needle ? itemDrag.handleProps(item) : null;
               return (
-                <div key={item.id} {...(manage && !needle ? itemDrag.rowProps(item) : {})} className={`rounded-xl ${itemDrag.indicator(item)} ${itemDrag.dragging(item) ? 'opacity-40' : ''}`}>
+                <div key={item.id} {...(!needle ? itemDrag.rowProps(item) : {})} className={`group relative rounded-xl ${itemDrag.indicator(item)} ${itemDrag.dragging(item) ? 'opacity-40' : ''} ${item.hiddenForMe ? 'opacity-50' : ''}`}>
                   <button type="button" onClick={() => void openItem(item)}
                     draggable={Boolean(handle)}
                     onDragStart={handle ? (event) => { handle.onDragStart(event); event.dataTransfer.setData(ITEM_DRAG, item.id); setDraggedItem(item.id); } : undefined}
@@ -395,7 +430,8 @@ export default function ShowcaseWorkspace() {
                     <span className="min-w-0 flex-1 space-y-1">
                       <span className="flex items-start gap-1.5">
                         <span className="min-w-0 flex-1 truncate text-sm">{item.title}</span>
-                        {!item.isActive && <EyeOff className="h-3.5 w-3.5 shrink-0 text-[#e5e4e2]/40" aria-label="Ukryta" />}
+                        {!item.isActive && <EyeOff className="h-3.5 w-3.5 shrink-0 text-[#e5e4e2]/40" aria-label="Ukryta dla wszystkich" />}
+                        <span className="w-6 shrink-0" aria-hidden />
                       </span>
                       {item.tagline && <span className="block truncate text-[11px] text-[#d3bb73]/80">{item.tagline}</span>}
                       <span className="flex items-center gap-2 text-[11px] text-[#e5e4e2]/45">
@@ -403,7 +439,14 @@ export default function ShowcaseWorkspace() {
                         {manage && item.problems > 0 && <span className="inline-flex shrink-0 items-center gap-0.5 text-amber-200"><AlertTriangle className="h-3 w-3" />{item.problems}</span>}
                       </span>
                       {needle && <span className="block text-[11px] text-[#e5e4e2]/35">{sections.find((section) => section.id === item.sectionId)?.title}</span>}
+                      {item.hiddenForMe && <span className="block text-[11px] text-[#e5e4e2]/45">Ukryta u Ciebie — nie pokazuje się na Twoich spotkaniach</span>}
                     </span>
+                  </button>
+                  <button type="button" onClick={() => toggleHidden('item', item.id, !item.hiddenForMe)}
+                    aria-label={item.hiddenForMe ? `Pokaż kartę ${item.title} w swoim układzie` : `Ukryj kartę ${item.title} w swoim układzie`}
+                    title={item.hiddenForMe ? 'Pokaż u mnie' : 'Ukryj u mnie (inni widzą swój układ)'}
+                    className={`absolute right-2 top-2 rounded-lg p-1.5 text-[#e5e4e2]/40 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73] ${item.hiddenForMe ? '' : 'opacity-0 focus:opacity-100 group-hover:opacity-100'}`}>
+                    {item.hiddenForMe ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                   </button>
                 </div>
               );
@@ -543,7 +586,7 @@ export default function ShowcaseWorkspace() {
         ) : null} />
 
       {presenter && home && (
-        <ShowcasePresenter brand={home.brand} sections={home.sections} items={home.items} urls={urls}
+        <ShowcasePresenter brand={home.brand} sections={showcaseVisibleForMe(home).sections} items={showcaseVisibleForMe(home).items} urls={urls}
           loadItem={loadItem} draft={presenter.draft} start={presenter.start} onClose={() => setPresenter(null)} />
       )}
     </main>

@@ -18,6 +18,7 @@ import {
   normalizeShowcaseContent, showcaseExampleContent, type ShowcaseAiField,
   normalizeShowcaseMedia, normalizeShowcaseProductIds, showcaseContentMedia, showcaseContentProductIds, showcaseContentRealizationIds,
   showcaseLine, showcaseMaterialPaths, showcaseMediaKey, showcaseProblemCount, showcaseText,
+  applyShowcaseLayout, normalizeShowcaseLayout, type ShowcaseLayout,
   type ShowcaseAccess, type ShowcaseAlbumOption, type ShowcaseBlock, type ShowcaseBrand, type ShowcaseContent, type ShowcaseHome,
   type ShowcaseItemDetail, type ShowcaseItemSummary, type ShowcaseMedia, type ShowcasePhotoBase, type ShowcasePickPhoto,
   type ShowcasePoint, type ShowcaseProductView, type ShowcaseRealizationView, type ShowcaseSectionView, type ShowcaseUrls,
@@ -238,7 +239,46 @@ async function productBasics(ctx: NativeContext, ids: string[]) {
   return map;
 }
 
-/** Strona startowa: działy, karty (skrót), adresy miniatur, marka i zakres pracownika. */
+const LAYOUT_TABLE = 'sales_showcase_layouts';
+const LAYOUT_MISSING = 'Własny układ prezentacji zapisze się po aktualizacji bazy (migracja 20261125120000_sales_showcase_layouts.sql).';
+const tableMissing = (error: { code?: string } | null | undefined) => ['42P01', 'PGRST205', 'PGRST202'].includes(error?.code || '');
+
+/** Własny układ pracownika (kolejność działów i kart, ukryte u niego); brak tabeli (starsza baza) — kolejność domyślna. */
+async function readLayout(ctx: NativeContext): Promise<{ layout: ShowcaseLayout | null; available: boolean }> {
+  const { data, error } = await ctx.supabase.from(LAYOUT_TABLE).select('sections, items').eq('employee_id', ctx.employee.id).maybeSingle();
+  if (error) {
+    if (tableMissing(error)) return { layout: null, available: false };
+    check(error, 'Nie udało się pobrać układu prezentacji.');
+  }
+  return { layout: data ? normalizeShowcaseLayout(data) : null, available: true };
+}
+
+/** „Zapisz układ” — kolejność działów i kart oraz ukryte u pracownika (CRM, Mac, telefon, iPad). Treści i działów kart nie zmienia. */
+export async function showcaseSaveLayout(ctx: NativeContext, body: Row) {
+  await requireView(ctx);
+  const layout = normalizeShowcaseLayout(body.layout);
+  const { error } = await ctx.supabase.from(LAYOUT_TABLE).upsert({
+    employee_id: ctx.employee.id, sections: layout.sections, items: layout.items, updated_at: new Date().toISOString(),
+  }, { onConflict: 'employee_id' });
+  if (error) {
+    if (tableMissing(error)) fail(LAYOUT_MISSING, 503);
+    check(error, 'Nie udało się zapisać układu prezentacji.');
+  }
+  return { ok: true, layout };
+}
+
+/** „Przywróć układ domyślny” — kolejność ustalona przy przygotowaniu, nic nie jest ukryte. */
+export async function showcaseResetLayout(ctx: NativeContext) {
+  await requireView(ctx);
+  const { error } = await ctx.supabase.from(LAYOUT_TABLE).delete().eq('employee_id', ctx.employee.id);
+  if (error) {
+    if (tableMissing(error)) fail(LAYOUT_MISSING, 503);
+    check(error, 'Nie udało się przywrócić układu domyślnego.');
+  }
+  return { ok: true };
+}
+
+/** Strona startowa: działy, karty (skrót) w układzie pracownika, adresy miniatur, marka i zakres pracownika. */
 export async function showcaseHome(ctx: NativeContext): Promise<ShowcaseHome> {
   const access = await requireView(ctx);
   const [sections, items, brand] = await Promise.all([
@@ -272,8 +312,9 @@ export async function showcaseHome(ctx: NativeContext): Promise<ShowcaseHome> {
     };
   });
   const sectionViews = ((sections.data || []) as Row[]).map((row) => sectionView(row, summaries.filter((item) => item.sectionId === String(row.id)).length));
-  const urls = await mediaUrls(ctx, [...thumbs, ...sectionViews.map((section) => section.cover)]);
-  return { access, sections: sectionViews, items: summaries, urls, brand };
+  const [urls, mine] = await Promise.all([mediaUrls(ctx, [...thumbs, ...sectionViews.map((section) => section.cover)]), readLayout(ctx)]);
+  const arranged = applyShowcaseLayout(sectionViews, summaries, mine.layout);
+  return { access, sections: arranged.sections, items: arranged.items, urls, brand, layout: mine.layout, personal: mine.available };
 }
 
 async function itemRow(ctx: NativeContext, id: unknown): Promise<Row> {

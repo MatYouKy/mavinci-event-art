@@ -92,6 +92,23 @@ struct SocialLibraryFilter: Equatable {
         return image
     }
 
+    /// Plik obrazu jest już na dysku (np. zdjęcie prezentacji do pokazu bez internetu).
+    func stored(_ url: String?) -> Bool {
+        guard let url, !url.isEmpty else { return false }
+        return FileManager.default.fileExists(atPath: directory.appendingPathComponent(digest(Self.key(url))).path)
+    }
+
+    /// Pobranie obrazu na dysk bez dekodowania (prezentacje zapisane na dysku Maca); `true` — plik jest na dysku.
+    func store(_ url: String) async -> Bool {
+        if stored(url) { return true }
+        let file = directory.appendingPathComponent(digest(Self.key(url)))
+        guard let address = URL(string: url),
+              let (data, response) = try? await URLSession.shared.data(from: address),
+              (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? false,
+              !data.isEmpty else { return false }
+        return (try? data.write(to: file, options: .atomic)) != nil
+    }
+
     func clear() {
         images = [:]
         try? FileManager.default.removeItem(at: directory)

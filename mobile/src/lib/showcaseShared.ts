@@ -166,9 +166,12 @@ export type ShowcaseSectionView = {
   icon: ShowcaseIcon;
   cover: ShowcaseMedia | null;
   isActive: boolean;
+  /** Miejsce na liście — w układzie pracownika (`applyShowcaseLayout`), bez układu — kolejność domyślna. */
   sortOrder: number;
   version: number;
   itemCount: number;
+  /** Ukryty w układzie tego pracownika (nie pokazuje się u niego na spotkaniach; u innych — bez zmian). */
+  hiddenForMe?: boolean;
 };
 
 export type ShowcaseItemSummary = {
@@ -185,6 +188,8 @@ export type ShowcaseItemSummary = {
   blockCount: number;
   problems: number;
   updatedAt: string;
+  /** Ukryta w układzie tego pracownika (nie pokazuje się u niego na spotkaniach; u innych — bez zmian). */
+  hiddenForMe?: boolean;
 };
 
 export type ShowcaseHome = {
@@ -193,6 +198,10 @@ export type ShowcaseHome = {
   items: ShowcaseItemSummary[];
   urls: ShowcaseUrls;
   brand: ShowcaseBrand;
+  /** Własny układ pracownika (kolejność i ukryte); `null` — kolejność domyślna. */
+  layout?: ShowcaseLayout | null;
+  /** Czy serwer zapisuje własny układ (po aktualizacji bazy); starszy serwer — brak pola. */
+  personal?: boolean;
 };
 
 export type ShowcasePoint = { title: string; text: string };
@@ -499,6 +508,121 @@ export function normalizeShowcaseContent(raw: unknown): ShowcaseContent {
 /** Produkty karty: identyfikatory bez powtórzeń, w podanej kolejności. */
 export function normalizeShowcaseProductIds(raw: unknown): string[] {
   return Array.from(new Set(list(raw).filter(isShowcaseUuid).map((id) => id.toLowerCase()))).slice(0, SHOWCASE_LIMITS.products);
+}
+
+// Własny układ pracownika ---------------------------------------------------------------------------------------------------
+
+/**
+ * Układ prezentacji pracownika (`sales_showcase_layouts`): każdy z dostępem do prezentacji widzi wszystkie działy, ale kolejność
+ * działów, kolejność kart w działach i to, co ukrył u siebie, są jego własne (CRM, Mac, telefon i iPad — ten sam zapis).
+ * Treść, dział karty i widoczność dla wszystkich („Widoczny na spotkaniach”) ustala przygotowanie — układ ich nie zmienia.
+ */
+export type ShowcaseLayoutEntry = { id: string; hidden: boolean };
+export type ShowcaseLayout = { sections: ShowcaseLayoutEntry[]; items: Record<string, ShowcaseLayoutEntry[]> };
+export const SHOWCASE_LAYOUT_LIMITS = { sections: 500, items: 5000 } as const;
+
+/** Układ z zapisu (baza albo aplikacja): identyfikatory działów i kart, bez powtórzeń, w granicach limitów. */
+export function normalizeShowcaseLayout(raw: unknown): ShowcaseLayout {
+  const value = object(raw);
+  const entries = (input: unknown, seen: Set<string>, limit: number): ShowcaseLayoutEntry[] => {
+    const out: ShowcaseLayoutEntry[] = [];
+    for (const entry of list(input)) {
+      if (out.length >= limit) break;
+      const row = object(entry);
+      if (!isShowcaseUuid(row.id)) continue;
+      const id = row.id.toLowerCase();
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({ id, hidden: row.hidden === true });
+    }
+    return out;
+  };
+  const sections = entries(value.sections, new Set(), SHOWCASE_LAYOUT_LIMITS.sections);
+  const items: Record<string, ShowcaseLayoutEntry[]> = {};
+  const seenItems = new Set<string>();
+  let total = 0;
+  for (const [sectionId, rows] of Object.entries(object(value.items))) {
+    if (!isShowcaseUuid(sectionId) || total >= SHOWCASE_LAYOUT_LIMITS.items) continue;
+    const next = entries(rows, seenItems, SHOWCASE_LAYOUT_LIMITS.items - total);
+    total += next.length;
+    if (next.length) items[sectionId.toLowerCase()] = next;
+  }
+  return { sections, items };
+}
+
+type Arrangeable = { id: string; sortOrder: number; title: string; hiddenForMe?: boolean };
+const byShowcaseOrder = (a: Arrangeable, b: Arrangeable) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title, 'pl');
+
+function arrangeShowcase<T extends Arrangeable>(rows: T[], entries: ShowcaseLayoutEntry[] | undefined): T[] {
+  const position = new Map((entries || []).map((entry, index) => [entry.id, index]));
+  const hidden = new Set((entries || []).filter((entry) => entry.hidden).map((entry) => entry.id));
+  return [...rows]
+    .sort((a, b) => {
+      const x = position.get(a.id);
+      const y = position.get(b.id);
+      if (x !== undefined && y !== undefined) return x - y;
+      if (x !== undefined) return -1;
+      if (y !== undefined) return 1;
+      return byShowcaseOrder(a, b);
+    })
+    .map((row, index) => ({ ...row, sortOrder: index, hiddenForMe: hidden.has(row.id) }));
+}
+
+/**
+ * Lista z serwera w układzie pracownika: `sortOrder` = miejsce w jego układzie, `hiddenForMe` — ukryte u niego. Działy i karty
+ * spoza układu (dodane później) — na końcu, w kolejności domyślnej.
+ */
+export function applyShowcaseLayout<S extends ShowcaseSectionView, I extends ShowcaseItemSummary>(
+  sections: S[], items: I[], layout: ShowcaseLayout | null,
+): { sections: S[]; items: I[] } {
+  const arrangedSections = arrangeShowcase(sections, layout?.sections);
+  const groups = new Map<string, I[]>();
+  for (const item of items) groups.set(item.sectionId, [...(groups.get(item.sectionId) || []), item]);
+  const arrangedItems = [...groups.entries()].flatMap(([sectionId, rows]) => arrangeShowcase(rows, layout?.items[sectionId]));
+  return { sections: arrangedSections, items: arrangedItems };
+}
+
+/** Bieżący układ (po przesunięciu albo ukryciu) do zapisu: wszystkie działy i karty w kolejności z listy, z ukrytymi. */
+export function showcaseLayoutOf(home: Pick<ShowcaseHome, 'sections' | 'items'>): ShowcaseLayout {
+  const sections = [...home.sections].sort(byShowcaseOrder).map((section) => ({ id: section.id, hidden: section.hiddenForMe === true }));
+  const items: Record<string, ShowcaseLayoutEntry[]> = {};
+  for (const item of [...home.items].sort(byShowcaseOrder)) {
+    (items[item.sectionId] ||= []).push({ id: item.id, hidden: item.hiddenForMe === true });
+  }
+  return { sections, items };
+}
+
+/**
+ * Nowa kolejność w układzie: `sectionId = null` — działy, inaczej karty działu. `ids` — przesunięte pozycje w nowej kolejności;
+ * pozostałe (np. odfiltrowane wyszukiwaniem) zostają za nimi w dotychczasowej kolejności.
+ */
+export function showcaseLayoutReorder<H extends Pick<ShowcaseHome, 'sections' | 'items'>>(home: H, sectionId: string | null, ids: string[]): H {
+  const place = <T extends Arrangeable>(rows: T[]) => {
+    const current = [...rows].sort(byShowcaseOrder);
+    const known = new Set(current.map((row) => row.id));
+    const front = ids.filter((id) => known.has(id));
+    const rest = current.map((row) => row.id).filter((id) => !front.includes(id));
+    return new Map([...front, ...rest].map((id, index) => [id, index]));
+  };
+  if (sectionId === null) {
+    const index = place(home.sections);
+    return { ...home, sections: home.sections.map((section) => ({ ...section, sortOrder: index.get(section.id) ?? section.sortOrder })) };
+  }
+  const index = place(home.items.filter((item) => item.sectionId === sectionId));
+  return { ...home, items: home.items.map((item) => (item.sectionId === sectionId ? { ...item, sortOrder: index.get(item.id) ?? item.sortOrder } : item)) };
+}
+
+/** Ukrycie albo pokazanie działu lub karty w układzie pracownika. */
+export function showcaseLayoutHide<H extends Pick<ShowcaseHome, 'sections' | 'items'>>(home: H, kind: 'section' | 'item', id: string, hidden: boolean): H {
+  if (kind === 'section') return { ...home, sections: home.sections.map((section) => (section.id === id ? { ...section, hiddenForMe: hidden } : section)) };
+  return { ...home, items: home.items.map((item) => (item.id === id ? { ...item, hiddenForMe: hidden } : item)) };
+}
+
+/** Na spotkaniu: bez działów i kart ukrytych w układzie pracownika (karty ukrytego działu też znikają). */
+export function showcaseVisibleForMe<H extends Pick<ShowcaseHome, 'sections' | 'items'>>(home: H): H {
+  const sections = home.sections.filter((section) => !section.hiddenForMe);
+  const open = new Set(sections.map((section) => section.id));
+  return { ...home, sections, items: home.items.filter((item) => !item.hiddenForMe && open.has(item.sectionId)) };
 }
 
 /** Wszystkie zdjęcia karty (zdjęcie główne i bloki zdjęć). */

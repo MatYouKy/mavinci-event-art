@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
@@ -7,7 +7,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { colors, spacing, borderRadius, typography, appPalette, glow, ink, shade } from '../theme';
 import BrandHeading from '../components/BrandHeading';
 import { crmThemeShowcaseAccent } from '../theme/crmThemePalette';
-import { showcaseBrand, showcaseItem, showcaseSiblings, type ShowcasePage } from '../lib/showcaseApi';
+import { useAuth } from '../contexts/AuthContext';
+import { isShowcaseOffline, showcaseBrand, showcaseItem, showcaseSavedItem, showcaseSiblings, type ShowcasePage } from '../lib/showcaseApi';
 import { useShowcaseOffer, type ShowcaseOfferChoice } from '../lib/showcaseOffer';
 import {
   formatShowcasePrice, showcaseMediaKey, showcaseVisibleBlocks,
@@ -21,6 +22,8 @@ import {
  * znaku. Przesunięcie palcem w bok — sąsiednia karta działu (kolejność jak na liście), na końcu karty — poprzednia / następna.
  * „Do oferty” przy wariantach, pakietach i w nagłówku karty + „Oferta” w nagłówku — oferta ze spotkania (`ShowcaseOfferScreen`);
  * scena i ekran LED — „Skonfiguruj” (konfigurator na ekranie oferty).
+ * Karta otwiera się od razu z pamięci urządzenia (treść i zdjęcia zapisane przy synchronizacji), a z internetem po cichu
+ * odświeża się z serwera; bez internetu pokaz działa z pamięci. Karty ukryte w układzie pracownika nie wchodzą do przesuwania.
  */
 
 type Viewer = { photos: ShowcaseMedia[]; index: number; urls: ShowcaseUrls } | null;
@@ -167,6 +170,8 @@ function OfferButton({ added, label = 'Do oferty', accent, onPress }: { added: b
 
 function CardPage({ id, showPrices, nav, offer }: { id: string; showPrices: boolean; nav: PageNav | null; offer: OfferActions }) {
   const { width } = useWindowDimensions();
+  const { session } = useAuth();
+  const user = session?.user.id ?? null;
   const [detail, setDetail] = useState<ShowcaseItemDetail | null>(null);
   const [error, setError] = useState('');
   const [viewer, setViewer] = useState<Viewer>(null);
@@ -181,16 +186,27 @@ function CardPage({ id, showPrices, nav, offer }: { id: string; showPrices: bool
   /** Szerokość kolumny siatki (treść bez marginesów, odstęp 16 albo 8 punktów). */
   const column = (count: number, gap: number = spacing.md) => Math.floor((width - spacing.lg * 2 - gap * (count - 1)) / count);
 
-  const load = useCallback(async () => {
-    try {
-      setDetail(await showcaseItem(id));
-      setError('');
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Nie udało się otworzyć karty.');
-    }
-  }, [id]);
-
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      // Najpierw z pamięci urządzenia (od razu, bez czekania na internet i zdjęcia), potem świeża karta z serwera.
+      const saved = await showcaseSavedItem(id, user);
+      if (!alive) return;
+      if (saved) setDetail(saved);
+      try {
+        const fresh = await showcaseItem(id, user);
+        if (!alive) return;
+        setDetail((current) => (current && JSON.stringify(current) === JSON.stringify(fresh) ? current : fresh));
+        setError('');
+      } catch (cause) {
+        if (!alive || saved) return;
+        setError(isShowcaseOffline(cause)
+          ? 'Brak internetu, a ta karta nie jest jeszcze zapisana w pamięci urządzenia. Otwórz „Prezentacje” z internetem, żeby ją pobrać.'
+          : cause instanceof Error ? cause.message : 'Nie udało się otworzyć karty.');
+      }
+    })();
+    return () => { alive = false; };
+  }, [id, user]);
 
   const blocks = useMemo(() => (detail ? showcaseVisibleBlocks(detail.item.content, detail.products) : []), [detail]);
 

@@ -63,6 +63,15 @@ struct ShowcasePreviewRequest: Identifiable {
     var draft: ShowcaseDetail?
 }
 
+/// Zapis prezentacji na dysku Maca (karty, potem zdjęcia): postęp i wynik.
+struct ShowcaseOfflineState: Equatable {
+    var saving: Bool
+    var done: Int
+    var total: Int
+    var failed: Int
+    var label: String
+}
+
 /// Realizacja dodana w edytorze (nazwa i miniatura przed zapisem).
 struct ShowcaseRefInfo: Hashable {
     var title: String
@@ -101,6 +110,9 @@ enum ShowcaseUploadTarget {
     @Published private(set) var details: [String: ShowcaseDetail] = [:]
     @Published var detailErrors: [String: String] = [:]
     @Published var drafts: [String: ShowcaseDraft] = [:]
+    /// Prezentacje na dysku (pokaz bez internetu) — `nil`, zanim zapis ruszył.
+    @Published private(set) var offlineState: ShowcaseOfflineState?
+    private var offlineTask: Task<Void, Never>?
     /// Adresy zdjęć (klucz `ShowcaseMedia.key`) z listy, kart i zdjęć dodanych w edytorze przed zapisem.
     @Published private(set) var urls: [String: ShowcaseURLPair] = [:]
     /// Nazwy produktów i realizacji dodanych w edytorze (przed zapisem karty).
@@ -136,6 +148,7 @@ enum ShowcaseUploadTarget {
     }
 
     func reset(clearDisk: Bool = true) {
+        offlineTask?.cancel(); offlineTask = nil; offlineState = nil
         if clearDisk, let homeFile { try? homeFile.clear() }
         if clearDisk { for id in details.keys { try? detailFile(id)?.clear() } }
         offer.reset(clearDisk: clearDisk)
@@ -174,6 +187,7 @@ enum ShowcaseUploadTarget {
             apply(data)
             loadError = nil
             if let homeFile { let copy = data; Task.detached(priority: .utility) { try? homeFile.save(copy) } }
+            saveOffline()
         } catch {
             guard owner == workspace?.employee?.id else { return }
             if !quiet || home == nil { loadError = failureText(error, "Nie udało się pobrać prezentacji.") }
@@ -252,14 +266,94 @@ enum ShowcaseUploadTarget {
         }
     }
 
-    /// Karta do podglądu (bez zmiany kopii roboczej).
+    /// Karta do podglądu (bez zmiany kopii roboczej): zapisana na dysku w aktualnej wersji, ze zdjęciami — od razu (odświeżenie
+    /// w tle); inaczej z serwera, a bez internetu — z dysku.
     func fetchDetail(_ id: String) async -> ShowcaseDetail? {
-        if let api, let data = try? await api.get("/showcase", query: ["op": "item", "id": id]),
-           let detail = try? JSONDecoder().decode(ShowcaseDetail.self, from: data) {
-            remember(urls: detail.urls)
-            return detail
+        let version = home?.items.first { $0.id == id }?.version
+        if let version, let saved = await savedDetail(id, version: version), saved.item.version == version, !missingImages(saved) {
+            remember(urls: saved.urls)
+            Task { [weak self] in _ = await self?.downloadDetail(id) }
+            return saved
         }
-        return details[id]
+        if let fresh = await downloadDetail(id) { return fresh }
+        if let detail = details[id] { return detail }
+        return await savedDetail(id, version: nil)
+    }
+
+    // MARK: Pokaz bez internetu
+
+    /// Karta z serwera do pamięci na dysku (bez zmiany kopii roboczej edytora).
+    private func downloadDetail(_ id: String) async -> ShowcaseDetail? {
+        guard let api, let data = try? await api.get("/showcase", query: ["op": "item", "id": id]),
+              let detail = try? JSONDecoder().decode(ShowcaseDetail.self, from: data) else { return nil }
+        remember(urls: detail.urls)
+        if let file = detailFile(id) { let copy = detail; Task.detached(priority: .utility) { try? file.save(copy) } }
+        return detail
+    }
+
+    /// Karta zapisana na dysku (albo otwarta w edytorze w tej samej wersji).
+    private func savedDetail(_ id: String, version: Int?) async -> ShowcaseDetail? {
+        if let detail = details[id], version == nil || detail.item.version == version { return detail }
+        guard let file = detailFile(id) else { return nil }
+        return await Task.detached(priority: .utility) { try? file.load() }.value
+    }
+
+    /// Czy któregoś zdjęcia karty (pełnego albo miniatury) brakuje na dysku.
+    private func missingImages(_ detail: ShowcaseDetail) -> Bool {
+        detail.urls.values.contains { pair in [pair.url, pair.thumb].compactMap { $0 }.contains { !SocialImageCache.shared.stored($0) } }
+    }
+
+    /// Karty widoczne w układzie pracownika i wszystkie ich zdjęcia na dysku (jak w aplikacji na telefonie i iPadzie): podgląd pokazu
+    /// otwiera kartę od razu, bez internetu działa cały pokaz. Pobiera tylko zmienione karty i brakujące zdjęcia (jeden zapis naraz).
+    private func saveOffline() {
+        guard offlineTask == nil else { return }
+        offlineTask = Task { [weak self] in
+            await self?.prefetchOffline()
+            self?.offlineTask = nil
+        }
+    }
+
+    private func prefetchOffline() async {
+        guard let home, api != nil else { return }
+        let owner = workspace?.employee?.id
+        let visible = sectionsForMe.flatMap { itemsForMe(in: $0.id) }
+        var links = Set<String>()
+        for pair in home.urls.values { if let link = pair.thumb ?? pair.url { links.insert(link) } }
+        var failed = 0
+        offlineState = ShowcaseOfflineState(saving: true, done: 0, total: visible.count, failed: 0, label: "Zapisuję karty na dysk")
+        for (index, summary) in visible.enumerated() {
+            guard !Task.isCancelled, owner == workspace?.employee?.id else { return }
+            var detail = await savedDetail(summary.id, version: summary.version)
+            if detail?.item.version != summary.version || detail.map(missingImages) ?? true {
+                if let fresh = await downloadDetail(summary.id) { detail = fresh } else { failed += 1 }
+            }
+            if let detail {
+                for pair in detail.urls.values {
+                    if let link = pair.url { links.insert(link) }
+                    if let link = pair.thumb { links.insert(link) }
+                }
+            }
+            offlineState?.done = index + 1
+        }
+        let pending = links.filter { !SocialImageCache.shared.stored($0) }.sorted()
+        offlineState = ShowcaseOfflineState(saving: true, done: 0, total: pending.count, failed: failed, label: "Pobieram zdjęcia na dysk")
+        var done = 0
+        for start in stride(from: 0, to: pending.count, by: 4) {
+            guard !Task.isCancelled, owner == workspace?.employee?.id else { return }
+            let batch = Array(pending[start..<min(start + 4, pending.count)])
+            let saved = await withTaskGroup(of: Bool.self) { group -> Int in
+                for link in batch { group.addTask { await SocialImageCache.shared.store(link) } }
+                var count = 0
+                for await ok in group where ok { count += 1 }
+                return count
+            }
+            failed += batch.count - saved
+            done += batch.count
+            offlineState?.done = done
+        }
+        offlineState = ShowcaseOfflineState(saving: false, done: pending.count, total: pending.count, failed: failed,
+                                            label: failed == 0 ? "Prezentacje zapisane na dysku — pokaz działa bez internetu"
+                                                : "Część prezentacji nie zapisała się na dysku — dokończę przy następnym odświeżeniu")
     }
 
     /// Nowa wersja karty z serwera. Kopia robocza bez zmian (albo odpowiedź na własną czynność) — od nowa; ze zmianami zostaje.
@@ -433,6 +527,9 @@ enum ShowcaseUploadTarget {
         sectionSheet = nil
     }
 
+    // MARK: Własny układ pracownika
+
+    /// Kolejność działów w układzie pracownika (inni widzą swój układ).
     func reorderSections(_ ids: [String]) async {
         if var current = home {
             current.sections = current.sections.map { (section: ShowcaseSection) -> ShowcaseSection in
@@ -442,11 +539,67 @@ enum ShowcaseUploadTarget {
             }
             home = current
         }
-        await run("Zmieniam kolejność działów", "reorderSections", ["ids": .array(ids.map { JSONValue.string($0) })], success: "Zmieniono kolejność działów")
+        await saveLayout(success: "Zmieniono kolejność działów w Twoim układzie")
     }
 
-    /// Kolejność kart w dziale; karta z innego działu przechodzi do tego działu.
+    /// Kolejność kart działu w układzie pracownika (bez zmiany działu karty).
     func reorderItems(sectionID: String, ids: [String], success: String) async {
+        if var current = home {
+            current.items = current.items.map { (item: ShowcaseItemSummary) -> ShowcaseItemSummary in
+                guard item.sectionId == sectionID, let index = ids.firstIndex(of: item.id) else { return item }
+                var copy = item
+                copy.sortOrder = index
+                return copy
+            }
+            home = current
+        }
+        await saveLayout(success: success)
+    }
+
+    /// Ukrycie albo pokazanie działu lub karty w układzie pracownika.
+    func setHidden(section id: String, _ hidden: Bool) async {
+        guard var current = home else { return }
+        current.sections = current.sections.map { section in var copy = section; if section.id == id { copy.hiddenForMe = hidden }; return copy }
+        home = current
+        await saveLayout(success: hidden ? "Dział ukryty w Twoim układzie (inni widzą swój układ)" : "Dział znów widoczny w Twoim układzie")
+    }
+
+    func setHidden(item id: String, _ hidden: Bool) async {
+        guard var current = home else { return }
+        current.items = current.items.map { item in var copy = item; if item.id == id { copy.hiddenForMe = hidden }; return copy }
+        home = current
+        await saveLayout(success: hidden ? "Karta ukryta w Twoim układzie (inni widzą swój układ)" : "Karta znów widoczna w Twoim układzie")
+    }
+
+    /// „Układ domyślny” — kolejność z przygotowania, bez ukrytych u pracownika.
+    func resetLayout() async {
+        await run("Przywracam układ domyślny", "resetLayout", [:], success: "Przywrócono układ domyślny")
+    }
+
+    /// Bieżący układ do zapisu (jak `showcaseLayoutOf`): wszystkie działy i karty w kolejności z listy, z ukrytymi.
+    private func layoutPayload() -> JSONValue {
+        let entry = { (id: String, hidden: Bool?) -> JSONValue in .object(["id": .string(id), "hidden": .bool(hidden == true)]) }
+        var items: [String: JSONValue] = [:]
+        for section in home?.sections ?? [] {
+            let list = self.items(in: section.id)
+            if !list.isEmpty { items[section.id] = .array(list.map { entry($0.id, $0.hiddenForMe) }) }
+        }
+        return .object(["sections": .array(sections.map { entry($0.id, $0.hiddenForMe) }), "items": .object(items)])
+    }
+
+    private func saveLayout(success: String) async {
+        await run("Zapisuję Twój układ", "saveLayout", ["layout": layoutPayload()], success: success)
+    }
+
+    /// Na spotkaniu: bez działów i kart ukrytych w układzie pracownika (karty ukrytego działu też znikają).
+    var sectionsForMe: [ShowcaseSection] { sections.filter { $0.hiddenForMe != true } }
+    func itemsForMe(in sectionID: String) -> [ShowcaseItemSummary] {
+        guard sectionsForMe.contains(where: { $0.id == sectionID }) else { return [] }
+        return items(in: sectionID).filter { $0.hiddenForMe != true }
+    }
+
+    /// Przeniesienie kart do działu dla wszystkich (przygotowanie): kolejność domyślna działu, karta z innego działu przechodzi tutaj.
+    func moveItems(sectionID: String, ids: [String], success: String) async {
         if var current = home {
             current.items = current.items.map { (item: ShowcaseItemSummary) -> ShowcaseItemSummary in
                 guard let index = ids.firstIndex(of: item.id) else { return item }
@@ -457,14 +610,14 @@ enum ShowcaseUploadTarget {
             }
             home = current
         }
-        await run("Zmieniam kolejność kart", "reorderItems", ["sectionId": .string(sectionID), "ids": .array(ids.map { JSONValue.string($0) })], success: success)
+        await run("Przenoszę kartę", "reorderItems", ["sectionId": .string(sectionID), "ids": .array(ids.map { JSONValue.string($0) })], success: success)
     }
 
-    /// Karta przeciągnięta na dział — na koniec tego działu.
+    /// Karta przeciągnięta na dział — na koniec tego działu (dla wszystkich; przygotowanie prezentacji).
     func moveItem(_ itemID: String, toSection target: ShowcaseSection) async {
         guard let item = home?.items.first(where: { $0.id == itemID }), item.sectionId != target.id else { return }
         let ids = items(in: target.id).map(\.id) + [itemID]
-        await reorderItems(sectionID: target.id, ids: ids, success: "Przeniesiono kartę do działu „\(target.title)”")
+        await moveItems(sectionID: target.id, ids: ids, success: "Przeniesiono kartę do działu „\(target.title)”")
     }
 
     // MARK: Zdjęcia

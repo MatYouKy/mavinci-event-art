@@ -301,9 +301,12 @@ struct ShowcaseSection: Codable, Hashable, Identifiable {
     var icon: String
     var cover: ShowcaseMedia?
     var isActive: Bool
+    /// Miejsce w układzie pracownika (serwer zwraca listę już w jego układzie), bez układu — kolejność domyślna.
     var sortOrder: Int
     var version: Int
     var itemCount: Int
+    /// Ukryty w układzie tego pracownika (u innych bez zmian).
+    var hiddenForMe: Bool?
 }
 
 struct ShowcaseItemSummary: Codable, Hashable, Identifiable {
@@ -319,6 +322,19 @@ struct ShowcaseItemSummary: Codable, Hashable, Identifiable {
     var blockCount: Int
     var problems: Int
     var updatedAt: String
+    /// Ukryta w układzie tego pracownika (u innych bez zmian).
+    var hiddenForMe: Bool?
+}
+
+/// Własny układ pracownika (`ShowcaseLayout` w `showcaseShared.ts`): kolejność działów i kart w działach, ukryte u niego.
+struct ShowcaseLayoutEntry: Codable, Hashable {
+    var id: String
+    var hidden: Bool
+}
+
+struct ShowcaseLayout: Codable, Hashable {
+    var sections: [ShowcaseLayoutEntry]
+    var items: [String: [ShowcaseLayoutEntry]]
 }
 
 struct ShowcaseHome: Codable {
@@ -327,6 +343,10 @@ struct ShowcaseHome: Codable {
     var items: [ShowcaseItemSummary]
     var urls: [String: ShowcaseURLPair]
     var brand: ShowcaseBrand
+    /// Własny układ pracownika; `nil` — kolejność domyślna.
+    var layout: ShowcaseLayout?
+    /// Czy serwer zapisuje własny układ (po aktualizacji bazy).
+    var personal: Bool?
 }
 
 struct ShowcasePoint: Codable, Hashable {
