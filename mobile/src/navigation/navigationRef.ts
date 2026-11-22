@@ -41,6 +41,8 @@ const MENU_SECTION_OF: Record<string, string> = {
   SocialQuickPost: 'SocialMedia',
   PortfolioItem: 'Portfolio',
   Materials: 'Drive',
+  FinanceScan: 'Drive',
+  TimeEmployee: 'TimeTracking',
 };
 
 type AnyNavigationState = NavigationState | PartialState<NavigationState>;

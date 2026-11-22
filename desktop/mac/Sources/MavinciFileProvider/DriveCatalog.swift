@@ -3,8 +3,12 @@ import FileProvider
 import Foundation
 import UniformTypeIdentifiers
 
-// MARK: Dysk w Finderze — Mavinci → Oferty, Kalkulacje, Umowy, Magazyn, Pracownicy i „Z księgi znaku” w Materiałach
+// MARK: Dysk w Finderze — Mavinci → Finanse, Oferty, Kalkulacje, Umowy, Magazyn, Pracownicy i „Z księgi znaku” w Materiałach
 //
+// Finanse (tylko osoby z dostępem do faktur firmy; Bank oraz Podatki i ZUS — od „Finanse — podgląd”): firma → Księgowość →
+// rok → miesiąc → Sprzedaż, Koszty, Bank, Podatki i ZUS, XML z KSeF (faktury, wizualizacje KSeF, dokumenty spoza KSeF,
+// wyciągi, deklaracje — tylko do odczytu; miesiąc jak w przekazaniu księgowej), Dokumenty spółki → kategoria i Umowy stałe →
+// umowa (od „Finanse — podgląd”; pliki dodaje „Finanse — zarządzanie” — serwer oznacza takie foldery polem `upload`).
 // Oferty, Kalkulacje i Umowy: rok → miesiąc → PDF z CRM („OF-2026-11-020 — Klient — tytuł.pdf”), Magazyn: kategoria → sprzęt →
 // zdjęcia, pliki i instrukcja, Pracownicy: pracownik → Zdjęcia, Dokumenty, Umowy (foldery według uprawnień, jak zakładki
 // profilu), a w folderze „Logotypy i księga znaku” każdej marki (Materiały) — folder „Z księgi znaku”
@@ -12,8 +16,8 @@ import UniformTypeIdentifiers
 // na Macu i w telefonie (`/bridge/native/v1/drive`, `src/lib/drive/drive.server.ts`).
 // Kopia całego drzewa (bez treści plików) w kontenerze rozszerzenia; treść pobiera się przy otwarciu. Drzewo wczytuje się
 // od nowa przy sprawdzaniu zmian, gdy kopia ma ponad 10 minut albo aplikacja zgłosiła zmianę (`FinderShared.markDriveChanged`);
-// różnicę z tym, co Finder już zna, oddaje zbiór roboczy (nowe, zmienione i usunięte elementy). Oferty, Kalkulacje, Umowy
-// i księga znaku są tylko do odczytu (PDF-y i księga znaku powstają w CRM); do sprzętu w Magazynie można dodawać pliki
+// różnicę z tym, co Finder już zna, oddaje zbiór roboczy (nowe, zmienione i usunięte elementy). Finanse, Oferty, Kalkulacje,
+// Umowy i księga znaku są tylko do odczytu (PDF-y i księga znaku powstają w CRM); do sprzętu w Magazynie można dodawać pliki
 // z prawem „Zarządzanie magazynem” (zdjęcie do 10 MB — galeria sprzętu, inne pliki do 50 MB — pliki sprzętu, jak w CRM),
 // a do „Dokumenty” pracownika — pliki do 50 MB (folder jest tylko u osób, które mogą tam dodawać: sam pracownik,
 // „Pracownicy — zarządzanie”).
@@ -115,9 +119,23 @@ actor DriveCatalog {
     /// Folder „Dokumenty” pracownika (`employees:<id>:documents`) — synchronizacja oddaje go tylko osobom, które mogą tam dodawać.
     private static func isDocuments(_ node: String) -> Bool { node.hasPrefix("employees:") && node.hasSuffix(":documents") }
 
-    /// Czy do folderu można dodać plik z Findera (sprzęt z prawem magazynu albo dokumenty pracownika).
+    /// Czy do folderu można dodać plik z Findera (sprzęt z prawem magazynu, dokumenty pracownika, Dokumenty spółki i umowa stała
+    /// z „Finanse — zarządzanie”).
     private func uploadAllowed(_ folder: DriveFolderDTO) -> Bool {
-        (folder.kind == "equipment" && canUpload) || Self.isDocuments(folder.id)
+        (folder.kind == "equipment" && canUpload) || Self.isDocuments(folder.id) || Self.isFinanceUpload(folder)
+    }
+
+    /// Kategoria Dokumentów spółki albo umowa stała, do której serwer pozwala dodawać pliki.
+    private static func isFinanceUpload(_ folder: DriveFolderDTO) -> Bool {
+        folder.id.hasPrefix("finance:") && folder.upload == true
+    }
+
+    /// Dokąd trafiają pliki (komunikaty jak w aplikacji: `DriveText.uploadPlace`).
+    private static func uploadPlace(_ node: String) -> String {
+        if isDocuments(node) { return "dokumentów pracownika" }
+        if node.hasPrefix("finance:") && node.hasSuffix(":costs") { return "kosztów" }
+        if node.hasPrefix("finance:") { return node.contains(":corporate:") ? "dokumentów spółki" : "umowy" }
+        return "sprzętu"
     }
 
     /// Działy Dysku w głównym folderze Mavinci (Oferty, Kalkulacje, Umowy, Magazyn — tylko z dostępem).
@@ -235,12 +253,12 @@ actor DriveCatalog {
         try open()
         if FinderName.excluded(template.filename) { throw NSFileProviderError(.excludedFromSync) }
         if state.syncedAt == nil { try await fullSync() }
-        guard case .drive(let node) = FinderID.parse(template.parentItemIdentifier),
-              node.hasPrefix("warehouse:item:") || Self.isDocuments(node), state.folders[node] != nil else {
-            throw Self.refused("Oferty, Kalkulacje, Umowy, zdjęcia i umowy pracowników oraz księga znaku są tylko do odczytu — pliki dodawaj do sprzętu w Magazynie albo do „Dokumenty” pracownika.")
+        guard case .drive(let node) = FinderID.parse(template.parentItemIdentifier), let folder = state.folders[node],
+              node.hasPrefix("warehouse:item:") || Self.isDocuments(node) || Self.isFinanceUpload(folder) else {
+            throw Self.refused("Ten folder jest tylko do odczytu — pliki dodawaj do sprzętu w Magazynie, do „Dokumenty” pracownika, do Dokumentów spółki albo do umowy stałej w Finansach.")
         }
-        let documents = Self.isDocuments(node)
-        let place = documents ? "dokumentów pracownika" : "sprzętu"
+        let documents = Self.isDocuments(node) || Self.isFinanceUpload(folder)
+        let place = Self.uploadPlace(node)
         guard documents || canUpload else {
             throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError,
                           userInfo: [NSLocalizedDescriptionKey: "Dodawanie plików do sprzętu wymaga prawa „Zarządzanie magazynem”."])
@@ -264,9 +282,16 @@ actor DriveCatalog {
             try await FinderAPI.put(source, to: target, mime: mime)
             let done = try await FinderAPI.post(["op": "completeUpload", "parentId": node, "bucket": prepared.bucket, "path": prepared.path,
                                                  "name": name, "size": size, "mime": mime], as: DriveUploadedReply.self, endpoint: .drive)
-            state.files[done.file.id] = done.file
+            var file = done.file
+            if state.folders[file.parentId] == nil {
+                // Dokument kosztowy z datą z innego miesiąca trafił do teczki, której Finder jeszcze nie zna — na razie zostaje
+                // w folderze upuszczenia, a najbliższe sprawdzenie zmian wczyta drzewo od nowa i pokaże go na miejscu.
+                file = DriveFileDTO(id: file.id, parentId: node, name: file.name, size: file.size, updatedAt: file.updatedAt, version: file.version)
+                state.syncedAt = .distantPast
+            }
+            state.files[file.id] = file
             save()
-            return fileItem(done.file, names: names(in: node))
+            return fileItem(file, names: names(in: file.parentId))
         } catch {
             _ = try? await FinderAPI.post(["op": "cancelUpload", "parentId": node, "bucket": prepared.bucket, "path": prepared.path],
                                           as: FinderOK.self, endpoint: .drive)

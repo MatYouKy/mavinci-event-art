@@ -1428,3 +1428,85 @@ Panel „Przegląd” w karcie wydarzenia otwiera się domyślnie. Na stałe (na
 ### Dashboard w aplikacji: listy eventów i zadań w ramce po 5 kart, „Moje kroki” jako siatka na tablecie (22.11.2026)
 - **Nadchodzące eventy i Moje zadania** (`screens/DashboardScreen.tsx`): sekcje w ramce (jak „Moje kroki” i „Mój dzień”), karty w jaśniejszym tle o stałej wysokości — mieści się dokładnie 5 kart, bez pustego miejsca pod nimi; nadmiar otwiera „Zobacz więcej eventów” / „Zobacz wszystkie zadania”. Karty zwięzłe: nazwa w jednym wierszu, etykiety i data pod spodem.
 - **Moje kroki** (`components/Events/MyEventStepsSection.tsx`, `EventStepsPanel.tsx` — `EventStepRow` przyjmuje `style`): na tablecie siatka na całą szerokość — 2 kolumny (od 600 pkt) albo 3 (od 960 pkt), w podglądzie dwa rzędy, karty w rzędzie równej wysokości; telefon — lista jak dotąd.
+
+### Mac: naprawa budowania — dodawanie pozycji z pokazu do oferty (22.11.2026)
+- **Mac** (`Showcase/ShowcaseOffer.swift`): przywrócone `ShowcaseOfferRules.key` i `line(for:kind:option:item:)` (usunięte razem z dawnym przełączaniem trybu rabatu, a nadal używane przez „Do oferty” i znacznik „w ofercie”). Logika jak `showcaseOfferLineFor` w `showcaseShared.ts`: domyślnie pierwszy pakiet, inaczej polecany wariant; produkt z konfiguratorem lub wycofany — bez pozycji; rabat pozycji od 0%.
+
+### Dysk → Finanse w CRM, na Macu i w Finderze; ostrzeżenia budowania Maca (22.11.2026)
+- **Finanse w głównym folderze Dysku** (CRM `/crm/materials`, Mac → Dysk, Finder → Mavinci → Finanse): firma → Księgowość → rok → miesiąc → Sprzedaż, Koszty, Bank, Podatki i ZUS, XML z KSeF. Miesiąc jak w przekazaniu księgowej: faktury CRM i KSeF według daty wystawienia, dokumenty spoza KSeF według daty dokumentu, wyciągi według miesiąca wyciągu, deklaracje według okresu (roczne w grudniu).
+- **Widoczność**: dział widzą tylko osoby z dostępem do finansów firmy (poziom co najmniej „Faktury”, zakres „cała firma”). Bank oraz Podatki i ZUS widać od poziomu „Finanse — podgląd”. Zakres „sprzedaż” nie widzi działu. Wiersze czyta token pracownika (RLS), adresy plików podpisuje serwer dopiero po sprawdzeniu dostępu.
+- **Sprzedaż**: faktury CRM (bez proform, szkiców i anulowanych) z PDF-em z CRM; gdy PDF-a nie ma, serwer robi wydruk z danych faktury. Faktury wystawione w KSeF poza CRM (albo których faktury CRM nie ma w Sprzedaży) trafiają tu jako wizualizacja z KSeF.
+- **Koszty**: faktury odebrane w KSeF (wizualizacja PDF z zapisanego XML; bez XML — z danych nagłówka, z dopiskiem) i dokumenty spoza KSeF (paragony, polisy, faktury zagraniczne) z plikiem z CRM.
+- **Bank**: wyciągi. **Podatki i ZUS**: pliki deklaracji. **XML z KSeF**: oryginalne pliki XML faktur.
+- Wizualizacje KSeF, wydruki faktur bez PDF-a i kopie XML powstają raz na serwerze Next i czekają w prywatnym buckecie `finance-documents`. Dostęp do niego ma tylko konto serwisowe (migracja `20261125140000_finance_drive_documents.sql`).
+- Finanse są tylko do odczytu. Przycisk „Centrum finansów” (CRM, Mac) otwiera Finanse. Mac otwiera fakturę natywnie (Finanse → Faktury), a faktury z KSeF w części KSeF.
+- **Telefon i tablet**: Finansów celowo nie przeglądają (decyzja właściciela 22.11.2026), więc dział jest ukryty w Dysku aplikacji. Skanowanie dokumentów do dowolnego folderu struktury Finansów przyjdzie w etapie 3.
+- **Mac — budowanie bez ostrzeżeń**: `SystemHealthView` (równoległe wywołania RPC bez lokalnej funkcji przechwytującej stan), `FileProviderExtension` (prośba o sprawdzenie zmian przez `FinderSync.signalWorkingSet`), `MaterialsCatalog` (nieużyty wynik `try?`).
+
+### Dysk → Finanse: Dokumenty spółki i Umowy stałe (CRM, Mac, Finder) (22.11.2026)
+- **Firma w Finansach** ma obok Księgowości dwa foldery: **Dokumenty spółki** i **Umowy stałe**. Widać je od poziomu „Finanse — podgląd” w firmie.
+- **Dokumenty spółki** (tabela `company_documents`, prywatny bucket `company-documents`, migracja `20261125150000_company_documents.sql`) mają kategorie: Umowa spółki i KRS, Uchwały i protokoły, Sprawozdania finansowe, Rejestracje i zaświadczenia, Pełnomocnictwa, Inne.
+  - Pliki dodaje i usuwa poziom „Finanse — zarządzanie” (administrator ma go we wszystkich firmach). Zakres „sprzedaż” i portal sprzedawcy nie widzą nic (RLS i polityki magazynu).
+  - Dodawanie: przycisk „Dodaj pliki” i przeciąganie w CRM i na Macu oraz przeciąganie w Finderze. Usuwanie (z potwierdzeniem): CRM i Mac.
+- **Umowy stałe**: umowy z Centrum finansów (najem, leasing, abonamenty, ubezpieczenia, kredyty), najpierw trwające, zakończone z dopiskiem.
+  - W folderze umowy są jej pliki (bucket `finance-contracts`). Przez Dysk można je dodawać i usuwać z tymi samymi uprawnieniami co w Centrum finansów (funkcje bazy `add_` i `remove_finance_recurring_contract_file`).
+- Serwer oznacza foldery, do których wolno dodawać pliki (`upload`), a pliki, które wolno usunąć (`canDelete`). Pobranie: adres podpisany po odczycie wiersza tokenem pracownika.
+- **Telefon i tablet**: bez zmian w Dysku (Finanse ukryte). Skaner z wyborem folderu w całej strukturze Finansów przyjdzie w etapie 3.
+
+### Finanse: dokumenty do Kosztów i skaner w aplikacji (CRM, Mac, Finder, telefon, tablet) (22.11.2026)
+- **Koszty miesiąca przyjmują pliki** (CRM i Mac: przycisk i przeciąganie; Finder: przeciąganie). Uprawnienie: „Finanse — zarządzanie” w firmie.
+  - Każdy plik staje się dokumentem spoza KSeF (`external_invoices`, plik w `external-invoices`).
+  - AI odczytuje dane tą samą funkcją co „Odczytaj z pliku” w CRM (`extract-external-invoice`): sprzedawcę, NIP, numer, datę, kwoty, walutę i rodzaj dokumentu.
+  - Teczkę wyznacza data dokumentu. Jeśli różni się od wybranego miesiąca, aplikacja to mówi.
+  - Bez odczytu dokument dostaje dane „Do uzupełnienia” i notatkę z uwagami. Zamknięty miesiąc zwraca komunikat bazy.
+- **Bieżący miesiąc** jest w Księgowości zawsze, także pusty, żeby było gdzie dodawać dokumenty.
+- **Skaner w aplikacji** (telefon i tablet): Dysk → „Skanuj dokument” (widać, gdy jest dostęp do Finansów).
+  - Zdjęcia stron z aparatu albo z galerii. Kolejność zmienia się przeciąganiem, stronę można obejrzeć albo usunąć.
+  - Wybór folderu w całej strukturze Finansów: skrót „Koszty — bieżący miesiąc”, Koszty dowolnego miesiąca, kategorie Dokumentów spółki, umowy stałe. Aplikacja pamięta ostatni folder.
+  - Serwer Next składa PDF (pdf-lib, orientacja z EXIF) i zapisuje go jako dokument spoza KSeF z odczytem AI, dokument spółki albo plik umowy.
+  - Strony czekają w prywatnym `finance-scans` (migracja `20261125160000_finance_scans.sql`, tylko konto serwisowe) i znikają po zapisie.
+- CRM i Mac pokazują po dodaniu informację serwera (`notice`): odczytane dane albo inna teczka. Finder po dodaniu dokumentu z innego miesiąca odświeża drzewo.
+
+### Sprzęt: własność i dokumenty zakupu; Finanse → Majątek (CRM, Mac, Finder) (22.11.2026)
+- **Sprzęt → „Zakup” → „Własność i dokumenty zakupu”** (CRM i Mac) opisuje partie sztuk sprzętu.
+  - Własność: środek trwały firmy, wyposażenie firmy, leasing lub najem, prywatne. Prywatne można sprzedać bez faktury, za gotówkę.
+  - Dla partii firmy wskazuje się dokument zakupu z jej Finansów: fakturę kosztową z KSeF, dokument spoza KSeF albo, dla leasingu i najmu, umowę stałą. Wybór z wyszukiwarki po numerze, sprzedawcy albo tytule.
+  - Gdy dokumentu nie ma w CRM, można zapisać, gdzie jest.
+  - Podsumowanie: sztuki w Magazynie, według własności, z nieustaloną własnością i firmowe bez dokumentu.
+- **Dane i uprawnienia**: tabela `equipment_acquisitions` (migracja `20261125170000_equipment_acquisitions.sql`).
+  - Widzą osoby z dostępem do faktur firmy (prywatne — z „Finanse — podgląd” w dowolnej firmie), zmienia „Finanse — zarządzanie”.
+  - Dokument musi być z tej samej firmy (faktura z KSeF — otrzymana); pilnuje tego wyzwalacz bazy.
+  - Kto nie ma dostępu do finansów, nie widzi karty. API: `/bridge/native/v1/assets`.
+- **Dysk → Finanse → firma → Majątek** (od „Finanse — podgląd”): rejestr majątku jako PDF (sekcje według własności, sumy w PLN, na końcu „Do wyjaśnienia — bez dokumentu zakupu”) i CSV dla księgowej (średniki, UTF-8 z BOM).
+  - Pliki powstają na serwerze Next i czekają w `finance-documents`, który od tej migracji przyjmuje też CSV. Nowa wersja powstaje przy każdej zmianie danych.
+- **Telefon i tablet**: bez zmian w wyglądzie. Własność sprzętu jest w CRM i na Macu, a Majątek — w Finansach, których aplikacja nie przegląda.
+
+### Finanse: Zamknięcie miesiąca i Do wyjaśnienia (CRM, Mac, Finder) (22.11.2026)
+- **Stan miesiąca w nazwie folderu** (Księgowość → rok): „· przekazany księgowej” albo „· zamknięty”, według `get_finance_periods`. Dotyczy firm z „Finanse — podgląd”.
+- **„Zamknięcie miesiąca — <miesiąc>.pdf”** w każdym miesiącu (od „Finanse — podgląd”). Lista kontrolna z danych „Dla księgowej” (`saldeoMonth`) i Finansów:
+  - wyciąg bankowy, płatności z dokumentem (także „świadomie bez dokumentu”), dokumenty spoza KSeF uzupełnione, XML z KSeF,
+  - przekazanie księgowej, błędy przekazania, pytania księgowej, zamknięcie miesiąca.
+  - Pod listą szczegóły: płatności bez dokumentu, dokumenty do uzupełnienia, dokumenty czekające na przekazanie, pytania, uwagi.
+- **Firma → „Do wyjaśnienia”** z plikiem „Do wyjaśnienia — <firma>.pdf”. Otwarte sprawy ze wszystkich miesięcy:
+  - niezamknięte miesiące z ostatniego roku, dokumenty spoza KSeF do uzupełnienia (także skany bez odczytanych danych), pytania księgowej, faktury z KSeF bez XML,
+  - sprzęt firmy bez dokumentu zakupu i sprzęt bez ustalonej własności (wszystkie firmy).
+- Raporty powstają na serwerze Next przy otwarciu. Kopia w `finance-documents` jest kluczowana treścią, więc każda zmiana danych daje nowy plik. Bez migracji.
+- **Telefon i tablet**: skaner nie pokazuje Majątku ani Do wyjaśnienia jako miejsc zapisu. Dysk w aplikacji bez zmian (Finanse ukryte).
+
+### Czas pracy administratora i Przetargi w aplikacji (telefon, tablet) (22.11.2026)
+- **Czas pracy — administrator nie liczy własnego czasu.** Zamiast licznika (Start, Zakończ pracę) widzi zespół (`TimeTeamDashboard`):
+  - „Aktywni teraz”: kto ma włączony licznik, nad czym pracuje (zadanie, event, opis), od której godziny, czas na żywo. Własny licznik włączony gdzie indziej — przycisk „Zakończ”.
+  - Okres: dzień, tydzień, miesiąc, rok, ze strzałkami. Kafelki: łączny czas, rozliczalny, liczba pracujących, wartość wpisów bez umowy.
+  - Pracownicy z czasem w okresie (wpisy, dni, bieżące zadanie, pasek udziału) i rozwijana lista osób bez wpisów.
+  - Rozmowy „do wyjaśnienia” (odpowiedź, oznaczenie jako wyjaśnione) i aktywność dzienna (w roku — miesięczna).
+- **Strona pracownika** (`TimeEmployeeScreen`, dotknięcie osoby): kontakt, aktualnie naliczany czas, okres, kafelki, czas według zadań.
+  - Wpisy dniami: godziny, opis, event, stawka, „Płatne”. Czynności: zadanie, „Zmiany · N” (historia zmian wpisu), „Zapytaj” (nowy wątek albo istniejąca rozmowa).
+  - „Historia zmian i usunięć” z okresu: kto, kiedy, pole „przed → po”, filtr „Tylko usunięte”. Bez edycji wpisów — jak w CRM.
+- Dane z tego samego API co Mac (`/bridge/native/v1/time`: `dashboard`, `employee`, `history`, `stop`). Raport zespołu zwraca teraz także `active` (wszystkie włączone liczniki, również osób bez zakończonych wpisów w okresie) i zdjęcia pracowników. Pracownik bez zmian: licznik, dzisiejsze wpisy, rozmowy, moje wpisy.
+- `TimeEntryDiscussions`: wariant `modal` (samo okno rozmowy dla wskazanego wpisu); administrator rozpoznawany jak w CRM (`isAdmin`).
+- **Przetargi** (`TendersScreen`) — jak na Macu. Wcześniej domyślny filtr „Moje” przy braku przypisanych przetargów dawał pustą listę.
+  - Domyślnie „Aktywne”: otwarty termin albo bez terminu, nieukryte, niezakończone. Zakresy: Moje, Do 7 dni, Obserwowane, Dopasowane. Filtr statusu.
+  - „Także przeszłe i ukryte” (300 ostatnich; wyszukiwanie przeszukuje wszystkie). Wyszukiwanie po tytule, zamawiającym i miejscowości.
+  - Lista: termin i pozostały czas, ocena dopasowania, gwiazdka obserwowanych, „Mój”, „Zapytanie”, „Ukryty”, miejscowość, wartość.
+  - Szczegóły: ocena, stan, zamawiający, lokalizacja, daty, pozostały czas, wartość, kody CPV, opis. Opiekun: „Przypisz do mnie” / „Zwolnij” (`assign_tender`), „Obserwuj”.
+  - Zapytanie: „Utwórz zapytanie” (do terminu składania) albo „Otwórz zapytanie”. Status (zablokowany przy zapytaniu) i notatki, „Trafny” / „Nietrafny”, „Ukryj przetarg” / „Przywróć na listę”. Bez migracji.

@@ -18,6 +18,8 @@ import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
 import TimeEntryDiscussions from '../components/TimeEntryDiscussions';
 import OwnTimeEntries from '../components/OwnTimeEntries';
+import TimeTeamDashboard from '../components/TimeTeamDashboard';
+import { isAdmin } from '../lib/permissions';
 import { usePublicHolidays } from '../hooks/usePublicHolidays';
 import { toISODate, workingTimeNorm, workingTimeNormSentence } from '../lib/publicHolidays';
 
@@ -34,7 +36,24 @@ interface TimeEntry {
   event_name?: string | null;
 }
 
+/**
+ * Czas pracy: pracownik liczy swój czas (licznik, wpisy, rozmowy); administrator nie liczy własnego czasu — widzi zespół
+ * (kto teraz pracuje i nad czym, czas w okresie, strona pracownika z wpisami i historią zmian).
+ */
 function TimeTrackingContent() {
+  const route = useRoute<any>();
+  const { employee } = useAuth();
+  if (isAdmin(employee)) {
+    return (
+      <TimeTeamDashboard header={<MonthNormBanner />} discussionEntryId={route.params?.discussionEntryId}
+        discussionRequestId={route.params?.discussionRequestId} />
+    );
+  }
+  return <OwnTimeTracking />;
+}
+
+/** Mój czas pracy (pracownik): licznik start/stop, dzisiejsze wpisy, rozmowy o wpisach i moje wpisy z edycją. */
+function OwnTimeTracking() {
   const route = useRoute<any>();
   const discussionNavigation = useNavigation<any>();
   const [discussionThreads, setDiscussionThreads] = useState<any[]>([]);

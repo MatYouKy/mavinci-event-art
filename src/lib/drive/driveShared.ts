@@ -2,19 +2,27 @@
  * Dysk — wspólne stałe, typy i funkcje CRM (web), serwera Next i telefonu (kopia 1:1 w `mobile/src/lib/driveShared.ts`,
  * para w `scripts/ci/check-shared-copies.mjs`); Mac — odpowiednik w Swift (`Drive/DriveModels.swift`). Bez importów.
  *
- * Dysk to ta sama chmura, co w Finderze (Mavinci → …): Eventy (pliki wydarzeń), Materiały (baza plików marki), Oferty,
- * Kalkulacje i Umowy (PDF-y z CRM: rok → miesiąc), Magazyn (kategoria → sprzęt → zdjęcia, pliki, instrukcja), Pracownicy
- * (pracownik → Zdjęcia, Dokumenty, Umowy). Oferty, Kalkulacje i Umowy są tylko do odczytu (PDF-y powstają w CRM); pliki
- * można dodawać do sprzętu w Magazynie i do dokumentów pracownika.
+ * Dysk to ta sama chmura, co w Finderze (Mavinci → …): Finanse (firma → Księgowość → rok → miesiąc → Sprzedaż, Koszty, Bank,
+ * Podatki i ZUS, XML z KSeF, w miesiącu — lista zamknięcia miesiąca; Dokumenty spółki; Umowy stałe; Majątek; Do wyjaśnienia — tylko
+ * osoby z dostępem do finansów firmy), Eventy (pliki eventów),
+ * Materiały (baza plików marki), Oferty, Kalkulacje i Umowy (PDF-y z CRM: rok → miesiąc), Magazyn (kategoria → sprzęt → zdjęcia,
+ * pliki, instrukcja), Pracownicy (pracownik → Zdjęcia, Dokumenty, Umowy). Oferty, Kalkulacje i Umowy oraz Sprzedaż, Bank,
+ * Podatki i XML w Księgowości są tylko do odczytu (dokumenty powstają w CRM); pliki można dodawać do sprzętu w Magazynie, do
+ * dokumentów pracownika oraz w Finansach do Kosztów miesiąca (dokument spoza KSeF), Dokumentów spółki i Umów stałych („Finanse —
+ * zarządzanie”). Aplikacja na telefonie i tablecie nie przegląda Finansów — skanuje dokumenty do wybranego folderu.
  */
 
 export const DRIVE_TITLE = 'Dysk';
 
-export type DriveSection = 'events' | 'materials' | 'offers' | 'calculations' | 'contracts' | 'warehouse' | 'employees';
+export type DriveSection = 'finance' | 'events' | 'materials' | 'offers' | 'calculations' | 'contracts' | 'warehouse' | 'employees';
 export type DriveDocumentSection = 'offers' | 'calculations' | 'contracts';
 
 /** Działy w kolejności jak w Finderze. */
 export const DRIVE_SECTIONS: ReadonlyArray<{ key: DriveSection; label: string; description: string }> = [
+  {
+    key: 'finance', label: 'Finanse',
+    description: 'Księgowość firm (rok → miesiąc → sprzedaż, koszty, bank, podatki i ZUS, XML z KSeF), dokumenty spółki i umowy stałe. Widzą osoby z dostępem do finansów firmy.',
+  },
   { key: 'events', label: 'Eventy', description: 'Pliki eventów: rok → event → foldery z zakładki Pliki.' },
   { key: 'materials', label: 'Materiały', description: 'Logotypy i księga znaku, zdjęcia, wideo, prezentacje i dokumenty marki.' },
   { key: 'offers', label: 'Oferty', description: 'PDF-y wystawionych ofert: rok → miesiąc.' },
@@ -25,6 +33,78 @@ export const DRIVE_SECTIONS: ReadonlyArray<{ key: DriveSection; label: string; d
 ];
 
 export const DRIVE_DOCUMENT_SECTIONS: readonly DriveDocumentSection[] = ['offers', 'calculations', 'contracts'];
+
+/** Folder firmy w Finansach: „Księgowość” (rok → miesiąc → teczka miesiąca). */
+export const DRIVE_FINANCE_BOOKS = 'Księgowość';
+
+/**
+ * Teczka miesiąca w Księgowości — te same dokumenty co przekazanie księgowej (Finanse → „Dla księgowej”): sprzedaż i koszty
+ * według daty wystawienia (dokumenty spoza KSeF — daty dokumentu), wyciągi według miesiąca wyciągu, deklaracje według okresu.
+ * `level` — najniższy poziom dostępu do finansów firmy, który widzi folder (jak RLS: faktury albo podgląd finansów).
+ */
+export type DriveFinanceGroup = 'sales' | 'costs' | 'bank' | 'taxes' | 'ksef';
+export const DRIVE_FINANCE_GROUPS: ReadonlyArray<{ key: DriveFinanceGroup; label: string; description: string; level: 'invoices' | 'finance_view' }> = [
+  { key: 'sales', label: 'Sprzedaż', description: 'Faktury wystawione: VAT, zaliczkowe, końcowe i korekty (CRM i KSeF).', level: 'invoices' },
+  { key: 'costs', label: 'Koszty', description: 'Faktury kosztowe z KSeF i dokumenty spoza KSeF (zagraniczne, paragony, polisy) — tu dodaje się skany i pliki.', level: 'invoices' },
+  { key: 'bank', label: 'Bank', description: 'Wyciągi ze wszystkich rachunków firmy.', level: 'finance_view' },
+  { key: 'taxes', label: 'Podatki i ZUS', description: 'Pliki deklaracji VAT, ZUS, PIT i CIT za ten okres.', level: 'finance_view' },
+  { key: 'ksef', label: 'XML z KSeF', description: 'Oryginały faktur z KSeF (sprzedaż i koszty) — dokumentem jest faktura w KSeF.', level: 'invoices' },
+];
+
+/**
+ * Dokumenty spółki — folder firmy w Finansach obok Księgowości (od „Finanse — podgląd”, dodawanie i usuwanie — „Finanse —
+ * zarządzanie”). Klucz kategorii jak `company_documents.category` w bazie.
+ */
+export const DRIVE_FINANCE_CORPORATE = 'Dokumenty spółki';
+export type DriveCorporateCategory = 'founding' | 'resolutions' | 'statements' | 'registrations' | 'powers' | 'other';
+export const DRIVE_CORPORATE_CATEGORIES: ReadonlyArray<{ key: DriveCorporateCategory; label: string; description: string }> = [
+  { key: 'founding', label: 'Umowa spółki i KRS', description: 'Umowa spółki, akt założycielski, odpisy i zmiany w KRS, wpis do CRBR.' },
+  { key: 'resolutions', label: 'Uchwały i protokoły', description: 'Uchwały wspólników i zarządu, protokoły zgromadzeń.' },
+  { key: 'statements', label: 'Sprawozdania finansowe', description: 'Roczne sprawozdania finansowe, ich zatwierdzenie i złożenie.' },
+  { key: 'registrations', label: 'Rejestracje i zaświadczenia', description: 'NIP, REGON, VAT-R, zaświadczenia z urzędu skarbowego i ZUS.' },
+  { key: 'powers', label: 'Pełnomocnictwa', description: 'Pełnomocnictwa i upoważnienia (UPL-1, PPS-1, bank, urzędy).' },
+  { key: 'other', label: 'Inne', description: 'Pozostałe dokumenty spółki.' },
+];
+export const driveCorporateCategory = (value: unknown): DriveCorporateCategory =>
+  (DRIVE_CORPORATE_CATEGORIES.find((entry) => entry.key === value)?.key || 'other');
+
+/** Umowy stałe — folder firmy w Finansach (umowa → pliki); umowy zakłada się w Centrum finansów, pliki można dodawać też tu. */
+export const DRIVE_FINANCE_AGREEMENTS = 'Umowy stałe';
+
+/**
+ * Majątek — folder firmy w Finansach (od „Finanse — podgląd”): rejestr majątku (PDF i CSV dla księgowej) ze sprzętu w Magazynie
+ * przypisanego do firmy (sprzęt → „Zakup” → własność i dokument zakupu).
+ */
+export const DRIVE_FINANCE_ASSETS = 'Majątek';
+export const driveAssetsNodeId = (companyId: string) => `finance:${companyId.toLowerCase()}:assets`;
+
+/**
+ * Do wyjaśnienia — folder firmy w Finansach (od „Finanse — podgląd”): raport otwartych spraw (niezamknięte miesiące, dokumenty
+ * do uzupełnienia, płatności czekające na dokument, faktury z KSeF bez XML, sprzęt bez dokumentu albo bez ustalonej własności).
+ * W każdym miesiącu Księgowości — „Zamknięcie miesiąca” (lista kontrolna przed przekazaniem i zamknięciem miesiąca).
+ */
+export const DRIVE_FINANCE_CLARIFY = 'Do wyjaśnienia';
+export const driveClarifyNodeId = (companyId: string) => `finance:${companyId.toLowerCase()}:clarify`;
+/** Plik „Zamknięcie miesiąca” w folderze miesiąca: `month-close:<firma>:RRRR-MM`. */
+export const driveMonthCloseFileId = (companyId: string, year: number, month: number) =>
+  `month-close:${companyId.toLowerCase()}:${year}-${String(month).padStart(2, '0')}`;
+
+/** Folder Dokumentów spółki firmy albo jego kategoria. */
+export const driveCorporateNodeId = (companyId: string, category?: DriveCorporateCategory) =>
+  `finance:${companyId.toLowerCase()}:corporate${category ? `:${category}` : ''}`;
+/** Folder Umów stałych firmy albo folder jednej umowy. */
+export const driveAgreementsNodeId = (companyId: string, contractId?: string) =>
+  `finance:${companyId.toLowerCase()}:contracts${contractId ? `:${contractId.toLowerCase()}` : ''}`;
+
+/** Identyfikator folderu Finansów: firma, Księgowość, rok, miesiąc albo teczka miesiąca. */
+export function driveFinanceNodeId(companyId: string, place: { books?: boolean; year?: number; month?: number; group?: DriveFinanceGroup } = {}) {
+  const company = `finance:${companyId.toLowerCase()}`;
+  if (!place.books && place.year === undefined) return company;
+  if (place.year === undefined) return `${company}:books`;
+  if (place.month === undefined) return `${company}:books:${place.year}`;
+  const month = `${company}:books:${place.year}-${String(place.month).padStart(2, '0')}`;
+  return place.group ? `${month}:${place.group}` : month;
+}
 
 export const DRIVE_MONTHS = [
   'styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień',
@@ -63,7 +143,14 @@ export const EMPLOYEE_DOCUMENT_LIMITS = { name: 200, description: 2000 } as cons
 export const employeeDocumentType = (value: unknown): EmployeeDocumentType =>
   (EMPLOYEE_DOCUMENT_TYPES.find((entry) => entry.key === value)?.key || 'other');
 
-export type DriveFolderKind = 'section' | 'year' | 'month' | 'category' | 'equipment' | 'brand' | 'employee' | 'group';
+/**
+ * `company` — firma w Finansach, `books` — Księgowość, `ledger` — teczka miesiąca (Sprzedaż, Koszty, Bank, Podatki i ZUS, XML
+ * z KSeF), `corporate` — Dokumenty spółki, `docgroup` — ich kategoria, `agreements` — Umowy stałe, `agreement` — jedna umowa,
+ * `assets` — Majątek (rejestr majątku), `clarify` — Do wyjaśnienia.
+ */
+export type DriveFolderKind =
+  | 'section' | 'year' | 'month' | 'category' | 'equipment' | 'brand' | 'employee' | 'group' | 'company' | 'books' | 'ledger'
+  | 'corporate' | 'docgroup' | 'agreements' | 'agreement' | 'assets' | 'clarify';
 
 export type DriveFolder = {
   id: string;
@@ -72,13 +159,18 @@ export type DriveFolder = {
   kind: DriveFolderKind;
   /** Liczba plików (rok, miesiąc) albo pozycji (kategoria) — dla podpowiedzi; `null` — nie liczono. */
   count: number | null;
+  /** Synchronizacja Findera: do folderu można dodawać pliki (Koszty miesiąca, Dokumenty spółki, Umowy stałe — „Finanse — zarządzanie”). */
+  upload?: boolean;
 };
 
 export type DriveFileType =
   | 'offer' | 'calculation' | 'contract' | 'equipment-image' | 'equipment-file' | 'equipment-manual' | 'brand-logo' | 'brand-font' | 'company-logo'
-  | 'employee-avatar' | 'employee-background' | 'employee-document' | 'employee-contract';
+  | 'employee-avatar' | 'employee-background' | 'employee-document' | 'employee-contract'
+  | 'sales-invoice' | 'ksef-invoice' | 'ksef-xml' | 'cost-document' | 'bank-statement' | 'tax-document' | 'company-document' | 'agreement-file'
+  | 'asset-register' | 'asset-register-csv' | 'month-close' | 'clarify-report';
 
-export type DriveRecordType = 'offer' | 'event' | 'inquiry' | 'contract' | 'equipment' | 'company' | 'employee';
+export type DriveRecordType =
+  | 'offer' | 'event' | 'inquiry' | 'contract' | 'equipment' | 'company' | 'employee' | 'invoice' | 'ksef-invoice' | 'external-invoice' | 'finance';
 
 export type DriveFile = {
   id: string;
@@ -97,6 +189,8 @@ export type DriveFile = {
   record: { type: DriveRecordType; id: string } | null;
   /** Krótki opis pod nazwą: status oferty, klient, kategoria… */
   detail: string;
+  /** Plik można usunąć z Dysku (dokument spółki, plik umowy stałej — „Finanse — zarządzanie”). */
+  canDelete?: boolean;
 };
 
 export type DriveBrandColor = { label: string; hex: string; role: string };
@@ -108,7 +202,7 @@ export type DriveListing = {
   files: DriveFile[];
   /**
    * Czy do tego folderu można dodawać pliki: sprzęt w Magazynie (prawo „Zarządzanie magazynem”), dokumenty pracownika
-   * (własne albo z prawem „Pracownicy — zarządzanie”).
+   * (własne albo z prawem „Pracownicy — zarządzanie”), Koszty miesiąca, Dokumenty spółki i umowa stała („Finanse — zarządzanie” w firmie).
    */
   canUpload: boolean;
   /** Kolory z księgi znaku (folder marki). */
@@ -126,19 +220,37 @@ export type DriveBrandNode = { companyId: string; companyName: string; materialF
 export type DriveSync = { cursor: string; sections: DriveSectionInfo[]; folders: DriveFolder[]; files: DriveFile[]; brands: DriveBrandNode[] };
 export type DriveDownload = { url: string; name: string; mime: string; size: number | null };
 export type DriveUpload = { bucket: string; path: string; signedUrl: string; token: string; target: 'image' | 'file' };
+/** Wynik dodania pliku; `notice` — informacja dla osoby, która dodała (np. odczytane dane dokumentu, inna teczka miesiąca). */
+export type DriveUploadResult = { file: DriveFile; notice?: string };
+
+/**
+ * Skaner w aplikacji (Dysk → „Skanuj dokument”): zdjęcia stron (JPG/PNG) → PDF na serwerze → wybrany folder Finansów (Koszty
+ * miesiąca, kategoria Dokumentów spółki, umowa stała). `pages` — ile stron naraz, `page` — największe zdjęcie strony.
+ */
+export const DRIVE_SCAN_LIMITS = { pages: 20, page: 15 * 1024 * 1024 } as const;
+/** Podpisane adresy wysyłki stron skanu (kolejność = kolejność stron w PDF). */
+export type DriveScanUpload = { scanId: string; pages: Array<{ path: string; signedUrl: string; token: string }> };
 
 export type DriveNode =
   | { section: DriveDocumentSection; year: number | null; month: number | null }
   | { section: 'warehouse'; categoryId: string | null; equipmentId: string | null; uncategorized: boolean }
   | { section: 'employees'; employeeId: string | null; group: DriveEmployeeGroup | null }
-  | { section: 'brand'; companyId: string };
+  | { section: 'brand'; companyId: string }
+  | {
+    section: 'finance'; companyId: string | null; area: 'books' | 'corporate' | 'agreements' | 'assets' | 'clarify' | null; books: boolean; year: number | null;
+    month: number | null;
+    group: DriveFinanceGroup | null; category: DriveCorporateCategory | null; contractId: string | null;
+  };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Identyfikator folderu Dysku: `offers` | `offers:2026` | `offers:2026-11` (tak samo `calculations`, `contracts`),
  * `warehouse` | `warehouse:none` | `warehouse:cat:<id>` | `warehouse:item:<id>`, `employees` | `employees:<pracownik>` |
- * `employees:<pracownik>:photos|documents|contracts`, `brand:<firma>`.
+ * `employees:<pracownik>:photos|documents|contracts`, `brand:<firma>`, `finance` | `finance:<firma>` | `finance:<firma>:books` |
+ * `finance:<firma>:books:2026` | `finance:<firma>:books:2026-11` | `finance:<firma>:books:2026-11:sales|costs|bank|taxes|ksef`,
+ * `finance:<firma>:corporate` | `finance:<firma>:corporate:<kategoria>`, `finance:<firma>:contracts` | `finance:<firma>:contracts:<umowa>`,
+ * `finance:<firma>:assets`, `finance:<firma>:clarify`.
  */
 export function parseDriveNode(value: unknown): DriveNode | null {
   const id = String(value ?? '');
@@ -171,6 +283,37 @@ export function parseDriveNode(value: unknown): DriveNode | null {
     return null;
   }
   if (parts[0] === 'brand' && parts.length === 2 && UUID.test(parts[1])) return { section: 'brand', companyId: parts[1].toLowerCase() };
+  if (parts[0] === 'finance') {
+    const base = {
+      section: 'finance' as const, companyId: null, area: null, books: false, year: null, month: null, group: null, category: null, contractId: null,
+    };
+    if (parts.length === 1) return base;
+    if (!UUID.test(parts[1] || '')) return null;
+    const companyId = parts[1].toLowerCase();
+    if (parts.length === 2) return { ...base, companyId };
+    if (parts[2] === 'corporate') {
+      if (parts.length === 3) return { ...base, companyId, area: 'corporate' };
+      const category = DRIVE_CORPORATE_CATEGORIES.find((entry) => entry.key === parts[3])?.key;
+      return parts.length === 4 && category ? { ...base, companyId, area: 'corporate', category } : null;
+    }
+    if (parts[2] === 'assets') return parts.length === 3 ? { ...base, companyId, area: 'assets' } : null;
+    if (parts[2] === 'clarify') return parts.length === 3 ? { ...base, companyId, area: 'clarify' } : null;
+    if (parts[2] === 'contracts') {
+      if (parts.length === 3) return { ...base, companyId, area: 'agreements' };
+      return parts.length === 4 && UUID.test(parts[3]) ? { ...base, companyId, area: 'agreements', contractId: parts[3].toLowerCase() } : null;
+    }
+    if (parts[2] !== 'books') return null;
+    if (parts.length === 3) return { ...base, companyId, area: 'books', books: true };
+    const match = /^(\d{4})(?:-(\d{2}))?$/.exec(parts[3] || '');
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = match[2] ? Number(match[2]) : null;
+    if (year < 2000 || year > 2100 || (month !== null && (month < 1 || month > 12))) return null;
+    if (parts.length === 4) return { ...base, companyId, area: 'books', books: true, year, month };
+    const group = DRIVE_FINANCE_GROUPS.find((entry) => entry.key === parts[4])?.key;
+    if (parts.length === 5 && month !== null && group) return { ...base, companyId, area: 'books', books: true, year, month, group };
+    return null;
+  }
   return null;
 }
 
@@ -179,7 +322,13 @@ export const driveEmployeeDocumentsNode = (employeeId: string) => `employees:${e
 
 /** Identyfikator pliku Dysku: `<typ>:<uuid>`, np. `offer:…`, `equipment-file:…`. */
 export function parseDriveFileId(value: unknown): { type: DriveFileType; id: string } | null {
-  const match = /^(offer|calculation|contract|equipment-image|equipment-file|equipment-manual|brand-logo|brand-font|company-logo|employee-avatar|employee-background|employee-document|employee-contract):([0-9a-f-]{36})$/i
+  // Zamknięcie miesiąca: `month-close:<firma>:RRRR-MM` — identyfikator `<firma>:RRRR-MM`.
+  const close = /^month-close:([0-9a-f-]{36}):(\d{4})-(\d{2})$/i.exec(String(value ?? ''));
+  if (close) {
+    const month = Number(close[3]);
+    return UUID.test(close[1]) && month >= 1 && month <= 12 ? { type: 'month-close', id: `${close[1].toLowerCase()}:${close[2]}-${close[3]}` } : null;
+  }
+  const match = /^(offer|calculation|contract|equipment-image|equipment-file|equipment-manual|brand-logo|brand-font|company-logo|employee-avatar|employee-background|employee-document|employee-contract|sales-invoice|ksef-invoice|ksef-xml|cost-document|bank-statement|tax-document|company-document|agreement-file|asset-register|asset-register-csv|clarify-report):([0-9a-f-]{36})$/i
     .exec(String(value ?? ''));
   if (!match || !UUID.test(match[2])) return null;
   return { type: match[1].toLowerCase() as DriveFileType, id: match[2].toLowerCase() };
@@ -227,6 +376,10 @@ export function driveRecordPath(record: DriveFile['record']): string | null {
     case 'equipment': return `/crm/equipment/${record.id}`;
     case 'company': return `/crm/settings/my-companies/${record.id}/brandbook`;
     case 'employee': return `/crm/employees/${record.id}`;
+    case 'invoice': return `/crm/invoices/${record.id}`;
+    case 'ksef-invoice': return '/crm/invoices?tab=ksef';
+    case 'external-invoice': return '/crm/invoices?tab=external';
+    case 'finance': return '/crm/invoices?tab=center';
     default: return null;
   }
 }
@@ -240,4 +393,8 @@ export const DRIVE_RECORD_LABELS: Record<DriveRecordType, string> = {
   equipment: 'Otwórz sprzęt',
   company: 'Otwórz księgę znaku',
   employee: 'Otwórz profil pracownika',
+  invoice: 'Otwórz fakturę',
+  'ksef-invoice': 'Otwórz faktury z KSeF',
+  'external-invoice': 'Otwórz dokumenty spoza KSeF',
+  finance: 'Otwórz Centrum finansów',
 };

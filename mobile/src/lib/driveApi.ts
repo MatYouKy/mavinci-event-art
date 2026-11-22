@@ -1,14 +1,15 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { Linking, Platform, Share } from 'react-native';
 import { supabase } from './supabase';
-import type { DriveDownload, DriveFile, DriveListing, DriveRoot, DriveUpload } from './driveShared';
+import type { DriveDownload, DriveFile, DriveListing, DriveRoot, DriveScanUpload, DriveUpload, DriveUploadResult } from './driveShared';
 import type { PickedMaterial } from './materialsApi';
 
 /*
  * Dysk w aplikacji — to samo API co CRM, Mac i Finder: `/bridge/native/v1/drive` (Oferty, Kalkulacje, Umowy, Magazyn, księga
  * znaku) i `/bridge/native/v1/files` (Eventy: rok → wydarzenie → pliki z zakładki Pliki). Token sesji pracownika,
  * `x-mavinci-client: phone`; które działy i pliki widać — serwer i RLS jak w CRM. Pliki do sprzętu idą z telefonu prosto do
- * magazynu (podpisany adres, postęp).
+ * magazynu (podpisany adres, postęp). Skaner Finansów (`uploadDriveScan`): zdjęcia stron → serwer składa PDF i zapisuje go
+ * w wybranym folderze Finansów.
  */
 
 const CRM_URL = (process.env.EXPO_PUBLIC_CRM_URL || 'https://mavinci.pl').replace(/\/+$/, '');
@@ -157,6 +158,40 @@ export async function uploadDriveFile(parentId: string, file: PickedMaterial, on
     return done.file;
   } catch (error) {
     await post('cancelUpload', { parentId, bucket: prepared.bucket, path: prepared.path }).catch(() => undefined);
+    throw error;
+  }
+}
+
+/**
+ * Skan do Finansów: podpisane adresy stron → zdjęcia prosto do magazynu (`finance-scans`) → serwer składa PDF i zapisuje go
+ * w folderze `parentId` (Koszty miesiąca — dokument spoza KSeF z odczytem AI, kategoria Dokumentów spółki, umowa stała).
+ * `onProgress` — wysłane strony, potem `saving` (składanie i zapis); błąd sprząta strony na serwerze.
+ */
+export async function uploadDriveScan(
+  parentId: string,
+  pages: Array<{ uri: string; mimeType: string }>,
+  title: string,
+  onProgress?: (done: number, total: number, stage: 'pages' | 'saving') => void,
+): Promise<DriveUploadResult> {
+  const prepared = await post<DriveScanUpload>('prepareScan', { parentId, pages: pages.length });
+  try {
+    for (const [index, page] of pages.entries()) {
+      onProgress?.(index, pages.length, 'pages');
+      const slot = prepared.pages[index];
+      if (!slot) throw new Error('Serwer nie przygotował miejsca na wszystkie strony. Spróbuj ponownie.');
+      const result = await FileSystem.uploadAsync(slot.signedUrl, page.uri, {
+        httpMethod: 'PUT',
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: { 'Content-Type': page.mimeType === 'image/png' ? 'image/png' : 'image/jpeg', 'x-upsert': 'false' },
+      });
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(result.status === 413 ? 'Zdjęcie strony jest za duże (do 15 MB).' : 'Nie udało się wysłać strony skanu. Sprawdź połączenie i spróbuj ponownie.');
+      }
+    }
+    onProgress?.(pages.length, pages.length, 'saving');
+    return await post<DriveUploadResult>('completeScan', { parentId, scanId: prepared.scanId, pages: pages.length, title });
+  } catch (error) {
+    await post('cancelScan', { parentId, scanId: prepared.scanId, pages: pages.length }).catch(() => undefined);
     throw error;
   }
 }

@@ -325,15 +325,23 @@ import UniformTypeIdentifiers
         return provider
     }
 
-    /// Rekord w aplikacji: oferta, wydarzenie, zapytanie, sprzęt, umowa, profil pracownika; księga znaku — w CRM.
+    /// Rekord w aplikacji: oferta, event, zapytanie, sprzęt, umowa, profil pracownika, faktura, KSeF, Centrum finansów;
+    /// księga znaku i dokumenty spoza KSeF — w CRM.
     func openRecord(_ record: DriveRecord) {
-        guard let workspace, UUID(uuidString: record.id) != nil else { return }
+        guard let workspace else { return }
+        switch record.type {
+        case "ksef-invoice": workspace.showFinance(.ksef); return
+        case "finance": workspace.showFinance(.center); return
+        default: break
+        }
+        guard UUID(uuidString: record.id) != nil else { return }
         switch record.type {
         case "offer": workspace.showOffer(record.id)
         case "event": workspace.showEvent(record.id)
         case "inquiry": workspace.open(.inquiries, id: record.id)
         case "equipment": workspace.showEquipment(record.id)
         case "employee": workspace.showEmployee(record.id)
+        case "invoice": workspace.showInvoice(record.id)
         case "contract":
             if workspace.navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/contracts" }) {
                 workspace.openHref("/crm/contracts")
@@ -345,15 +353,15 @@ import UniformTypeIdentifiers
         }
     }
 
-    // MARK: Pliki do sprzętu w Magazynie i do dokumentów pracownika
+    // MARK: Pliki do sprzętu w Magazynie, do dokumentów pracownika, do Dokumentów spółki i umów stałych
 
     private static func isDirectory(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
     }
 
     /// Pliki z Findera (przycisk albo przeciągnięcie) do sprzętu: zdjęcie JPG/PNG/WebP/GIF do 10 MB — galeria sprzętu,
-    /// pozostałe do 50 MB — pliki sprzętu (jak w CRM); do dokumentów pracownika — pliki do 50 MB (nazwa z nazwy pliku).
-    /// Foldery pomijamy.
+    /// pozostałe do 50 MB — pliki sprzętu (jak w CRM); do dokumentów pracownika, do kategorii Dokumentów spółki i do umowy
+    /// stałej — pliki do 50 MB (nazwa z nazwy pliku). Foldery pomijamy.
     func upload(_ urls: [URL], to node: String) async {
         guard let workspace, let api else { return }
         guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return }
@@ -364,12 +372,14 @@ import UniformTypeIdentifiers
         defer { uploading = false }
         var added = 0
         var failed: [String] = []
+        var notices: [String] = []
         for (index, source) in files.enumerated() {
             let name = source.lastPathComponent
             do {
-                try await workspace.withPending(files.count == 1 ? "Wysyłam „\(name)”" : "Wysyłam pliki (\(index + 1) z \(files.count))") {
+                let notice = try await workspace.withPending(files.count == 1 ? "Wysyłam „\(name)”" : "Wysyłam pliki (\(index + 1) z \(files.count))") {
                     try await send(source, name: name, to: node, api: api)
                 }
+                if let notice, !notices.contains(notice) { notices.append(notice) }
                 added += 1
             } catch {
                 failed.append("\(name) — \(failureText(error, "nie udało się wysłać"))")
@@ -378,13 +388,16 @@ import UniformTypeIdentifiers
         await loadListing(node, quiet: true)
         if added > 0 { FinderDomain.driveChanged() }
         if failed.isEmpty {
-            workspace.succeed(added == 1 ? "Dodano plik do \(place)" : "Dodano pliki do \(place) (\(added))")
+            let done = added == 1 ? "Dodano plik do \(place)" : "Dodano pliki do \(place) (\(added))"
+            workspace.succeed(([done] + notices.prefix(3)).joined(separator: ". "))
         } else {
             workspace.error = (added > 0 ? "Dodano \(added), nie dodano: " : "Nie dodano: ") + failed.joined(separator: "; ")
         }
     }
 
-    private func send(_ source: URL, name: String, to node: String, api: NativeAPI, details: [String: JSONValue] = [:]) async throws {
+    /// Wysyłka jednego pliku; zwraca informację serwera dla osoby, która dodała (np. odczytane dane dokumentu kosztowego).
+    @discardableResult
+    private func send(_ source: URL, name: String, to node: String, api: NativeAPI, details: [String: JSONValue] = [:]) async throws -> String? {
         let size = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         if size > Self.maxUpload { throw NativeFailure(status: 413, message: "plik przekracza 50 MB (limit plików \(DriveText.uploadPlace(node)))", fieldErrors: [:]) }
         let mime = UTType(filenameExtension: source.pathExtension.lowercased())?.preferredMIMEType ?? "application/octet-stream"
@@ -405,7 +418,8 @@ import UniformTypeIdentifiers
                 "name": .string(name), "size": .number(Double(size)), "mime": .string(mime),
             ]
             body.merge(details) { current, _ in current }
-            _ = try await api.post("/drive", body, timeout: 120)
+            let reply = try await api.post("/drive", body, timeout: 150)
+            return (try? JSONDecoder().decode(DriveUploadNotice.self, from: reply))?.notice
         } catch {
             _ = try? await api.post("/drive", [
                 "op": .string("cancelUpload"), "parentId": .string(node), "bucket": .string(prepared.bucket), "path": .string(prepared.path),
@@ -495,7 +509,7 @@ extension DriveStore {
         uploading = true
         defer { uploading = false }
         do {
-            try await workspace.withPending("Dodaję dokument „\(source.lastPathComponent)”") {
+            _ = try await workspace.withPending("Dodaję dokument „\(source.lastPathComponent)”") {
                 try await send(source, name: source.lastPathComponent, to: node, api: api, details: details)
             }
             await loadListing(node, quiet: true, expandPath: false)
@@ -504,6 +518,25 @@ extension DriveStore {
             return true
         } catch {
             workspace.error = failureText(error, "Nie udało się dodać dokumentu.")
+            return false
+        }
+    }
+
+    /// Usunięcie pliku z folderu Dysku (dokument spółki, plik umowy stałej — „Finanse — zarządzanie”; kto może, decyduje baza).
+    @discardableResult
+    func deleteFile(_ file: DriveFile, from node: String) async -> Bool {
+        guard let workspace, let api else { return false }
+        guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return false }
+        do {
+            _ = try await workspace.withPending("Usuwam plik…") {
+                try await api.post("/drive", ["op": .string("deleteFile"), "id": .string(file.id)])
+            }
+            await loadListing(node, quiet: true, expandPath: false)
+            FinderDomain.driveChanged()
+            workspace.succeed("Usunięto plik")
+            return true
+        } catch {
+            workspace.error = failureText(error, "Nie udało się usunąć pliku.")
             return false
         }
     }

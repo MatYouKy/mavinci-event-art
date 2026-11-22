@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase/browser';
-import type { DriveDownload, DriveFile, DriveUpload } from '@/lib/drive/driveShared';
+import type { DriveDownload, DriveUpload, DriveUploadResult } from '@/lib/drive/driveShared';
 
 /*
  * Klient API Dysku w CRM — to samo API co Finder, aplikacja na Maca i telefon (`/bridge/native/v1/drive`, token sesji
@@ -92,15 +92,14 @@ function putObject(url: string, body: Blob, contentType: string, onProgress: (lo
  * inny plik do plików sprzętu; dokument pracownika — z `details`: tytuł, rodzaj, opis, termin ważności).
  */
 export async function uploadDriveFile(parentId: string, file: File, onProgress: (loaded: number) => void, signal: AbortSignal,
-  details: { title?: string; documentType?: string; description?: string; expiryDate?: string } = {}): Promise<DriveFile> {
+  details: { title?: string; documentType?: string; description?: string; expiryDate?: string } = {}): Promise<DriveUploadResult> {
   const mime = file.type || 'application/octet-stream';
   const prepared = await drivePost<DriveUpload>('prepareUpload', { parentId, name: file.name, size: file.size, mime });
   try {
     await putObject(prepared.signedUrl, file, mime, onProgress, signal);
-    const done = await drivePost<{ file: DriveFile }>('completeUpload', {
+    return await drivePost<DriveUploadResult>('completeUpload', {
       ...details, parentId, bucket: prepared.bucket, path: prepared.path, name: file.name, size: file.size, mime,
     });
-    return done.file;
   } catch (error) {
     await drivePost('cancelUpload', { parentId, bucket: prepared.bucket, path: prepared.path }).catch(() => undefined);
     throw error;

@@ -78,6 +78,11 @@ struct HealthDetailItem: Identifiable {
         return Int(value.text) ?? 0
     }
 
+    /// Funkcja kontroli w bazie — bez przechwytywania stanu modelu, więc trzy wywołania idą równolegle (`async let`).
+    nonisolated private static func rpc(_ backend: HTTPBackend, _ name: String) async throws -> JSONValue {
+        try JSONDecoder().decode(JSONValue.self, from: try await backend.request("/rest/v1/rpc/\(name)", method: "POST", body: [:]))
+    }
+
     func load(_ workspace: Workspace) async {
         guard workspace.connection.provider == .supabase, let backend = workspace.nativeAPI()?.backend else {
             problem = "Stan systemu wymaga połączenia aplikacji z bazą CRM (Supabase)."
@@ -85,13 +90,10 @@ struct HealthDetailItem: Identifiable {
         }
         loading = true; problem = nil
         defer { loading = false }
-        func rpc(_ name: String) async throws -> JSONValue {
-            try JSONDecoder().decode(JSONValue.self, from: try await backend.request("/rest/v1/rpc/\(name)", method: "POST", body: [:]))
-        }
         do {
-            async let system = rpc("get_crm_system_health")
-            async let data = rpc("get_crm_data_quality")
-            async let safety = rpc("get_crm_security_health")
+            async let system = Self.rpc(backend, "get_crm_system_health")
+            async let data = Self.rpc(backend, "get_crm_data_quality")
+            async let safety = Self.rpc(backend, "get_crm_security_health")
             async let rows = backend.request("/rest/v1/event_operational_alert_settings", query: [
                 URLQueryItem(name: "select", value: "*"), URLQueryItem(name: "order", value: "updated_at.desc"), URLQueryItem(name: "limit", value: "1"),
             ])

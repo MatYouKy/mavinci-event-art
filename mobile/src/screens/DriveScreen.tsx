@@ -29,6 +29,8 @@ import { navigateToEvent, navigateToInquiry, navigationRef, openInCrmWeb } from 
  * miesiąc), Magazyn (kategoria → sprzęt → zdjęcia, pliki, instrukcja; dodawanie plików z prawem „Zarządzanie magazynem”)
  * i Pracownicy (pracownik → Zdjęcia, Dokumenty, Umowy — foldery według uprawnień; dokumenty dodaje sam pracownik i „Pracownicy —
  * zarządzanie”). Podgląd (zdjęcia, PDF, filmy), udostępnianie, przejście do rekordu. Na tablecie w poziomie — działy z lewej, treść obok.
+ * Finansów (księgowość firm) aplikacja nie przegląda — są w CRM, na Macu i w Finderze; „Skanuj dokument” (`FinanceScanScreen`)
+ * zapisuje skan w wybranym folderze Finansów.
  */
 
 type Location =
@@ -44,7 +46,7 @@ const eventLabel = (event: DriveEvent) => `${event.date || NO_DATE} ${event.name
 const WIDE = 860;
 
 const SECTION_ICONS: Record<DriveSection, keyof typeof Feather.glyphMap> = {
-  events: 'calendar', materials: 'archive', offers: 'file-text', calculations: 'percent', contracts: 'edit-3', warehouse: 'package', employees: 'users',
+  finance: 'briefcase', events: 'calendar', materials: 'archive', offers: 'file-text', calculations: 'percent', contracts: 'edit-3', warehouse: 'package', employees: 'users',
 };
 const KIND_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   image: 'image', video: 'film', audio: 'music', pdf: 'file-text', document: 'file-text', spreadsheet: 'grid', presentation: 'monitor',
@@ -52,7 +54,11 @@ const KIND_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
 };
 const FOLDER_ICONS: Record<DriveFolder['kind'], keyof typeof Feather.glyphMap> = {
   section: 'folder', year: 'folder', month: 'folder', category: 'folder', equipment: 'package', brand: 'award', employee: 'user', group: 'folder',
+  company: 'briefcase', books: 'book', ledger: 'folder', corporate: 'briefcase', docgroup: 'folder', agreements: 'edit-3', agreement: 'file-text',
+  assets: 'package', clarify: 'alert-triangle',
 };
+/** Działy przeglądane w aplikacji — bez Finansów (pełna księgowość tylko w CRM, na Macu i w Finderze). */
+const MOBILE_HIDDEN: ReadonlyArray<DriveSection> = ['finance'];
 
 /** Dokąd trafiają pliki dodane w folderze (sprzęt albo dokumenty pracownika) — komunikaty wysyłki. */
 const uploadPlace = (node: string) => (node.startsWith('employees:') ? 'dokumentów pracownika' : 'sprzętu');
@@ -99,7 +105,7 @@ export default function DriveScreen() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initial = useRef<{ section?: DriveSection; node?: string } | null>(route.params || null);
 
-  const available = useMemo(() => (root?.sections || []).filter((entry) => entry.available), [root]);
+  const available = useMemo(() => (root?.sections || []).filter((entry) => entry.available && !MOBILE_HIDDEN.includes(entry.key)), [root]);
 
   const notify = useCallback((text: string, error = false) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -374,11 +380,24 @@ export default function DriveScreen() {
     );
   };
 
+  // Finanse: bez przeglądania w aplikacji — skaner dokumentów do wybranego folderu (dostęp do finansów firmy).
+  const scanRow = root?.sections.some((entry) => entry.key === 'finance' && entry.available) ? (
+    <TouchableOpacity key="scan" style={[styles.sectionRow, styles.scanRow]} onPress={() => navigation.navigate('FinanceScan')} accessibilityRole="button">
+      <Feather name="camera" size={20} color={colors.primary.gold} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.sectionLabel, { color: colors.primary.gold }]}>Skanuj dokument</Text>
+        <Text style={styles.muted} numberOfLines={2}>Zdjęcia stron → PDF w Finansach: koszty (dokument spoza KSeF), dokumenty spółki, umowy stałe.</Text>
+      </View>
+      <Feather name="chevron-right" size={16} color={colors.text.tertiary} />
+    </TouchableOpacity>
+  ) : null;
+
   const sectionList = (
     <ScrollView contentContainerStyle={{ padding: spacing.md, gap: spacing.sm, paddingBottom: insets.bottom + spacing.lg }}
       refreshControl={!wide ? <RefreshControl refreshing={refreshing} onRefresh={() => { void refresh(); }} tintColor={colors.primary.gold} /> : undefined}>
       {!wide ? <Text style={styles.muted}>Ta sama chmura co w CRM, na Macu i w Finderze — działy, do których masz dostęp.</Text> : null}
-      {available.length ? available.map(sectionRow) : <Text style={styles.muted}>Nie masz dostępu do żadnego działu Dysku.</Text>}
+      {scanRow}
+      {available.length ? available.map(sectionRow) : scanRow ? null : <Text style={styles.muted}>Nie masz dostępu do żadnego działu Dysku.</Text>}
     </ScrollView>
   );
 
@@ -666,6 +685,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.tertiary, borderWidth: 1, borderColor: colors.border.default,
   },
   sectionRowActive: { borderColor: colors.primary.gold + '60', backgroundColor: colors.primary.gold + '18' },
+  scanRow: { borderColor: colors.primary.gold + '45' },
   sectionLabel: {
     color: colors.text.primary, fontFamily: typography.fontFamilies.heading, fontSize: typography.fontSizes.sm, fontWeight: '400',
     textTransform: 'uppercase', letterSpacing: 0.35,

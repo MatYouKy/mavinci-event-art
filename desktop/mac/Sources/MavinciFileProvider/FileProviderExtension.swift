@@ -138,7 +138,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                     result = try await FinderCatalog.shared.modify(item, base: version, fields: changedFields, contents: newContents)
                     // Plik z wydarzenia upuszczony w Materiałach — kopia pojawia się po sprawdzeniu zmian.
                     if changedFields.contains(.parentItemIdentifier), FinderID.parse(item.parentItemIdentifier).isMaterials {
-                        NSFileProviderManager(for: domain)?.signalEnumerator(for: .workingSet) { _ in }
+                        FinderSync.signalWorkingSet(domain)
                     }
                 }
                 progress.completedUnitCount = 1
@@ -208,6 +208,12 @@ enum FinderSync {
     static func isSignedOut(_ error: Error) -> Bool {
         let ns = error as NSError
         return ns.domain == NSFileProviderErrorDomain && ns.code == NSFileProviderError.Code.notAuthenticated.rawValue
+    }
+
+    /// Prośba o sprawdzenie zmian w zbiorze roboczym — bez czekania na odpowiedź systemu (wywołanie z kodu synchronicznego,
+    /// więc także z zadań asynchronicznych bez ostrzeżenia o wersji `async`).
+    static func signalWorkingSet(_ domain: NSFileProviderDomain) {
+        NSFileProviderManager(for: domain)?.signalEnumerator(for: .workingSet) { _ in }
     }
 
     #if os(iOS)
@@ -296,7 +302,7 @@ final class FinderEnumerator: NSObject, NSFileProviderEnumerator {
                 #endif
                 // Kopia Materiałów starsza niż 15 minut (np. aplikacja zamknięta) — prośba o sprawdzenie zmian.
                 if FinderID.parse(container).isMaterials, await MaterialsCatalog.shared.needsRefresh {
-                    NSFileProviderManager(for: domain)?.signalEnumerator(for: .workingSet) { _ in }
+                    FinderSync.signalWorkingSet(domain)
                 }
             } catch {
                 observer.finishEnumeratingWithError(FinderAPI.mapped(error))

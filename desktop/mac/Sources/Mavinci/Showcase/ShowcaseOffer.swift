@@ -250,6 +250,42 @@ enum ShowcaseOfferRules {
         return (discountSteps + [value]).sorted()
     }
 
+    /// Klucz pozycji koszyka (jak `showcaseOfferLineKey`): produkt, rodzaj i wariant albo pakiet.
+    static func key(_ productID: String, kind: String, option: String?) -> String { "\(productID):\(kind):\(option ?? "")" }
+
+    /// Pozycja z produktu karty (jak `showcaseOfferLineFor`). Bez wariantu lub pakietu — wybór domyślny jak w CRM (pierwszy pakiet,
+    /// polecany wariant, produkt); produkt z konfiguratorem albo wycofany z katalogu nie trafia do oferty z pokazu. Rabat pozycji
+    /// startuje od 0% (rabat całej oferty liczy się po rabatach pozycji).
+    static func line(for product: ShowcaseProduct, kind requested: String, option requestedOption: String?, item: (id: String, title: String)?) -> ShowcaseOfferLine? {
+        guard product.configurable != true, product.isActive else { return nil }
+        var kind = requested
+        var option = requestedOption
+        if kind == "product" {
+            if let first = product.packages.first {
+                kind = "package"; option = first.id
+            } else if let variant = product.variants.first(where: \.recommended) ?? product.variants.first {
+                kind = "variant"; option = variant.id
+            }
+        }
+        var label = product.name
+        var onRequest = false
+        if kind == "variant" {
+            guard let variant = product.variants.first(where: { $0.id == option }) else { return nil }
+            label = "\(product.name) — \(variant.name)"
+        } else if kind == "package" {
+            guard let pack = product.packages.first(where: { $0.id == option }) else { return nil }
+            label = "\(product.name) — \(pack.name)"
+            onRequest = pack.priceOnRequest
+        } else {
+            option = nil
+        }
+        let productID = product.id.lowercased()
+        let optionID = kind == "variant" ? option?.lowercased() : option
+        return ShowcaseOfferLine(key: key(productID, kind: kind, option: optionID), productId: productID, kind: kind, optionId: optionID,
+                                 label: String(label.prefix(240)), quantity: 1, days: 1, priceOnRequest: onRequest, agreedPrice: nil,
+                                 discountPercent: 0, itemId: item?.id, itemTitle: String((item?.title ?? "").prefix(ShowcaseLimits.title)))
+    }
+
     static func trimmed(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     static func emailValid(_ value: String) -> Bool {

@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  Calculator, CalendarDays, ChevronDown, ChevronRight, FileSignature, FileText, Folder, FolderOpen, FolderTree, HardDrive, Loader2, Package, RefreshCw,
-  UserRound, Users,
+  AlertTriangle, BookOpen, Boxes, Briefcase, Building2, Calculator, CalendarDays, ChevronDown, ChevronRight, FileSignature, FileText, Folder, FolderOpen, FolderTree, HardDrive, Landmark,
+  Loader2, Package, RefreshCw, UserRound, Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -17,10 +17,11 @@ import DriveEvents, { NO_DATE, eventFolderName, eventYear, type DriveEvent } fro
 import { driveGet, eventFilesGet } from './driveApi';
 
 /*
- * Dysk (`/crm/materials`) — ta sama chmura co w Finderze (Mavinci → …), na Macu i w telefonie: jedno drzewo z działami
- * Eventy, Materiały, Oferty, Kalkulacje, Umowy, Magazyn i Pracownicy (tylko działy, do których pracownik ma dostęp). Materiały mają
- * pełne zarządzanie (`MaterialsWorkspace`, jego drzewo folderów i albumów trafia pod pozycję „Materiały”), Eventy — przeglądanie
- * plików wydarzeń, pozostałe działy — `DriveBrowser`. Adres strony pamięta dział i folder (odnośniki do miejsca w Dysku).
+ * Dysk (`/crm/materials`) — ta sama chmura co w Finderze (Mavinci → …) i na Macu: jedno drzewo z działami Finanse, Eventy,
+ * Materiały, Oferty, Kalkulacje, Umowy, Magazyn i Pracownicy (tylko działy, do których pracownik ma dostęp; Finanse — osoby
+ * z dostępem do faktur firmy, bank i podatki od „Finanse — podgląd”; telefon nie pokazuje Finansów). Materiały mają pełne
+ * zarządzanie (`MaterialsWorkspace`, jego drzewo folderów i albumów trafia pod pozycję „Materiały”), Eventy — przeglądanie plików
+ * eventów, pozostałe działy — `DriveBrowser`. Adres strony pamięta dział i folder (odnośniki do miejsca w Dysku).
  */
 
 type Notify = (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
@@ -28,10 +29,28 @@ type EventsNav = { year: string | null; eventId: string | null; folderId: string
 
 const SECTION_KEY = 'mavinci.drive.section';
 const SECTION_ICONS: Record<DriveSection, LucideIcon> = {
-  events: CalendarDays, materials: FolderOpen, offers: FileText, calculations: Calculator, contracts: FileSignature, warehouse: Package, employees: Users,
+  finance: Landmark, events: CalendarDays, materials: FolderOpen, offers: FileText, calculations: Calculator, contracts: FileSignature, warehouse: Package, employees: Users,
 };
-const SECTIONS: DriveSection[] = ['events', 'materials', 'offers', 'calculations', 'contracts', 'warehouse', 'employees'];
+const SECTIONS: DriveSection[] = ['finance', 'events', 'materials', 'offers', 'calculations', 'contracts', 'warehouse', 'employees'];
 const isSection = (value: unknown): value is DriveSection => SECTIONS.includes(value as DriveSection);
+/**
+ * Folder bez podfolderów w drzewie: miesiąc (poza Finansami, gdzie miesiąc ma Sprzedaż, Koszty…), grupa pracownika, teczka
+ * miesiąca, kategoria Dokumentów spółki, umowa stała, Majątek i Do wyjaśnienia.
+ */
+const LEAF_KINDS: ReadonlySet<DriveFolder['kind']> = new Set(['group', 'ledger', 'docgroup', 'agreement', 'assets', 'clarify']);
+const isLeaf = (folder: DriveFolder) => LEAF_KINDS.has(folder.kind) || (folder.kind === 'month' && !folder.id.startsWith('finance:'));
+const treeIcon = (folder: DriveFolder): LucideIcon => {
+  if (folder.kind === 'year' || folder.kind === 'month') return CalendarDays;
+  if (folder.kind === 'employee') return UserRound;
+  if (folder.kind === 'company') return Building2;
+  if (folder.kind === 'books') return BookOpen;
+  if (folder.kind === 'corporate') return Briefcase;
+  if (folder.kind === 'agreements') return FileSignature;
+  if (folder.kind === 'agreement') return FileText;
+  if (folder.kind === 'assets') return Boxes;
+  if (folder.kind === 'clarify') return AlertTriangle;
+  return FolderTree;
+};
 
 function readSection(): string | null {
   try { return window.localStorage.getItem(SECTION_KEY); } catch { return null; }
@@ -127,7 +146,7 @@ export default function DriveWorkspace() {
     if (section === 'events' && !events) void loadEvents();
   }, [events, loadEvents, section]);
 
-  // Drzewo Ofert, Kalkulacji, Umów, Magazynu i Pracowników: foldery wczytywane przy rozwinięciu (sprzęt — tylko w treści).
+  // Drzewo Finansów, Ofert, Kalkulacji, Umów, Magazynu i Pracowników: foldery wczytywane przy rozwinięciu (sprzęt — tylko w treści).
   const loadChildren = useCallback(async (id: string) => {
     try {
       const listing = await driveGet<DriveListing>('list', { node: id });
@@ -180,9 +199,9 @@ export default function DriveWorkspace() {
 
   const renderFolders = (parentId: string, depth: number): ReactElement[] => (tree[parentId] || []).flatMap((folder) => {
     const open = expanded.has(folder.id);
-    const leaf = folder.kind === 'month' || folder.kind === 'group';
+    const leaf = isLeaf(folder);
     const active = (node || section) === folder.id;
-    const Icon = folder.kind === 'year' || folder.kind === 'month' ? CalendarDays : folder.kind === 'employee' ? UserRound : FolderTree;
+    const Icon = treeIcon(folder);
     const row = (
       <div key={folder.id} className="flex items-center" style={{ paddingLeft: depth * 12 }}>
         <button type="button" aria-label={open ? 'Zwiń' : 'Rozwiń'} disabled={leaf}
@@ -253,7 +272,7 @@ export default function DriveWorkspace() {
       <header className="mb-4">
         <h1 className="flex items-center gap-2 text-2xl font-light md:text-3xl"><HardDrive className="h-7 w-7 text-[#d3bb73]" />{DRIVE_TITLE}</h1>
         <p className="mt-1 max-w-4xl text-sm text-[#e5e4e2]/50">
-          Wszystkie pliki firmy w jednym miejscu — ten sam układ co w Finderze (Mavinci), na Macu i w telefonie: Eventy, Materiały, Oferty, Kalkulacje, Umowy, Magazyn i Pracownicy.
+          Wszystkie pliki firmy w jednym miejscu — ten sam układ co w Finderze (Mavinci) i na Macu: Finanse, Eventy, Materiały, Oferty, Kalkulacje, Umowy, Magazyn i Pracownicy. Każdy widzi tylko działy, do których ma dostęp.
         </p>
       </header>
 

@@ -661,6 +661,8 @@ struct UnitEditorRequest: Identifiable {
                     Text("Podaj cenę i datę zakupu, aby wyliczyć wartość bieżącą.").foregroundStyle(.secondary)
                 }
             }
+            // Własność i dokumenty zakupu — tylko z dostępem do finansów firmy (inni nie widzą karty).
+            if !isNew { EquipmentAssetsCard(equipmentID: currentID) }
         }
     }
 

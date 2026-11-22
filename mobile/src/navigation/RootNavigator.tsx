@@ -29,6 +29,9 @@ import PresentationScreen from '../screens/PresentationScreen';
 import ShowcaseOfferScreen, { type ShowcaseOfferRouteParams } from '../screens/ShowcaseOfferScreen';
 import MaterialsScreen from '../screens/MaterialsScreen';
 import DriveScreen from '../screens/DriveScreen';
+import FinanceScanScreen from '../screens/FinanceScanScreen';
+import TimeEmployeeScreen from '../screens/TimeEmployeeScreen';
+import type { TimePeriodKind } from '../lib/timeTrackingApi';
 import PdfViewerScreen from '../screens/PdfViewerScreen';
 import type { DriveSection } from '../lib/driveShared';
 
@@ -67,6 +70,10 @@ export type RootStackParamList = {
   Materials: { company?: string; folder?: string } | undefined;
   /** Dysk — chmura firmy jak w CRM, na Macu i w Finderze (Eventy, Materiały, Oferty, Kalkulacje, Umowy, Magazyn); `section`, `node` — folder na start. */
   Drive: { section?: DriveSection; node?: string } | undefined;
+  /** Dysk → „Skanuj dokument”: zdjęcia stron → PDF w wybranym folderze Finansów (Koszty, Dokumenty spółki, umowa stała). */
+  FinanceScan: undefined;
+  /** Czas pracy → pracownik (administrator): wpisy, czas według zadań, historia zmian; `kind`, `offset` — okres z raportu zespołu. */
+  TimeEmployee: { employeeId: string; name?: string; kind?: TimePeriodKind; offset?: number };
   /** PDF na ekranie (iOS; Android otwiera PDF w systemowej przeglądarce — `openPdf` w `lib/driveApi.ts`). */
   PdfViewer: { url: string; title?: string };
   EventDetail: {
@@ -318,6 +325,26 @@ export default function RootNavigator() {
                     headerStyle: { backgroundColor: colors.background.secondary },
                     headerTintColor: colors.text.primary,
                   }}
+                />
+                <Stack.Screen
+                  name="FinanceScan"
+                  component={FinanceScanScreen}
+                  options={{
+                    headerShown: true,
+                    title: 'Skanuj dokument'.toLocaleUpperCase('pl-PL'),
+                    headerStyle: { backgroundColor: colors.background.secondary },
+                    headerTintColor: colors.text.primary,
+                  }}
+                />
+                <Stack.Screen
+                  name="TimeEmployee"
+                  component={TimeEmployeeScreen}
+                  options={({ route }) => ({
+                    headerShown: true,
+                    title: (route.params?.name || 'Czas pracy').toLocaleUpperCase('pl-PL'),
+                    headerStyle: { backgroundColor: colors.background.secondary },
+                    headerTintColor: colors.text.primary,
+                  })}
                 />
                 <Stack.Screen
                   name="PdfViewer"

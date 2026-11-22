@@ -4,10 +4,12 @@ import UniformTypeIdentifiers
 
 // MARK: Dysk — ekran natywny 1:1 z `/crm/materials` (`DriveWorkspace.tsx`)
 //
-// Jedno drzewo jak w Finderze (Mavinci → …): Eventy (rok → wydarzenie → pliki z zakładki Pliki), Materiały (dotychczasowy
-// ekran, jego drzewo folderów i albumów pod pozycją „Materiały”), Oferty, Kalkulacje i Umowy (rok → miesiąc → PDF z CRM)
-// oraz Magazyn (kategoria → sprzęt → zdjęcia, pliki, instrukcja; dodawanie plików przyciskiem i przeciąganiem z Findera
-// z prawem „Zarządzanie magazynem”). Tylko działy, do których pracownik ma dostęp. Spacja / dwuklik — Quick Look, Enter — otwórz.
+// Jedno drzewo jak w Finderze (Mavinci → …): Finanse (firma → Księgowość → rok → miesiąc → Sprzedaż, Koszty, Bank, Podatki
+// i ZUS, XML z KSeF — osoby z dostępem do finansów firmy), Eventy (rok → event → pliki z zakładki Pliki), Materiały
+// (dotychczasowy ekran, jego drzewo folderów i albumów pod pozycją „Materiały”), Oferty, Kalkulacje i Umowy (rok → miesiąc →
+// PDF z CRM) oraz Magazyn (kategoria → sprzęt → zdjęcia, pliki, instrukcja; dodawanie plików przyciskiem i przeciąganiem
+// z Findera z prawem „Zarządzanie magazynem”). Tylko działy, do których pracownik ma dostęp. Spacja / dwuklik — Quick Look,
+// Enter — otwórz.
 
 /// Działy Dysku w pasku bocznym Materiałów (ekran Dysku): pozostałe działy jako pozycje, „Materiały” — drzewo folderów.
 struct DriveSidebarContext {
@@ -121,7 +123,7 @@ struct DriveSidebarContext {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Dysk").font(.title.weight(.light))
-                Text("Wszystkie pliki firmy w jednym miejscu — ten sam układ co w Finderze (Mavinci), w CRM i w telefonie.")
+                Text("Wszystkie pliki firmy w jednym miejscu — ten sam układ co w Finderze (Mavinci) i w CRM. Każdy widzi tylko działy, do których ma dostęp.")
                     .font(.callout).foregroundStyle(.secondary).lineLimit(2)
             }
             .layoutPriority(1)
@@ -153,9 +155,7 @@ struct DriveSidebarContext {
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.prompt = "Dodaj"
-        panel.message = node.hasPrefix("employees:")
-            ? "Pliki trafią do dokumentów pracownika (do 50 MB każdy) — nazwę, rodzaj i termin ważności zmienisz w profilu pracownika."
-            : "Pliki trafią do sprzętu „\(store.currentListing?.node.name ?? "")”: zdjęcia do 10 MB — do galerii, inne pliki do 50 MB."
+        panel.message = DriveText.uploadHint(node, name: store.currentListing?.node.name ?? "")
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
         let urls = panel.urls
         Task { await store.upload(urls, to: node) }
@@ -216,7 +216,7 @@ struct DriveSidebarContext {
     }
 
     private func treeRow(_ folder: DriveFolder, level: Int) -> some View {
-        let leaf = folder.kind == "month" || folder.kind == "group"
+        let leaf = folder.isLeaf
         let active = store.currentNode == folder.id
         return HStack(spacing: 6) {
             if leaf {
@@ -363,6 +363,8 @@ struct DriveSidebarContext {
     @State private var filter = ""
     @State private var preview: URL?
     @State private var dropTargeted = false
+    /// Plik do usunięcia (dokument spółki, plik umowy stałej) — czeka na potwierdzenie.
+    @State private var removing: DriveFile?
 
     private var node: String { store.currentNode ?? section.rawValue }
     private var listing: DriveListing? { store.listings[node] }
@@ -377,6 +379,14 @@ struct DriveSidebarContext {
         .onChange(of: node) { _, _ in
             selection = []
             filter = ""
+        }
+        .confirmationDialog("Usuń plik", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+            if let file = removing {
+                Button("Usuń", role: .destructive) { Task { await store.deleteFile(file, from: node) } }
+                Button("Anuluj", role: .cancel) {}
+            }
+        } message: {
+            Text("Usunąć „\(removing?.name ?? "")”? Plik zniknie z Dysku, Findera i CRM — tej operacji nie można cofnąć.")
         }
     }
 
@@ -405,6 +415,10 @@ struct DriveSidebarContext {
             }
             .padding(.horizontal, 8).padding(.vertical, 5)
             .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.06)))
+            if section == .finance {
+                Button { state.showFinance(.center) } label: { Label("Centrum finansów", systemImage: "building.columns") }
+                    .help("Otwórz Centrum finansów")
+            }
             Picker("Widok", selection: $viewMode) {
                 Image(systemName: "square.grid.2x2").tag("grid").help("Siatka miniatur")
                 Image(systemName: "list.bullet").tag("list").help("Lista")
@@ -427,7 +441,7 @@ struct DriveSidebarContext {
                 let files = listing.files.filter { matches($0.name) || matches($0.detail) }
                 if folders.isEmpty && files.isEmpty {
                     VStack(spacing: 8) {
-                        Image(systemName: section == .warehouse ? "shippingbox" : section == .employees ? "person.2" : "doc.text").font(.system(size: 40)).foregroundStyle(.tertiary)
+                        Image(systemName: emptySymbol).font(.system(size: 40)).foregroundStyle(.tertiary)
                         Text(filter.isEmpty ? DriveText.empty(section, node: listing.node, canUpload: canUpload) : "Brak plików pasujących do „\(filter)”.")
                             .foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }
@@ -450,7 +464,7 @@ struct DriveSidebarContext {
             if canUpload && dropTargeted {
                 RoundedRectangle(cornerRadius: 10).fill(theme.accent.opacity(0.12))
                     .overlay {
-                        Label(node.hasPrefix("employees:") ? "Upuść tutaj — do dokumentów pracownika" : "Upuść tutaj — do sprzętu „\(listing?.node.name ?? "")”",
+                        Label(DriveText.dropLabel(node, name: listing?.node.name ?? ""),
                               systemImage: "square.and.arrow.down").font(.title3).foregroundStyle(theme.accent)
                     }
                     .padding(8).allowsHitTesting(false)
@@ -492,14 +506,24 @@ struct DriveSidebarContext {
         if let local = await store.previewFile(file) { preview = local }
     }
 
-    /// „3 pliki” (rok, miesiąc), „5 pozycji” (kategoria).
+    private var emptySymbol: String {
+        switch section {
+        case .warehouse: return "shippingbox"
+        case .employees: return "person.2"
+        case .finance: return "building.columns"
+        default: return "doc.text"
+        }
+    }
+
+    /// „3 pliki” (rok, miesiąc), „5 pozycji” (kategoria), „4 dokumenty” (Finanse).
     private func countLabel(_ folder: DriveFolder) -> String {
         guard let count = folder.count else { return "" }
-        if folder.kind == "year" || folder.kind == "month" { return MaterialsText.files(count) }
         let tens = count % 100, ones = count % 10
+        let few = (2...4).contains(ones) && !(12...14).contains(tens)
+        if folder.id.hasPrefix("finance:") { return count == 1 ? "1 dokument" : "\(count) \(few ? "dokumenty" : "dokumentów")" }
+        if folder.kind == "year" || folder.kind == "month" { return MaterialsText.files(count) }
         if count == 1 { return "1 pozycja" }
-        if (2...4).contains(ones) && !(12...14).contains(tens) { return "\(count) pozycje" }
-        return "\(count) pozycji"
+        return "\(count) \(few ? "pozycje" : "pozycji")"
     }
 
     private func folderIcon(_ folder: DriveFolder) -> String {
@@ -507,6 +531,14 @@ struct DriveSidebarContext {
         case "equipment": return "shippingbox.fill"
         case "employee": return "person.crop.circle.fill"
         case "year", "month": return "calendar"
+        case "company": return "building.2.fill"
+        case "books": return "books.vertical.fill"
+        case "ledger": return DriveText.ledgerSymbol(folder.financeGroup)
+        case "corporate": return "briefcase.fill"
+        case "agreements": return "signature"
+        case "agreement": return "doc.text.fill"
+        case "assets": return "shippingbox.fill"
+        case "clarify": return "exclamationmark.triangle.fill"
         default: return "folder.fill"
         }
     }
@@ -521,6 +553,10 @@ struct DriveSidebarContext {
         }
         if FinderDomain.available {
             Button("Pokaż w Finderze") { Task { await FinderDomain.reveal(driveFile: file.id) } }
+        }
+        if file.deletable {
+            Divider()
+            Button("Usuń…", role: .destructive) { removing = file }
         }
     }
 

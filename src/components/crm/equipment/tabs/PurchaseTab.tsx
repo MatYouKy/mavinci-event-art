@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { EquipmentAssetsCard } from '../EquipmentAssetsCard';
 
 function calculateCurrentValue(
   purchasePrice: number | null | undefined,
@@ -195,6 +196,9 @@ export function PurchaseTab({ equipment, editForm, isEditing, onInputChange }: a
           )}
         </div>
       )}
+
+      {/* Własność i dokumenty zakupu — tylko z dostępem do finansów firmy (inni nie widzą karty). */}
+      {equipment?.id && <EquipmentAssetsCard equipmentId={equipment.id} />}
     </div>
   );
 }

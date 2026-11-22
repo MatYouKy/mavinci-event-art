@@ -220,6 +220,8 @@ struct DriveFolderDTO: Codable {
     let parentId: String?
     let name: String
     let kind: String
+    /// Folder przyjmuje pliki z Findera (Dokumenty spółki, umowa stała — „Finanse — zarządzanie”); starszy serwer pola nie wysyła.
+    let upload: Bool?
 }
 
 /// Plik Dysku (`offer:<id>`, `equipment-file:<id>`, `brand-logo:<id>`…); `version` zmienia się razem z treścią.

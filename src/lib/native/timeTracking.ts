@@ -153,7 +153,10 @@ const dayRange = (from: unknown, to: unknown) => {
   return { from: a, to: b, start: warsawMidnight(a), end: warsawMidnight(nextDay(b)) };
 };
 
-/** Raport zespołu (`AdminDashboard`): aktywne liczniki, wpisy z okresu (dni w czasie polskim), statystyki pracowników i dni. */
+/**
+ * Raport zespołu (`AdminDashboard`): aktywne liczniki, wpisy z okresu (dni w czasie polskim), statystyki pracowników i dni.
+ * `active` — wszystkie włączone liczniki (także osób bez zakończonych wpisów w okresie): „Aktywni teraz” w aplikacji mobilnej.
+ */
 export async function timeDashboard(ctx: NativeContext, from: string, to: string, employee: string | null) {
   if (!ctx.employee.isAdmin) fail('Raport czasu pracy zespołu jest dostępny dla administratora.', 403);
   const range = dayRange(from, to);
@@ -169,7 +172,7 @@ export async function timeDashboard(ctx: NativeContext, from: string, to: string
       if (employee) q = q.eq('employee_id', employee);
       return q;
     }, s, 50_000),
-    s.from('employees').select('id, name, surname').eq('is_active', true).order('name'),
+    s.from('employees').select('id, name, surname, avatar_url, avatar_metadata').eq('is_active', true).order('name'),
   ]);
   check(activeRes.error, 'Błąd podczas pobierania danych');
   check(employeesRes.error, 'Błąd podczas pobierania danych');
@@ -209,7 +212,13 @@ export async function timeDashboard(ctx: NativeContext, from: string, to: string
   })).sort((a, b) => b.minutes - a.minutes);
   return {
     range: { from: range.from, to: range.to },
-    employees: ((employeesRes.data ?? []) as Row[]).map((e) => ({ id: String(e.id), name: person(e) })),
+    employees: ((employeesRes.data ?? []) as Row[]).map((e) => ({
+      id: String(e.id), name: person(e), avatarUrl: e.avatar_url || null, avatar: imageCrop(e.avatar_metadata),
+    })),
+    active: activeRows.map((row) => {
+      const who = one(row.employees) as Row | null;
+      return { ...entryItem(row), avatarUrl: who?.avatar_url || null, avatar: imageCrop(who?.avatar_metadata) };
+    }).sort((a, b) => a.start.localeCompare(b.start)),
     people,
     daily: [...daily.values()].sort((a, b) => a.date.localeCompare(b.date)).map((d) => ({
       date: d.date, minutes: d.minutes, entries: d.entries, employees: d.employees.size,

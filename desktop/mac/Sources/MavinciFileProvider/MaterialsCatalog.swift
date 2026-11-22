@@ -385,7 +385,7 @@ actor MaterialsCatalog {
                 return (current, false)
             }
             dropLocal(id: id, folder: isFolder)
-            try? await refreshTrash()
+            _ = try? await refreshTrash()
             if let trashed = state.trash[id] { return (trashItem(trashed), false) }
             return (FinderItem(identifier: identifier, parent: .trashContainer, filename: item.filename, folder: isFolder, role: .trashed), false)
         }
