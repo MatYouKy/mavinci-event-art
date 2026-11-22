@@ -1,1432 +1,905 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator, Animated, Keyboard, PanResponder, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput,
+  TouchableOpacity, View, type GestureResponderEvent, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent,
+} from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Feather } from '@expo/vector-icons';
+import { colors, spacing, borderRadius, typography, glow, ink, withAlpha } from '../theme';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../lib/refreshQueue';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-  TextInput,
-  Dimensions,
-  Modal,
-  Animated,
-  PanResponder,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-
-import { Feather } from '@expo/vector-icons';
-import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
-import { sortTasksByUrgency } from '../lib/taskSort';
-import { fetchEmployeeTasks, createPrivateEmployeeTask } from '../services/employeeTasks';
 import { useAuth } from '../contexts/AuthContext';
-import EmployeeAvatar from '../components/EmployeeAvatar';
-import { TABLET_SIDEBAR_WIDTH, useContentWidth, useTabletLayout } from '../hooks/useTabletLayout';
+import { canView } from '../lib/permissions';
+import { useContentWidth, useTabletLayout } from '../hooks/useTabletLayout';
+import { openInCrmWeb } from '../navigation/navigationRef';
+import BrandHeading from '../components/BrandHeading';
+import { TaskBoardCard } from '../components/Tasks/TaskBoardCard';
+import { TaskEditorSheet, type TaskEditTarget } from '../components/Tasks/TaskEditorSheet';
+import { ActionMenu, type MenuItem } from '../components/Inquiries/WorkspaceSheets';
+import { DayField, NoticeScope, Segmented, Sheet, SheetActions, kit, useNotice } from '../components/Inquiries/InquiryKit';
+import type { TasksStackParamList } from '../navigation/TasksStackNavigator';
+import {
+  TASK_COLUMNS, TASK_PRIORITIES, boardDropIndex, boardTaskTimer, cachedTaskBoard, deleteBoardTask, loadTaskBoard, moveBoardTask, newTaskId,
+  saveBoardTask, saveBoardTaskFields, sortBoardTasks, taskColumnLabel, taskDueBadge, taskDueDay, taskPriority,
+  type ActiveTaskTimer, type BoardTask, type TaskBoardData, type TaskBoardKind, type TaskColumnId, type TaskPriorityId,
+} from '../lib/tasksBoard';
 
-type TasksStackParamList = {
-  TasksList: undefined;
-  TaskDetail: {
-    taskId: string;
-  };
-};
-
-type TasksNavigationProp = NativeStackNavigationProp<TasksStackParamList, 'TasksList'>;
-
-/**
- * Tablica kolumn: szerokość strony (treść obok paska bocznego na tablecie w poziomie) i lewa krawędź treści na ekranie —
- * aktualizowane przy każdym renderze ekranu (gesty przeciągania czytają bieżące wartości).
+/*
+ * Tablica zadań jak w Trello (te same dane, uprawnienia i zapisy co CRM i aplikacja na Maca — `lib/tasksBoard.ts`):
+ *  - kolumny obok siebie: telefon — kolumna na prawie całą szerokość z widocznym brzegiem następnej i przyciąganiem do kolumny,
+ *    tablet — kilka kolumn naraz,
+ *  - przytrzymanie karty podnosi ją pod palcem: przeciąganie w dowolną stronę, przy krawędzi ekranu tablica sama się przewija,
+ *    w docelowej kolumnie widać miejsce, w którym karta stanie (kolejność jak w CRM: priorytet, termin, kolejność na tablicy),
+ *  - „+ Dodaj kartę” na dole każdej kolumny — szybkie dodawanie kolejnych kart bez otwierania formularza,
+ *  - „⋯” na karcie — szybkie czynności (przenieś, licznik czasu, priorytet, termin, edycja, usunięcie), dotknięcie — szczegóły,
+ *  - pełny formularz („+” u góry albo w nagłówku kolumny) z załącznikami: zdjęcia, zrzuty ekranu, aparat, pliki, obraz ze schowka.
+ * Przeniesienie do „W trakcie” uruchamia licznik czasu (jak w CRM), wyjście z „W trakcie” pyta o zatrzymanie licznika.
  */
-const board = { width: Dimensions.get('window').width, left: 0 };
 
-interface Task {
-  id: string;
-  title: string;
-  description: string | null;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: string;
-  board_column: string;
-  due_date: string | null;
-  created_at: string;
-  sort_order?: number;
-  task_assignees: {
-    employee_id: string;
-    employees: {
-      name: string;
-      surname: string;
-      avatar_url: string | null;
-      avatar_metadata: any;
-    };
-  }[];
-}
+type Navigation = NativeStackNavigationProp<TasksStackParamList, 'TasksList'>;
+type Rect = { x: number; y: number; width: number; height: number };
+type Drag = { task: BoardTask; from: TaskColumnId; target: TaskColumnId; width: number; height: number; grabX: number; grabY: number };
 
-const priorityColors = {
-  urgent: '#ef4444',
-  high: '#f97316',
-  medium: '#3b82f6',
-  low: colors.text.secondary,
-};
+const GAP = 12;
+const SIDE = 16;
+const PAGE = 60;
+const EDGE = 64;
+const MAX_SPEED = 18;
 
-const priorityLabels = {
-  urgent: 'Pilne',
-  high: 'Wysoki',
-  medium: 'Średni',
-  low: 'Niski',
-};
-
-
-
-const BOARD_COLUMNS = [
-  { id: 'todo', title: 'Do zrobienia', color: '#eab308' },
-  { id: 'in_progress', title: 'W trakcie', color: '#3b82f6' },
-  { id: 'review', title: 'Sprawdzenie', color: '#a855f7' },
-  { id: 'completed', title: 'Zakończone', color: '#10b981' },
-];
-
-const CARD_HEIGHT = 110;
-const columnSwipeThreshold = () => Math.min(100, board.width * 0.24);
-const COLUMN_SWIPE_ACTIVATION = 8;
-const COLUMN_EDGE_SWITCH_ZONE = 44;
-const COLUMN_EDGE_UNLOCK_ZONE = 96;
-
-function DraggableTaskCard({
-  task,
-  index,
-  totalCount,
-  onPress,
-  onLongPress,
-  onMoveUp,
-  onMoveDown,
-  columnIndex,
-  onMoveToColumn,
-  onPreviewColumnChange,
-  onHorizontalDragStateChange,
-  isReordering,
-}: {
-  task: Task;
-  index: number;
-  totalCount: number;
-  onPress: () => void;
-  onLongPress: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  columnIndex: number;
-  onMoveToColumn: (columnId: string) => void;
-  onPreviewColumnChange: (columnIndex: number) => void;
-  onHorizontalDragStateChange: (active: boolean) => void;
-  isReordering: boolean;
-}) {
-  const pan = useRef(new Animated.ValueXY()).current;
-  const scale = useRef(new Animated.Value(1)).current;
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragTargetIndex, setDragTargetIndex] = useState<number | null>(null);
-
-  const latestPropsRef = useRef({
-    isReordering,
-    columnIndex,
-    onMoveUp,
-    onMoveDown,
-    onMoveToColumn,
-    onPreviewColumnChange,
-    onHorizontalDragStateChange,
+const measure = (node: View | null | undefined) =>
+  new Promise<Rect | null>((resolve) => {
+    if (!node) { resolve(null); return; }
+    node.measure((_x, _y, width, height, pageX, pageY) => {
+      resolve([width, height, pageX, pageY].every((value) => Number.isFinite(value)) ? { x: pageX, y: pageY, width, height } : null);
+    });
   });
-  latestPropsRef.current = {
-    isReordering,
-    columnIndex,
-    onMoveUp,
-    onMoveDown,
-    onMoveToColumn,
-    onPreviewColumnChange,
-    onHorizontalDragStateChange,
-  };
 
-  const longPressArmedRef = useRef(false);
-  const panActiveRef = useRef(false);
-  const horizontalDragRef = useRef(false);
-  const previewColumnIndexRef = useRef(columnIndex);
-  const edgeLockRef = useRef<'left' | 'right' | null>(null);
+const clock = (iso: string) => {
+  const time = Date.parse(iso);
+  return Number.isNaN(time) ? '' : new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(time);
+};
 
-  const finishHorizontalDrag = (animate = true, restoreSourceColumn = true) => {
-    if (
-      restoreSourceColumn &&
-      previewColumnIndexRef.current !== latestPropsRef.current.columnIndex
-    ) {
-      latestPropsRef.current.onPreviewColumnChange(latestPropsRef.current.columnIndex);
-    }
+type CardActions = {
+  register: (id: string, node: View | null) => void;
+  open: (task: BoardTask) => void;
+  lift: (task: BoardTask, event: GestureResponderEvent) => void;
+  pressOut: () => void;
+  menu: (task: BoardTask) => void;
+};
 
-    previewColumnIndexRef.current = latestPropsRef.current.columnIndex;
-    edgeLockRef.current = null;
-    longPressArmedRef.current = false;
-    panActiveRef.current = false;
-    horizontalDragRef.current = false;
-    setDragTargetIndex(null);
-    setIsDragging(false);
-    latestPropsRef.current.onHorizontalDragStateChange(false);
-
-    Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
-    if (animate) {
-      Animated.spring(pan, {
-        toValue: { x: 0, y: 0 },
-        useNativeDriver: true,
-      }).start();
-    } else {
-      pan.setValue({ x: 0, y: 0 });
-    }
-  };
-
-  const armHorizontalDrag = () => {
-    if (latestPropsRef.current.isReordering) return;
-
-    longPressArmedRef.current = true;
-    previewColumnIndexRef.current = latestPropsRef.current.columnIndex;
-    edgeLockRef.current = null;
-    setIsDragging(true);
-    latestPropsRef.current.onHorizontalDragStateChange(true);
-    Animated.spring(scale, { toValue: 1.03, useNativeDriver: true }).start();
-  };
-
-  const handlePressOut = () => {
-    setTimeout(() => {
-      if (longPressArmedRef.current && !panActiveRef.current) {
-        finishHorizontalDrag();
-      }
-    }, 0);
-  };
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        if (latestPropsRef.current.isReordering) {
-          return Math.abs(gestureState.dy) > 5 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
-        }
-
-        return (
-          longPressArmedRef.current &&
-          Math.abs(gestureState.dx) > COLUMN_SWIPE_ACTIVATION &&
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.2
-        );
-      },
-      onMoveShouldSetPanResponderCapture: (_, gestureState) =>
-        longPressArmedRef.current &&
-        Math.abs(gestureState.dx) > COLUMN_SWIPE_ACTIVATION &&
-        Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.2,
-      onPanResponderGrant: () => {
-        panActiveRef.current = true;
-        horizontalDragRef.current = !latestPropsRef.current.isReordering;
-        setIsDragging(true);
-        Animated.spring(scale, { toValue: 1.03, useNativeDriver: true }).start();
-      },
-      onPanResponderMove: (_, gestureState) => {
-        if (latestPropsRef.current.isReordering) {
-          pan.setValue({ x: 0, y: gestureState.dy });
-          return;
-        }
-
-        const sourceColumnIndex = latestPropsRef.current.columnIndex;
-        let previewColumnIndex = previewColumnIndexRef.current;
-        const movedEnough = Math.abs(gestureState.dx) > COLUMN_SWIPE_ACTIVATION;
-
-        // Położenie palca względem treści (na tablecie w poziomie po lewej jest pasek boczny).
-        const moveX = gestureState.moveX - board.left;
-        if (
-          edgeLockRef.current &&
-          moveX > COLUMN_EDGE_UNLOCK_ZONE &&
-          moveX < board.width - COLUMN_EDGE_UNLOCK_ZONE
-        ) {
-          edgeLockRef.current = null;
-        }
-
-        if (
-          movedEnough &&
-          !edgeLockRef.current &&
-          moveX <= COLUMN_EDGE_SWITCH_ZONE &&
-          previewColumnIndex < BOARD_COLUMNS.length - 1
-        ) {
-          previewColumnIndex += 1;
-          previewColumnIndexRef.current = previewColumnIndex;
-          edgeLockRef.current = 'left';
-          latestPropsRef.current.onPreviewColumnChange(previewColumnIndex);
-        } else if (
-          movedEnough &&
-          !edgeLockRef.current &&
-          moveX >= board.width - COLUMN_EDGE_SWITCH_ZONE &&
-          previewColumnIndex > 0
-        ) {
-          previewColumnIndex -= 1;
-          previewColumnIndexRef.current = previewColumnIndex;
-          edgeLockRef.current = 'right';
-          latestPropsRef.current.onPreviewColumnChange(previewColumnIndex);
-        }
-
-        const pageCompensation = (previewColumnIndex - sourceColumnIndex) * board.width;
-        pan.setValue({ x: gestureState.dx + pageCompensation, y: 0 });
-
-        if (previewColumnIndex !== sourceColumnIndex) {
-          setDragTargetIndex(previewColumnIndex);
-        } else if (movedEnough) {
-          const directionalTarget = gestureState.dx < 0
-            ? sourceColumnIndex + 1
-            : sourceColumnIndex - 1;
-          setDragTargetIndex(
-            directionalTarget >= 0 && directionalTarget < BOARD_COLUMNS.length
-              ? directionalTarget
-              : null,
-          );
-        } else {
-          setDragTargetIndex(null);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (latestPropsRef.current.isReordering) {
-          setIsDragging(false);
-          panActiveRef.current = false;
-          Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
-
-          const movedSlots = Math.round(gestureState.dy / CARD_HEIGHT);
-          if (movedSlots < 0) {
-            for (let i = 0; i < Math.abs(movedSlots); i++) {
-              latestPropsRef.current.onMoveUp();
-            }
-          } else if (movedSlots > 0) {
-            for (let i = 0; i < movedSlots; i++) {
-              latestPropsRef.current.onMoveDown();
-            }
-          }
-
-          Animated.spring(pan, {
-            toValue: { x: 0, y: 0 },
-            useNativeDriver: true,
-          }).start();
-          return;
-        }
-
-        const currentColumnIndex = latestPropsRef.current.columnIndex;
-        let targetIndex = previewColumnIndexRef.current;
-
-        if (targetIndex === currentColumnIndex && Math.abs(gestureState.dx) >= columnSwipeThreshold()) {
-          targetIndex = gestureState.dx < 0 ? currentColumnIndex + 1 : currentColumnIndex - 1;
-        }
-
-        const shouldMove = targetIndex >= 0 &&
-          targetIndex < BOARD_COLUMNS.length &&
-          targetIndex !== currentColumnIndex;
-
-        if (!shouldMove) {
-          finishHorizontalDrag();
-          return;
-        }
-
-        latestPropsRef.current.onMoveToColumn(BOARD_COLUMNS[targetIndex].id);
-        finishHorizontalDrag(false, false);
-      },
-      onPanResponderTerminate: () => finishHorizontalDrag(),
-      onPanResponderTerminationRequest: () => false,
-    }),
-  ).current;
-
-  useEffect(
-    () => () => {
-      if (longPressArmedRef.current || horizontalDragRef.current) {
-        latestPropsRef.current.onHorizontalDragStateChange(false);
-      }
-    },
-    [],
-  );
-
-  const assignees = task.task_assignees ?? [];
-
+/** Karta w kolumnie (pamiętana — przy przeciąganiu odświeżają się tylko karty, których stan się zmienił). */
+const CardRow = memo(function CardRow({ task, me, timerActive, busy, slot, actions }: {
+  task: BoardTask; me: string | null; timerActive: boolean; busy: boolean;
+  /** `hidden` — karta podniesiona, jej miejsce w tej kolumnie; `collapsed` — karta podniesiona nad inną kolumną. */
+  slot: 'normal' | 'hidden' | 'collapsed';
+  actions: CardActions;
+}) {
   return (
-    <Animated.View
-      style={[
-        styles.taskCard,
-        isDragging && styles.taskCardDragging,
-        dragTargetIndex !== null && {
-          borderColor: BOARD_COLUMNS[dragTargetIndex].color,
-        },
-        {
-          transform: [{ translateX: pan.x }, { translateY: pan.y }, { scale }],
-          zIndex: isDragging ? 100 : 1,
-        },
-      ]}
-      {...panResponder.panHandlers}
-    >
-      <TouchableOpacity
-        onPress={isReordering ? undefined : onPress}
-        onLongPress={isReordering ? undefined : armHorizontalDrag}
-        onPressOut={isReordering ? undefined : handlePressOut}
-        delayLongPress={400}
-        activeOpacity={isReordering ? 1 : 0.7}
-      >
-        {dragTargetIndex !== null && (
-          <View
-            style={[
-              styles.dragTargetBadge,
-              { borderColor: BOARD_COLUMNS[dragTargetIndex].color },
-            ]}
-          >
-            <Feather
-              name={dragTargetIndex > columnIndex ? 'arrow-right' : 'arrow-left'}
-              size={14}
-              color={BOARD_COLUMNS[dragTargetIndex].color}
-            />
-            <Text style={styles.dragTargetText}>
-              Przenieś do: {BOARD_COLUMNS[dragTargetIndex].title}
-            </Text>
-          </View>
-        )}
-
-        <View style={styles.taskHeader}>
-          <Text style={styles.taskTitle} numberOfLines={2}>
-            {task.title}
-          </Text>
-          <View
-            style={[
-              styles.priorityBadge,
-              { backgroundColor: `${priorityColors[task.priority]}20` },
-            ]}
-          >
-            <Text style={[styles.priorityText, { color: priorityColors[task.priority] }]}>
-              {priorityLabels[task.priority]}
-            </Text>
-          </View>
-        </View>
-
-        {task.description && (
-          <Text style={styles.taskDescription} numberOfLines={2}>
-            {task.description}
-          </Text>
-        )}
-
-        <View style={styles.taskFooterRow}>
-          <View style={styles.assignees}>
-            {assignees.slice(0, 3).map((assignee, idx) => (
-              <View
-                key={assignee.employee_id}
-                style={[styles.avatarWrapper, { marginLeft: idx > 0 ? -8 : 0 }]}
-              >
-                {assignee.employees && (
-                  <EmployeeAvatar
-                    avatarUrl={assignee.employees.avatar_url}
-                    avatarMetadata={assignee.employees.avatar_metadata}
-                    employeeName={`${assignee.employees.name} ${assignee.employees.surname}`}
-                    size={24}
-                  />
-                )}
-              </View>
-            ))}
-            {assignees.length > 3 && (
-              <View style={styles.moreAvatars}>
-                <Text style={styles.moreAvatarsText}>+{assignees.length - 3}</Text>
-              </View>
-            )}
-          </View>
-
-          {isReordering && (
-            <View style={styles.reorderButtons}>
-              <TouchableOpacity
-                style={[styles.reorderBtn, index === 0 && styles.reorderBtnDisabled]}
-                onPress={onMoveUp}
-                disabled={index === 0}
-              >
-                <Feather
-                  name="chevron-up"
-                  size={18}
-                  color={index === 0 ? colors.text.secondary : colors.primary.gold}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.reorderBtn,
-                  index === totalCount - 1 && styles.reorderBtnDisabled,
-                ]}
-                onPress={onMoveDown}
-                disabled={index === totalCount - 1}
-              >
-                <Feather
-                  name="chevron-down"
-                  size={18}
-                  color={index === totalCount - 1 ? colors.text.secondary : colors.primary.gold}
-                />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {!isReordering && !isDragging && (
-            <TouchableOpacity
-              style={styles.taskMoreButton}
-              onPress={onLongPress}
-              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
-            >
-              <Feather name="more-horizontal" size={18} color={colors.text.secondary} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
+    <View style={slot === 'collapsed' ? styles.collapsed : slot === 'hidden' ? styles.slot : styles.cardWrap}>
+      <View style={slot === 'normal' ? null : styles.invisible}>
+        <TaskBoardCard
+          ref={(node) => actions.register(task.id, node)}
+          task={task}
+          me={me}
+          timerActive={timerActive}
+          busy={busy}
+          onPress={() => actions.open(task)}
+          onLongPress={(event) => actions.lift(task, event)}
+          onPressOut={actions.pressOut}
+          onMenu={() => actions.menu(task)}
+        />
+      </View>
+    </View>
   );
-}
+});
 
 export default function TasksScreen() {
-  const navigation = useNavigation<TasksNavigationProp>();
+  const navigation = useNavigation<Navigation>();
+  const { employee } = useAuth();
   const contentWidth = useContentWidth();
-  const { sidebar } = useTabletLayout();
-  board.width = contentWidth;
-  board.left = sidebar ? TABLET_SIDEBAR_WIDTH : 0;
-  const { employee, session } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [showColumnPicker, setShowColumnPicker] = useState(false);
-  const [isReordering, setIsReordering] = useState(false);
-  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
-  const [customOrder, setCustomOrder] = useState<Record<string, string[]>>({});
-  const boardScrollRef = useRef<ScrollView>(null);
+  const { tablet } = useTabletLayout();
+  const notice = useNotice();
+  const { run, notify } = notice;
+  const companyAllowed = canView(employee, 'tasks');
+  const me = employee?.id ?? null;
 
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-  const [newPriority, setNewPriority] = useState<Task['priority']>('medium');
-  const [newColumn, setNewColumn] = useState<string>('todo');
-  const creatingRef = useRef(false);
+  const [board, setBoard] = useState<TaskBoardKind>('mine');
+  const [data, setData] = useState<TaskBoardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [search, setSearch] = useState('');
+  const [limits, setLimits] = useState<Partial<Record<TaskColumnId, number>>>({});
+  const [busyIds, setBusyIds] = useState<string[]>([]);
+  const [editor, setEditor] = useState<TaskEditTarget | null>(null);
+  const [menuTask, setMenuTask] = useState<BoardTask | null>(null);
+  const [priorityTask, setPriorityTask] = useState<BoardTask | null>(null);
+  const [dueTarget, setDueTarget] = useState<{ task: BoardTask; day: string } | null>(null);
+  const [deleting, setDeleting] = useState<BoardTask | null>(null);
+  const [stopping, setStopping] = useState<{ task: BoardTask; column: TaskColumnId } | null>(null);
+  const [switching, setSwitching] = useState<BoardTask | null>(null);
+  const [composer, setComposer] = useState<{ column: TaskColumnId; text: string } | null>(null);
+  const [armed, setArmed] = useState(false);
+  const [drag, setDrag] = useState<Drag | null>(null);
+  const [boardHeight, setBoardHeight] = useState(0);
+  const [page, setPage] = useState(0);
+  const [keyboardPad, setKeyboardPad] = useState(0);
+
+  const access = data?.access ?? null;
+  const timer: ActiveTaskTimer | null = data?.timer ?? null;
+  const canCreate = access?.canCreate ?? board === 'mine';
+  const canManage = access?.canManage ?? board === 'mine';
+  const canMove = access?.canMove ?? board === 'mine';
+
+  // MARK: Wczytywanie
+
+  const boardRef = useRef(board);
+  boardRef.current = board;
+  const dragRef = useRef<Drag | null>(null);
+  const pendingData = useRef<TaskBoardData | null>(null);
+  const queueRef = useRef<ReturnType<typeof createRefreshQueue> | null>(null);
+  const forceNext = useRef(false);
+
+  const apply = useCallback((next: TaskBoardData) => {
+    // W trakcie przeciągania tablica się nie przebudowuje — nowe dane po upuszczeniu karty.
+    if (dragRef.current) pendingData.current = next;
+    else setData(next);
+  }, []);
+
+  const load = useCallback(async () => {
+    const target = boardRef.current;
+    const force = forceNext.current;
+    forceNext.current = false;
+    try {
+      const next = await loadTaskBoard(target, force);
+      if (boardRef.current !== target) return;
+      apply(next);
+      setLoadError(null);
+    } catch (error) {
+      if (boardRef.current !== target) return;
+      setLoadError(error instanceof Error ? error.message : 'Nie udało się wczytać zadań.');
+    } finally {
+      if (boardRef.current === target) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, [apply]);
+
+  const reload = useCallback((force = false) => {
+    if (force) forceNext.current = true;
+    if (queueRef.current) void queueRef.current.refresh();
+    else void load();
+  }, [load]);
 
   useForegroundEffect((signal) => {
-    if (!employee?.id) return;
-    const queue = createRefreshQueue(signal, () => fetchTasks());
+    if (!me) return;
+    const queue = createRefreshQueue(signal, () => load());
+    queueRef.current = queue;
     void queue.refresh();
-
-    const channel = supabase
-      .channel('tasks_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tasks',
-        },
-        () => {
-          if (employee) {
-            queue.schedule();
-          }
-        },
-      )
-      .subscribe();
-
+    const channel = supabase.channel(`tasks_board_${me}`);
+    (['tasks', 'task_assignees', 'task_comments', 'task_attachments'] as const).forEach((table) => {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => queue.schedule());
+    });
+    channel.subscribe();
     return () => {
+      if (queueRef.current === queue) queueRef.current = null;
       return supabase.removeChannel(channel);
     };
-  }, [employee, session?.user.id]);
+  }, [me, load]);
 
-  const fetchTasks = async () => {
-    try {
-      if (!employee || !session?.user.id) return;
+  // Powrót ze szczegółów zadania — świeże liczniki komentarzy i załączników.
+  useFocusEffect(useCallback(() => { queueRef.current?.schedule(); }, []));
 
-      const uniqueTasks = await fetchEmployeeTasks(supabase, employee.id, session.user.id);
+  // Zmiana tablicy: od razu ostatnio pobrana wersja, potem świeża.
+  const firstBoard = useRef(true);
+  useEffect(() => {
+    if (firstBoard.current) { firstBoard.current = false; return; }
+    let alive = true;
+    setComposer(null);
+    setLimits({});
+    void cachedTaskBoard(board).then((cached) => {
+      if (!alive) return;
+      setData(cached);
+      setLoading(!cached);
+      setLoadError(null);
+      reload();
+    });
+    return () => { alive = false; };
+  }, [board, reload]);
 
-      setTasks(uniqueTasks as Task[]);
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  // MARK: Kolumny
+
+  const query = search.trim().toLocaleLowerCase('pl-PL');
+  const columns = useMemo(() => {
+    const tasks = (data?.tasks ?? []).filter((task) => !query
+      || task.titleLabel.toLocaleLowerCase('pl-PL').includes(query) || task.title.toLocaleLowerCase('pl-PL').includes(query));
+    return TASK_COLUMNS.map((column) => ({ ...column, tasks: sortBoardTasks(tasks.filter((task) => task.boardColumn === column.id)) }));
+  }, [data, query]);
+
+  const columnWidth = tablet
+    ? Math.max(280, Math.min(360, (contentWidth - SIDE * 2 - GAP * 3) / 4))
+    : Math.max(240, Math.min(contentWidth - 56, 440));
+  const snapInterval = columnWidth + GAP;
+
+  // MARK: Przeciąganie kart
+
+  const rootRef = useRef<View>(null);
+  const viewportRef = useRef<View>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const cardRefs = useRef(new Map<string, View>());
+  const columnRefs = useRef(new Map<TaskColumnId, View>());
+  const armedRef = useRef(false);
+  const grantedRef = useRef(false);
+  const finger = useRef({ x: 0, y: 0 });
+  const rootRect = useRef<Rect | null>(null);
+  const viewportRect = useRef<Rect | null>(null);
+  const columnRects = useRef(new Map<TaskColumnId, Rect>());
+  const scrollX = useRef(0);
+  const scrollAtStart = useRef(0);
+  const contentWidthRef = useRef(0);
+  const viewportWidth = useRef(0);
+  const speed = useRef(0);
+  const autoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const ghost = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+
+  const stopAutoScroll = () => {
+    speed.current = 0;
+    if (autoTimer.current) { clearInterval(autoTimer.current); autoTimer.current = null; }
+  };
+
+  const positionGhost = () => {
+    const current = dragRef.current;
+    const root = rootRect.current;
+    if (!current || !root) return;
+    ghost.setValue({ x: finger.current.x - current.grabX - root.x, y: finger.current.y - current.grabY - root.y });
+  };
+
+  const updateTarget = () => {
+    const current = dragRef.current;
+    if (!current) return;
+    const shift = scrollX.current - scrollAtStart.current;
+    let next = current.target;
+    for (const column of TASK_COLUMNS) {
+      const rect = columnRects.current.get(column.id);
+      if (!rect) continue;
+      const left = rect.x - shift;
+      if (finger.current.x >= left - GAP / 2 && finger.current.x <= left + rect.width + GAP / 2) { next = column.id; break; }
+    }
+    if (next !== current.target) {
+      const value = { ...current, target: next };
+      dragRef.current = value;
+      setDrag(value);
     }
   };
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchTasks();
+  const tick = () => {
+    const step = speed.current;
+    if (!step || !dragRef.current) { stopAutoScroll(); return; }
+    const max = Math.max(0, contentWidthRef.current - viewportWidth.current);
+    const next = Math.max(0, Math.min(max, scrollX.current + step));
+    if (next === scrollX.current) return;
+    scrollX.current = next;
+    scrollRef.current?.scrollTo({ x: next, animated: false });
+    updateTarget();
   };
 
-  const resetCreateForm = () => {
-    setNewTitle('');
-    setNewDescription('');
-    setNewPriority('medium');
-    setNewColumn('todo');
+  const updateAutoScroll = () => {
+    const rect = viewportRect.current;
+    if (!rect) return;
+    const x = finger.current.x;
+    let next = 0;
+    if (x < rect.x + EDGE) next = -MAX_SPEED * Math.min(1, (rect.x + EDGE - x) / EDGE);
+    else if (x > rect.x + rect.width - EDGE) next = MAX_SPEED * Math.min(1, (x - (rect.x + rect.width - EDGE)) / EDGE);
+    speed.current = next;
+    if (next && !autoTimer.current) autoTimer.current = setInterval(tick, 16);
+    if (!next) stopAutoScroll();
   };
 
-  const createTask = async () => {
-    if (!employee || creatingRef.current) return;
-  
-    const title = newTitle.trim();
-  
-    if (!title) {
-      Alert.alert('Brak tytułu', 'Podaj tytuł zadania.');
+  const moveFinger = (x: number, y: number) => {
+    finger.current = { x, y };
+    if (!dragRef.current) return;
+    positionGhost();
+    updateTarget();
+    updateAutoScroll();
+  };
+
+  const finishDrag = (commit: boolean) => {
+    stopAutoScroll();
+    const current = dragRef.current;
+    armedRef.current = false;
+    grantedRef.current = false;
+    dragRef.current = null;
+    setDrag(null);
+    setArmed(false);
+    if (pendingData.current) {
+      setData(pendingData.current);
+      pendingData.current = null;
+    }
+    if (commit && current && current.target !== current.from) void dropTaskRef.current(current.task, current.target);
+  };
+
+  const lift = (task: BoardTask, event: GestureResponderEvent) => {
+    if (!canMove || armedRef.current || busyIds.includes(task.id) || task.id.startsWith('tmp-')) return;
+    armedRef.current = true;
+    grantedRef.current = false;
+    setArmed(true);
+    setComposer(null);
+    const start = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+    finger.current = start;
+    void (async () => {
+      const [card, root, viewport, ...rects] = await Promise.all([
+        measure(cardRefs.current.get(task.id)), measure(rootRef.current), measure(viewportRef.current),
+        ...TASK_COLUMNS.map((column) => measure(columnRefs.current.get(column.id))),
+      ]);
+      if (!armedRef.current) return;
+      if (!card || !root || !viewport) { finishDrag(false); return; }
+      rootRect.current = root;
+      viewportRect.current = viewport;
+      columnRects.current = new Map();
+      TASK_COLUMNS.forEach((column, index) => { const rect = rects[index]; if (rect) columnRects.current.set(column.id, rect); });
+      scrollAtStart.current = scrollX.current;
+      const value: Drag = {
+        task, from: task.boardColumn, target: task.boardColumn, width: card.width, height: card.height,
+        grabX: Math.max(0, Math.min(card.width, start.x - card.x)), grabY: Math.max(0, Math.min(card.height, start.y - card.y)),
+      };
+      dragRef.current = value;
+      setDrag(value);
+      positionGhost();
+    })();
+  };
+
+  const pressOut = () => {
+    // Puszczenie bez ruchu po przytrzymaniu — karta wraca na miejsce (przy ruchu tablica przejęła gest i zakończy go sama).
+    setTimeout(() => { if (armedRef.current && !grantedRef.current) finishDrag(false); }, 90);
+  };
+
+  const finishRef = useRef(finishDrag);
+  finishRef.current = finishDrag;
+  const moveRef = useRef(moveFinger);
+  moveRef.current = moveFinger;
+
+  const responder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onStartShouldSetPanResponderCapture: () => false,
+    onMoveShouldSetPanResponderCapture: () => armedRef.current,
+    onMoveShouldSetPanResponder: () => armedRef.current,
+    onPanResponderGrant: (event) => { grantedRef.current = true; moveRef.current(event.nativeEvent.pageX, event.nativeEvent.pageY); },
+    onPanResponderMove: (event) => moveRef.current(event.nativeEvent.pageX, event.nativeEvent.pageY),
+    onPanResponderRelease: () => finishRef.current(true),
+    onPanResponderTerminate: () => finishRef.current(false),
+    onPanResponderTerminationRequest: () => false,
+    onShouldBlockNativeResponder: () => true,
+  }), []);
+
+  useEffect(() => () => stopAutoScroll(), []);
+
+  // iOS: klawiatura nie zasłania pola „Dodaj kartę” na dole kolumny — dolny margines równy części ekranu pod klawiaturą
+  // (liczone od rzeczywistego położenia ekranu, więc nagłówek nawigacji nie przesuwa wyniku). Android zmienia rozmiar okna sam.
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return undefined;
+    const change = Keyboard.addListener('keyboardWillChangeFrame', (event) => {
+      const top = event.endCoordinates.screenY;
+      rootRef.current?.measure((_x, _y, _width, height, _pageX, pageY) => {
+        if (Number.isFinite(pageY) && Number.isFinite(height)) setKeyboardPad(Math.max(0, Math.round(pageY + height - top)));
+      });
+    });
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardPad(0));
+    return () => { change.remove(); hide.remove(); };
+  }, []);
+
+  // MARK: Zapisy
+
+  const markBusy = (id: string, busy: boolean) =>
+    setBusyIds((current) => (busy ? (current.includes(id) ? current : [...current, id]) : current.filter((value) => value !== id)));
+
+  const patchTask = (id: string, change: (task: BoardTask) => BoardTask) =>
+    setData((current) => (current ? { ...current, tasks: current.tasks.map((task) => (task.id === id ? change(task) : task)) } : current));
+
+  const setTimer = (next: ActiveTaskTimer | null) => setData((current) => (current ? { ...current, timer: next } : current));
+
+  const scrollToColumn = (column: TaskColumnId) => {
+    if (tablet) return;
+    const index = TASK_COLUMNS.findIndex((item) => item.id === column);
+    if (index < 0) return;
+    const x = index * snapInterval;
+    scrollX.current = x;
+    setPage(index);
+    setTimeout(() => scrollRef.current?.scrollTo({ x, animated: true }), 40);
+  };
+
+  /** Przeniesienie z natychmiastową zmianą na tablicy; błąd przywraca kartę. */
+  const commitMove = async (task: BoardTask, column: TaskColumnId, options: { working?: boolean; startTimer?: boolean; stopTimer?: boolean } = {}) => {
+    const before = task;
+    const myName = employee ? `${employee.name ?? ''} ${employee.surname ?? ''}`.trim() : '';
+    patchTask(task.id, (item) => {
+      if (column !== 'in_progress') return { ...item, boardColumn: column, workingBy: null, workingName: '' };
+      if (options.working) return { ...item, boardColumn: column, workingBy: me, workingName: myName || item.workingName };
+      return { ...item, boardColumn: column };
+    });
+    scrollToColumn(column);
+    markBusy(task.id, true);
+    try {
+      if (options.stopTimer) setTimer(await boardTaskTimer(board, 'stop'));
+      const next = await moveBoardTask(board, task.id, column, { working: options.working, startTimer: options.startTimer });
+      setTimer(next);
+      notify(options.startTimer ? `Zadanie rozpoczęte — ${taskColumnLabel(column, board)}` : `Przeniesiono do: ${taskColumnLabel(column, board)}`);
+      reload(true);
+    } catch (error) {
+      patchTask(task.id, () => before);
+      notify(error instanceof Error ? error.message : 'Błąd podczas przenoszenia zadania', true);
+    } finally {
+      markBusy(task.id, false);
+    }
+  };
+
+  /** Jak `handleDrop` w CRM i na Macu: „W trakcie” uruchamia licznik (gdy nie działa inny), wyjście z „W trakcie” pyta o zatrzymanie. */
+  const dropTask = async (task: BoardTask, column: TaskColumnId) => {
+    if (!canMove || task.boardColumn === column) return;
+    const old = task.boardColumn;
+    const auto = access?.autoTimer ?? true;
+    if (auto && column === 'in_progress' && old !== 'in_progress') {
+      if (timer && timer.taskId !== task.id) {
+        notify('Zakończ poprzednie zadanie aby rozpocząć kolejne lub przenieś je do zrobienia', true);
+        return;
+      }
+      if (!timer) { await commitMove(task, column, { working: true, startTimer: true }); return; }
+    }
+    if (auto && (column === 'review' || column === 'completed') && old === 'in_progress' && timer?.taskId === task.id) {
+      setStopping({ task, column });
       return;
     }
-  
-    creatingRef.current = true;
-    setCreating(true);
-  
+    await commitMove(task, column);
+  };
+  const dropTaskRef = useRef(dropTask);
+  dropTaskRef.current = dropTask;
+
+  /** Szybkie dodanie karty na dole kolumny (pole zostaje otwarte na kolejną kartę — jak w Trello). */
+  const quickAdd = async () => {
+    if (!composer) return;
+    const title = composer.text.trim();
+    const column = composer.column;
+    if (!title) { setComposer(null); return; }
+    setComposer({ column, text: '' });
+    const company = board === 'company';
+    const id = company ? null : newTaskId();
+    const tempId = id || `tmp-${newTaskId()}`;
+    const draft: BoardTask = {
+      id: tempId, title, titleLabel: title, description: '', priority: 'medium', boardColumn: column, orderIndex: 0, dueDate: null,
+      createdBy: me, createdAt: new Date().toISOString(), isPrivate: !company, ownerId: me, eventId: null, inquiryId: null, workingBy: null,
+      workingName: '', assignees: [], comments: 0, attachments: 0,
+    };
+    setData((current) => (current ? { ...current, tasks: [...current.tasks, draft] } : current));
+    markBusy(tempId, true);
     try {
-      await createPrivateEmployeeTask(supabase, employee.id, {
-        title,
-        description: newDescription.trim() || null,
-        priority: newPriority,
-        column: newColumn,
+      await saveBoardTask(board, {
+        id, existing: false, title, description: '', priority: 'medium', boardColumn: column, dueDate: null,
+        assignees: company ? (me ? [me] : []) : null,
       });
-
-      resetCreateForm();
-      setShowCreateModal(false);
-  
-      await fetchTasks();
-    } catch (error: any) {
-      console.error('Błąd tworzenia zadania:', error);
-  
-      Alert.alert(
-        'Błąd',
-        error?.message || 'Nie udało się utworzyć zadania.',
-      );
-    } finally {
-      creatingRef.current = false;
-      setCreating(false);
-    }
-  };
-
-  const moveTask = async (taskId: string, newColumn: string) => {
-    const previousTask = tasks.find((task) => task.id === taskId);
-    if (!previousTask || previousTask.board_column === newColumn) return;
-
-    const previousColumnIndex = BOARD_COLUMNS.findIndex(
-      (column) => column.id === previousTask.board_column,
-    );
-    const targetColumnIndex = BOARD_COLUMNS.findIndex((column) => column.id === newColumn);
-
-    setTasks((current) =>
-      current.map((task) =>
-        task.id === taskId
-          ? { ...task, board_column: newColumn, status: newColumn }
-          : task,
-      ),
-    );
-
-    if (targetColumnIndex >= 0) {
-      setTimeout(() => {
-        boardScrollRef.current?.scrollTo({
-          x: targetColumnIndex * board.width,
-          animated: true,
-        });
-      }, 40);
-    }
-
-    try {
-      const updateData: Record<string, string | null> = {
-        board_column: newColumn,
-        status: newColumn,
-      };
-
-      if (newColumn !== 'in_progress') {
-        updateData.currently_working_by = null;
-      }
-
-      const { error } = await supabase
-        .from('tasks')
-        .update(updateData)
-        .eq('id', taskId)
-        .select('id')
-        .single();
-
-      if (error) throw error;
+      notify(`Dodano kartę: ${title}`);
+      reload(true);
     } catch (error) {
-      console.error('Error moving task:', error);
-      setTasks((current) =>
-        current.map((task) => (task.id === taskId ? previousTask : task)),
-      );
-
-      if (previousColumnIndex >= 0) {
-        boardScrollRef.current?.scrollTo({
-          x: previousColumnIndex * board.width,
-          animated: true,
-        });
-      }
-
-      Alert.alert('Błąd', 'Nie udało się przenieść zadania. Przywrócono poprzednią kolumnę.');
+      setData((current) => (current ? { ...current, tasks: current.tasks.filter((task) => task.id !== tempId) } : current));
+      setComposer((current) => (current && current.column === column && !current.text ? { column, text: title } : current));
+      notify(error instanceof Error ? error.message : 'Nie udało się dodać karty.', true);
+    } finally {
+      markBusy(tempId, false);
     }
   };
 
-  const filteredTasks = tasks.filter((task) =>
-    task.title.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
-
-  const getTasksByColumn = useCallback(
-    (columnId: string): Task[] => {
-      const columnTasks = filteredTasks.filter((task) => task.board_column === columnId);
-      const sorted = sortTasksByUrgency(columnTasks);
-
-      const order = customOrder[columnId];
-      if (order && order.length > 0) {
-        const orderMap = new Map(order.map((id, idx) => [id, idx]));
-        return sorted.sort((a, b) => {
-          const idxA = orderMap.get(a.id);
-          const idxB = orderMap.get(b.id);
-          if (idxA !== undefined && idxB !== undefined) return idxA - idxB;
-          if (idxA !== undefined) return -1;
-          if (idxB !== undefined) return 1;
-          return 0;
-        });
-      }
-
-      return sorted;
-    },
-    [filteredTasks, customOrder],
-  );
-
-  const reorderTask = (columnId: string, fromIndex: number, toIndex: number) => {
-    const columnTasks = getTasksByColumn(columnId);
-    if (toIndex < 0 || toIndex >= columnTasks.length) return;
-
-    const newOrder = columnTasks.map((t) => t.id);
-    const [moved] = newOrder.splice(fromIndex, 1);
-    newOrder.splice(toIndex, 0, moved);
-
-    setCustomOrder((prev) => ({ ...prev, [columnId]: newOrder }));
+  const startTimer = async (task: BoardTask, action: 'start' | 'switch') => {
+    const next = await run(action === 'switch' ? 'Przełączam licznik czasu…' : 'Uruchamiam licznik czasu…', () => boardTaskTimer(board, action, task.id),
+      'Licznik czasu uruchomiony.');
+    if (next !== null) { setTimer(next); reload(true); }
   };
 
-  if (loading) {
+  const stopTimer = async () => {
+    const reply = await run('Zatrzymuję licznik czasu…', async () => { await boardTaskTimer(board, 'stop'); return true; }, 'Licznik czasu zatrzymany.');
+    if (reply) { setTimer(null); reload(true); }
+  };
+
+  const savePriority = async (task: BoardTask, priority: TaskPriorityId) => {
+    if (task.priority === priority) return;
+    const done = await run('Zapisuję priorytet…', () => saveBoardTaskFields(board, task, { priority }), `Priorytet: ${taskPriority(priority).label}.`);
+    if (done) { patchTask(task.id, (item) => ({ ...item, priority })); reload(true); }
+  };
+
+  const saveDue = async (task: BoardTask, day: string | null) => {
+    const done = await run('Zapisuję termin…', () => saveBoardTaskFields(board, task, { dueDate: day }), day ? 'Termin zapisany.' : 'Usunięto termin.');
+    if (done) { setDueTarget(null); patchTask(task.id, (item) => ({ ...item, dueDate: day })); reload(true); }
+  };
+
+  const removeTask = async (task: BoardTask) => {
+    const done = await run('Usuwam zadanie…', async () => { await deleteBoardTask(board, task.id); return true; }, 'Zadanie zostało usunięte.');
+    if (done) {
+      setDeleting(null);
+      setData((current) => (current ? { ...current, tasks: current.tasks.filter((item) => item.id !== task.id) } : current));
+      reload(true);
+    }
+  };
+
+  const openTask = (task: BoardTask) => {
+    if (armedRef.current || task.id.startsWith('tmp-')) return;
+    navigation.navigate('TaskDetail', { taskId: task.id });
+  };
+
+  // Stałe funkcje kart (karty są pamiętane), zawsze z bieżącym stanem ekranu.
+  const handlers = useRef({ open: openTask, lift, pressOut, menu: (task: BoardTask) => setMenuTask(task) });
+  handlers.current = { open: openTask, lift, pressOut, menu: (task: BoardTask) => { if (!armedRef.current) setMenuTask(task); } };
+  const actions = useMemo<CardActions>(() => ({
+    register: (id, node) => { if (node) cardRefs.current.set(id, node); else cardRefs.current.delete(id); },
+    open: (task) => handlers.current.open(task),
+    lift: (task, event) => handlers.current.lift(task, event),
+    pressOut: () => handlers.current.pressOut(),
+    menu: (task) => handlers.current.menu(task),
+  }), []);
+
+  const menuItems = (task: BoardTask): MenuItem[] => {
+    const items: MenuItem[] = [{ key: 'open', label: 'Szczegóły zadania', icon: 'info', detail: 'Opis, osoby, pliki i komentarze' }];
+    if (canMove) {
+      TASK_COLUMNS.filter((column) => column.id !== task.boardColumn).forEach((column) => {
+        items.push({ key: `move:${column.id}`, label: `Przenieś do: ${taskColumnLabel(column.id, board)}`, icon: 'arrow-right' });
+      });
+      items.push(timer?.taskId === task.id
+        ? { key: 'stop', label: 'Zatrzymaj licznik czasu', icon: 'pause-circle' }
+        : { key: 'start', label: 'Rozpocznij licznik czasu', icon: 'play-circle', detail: timer ? `Teraz działa: ${timer.title}` : undefined });
+    }
+    if (canManage) {
+      const due = taskDueBadge(task.dueDate, false);
+      items.push({ key: 'priority', label: 'Priorytet', icon: 'flag', detail: taskPriority(task.priority).label });
+      items.push({ key: 'due', label: 'Termin wykonania', icon: 'calendar', detail: due ? due.label : 'Bez terminu' });
+      items.push({ key: 'edit', label: 'Edytuj zadanie', icon: 'edit-2', detail: 'Tytuł, opis, załączniki, osoby' });
+    }
+    items.push({ key: 'crm', label: 'Otwórz w CRM', icon: 'external-link' });
+    if (canManage) items.push({ key: 'delete', label: 'Usuń zadanie', icon: 'trash-2', danger: true });
+    return items;
+  };
+
+  const pickMenu = (task: BoardTask, key: string) => {
+    if (key === 'open') openTask(task);
+    else if (key.startsWith('move:')) void dropTask(task, key.slice(5) as TaskColumnId);
+    else if (key === 'start') { if (timer) setSwitching(task); else void startTimer(task, 'start'); }
+    else if (key === 'stop') void stopTimer();
+    else if (key === 'priority') setPriorityTask(task);
+    else if (key === 'due') setDueTarget({ task, day: taskDueDay(task.dueDate) ?? '' });
+    else if (key === 'edit') setEditor({ key: Date.now(), task, column: task.boardColumn });
+    else if (key === 'crm') openInCrmWeb(`/crm/tasks/${task.id}`);
+    else if (key === 'delete') setDeleting(task);
+  };
+
+  // MARK: Widok
+
+  const renderColumn = (column: (typeof columns)[number]) => {
+    const limit = limits[column.id] ?? PAGE;
+    const shown = column.tasks.slice(0, limit);
+    const target = drag?.target === column.id;
+    let placeholder = -1;
+    if (drag && target && drag.from !== column.id) placeholder = Math.min(boardDropIndex(column.tasks, drag.task), shown.length);
+    const count = column.tasks.filter((task) => (drag ? task.id !== drag.task.id || drag.target === column.id : true)).length + (placeholder >= 0 ? 1 : 0);
+    const holder = <View key="placeholder" style={[styles.placeholder, { height: drag?.height ?? 80 }]} />;
+    const adding = composer?.column === column.id;
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={colors.primary.gold} />
+      <View
+        key={column.id}
+        ref={(node) => { if (node) columnRefs.current.set(column.id, node); else columnRefs.current.delete(column.id); }}
+        collapsable={false}
+        style={[styles.column, { width: columnWidth, maxHeight: Math.max(200, boardHeight - spacing.md) }, target && drag ? styles.columnTarget : null]}
+      >
+        <View style={styles.columnHeader}>
+          <View style={[styles.columnDot, { backgroundColor: column.color }]} />
+          <BrandHeading style={styles.columnTitle} numberOfLines={1}>{taskColumnLabel(column.id, board)}</BrandHeading>
+          <Text style={styles.columnCount}>{count}</Text>
+          {canCreate ? (
+            <TouchableOpacity onPress={() => setEditor({ key: Date.now(), task: null, column: column.id })} hitSlop={8} style={styles.columnAdd}
+              accessibilityRole="button" accessibilityLabel={`Nowe zadanie w kolumnie ${taskColumnLabel(column.id, board)}`}>
+              <Feather name="plus" size={18} color={colors.primary.gold} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <ScrollView
+          style={styles.columnScroll}
+          contentContainerStyle={styles.columnContent}
+          scrollEnabled={!armed}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          alwaysBounceVertical
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); reload(true); }} tintColor={colors.primary.gold} colors={[colors.primary.gold]} />}
+        >
+          {shown.map((task, index) => {
+            const lifted = drag?.task.id === task.id;
+            const slot = !lifted ? 'normal' : drag?.target === column.id ? 'hidden' : 'collapsed';
+            return (
+              <React.Fragment key={task.id}>
+                {index === placeholder ? holder : null}
+                <CardRow task={task} me={me} timerActive={timer?.taskId === task.id} busy={busyIds.includes(task.id)} slot={slot} actions={actions} />
+              </React.Fragment>
+            );
+          })}
+          {placeholder === shown.length ? holder : null}
+          {!column.tasks.length && placeholder < 0 ? (
+            <Text style={styles.empty}>{query ? 'Brak zadań pasujących do wyszukiwania' : 'Brak zadań'}</Text>
+          ) : null}
+          {column.tasks.length > shown.length ? (
+            <TouchableOpacity onPress={() => setLimits((current) => ({ ...current, [column.id]: limit + PAGE }))} style={styles.more} accessibilityRole="button">
+              <Text style={styles.moreText}>Pokaż kolejne ({column.tasks.length - shown.length})</Text>
+            </TouchableOpacity>
+          ) : null}
+        </ScrollView>
+        {canCreate ? (
+          adding ? (
+            <View style={styles.composer}>
+              <TextInput
+                value={composer?.text ?? ''}
+                onChangeText={(text) => setComposer({ column: column.id, text })}
+                placeholder="Tytuł karty…"
+                placeholderTextColor={ink(0.35)}
+                style={styles.composerInput}
+                autoFocus
+                submitBehavior="submit"
+                returnKeyType="done"
+                onSubmitEditing={() => void quickAdd()}
+                accessibilityLabel={`Tytuł nowej karty w kolumnie ${taskColumnLabel(column.id, board)}`}
+              />
+              <View style={styles.composerActions}>
+                <TouchableOpacity onPress={() => void quickAdd()} style={[kit.primary, styles.composerButton]} accessibilityRole="button">
+                  <Text style={kit.primaryText}>Dodaj kartę</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setComposer(null)} style={kit.iconButton} accessibilityRole="button" accessibilityLabel="Zamknij dodawanie karty">
+                  <Feather name="x" size={20} color={colors.text.secondary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity onPress={() => setComposer({ column: column.id, text: '' })} disabled={armed} style={styles.addCard} accessibilityRole="button">
+              <Feather name="plus" size={16} color={colors.text.secondary} />
+              <Text style={styles.addCardText}>Dodaj kartę</Text>
+            </TouchableOpacity>
+          )
+        ) : null}
       </View>
     );
-  }
+  };
+
+  const boardOptions = [{ id: 'mine' as const, label: 'Moja tablica' }, { id: 'company' as const, label: 'Zadania firmowe' }];
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.searchRow}>
-          <View style={styles.searchContainer}>
-            <Feather
-              name="search"
-              size={20}
-              color={colors.text.secondary}
-              style={styles.searchIcon}
-            />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Szukaj zadań..."
-              placeholderTextColor={colors.text.secondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Feather name="x" size={20} color={colors.text.secondary} />
+    <NoticeScope value={notice.scope}>
+      <View ref={rootRef} collapsable={false} style={[styles.container, keyboardPad ? { paddingBottom: keyboardPad } : null]}>
+        <View style={[styles.header, tablet && styles.headerWide]}>
+          {companyAllowed ? <Segmented value={board} options={boardOptions} onChange={(value) => { if (!armed) setBoard(value); }} /> : null}
+          <View style={[styles.searchRow, tablet && styles.flex]}>
+            <View style={styles.search}>
+              <Feather name="search" size={18} color={colors.text.tertiary} />
+              <TextInput value={search} onChangeText={setSearch} placeholder="Szukaj zadania po tytule…" placeholderTextColor={ink(0.35)}
+                style={styles.searchInput} autoCorrect={false} returnKeyType="search" />
+              {search ? (
+                <TouchableOpacity onPress={() => setSearch('')} hitSlop={8} accessibilityLabel="Wyczyść wyszukiwanie">
+                  <Feather name="x" size={18} color={colors.text.tertiary} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            {canCreate ? (
+              <TouchableOpacity onPress={() => setEditor({ key: Date.now(), task: null, column: 'todo' })} style={styles.addButton}
+                accessibilityRole="button" accessibilityLabel="Nowe zadanie">
+                <Feather name="plus" size={22} color={colors.background.primary} />
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
-          <TouchableOpacity
-            style={[styles.reorderToggle, isReordering && styles.reorderToggleActive]}
-            onPress={() => setIsReordering(!isReordering)}
-          >
-            <Feather
-              name="move"
-              size={20}
-              color={isReordering ? colors.background.primary : colors.primary.gold}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.addTaskButton}
-            onPress={() => setShowCreateModal(true)}
-          >
-            <Feather name="plus" size={22} color={colors.background.primary} />
-          </TouchableOpacity>
         </View>
-      </View>
 
-      <ScrollView
-        ref={boardScrollRef}
-        horizontal
-        pagingEnabled
-        removeClippedSubviews={false}
-        showsHorizontalScrollIndicator={false}
-        style={styles.boardContainer}
-        scrollEnabled={!isReordering && !draggingTaskId}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[colors.primary.gold]}
-          />
-        }
-      >
-        {BOARD_COLUMNS.map((column) => {
-          const columnTasks = getTasksByColumn(column.id);
-          return (
-            <View key={column.id} style={[styles.column, { width: contentWidth - 32 }]}>
-              <View style={[styles.columnHeader, { borderLeftColor: column.color }]}>
-                <Text style={styles.columnTitle}>{column.title}</Text>
-                <View style={styles.columnBadge}>
-                  <Text style={styles.columnCount}>{columnTasks.length}</Text>
-                </View>
-              </View>
+        {loadError && data ? (
+          <TouchableOpacity onPress={() => reload(true)} style={styles.banner} accessibilityRole="button">
+            <Feather name="wifi-off" size={14} color={colors.status.error} />
+            <Text style={styles.bannerText} numberOfLines={2}>{`${loadError} Dotknij, aby spróbować ponownie.`}</Text>
+          </TouchableOpacity>
+        ) : null}
 
-              <ScrollView
-                style={styles.columnContent}
-                contentContainerStyle={styles.columnContentContainer}
-                showsVerticalScrollIndicator={false}
-                scrollEnabled={!isReordering && !draggingTaskId}
-              >
-                {columnTasks.length === 0 ? (
-                  <View style={styles.emptyColumn}>
-                    <Feather name="inbox" size={32} color={colors.text.secondary} />
-                    <Text style={styles.emptyText}>Brak zadań</Text>
-                  </View>
-                ) : (
-                  columnTasks.map((task, idx) => (
-                    <DraggableTaskCard
-                      key={task.id}
-                      task={task}
-                      index={idx}
-                      totalCount={columnTasks.length}
-                      isReordering={isReordering}
-                      onPress={() => navigation.navigate('TaskDetail', { taskId: task.id })}
-                      onLongPress={() => {
-                        setSelectedTask(task);
-                        setShowColumnPicker(true);
-                      }}
-                      onMoveUp={() => reorderTask(column.id, idx, idx - 1)}
-                      onMoveDown={() => reorderTask(column.id, idx, idx + 1)}
-                      columnIndex={BOARD_COLUMNS.findIndex((item) => item.id === column.id)}
-                      onMoveToColumn={(targetColumnId) => {
-                        void moveTask(task.id, targetColumnId);
-                      }}
-                      onPreviewColumnChange={(targetColumnIndex) => {
-                        boardScrollRef.current?.scrollTo({
-                          x: targetColumnIndex * board.width,
-                          animated: false,
-                        });
-                      }}
-                      onHorizontalDragStateChange={(active) => {
-                        setDraggingTaskId((current) =>
-                          active ? task.id : current === task.id ? null : current,
-                        );
-                      }}
-                    />
-                  ))
-                )}
-              </ScrollView>
-            </View>
-          );
-        })}
-      </ScrollView>
+        {timer ? (
+          <View style={styles.timerBar}>
+            <View style={styles.timerDot} />
+            <Text style={styles.timerText} numberOfLines={1}>Licznik czasu: {timer.title}{clock(timer.startTime) ? ` · od ${clock(timer.startTime)}` : ''}</Text>
+            <TouchableOpacity onPress={() => void stopTimer()} style={styles.timerStop} accessibilityRole="button" accessibilityLabel="Zatrzymaj licznik czasu">
+              <Feather name="square" size={13} color={colors.status.error} />
+              <Text style={styles.timerStopText}>Zatrzymaj</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
-      <View style={styles.hintContainer}>
-        <Feather name="info" size={14} color={colors.text.secondary} />
-        <Text style={styles.hintText}>
-          {isReordering
-            ? 'Przeciągnij kartę lub użyj strzałek aby zmienić kolejność'
-            : draggingTaskId
-              ? 'Przeciągnij do krawędzi ekranu, aby przejść do kolejnej kolumny'
-              : 'Przytrzymaj zadanie i przesuń je w lewo lub w prawo'}
-        </Text>
-      </View>
-
-      <Modal
-        visible={showColumnPicker}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowColumnPicker(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowColumnPicker(false)}
+        <View
+          ref={viewportRef}
+          collapsable={false}
+          style={styles.flex}
+          onLayout={(event: LayoutChangeEvent) => { setBoardHeight(event.nativeEvent.layout.height); viewportWidth.current = event.nativeEvent.layout.width; }}
+          {...responder.panHandlers}
         >
-          <View style={styles.columnPickerModal}>
-            <Text style={styles.modalTitle}>Przenieś zadanie do:</Text>
-            {BOARD_COLUMNS.map((column) => (
-              <TouchableOpacity
-                key={column.id}
-                style={[
-                  styles.columnOption,
-                  selectedTask?.board_column === column.id && styles.columnOptionActive,
-                ]}
-                onPress={() => {
-                  if (selectedTask) {
-                    moveTask(selectedTask.id, column.id);
-                  }
-                  setShowColumnPicker(false);
-                  setSelectedTask(null);
-                }}
-              >
-                <View style={[styles.columnColorIndicator, { backgroundColor: column.color }]} />
-                <Text style={styles.columnOptionText}>{column.title}</Text>
-                {selectedTask?.board_column === column.id && (
-                  <Feather name="check" size={20} color={colors.primary.gold} />
-                )}
+          {loading && !data ? (
+            <View style={styles.center}><ActivityIndicator size="large" color={colors.primary.gold} /></View>
+          ) : loadError && !data ? (
+            <View style={styles.center}>
+              <Feather name="alert-circle" size={28} color={colors.status.error} />
+              <Text style={[kit.text, styles.centerText]}>{loadError}</Text>
+              <TouchableOpacity onPress={() => { setLoading(true); reload(true); }} style={kit.secondary}><Text style={kit.secondaryText}>Spróbuj ponownie</Text></TouchableOpacity>
+            </View>
+          ) : (
+            <ScrollView
+              ref={scrollRef}
+              horizontal
+              scrollEnabled={!armed}
+              showsHorizontalScrollIndicator={tablet}
+              snapToInterval={tablet ? undefined : snapInterval}
+              snapToAlignment="start"
+              decelerationRate={tablet ? 'normal' : 'fast'}
+              disableIntervalMomentum={!tablet}
+              contentContainerStyle={styles.boardContent}
+              scrollEventThrottle={16}
+              onScroll={(event: NativeSyntheticEvent<NativeScrollEvent>) => { scrollX.current = event.nativeEvent.contentOffset.x; }}
+              onMomentumScrollEnd={(event: NativeSyntheticEvent<NativeScrollEvent>) => {
+                if (!tablet) setPage(Math.max(0, Math.min(TASK_COLUMNS.length - 1, Math.round(event.nativeEvent.contentOffset.x / snapInterval))));
+              }}
+              onContentSizeChange={(width) => { contentWidthRef.current = width; }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {columns.map(renderColumn)}
+            </ScrollView>
+          )}
+        </View>
+
+        {!tablet && data ? (
+          <View style={styles.dots}>
+            {TASK_COLUMNS.map((column, index) => {
+              const current = drag ? drag.target === column.id : page === index;
+              return <View key={column.id} style={[styles.dot, { backgroundColor: current ? colors.primary.gold : withAlpha(column.color, 0.45) }, current && styles.dotCurrent]} />;
+            })}
+            <Text style={styles.hint}>{drag ? 'Przesuń do krawędzi ekranu, aby przejść do kolejnej kolumny' : 'Przytrzymaj kartę, aby ją przeciągnąć'}</Text>
+          </View>
+        ) : null}
+
+        {drag ? (
+          <Animated.View pointerEvents="none" style={[styles.ghost, { width: drag.width, transform: [{ translateX: ghost.x }, { translateY: ghost.y }, { rotate: '2.5deg' }, { scale: 1.03 }] }]}>
+            <TaskBoardCard task={drag.task} me={me} timerActive={timer?.taskId === drag.task.id} lifted />
+          </Animated.View>
+        ) : null}
+
+        {notice.overlay}
+      </View>
+
+      {editor ? (
+        <TaskEditorSheet
+          key={editor.key}
+          board={board}
+          target={editor}
+          me={me}
+          run={run}
+          notify={notify}
+          onClose={(changed) => { setEditor(null); if (changed) reload(true); }}
+          onSaved={(_id, created) => { setEditor(null); notify(created ? 'Zadanie zostało utworzone' : 'Zadanie zostało zaktualizowane'); reload(true); }}
+        />
+      ) : null}
+
+      {menuTask ? (
+        <ActionMenu visible title={menuTask.titleLabel} subtitle={taskColumnLabel(menuTask.boardColumn, board)} items={menuItems(menuTask)}
+          onClose={() => setMenuTask(null)} onPick={(key) => pickMenu(menuTask, key)} />
+      ) : null}
+
+      {priorityTask ? (
+        <ActionMenu visible title="Priorytet" subtitle={priorityTask.titleLabel}
+          items={[...TASK_PRIORITIES].reverse().map((item) => ({ key: item.id, label: item.label, icon: 'flag' as const, detail: item.id === priorityTask.priority ? 'Obecny priorytet' : undefined }))}
+          onClose={() => setPriorityTask(null)} onPick={(key) => void savePriority(priorityTask, key as TaskPriorityId)} />
+      ) : null}
+
+      {dueTarget ? (
+        <Sheet visible title="Termin wykonania" subtitle={dueTarget.task.titleLabel} onClose={() => setDueTarget(null)} width={480}
+          footer={<SheetActions onCancel={() => setDueTarget(null)} onConfirm={() => void saveDue(dueTarget.task, dueTarget.day || null)} label="Zapisz" />}>
+          <DayField value={dueTarget.day} onChange={(day) => setDueTarget({ ...dueTarget, day })} placeholder="Bez terminu" />
+          {dueTarget.day ? (
+            <TouchableOpacity onPress={() => setDueTarget({ ...dueTarget, day: '' })} style={kit.secondary} accessibilityRole="button">
+              <Text style={kit.secondaryText}>Bez terminu</Text>
+            </TouchableOpacity>
+          ) : null}
+        </Sheet>
+      ) : null}
+
+      {deleting ? (
+        <Sheet visible title="Usuń zadanie" subtitle={deleting.titleLabel} onClose={() => setDeleting(null)} width={480}
+          footer={<SheetActions onCancel={() => setDeleting(null)} onConfirm={() => void removeTask(deleting)} label="Usuń" danger />}>
+          <Text style={kit.text}>Czy na pewno chcesz usunąć to zadanie? Usunięte zostaną również wszystkie powiązane wpisy czasu pracy. Ta operacja jest nieodwracalna.</Text>
+        </Sheet>
+      ) : null}
+
+      {stopping ? (
+        <Sheet visible title="Zatrzymać czas pracy?" subtitle={stopping.task.titleLabel} onClose={() => setStopping(null)} width={480}
+          footer={(
+            <>
+              <TouchableOpacity onPress={() => { const next = stopping; setStopping(null); void commitMove(next.task, next.column); }} style={kit.secondary}>
+                <Text style={kit.secondaryText}>Nie zatrzymuj</Text>
               </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              style={styles.modalCancelButton}
-              onPress={() => {
-                setShowColumnPicker(false);
-                setSelectedTask(null);
-              }}
-            >
-              <Text style={styles.modalCancelText}>Anuluj</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+              <TouchableOpacity onPress={() => { const next = stopping; setStopping(null); void commitMove(next.task, next.column, { stopTimer: true }); }} style={kit.primary}>
+                <Text style={kit.primaryText}>Zatrzymaj</Text>
+              </TouchableOpacity>
+            </>
+          )}>
+          <Text style={kit.text}>Zadanie jest przenoszone do kolejnego etapu. Czy chcesz zatrzymać licznik czasu?</Text>
+        </Sheet>
+      ) : null}
 
-      <Modal
-        visible={showCreateModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => {
-          if (!creating) {
-            resetCreateForm();
-            setShowCreateModal(false);
-          }
-        }}
-      >
-        <KeyboardAvoidingView
-          style={styles.createModalContainer}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={styles.createModalHeader}>
-            <TouchableOpacity
-              onPress={() => {
-                if (!creating) {
-                  resetCreateForm();
-                  setShowCreateModal(false);
-                }
-              }}
-              style={styles.createModalCloseBtn}
-            >
-              <Feather name="x" size={24} color={colors.text.primary} />
-            </TouchableOpacity>
-            <Text style={styles.createModalHeaderTitle}>Nowe zadanie</Text>
-            <TouchableOpacity
-              onPress={createTask}
-              disabled={creating}
-              style={styles.createModalSaveBtn}
-            >
-              {creating ? (
-                <ActivityIndicator size="small" color={colors.primary.gold} />
-              ) : (
-                <Text style={styles.createModalSaveBtnText}>Zapisz</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            style={styles.createModalForm}
-            contentContainerStyle={styles.createModalFormContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Tytuł</Text>
-              <TextInput
-                style={styles.formInput}
-                value={newTitle}
-                onChangeText={setNewTitle}
-                placeholder="Co jest do zrobienia?"
-                placeholderTextColor={colors.text.secondary}
-                autoFocus
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Opis</Text>
-              <TextInput
-                style={[styles.formInput, styles.formTextArea]}
-                value={newDescription}
-                onChangeText={setNewDescription}
-                placeholder="Dodaj szczegóły (opcjonalnie)"
-                placeholderTextColor={colors.text.secondary}
-                multiline
-                numberOfLines={4}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Priorytet</Text>
-              <View style={styles.chipRow}>
-                {(['low', 'medium', 'high', 'urgent'] as Task['priority'][]).map((p) => {
-                  const active = newPriority === p;
-                  return (
-                    <TouchableOpacity
-                      key={p}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: active ? `${priorityColors[p]}30` : colors.background.primary,
-                          borderColor: active ? priorityColors[p] : colors.border.default,
-                        },
-                      ]}
-                      onPress={() => setNewPriority(p)}
-                    >
-                      <Text
-                        style={[
-                          styles.chipText,
-                          { color: active ? priorityColors[p] : colors.text.secondary },
-                        ]}
-                      >
-                        {priorityLabels[p]}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Kolumna</Text>
-              <View style={styles.chipRow}>
-                {BOARD_COLUMNS.map((column) => {
-                  const active = newColumn === column.id;
-                  return (
-                    <TouchableOpacity
-                      key={column.id}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: active ? `${column.color}30` : colors.background.primary,
-                          borderColor: active ? column.color : colors.border.default,
-                        },
-                      ]}
-                      onPress={() => setNewColumn(column.id)}
-                    >
-                      <View style={[styles.chipDot, { backgroundColor: column.color }]} />
-                      <Text
-                        style={[
-                          styles.chipText,
-                          { color: active ? colors.text.primary : colors.text.secondary },
-                        ]}
-                      >
-                        {column.title}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
-    </View>
+      {switching ? (
+        <Sheet visible title="Przełączyć licznik czasu?" subtitle={switching.titleLabel} onClose={() => setSwitching(null)} width={480}
+          footer={<SheetActions onCancel={() => setSwitching(null)} onConfirm={() => { const task = switching; setSwitching(null); void startTimer(task, 'switch'); }} label="Przełącz" />}>
+          <Text style={kit.text}>{`Licznik działa dla „${timer?.title ?? 'innego zadania'}”. Zakończyć go i rozpocząć dla tego zadania?`}</Text>
+        </Sheet>
+      ) : null}
+    </NoticeScope>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background.primary,
-  },
+  container: { flex: 1, backgroundColor: colors.background.primary },
+  flex: { flex: 1 },
   header: {
-    padding: spacing.md,
-    backgroundColor: colors.background.secondary,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.default,
+    gap: spacing.sm, paddingHorizontal: SIDE, paddingVertical: spacing.sm, backgroundColor: colors.background.secondary,
+    borderBottomWidth: 1, borderBottomColor: glow(0.08),
   },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+  headerWide: { flexDirection: 'row', alignItems: 'center' },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  search: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs, minHeight: 44, paddingHorizontal: spacing.md, borderRadius: borderRadius.lg,
+    backgroundColor: colors.background.primary, borderWidth: 1, borderColor: glow(0.1),
   },
-  searchContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background.primary,
-    borderRadius: 8,
-    paddingHorizontal: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border.default,
+  searchInput: { flex: 1, minHeight: 44, color: colors.text.primary, fontSize: typography.fontSizes.md },
+  addButton: { width: 44, height: 44, borderRadius: borderRadius.lg, backgroundColor: colors.primary.gold, alignItems: 'center', justifyContent: 'center' },
+  banner: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: SIDE, paddingVertical: 6,
+    backgroundColor: 'rgba(239,68,68,0.08)', borderBottomWidth: 1, borderBottomColor: 'rgba(239,68,68,0.25)',
   },
-  searchIcon: {
-    marginRight: spacing.sm,
+  bannerText: { flex: 1, color: colors.text.primary, fontSize: typography.fontSizes.xs },
+  timerBar: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: SIDE, paddingVertical: 6,
+    backgroundColor: withAlpha('#22c55e', 0.1), borderBottomWidth: 1, borderBottomColor: withAlpha('#22c55e', 0.25),
   },
-  searchInput: {
-    flex: 1,
-    height: 44,
-    color: colors.text.primary,
-    fontSize: typography.fontSizes.md,
-  },
-  reorderToggle: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.primary.gold,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  reorderToggleActive: {
-    backgroundColor: colors.primary.gold,
-  },
-  addTaskButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: colors.primary.gold,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  boardContainer: {
-    flex: 1,
-  },
+  timerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ade80' },
+  timerText: { flex: 1, color: colors.text.primary, fontSize: typography.fontSizes.sm },
+  timerStop: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 36, paddingHorizontal: spacing.sm },
+  timerStopText: { color: colors.status.error, fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.semibold },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.lg },
+  centerText: { textAlign: 'center' },
+  boardContent: { alignItems: 'flex-start', gap: GAP, paddingHorizontal: SIDE, paddingTop: spacing.md },
   column: {
-    marginHorizontal: 16,
-    paddingBottom: spacing.md,
+    flexDirection: 'column', borderRadius: borderRadius.xl, backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: glow(0.06),
+    paddingBottom: spacing.xs, overflow: 'hidden',
   },
-  columnHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    backgroundColor: colors.background.secondary,
-    borderRadius: 8,
-    marginBottom: spacing.sm,
-    borderLeftWidth: 4,
+  columnTarget: { borderColor: colors.primary.gold, backgroundColor: glow(0.05) },
+  columnHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.sm },
+  columnDot: { width: 9, height: 9, borderRadius: 5 },
+  columnTitle: { flex: 1, color: colors.text.primary, fontFamily: typography.fontFamilies.heading, fontSize: typography.fontSizes.md },
+  columnCount: { color: colors.text.tertiary, fontSize: typography.fontSizes.sm, fontVariant: ['tabular-nums'] },
+  columnAdd: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  columnScroll: { flexGrow: 0, flexShrink: 1 },
+  columnContent: { paddingHorizontal: spacing.sm, paddingBottom: spacing.xs },
+  cardWrap: { marginBottom: spacing.sm },
+  slot: { marginBottom: spacing.sm, borderRadius: borderRadius.lg, borderWidth: 1.5, borderStyle: 'dashed', borderColor: glow(0.25), backgroundColor: glow(0.04) },
+  collapsed: { height: 0, overflow: 'hidden' },
+  invisible: { opacity: 0 },
+  placeholder: { marginBottom: spacing.sm, borderRadius: borderRadius.lg, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.primary.gold, backgroundColor: glow(0.06) },
+  empty: { color: colors.text.tertiary, fontSize: typography.fontSizes.sm, textAlign: 'center', paddingVertical: spacing.lg },
+  more: { alignItems: 'center', paddingVertical: spacing.sm, marginBottom: spacing.sm },
+  moreText: { color: colors.primary.gold, fontSize: typography.fontSizes.sm },
+  addCard: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, marginHorizontal: spacing.sm, paddingHorizontal: spacing.sm, borderRadius: borderRadius.lg },
+  addCardText: { color: colors.text.secondary, fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.medium },
+  composer: { gap: spacing.xs, paddingHorizontal: spacing.sm, paddingBottom: spacing.xs },
+  composerInput: {
+    minHeight: 48, paddingHorizontal: spacing.sm + 2, borderRadius: borderRadius.lg, backgroundColor: colors.background.tertiary,
+    color: colors.text.primary, fontSize: typography.fontSizes.md, borderWidth: 1, borderColor: colors.primary.gold,
   },
-  columnTitle: {
-    fontFamily: 'MBFAtom',
-    textTransform: 'uppercase',
-    fontSize: typography.fontSizes.md,
-    fontWeight: '400',
-    color: colors.text.primary,
+  composerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  composerButton: { flex: 1 },
+  dots: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: SIDE, paddingVertical: spacing.xs + 2,
+    borderTopWidth: 1, borderTopColor: glow(0.06), backgroundColor: colors.background.secondary,
   },
-  columnBadge: {
-    backgroundColor: colors.primary.gold,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 12,
-    minWidth: 24,
-    alignItems: 'center',
-  },
-  columnCount: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.background.primary,
-  },
-  columnContent: {
-    flex: 1,
-  },
-  columnContentContainer: {
-    paddingBottom: spacing.xl,
-  },
-  taskCard: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: 12,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border.default,
-  },
-  taskCardDragging: {
-    borderColor: colors.primary.gold,
-    shadowColor: colors.primary.gold,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  dragTargetBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 6,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 5,
-    marginBottom: spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-    backgroundColor: colors.background.primary,
-  },
-  dragTargetText: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.medium,
-    color: colors.text.primary,
-  },
-  taskHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  taskTitle: {
-    fontFamily: 'MBFAtom',
-    textTransform: 'uppercase',
-    flex: 1,
-    fontSize: typography.fontSizes.md,
-    fontWeight: '400',
-    color: colors.text.primary,
-    marginRight: spacing.sm,
-  },
-  priorityBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  priorityText: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.medium,
-  },
-  taskDescription: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.text.secondary,
-    lineHeight: 18,
-    marginBottom: spacing.sm,
-  },
-  taskFooterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  assignees: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatarWrapper: {
-    borderWidth: 2,
-    borderColor: colors.background.secondary,
-    borderRadius: 12,
-  },
-  moreAvatars: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.primary.gold,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: -8,
-    borderWidth: 2,
-    borderColor: colors.background.secondary,
-  },
-  moreAvatarsText: {
-    fontSize: 10,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.background.primary,
-  },
-  reorderButtons: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  reorderBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border.default,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background.primary,
-  },
-  reorderBtnDisabled: {
-    opacity: 0.4,
-  },
-  taskMoreButton: {
-    width: 30,
-    height: 30,
-    marginLeft: spacing.sm,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border.default,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background.primary,
-  },
-  emptyColumn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxl,
-  },
-  emptyText: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.text.secondary,
-    marginTop: spacing.sm,
-  },
-  hintContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.background.secondary,
-    borderTopWidth: 1,
-    borderTopColor: colors.border.default,
-  },
-  hintText: {
-    flex: 1,
-    fontSize: typography.fontSizes.xs,
-    color: colors.text.secondary,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.lg,
-  },
-  columnPickerModal: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: 12,
-    padding: spacing.lg,
-    width: '100%',
-    maxWidth: 400,
-    borderWidth: 1,
-    borderColor: colors.border.default,
-  },
-  modalTitle: {
-    fontFamily: 'MBFAtom',
-    textTransform: 'uppercase',
-    fontSize: typography.fontSizes.lg,
-    fontWeight: '400',
-    color: colors.text.primary,
-    marginBottom: spacing.md,
-    textAlign: 'center',
-  },
-  columnOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: 8,
-    marginBottom: spacing.sm,
-    backgroundColor: colors.background.primary,
-    borderWidth: 1,
-    borderColor: colors.border.default,
-  },
-  columnOptionActive: {
-    borderColor: colors.primary.gold,
-    borderWidth: 2,
-  },
-  columnColorIndicator: {
-    width: 4,
-    height: 24,
-    borderRadius: 2,
-    marginRight: spacing.md,
-  },
-  columnOptionText: {
-    flex: 1,
-    fontSize: typography.fontSizes.md,
-    color: colors.text.primary,
-    fontWeight: typography.fontWeights.medium,
-  },
-  modalCancelButton: {
-    marginTop: spacing.md,
-    padding: spacing.md,
-    borderRadius: 8,
-    backgroundColor: colors.background.primary,
-    borderWidth: 1,
-    borderColor: colors.border.default,
-    alignItems: 'center',
-  },
-  modalCancelText: {
-    fontSize: typography.fontSizes.md,
-    color: colors.text.secondary,
-    fontWeight: typography.fontWeights.medium,
-  },
-  createModalContainer: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-  createModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.default,
-    backgroundColor: colors.background.secondary,
-  },
-  createModalCloseBtn: {
-    padding: spacing.xs,
-  },
-  createModalHeaderTitle: {
-    fontFamily: 'MBFAtom',
-    textTransform: 'uppercase',
-    fontSize: typography.fontSizes.lg,
-    fontWeight: '400',
-    color: colors.text.primary,
-  },
-  createModalSaveBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    backgroundColor: colors.primary.gold + '20',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.primary.gold + '40',
-    minWidth: 72,
-    alignItems: 'center',
-  },
-  createModalSaveBtnText: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.primary.gold,
-  },
-  createModalForm: {
-    flex: 1,
-  },
-  createModalFormContent: {
-    padding: spacing.md,
-    paddingBottom: 120,
-  },
-  formGroup: {
-    marginBottom: spacing.lg,
-  },
-  formLabel: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.text.secondary,
-    fontWeight: typography.fontWeights.medium,
-    marginBottom: spacing.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  formInput: {
-    backgroundColor: colors.background.secondary,
-    borderWidth: 1,
-    borderColor: colors.border.default,
-    borderRadius: 8,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: typography.fontSizes.md,
-    color: colors.text.primary,
-  },
-  formTextArea: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-    paddingTop: spacing.sm,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  chipDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  chipText: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.medium,
-  },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  dotCurrent: { width: 16 },
+  hint: { flex: 1, marginLeft: spacing.xs, color: colors.text.tertiary, fontSize: typography.fontSizes.xs },
+  ghost: { position: 'absolute', left: 0, top: 0, zIndex: 50, elevation: 20 },
 });

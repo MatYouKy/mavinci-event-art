@@ -190,6 +190,8 @@ struct OfferDetail: Codable {
         var logisticsNet: Double
         /// Rabaty pozycji — podstawa rabatu na ofertę (`listNet`) jest już po nich.
         var lineDiscountNet: Double?
+        /// Jak klient widzi rabat w PDF: `lines` | `total` | `none` (starszy serwer — brak, czyli `lines`).
+        var display: String?
     }
     struct Summary: Codable {
         var rows: [SummaryRow]

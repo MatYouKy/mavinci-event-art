@@ -334,6 +334,8 @@ export default function DashboardScreen() {
           'id, title, priority, status, board_column, due_date, created_at, task_assignees!inner(employee_id)',
         )
         .eq('task_assignees.employee_id', employee.id)
+        // Zapytania są w lejku sprzedaży, nie w „Moich zadaniach” (także te z dawnym przypisaniem).
+        .eq('is_inquiry', false)
         .in('board_column', ['todo', 'in_progress', 'review'])
         .limit(50);
 

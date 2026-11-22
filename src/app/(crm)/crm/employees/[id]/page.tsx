@@ -192,7 +192,8 @@ export default function EmployeeDetailPage() {
         .eq('employee_id', employeeId);
 
       if (!error && data) {
-        setTasks(data.map((item: any) => item.tasks).filter(Boolean));
+        // Zapytania (wiersze `is_inquiry`) są w lejku sprzedaży, nie na liście zadań pracownika.
+        setTasks(data.map((item: any) => item.tasks).filter((task: any) => task && !task.is_inquiry));
       }
     } catch (err) {
       console.error('Error fetching tasks:', err);

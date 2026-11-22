@@ -15,17 +15,20 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
+  Linking,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system/legacy';
-import { decode as decodeBase64 } from 'base64-arraybuffer';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { SearchableDropdown } from '@/components/SearchableDropdown';
 import { sendTaskAssignmentPush } from '../services/taskAssignmentNotifications';
+import { TaskFileSources } from '../components/Tasks/TaskFilesField';
+import { useNotice } from '../components/Inquiries/InquiryKit';
+import { pickTaskFiles, type TaskFileSource } from '../lib/taskFiles';
+import { TASK_ATTACHMENT_MAX_BYTES, addTaskComment, uploadTaskAttachment } from '../lib/tasksBoard';
+import { openPdf } from '../lib/driveApi';
 
 interface TaskDetailScreenProps {
   route: {
@@ -42,6 +45,9 @@ interface Task {
   description: string | null;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   status: string;
+  /** Kolumna tablicy (status w bazie nie ma „Do sprawdzenia” — wtedy `in_progress`). */
+  board_column?: string | null;
+  is_inquiry?: boolean | null;
   due_date: string | null;
   event_id: string | null;
   created_at: string;
@@ -68,6 +74,7 @@ interface AvailableEmployee {
 interface Attachment {
   id: string;
   file_name: string;
+  file_url: string | null;
   file_type: string;
   file_size: number;
   is_linked: boolean;
@@ -109,12 +116,22 @@ const STATUS_OPTIONS: { id: string; label: string; color: string }[] = [
   { id: 'todo', label: 'Do zrobienia', color: '#94a3b8' },
   { id: 'in_progress', label: 'W trakcie', color: '#3b82f6' },
   { id: 'review', label: 'Do sprawdzenia', color: '#f59e0b' },
-  { id: 'done', label: 'Zakończone', color: '#10b981' },
+  { id: 'completed', label: 'Zakończone', color: '#10b981' },
 ];
+
+/** Etap zadania: kolumna tablicy (zapytania — własny status). */
+const statusOf = (task: Pick<Task, 'status' | 'board_column' | 'is_inquiry'>) =>
+  (task.is_inquiry ? task.status : task.board_column || task.status);
+const statusLabel = (task: Pick<Task, 'status' | 'board_column' | 'is_inquiry'>) =>
+  STATUS_OPTIONS.find((option) => option.id === statusOf(task))?.label ?? (task.status === 'cancelled' ? 'Anulowane' : task.status);
+
+const isImageAttachment = (attachment: Pick<Attachment, 'file_type' | 'file_name'>) =>
+  (attachment.file_type || '').startsWith('image/') || /\.(png|jpe?g|gif|webp|heic|heif)$/i.test(attachment.file_name);
 
 export default function TaskDetailScreen({ route, navigation }: TaskDetailScreenProps) {
   const { taskId } = route.params;
   const { employee } = useAuth();
+  const notice = useNotice();
   const [task, setTask] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -134,7 +151,8 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
   const [editAssigneeIds, setEditAssigneeIds] = useState<Set<string>>(new Set());
   const [openedDropdown, setOpenedDropdown] = useState<string | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState('');
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [preview, setPreview] = useState<Attachment | null>(null);
 
   useForegroundEffect((signal) => {
     void fetchTask();
@@ -254,6 +272,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           `
           id,
           file_name,
+          file_url,
           file_type,
           file_size,
           is_linked,
@@ -274,83 +293,60 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     }
   };
 
-  const handleTakePhotoAndUpload = async () => {
-    if (!employee || !task) return;
+  /** Załączniki z galerii (także zrzuty ekranu), aparatu, „Plików” albo ze schowka — po kolei na serwer CRM (jak w CRM i na Macu). */
+  const handleAddFiles = async (source: TaskFileSource) => {
+    if (!task || uploading) return;
+    let files;
     try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert(
-          'Brak dostępu',
-          'Aby zrobić zdjęcie, zezwól aplikacji na dostęp do aparatu w ustawieniach.',
-        );
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-        exif: false,
-      });
-
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
-      const asset = result.assets[0];
-
-      setUploadingPhoto(true);
-
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      const arrayBuffer = decodeBase64(base64);
-
-      const fileExt = (asset.uri.split('.').pop() || 'jpg').toLowerCase();
-      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
-      const filePath = `task-attachments/${task.id}/${fileName}`;
-      const contentType = asset.mimeType || `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('event-files')
-        .upload(filePath, arrayBuffer, {
-          contentType,
-          upsert: false,
-        });
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from('event-files').getPublicUrl(filePath);
-
-      const fileSize = asset.fileSize ?? arrayBuffer.byteLength;
-
-      const { error: dbError } = await supabase.from('task_attachments').insert({
-        task_id: task.id,
-        file_name: fileName,
-        file_url: publicUrl,
-        file_type: contentType,
-        file_size: fileSize,
-        uploaded_by: employee.id,
-      });
-      if (dbError) throw dbError;
-
-      await fetchAttachments();
+      files = await pickTaskFiles(source);
     } catch (error) {
-      console.error('Error uploading photo:', error);
-      Alert.alert('Błąd', 'Nie udało się wysłać zdjęcia');
-    } finally {
-      setUploadingPhoto(false);
+      notice.notify(error instanceof Error ? error.message : 'Nie udało się dodać pliku.', true);
+      return;
     }
+    if (!files.length) return;
+    const ready = files.filter((file) => file.size <= TASK_ATTACHMENT_MAX_BYTES);
+    const skipped = files.filter((file) => file.size > TASK_ATTACHMENT_MAX_BYTES);
+    setUploading(true);
+    let sent = 0;
+    try {
+      for (const [index, file] of ready.entries()) {
+        const done = await notice.run(`Przesyłam załącznik ${index + 1} z ${ready.length}…`, async () => {
+          await uploadTaskAttachment(task.id, file);
+          return true;
+        });
+        if (!done) break;
+        sent += 1;
+      }
+    } finally {
+      setUploading(false);
+      await fetchAttachments();
+    }
+    if (skipped.length) notice.notify(`Pominięto pliki większe niż 50 MB: ${skipped.map((file) => file.name).join(', ')}.`, true);
+    else if (sent === ready.length && sent > 0) notice.notify(sent === 1 ? 'Dodano załącznik.' : `Dodano załączniki (${sent}).`);
+  };
+
+  const openAttachment = (attachment: Attachment) => {
+    if (!attachment.file_url) {
+      notice.notify('Plik z wydarzenia otworzysz w zakładce Pliki wydarzenia.', true);
+      return;
+    }
+    if (isImageAttachment(attachment)) {
+      setPreview(attachment);
+      return;
+    }
+    if ((attachment.file_type || '').includes('pdf') || /\.pdf$/i.test(attachment.file_name)) {
+      openPdf(navigation, attachment.file_url, attachment.file_name);
+      return;
+    }
+    void Linking.openURL(attachment.file_url).catch(() => notice.notify('Nie udało się otworzyć pliku.', true));
   };
 
   const handleSendComment = async () => {
     if (!newComment.trim() || !employee) return;
 
     try {
-      const { error } = await supabase.from('task_comments').insert({
-        task_id: taskId,
-        employee_id: employee.id,
-        content: newComment.trim(),
-      });
-
-      if (error) throw error;
+      // Ten sam zapis co CRM i Mac — tablice zadań od razu widzą nową liczbę komentarzy.
+      await addTaskComment(taskId, newComment.trim());
 
       setNewComment('');
       fetchComments();
@@ -365,7 +361,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     setEditTitle(task.title);
     setEditDescription(task.description || '');
     setEditPriority(task.priority);
-    setEditStatus(task.status);
+    setEditStatus(statusOf(task));
     setEditAssigneeIds(new Set(assignees.map((a) => a.employee_id)));
     setShowEditModal(true);
     (async () => {
@@ -407,15 +403,17 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     }
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from('tasks')
-        .update({
-          title,
-          description: editDescription.trim() || null,
-          priority: editPriority,
-          status: editStatus,
-        })
-        .eq('id', task.id);
+      const update: Record<string, unknown> = {
+        title,
+        description: editDescription.trim() || null,
+        priority: editPriority,
+      };
+      // Zadanie — kolumna tablicy (baza sama ustawia status, jak w CRM); zapytanie — własny status.
+      if (editStatus !== statusOf(task)) {
+        if (task.is_inquiry) update.status = editStatus;
+        else update.board_column = editStatus;
+      }
+      const { error } = await supabase.from('tasks').update(update).eq('id', task.id);
       if (error) throw error;
 
       const currentIds = new Set(assignees.map((a) => a.employee_id));
@@ -635,7 +633,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
 
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Status:</Text>
-                <Text style={styles.infoValue}>{task.status}</Text>
+                <Text style={styles.infoValue}>{statusLabel(task)}</Text>
               </View>
 
               {task.due_date && (
@@ -735,33 +733,29 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
 
         {activeTab === 'files' && (
           <View style={styles.filesContainer}>
-            <TouchableOpacity
-              style={[
-                styles.takePhotoButton,
-                uploadingPhoto && styles.takePhotoButtonDisabled,
-              ]}
-              onPress={handleTakePhotoAndUpload}
-              disabled={uploadingPhoto}
-              activeOpacity={0.8}
-            >
-              {uploadingPhoto ? (
-                <ActivityIndicator size="small" color={colors.text.primary} />
-              ) : (
-                <Feather name="camera" size={18} color={colors.text.primary} />
-              )}
-              <Text style={styles.takePhotoButtonText}>
-                {uploadingPhoto ? 'Wysyłanie...' : 'Zrób zdjęcie i dodaj'}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.addFiles}>
+              <TaskFileSources onPick={(source) => void handleAddFiles(source)} disabled={uploading} />
+              <Text style={styles.addFilesHint}>Zdjęcia i zrzuty ekranu, PDF-y, dokumenty i inne pliki (do 50 MB).</Text>
+            </View>
 
             {attachments.length === 0 ? (
               <Text style={styles.emptyText}>Brak plików</Text>
             ) : (
               attachments.map((attachment) => (
-                <View key={attachment.id} style={styles.fileCard}>
-                  <View style={styles.fileIcon}>
-                    <Feather name="file" size={24} color={colors.primary.gold} />
-                  </View>
+                <TouchableOpacity
+                  key={attachment.id}
+                  style={styles.fileCard}
+                  onPress={() => openAttachment(attachment)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Otwórz plik ${attachment.file_name}`}
+                >
+                  {isImageAttachment(attachment) && attachment.file_url ? (
+                    <Image source={{ uri: attachment.file_url }} style={styles.fileThumb} resizeMode="cover" />
+                  ) : (
+                    <View style={styles.fileIcon}>
+                      <Feather name="file" size={24} color={colors.primary.gold} />
+                    </View>
+                  )}
                   <View style={styles.fileInfo}>
                     <Text style={styles.fileName} numberOfLines={1}>
                       {attachment.file_name}
@@ -776,7 +770,8 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                       )}
                     </View>
                   </View>
-                </View>
+                  <Feather name="chevron-right" size={18} color={colors.text.tertiary} />
+                </TouchableOpacity>
               ))
             )}
           </View>
@@ -1006,6 +1001,28 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      <Modal visible={Boolean(preview)} transparent animationType="fade" onRequestClose={() => setPreview(null)} supportedOrientations={['portrait', 'landscape']}>
+        <View style={styles.previewBackdrop}>
+          {preview?.file_url ? <Image source={{ uri: preview.file_url }} style={styles.previewImage} resizeMode="contain" /> : null}
+          <View style={styles.previewBar}>
+            <Text style={styles.previewName} numberOfLines={1}>{preview?.file_name}</Text>
+            {preview?.file_url ? (
+              <TouchableOpacity
+                onPress={() => { const url = preview.file_url as string; void Linking.openURL(url).catch(() => undefined); }}
+                style={styles.previewButton}
+                accessibilityRole="button"
+                accessibilityLabel="Otwórz w przeglądarce"
+              >
+                <Feather name="external-link" size={20} color={colors.white} />
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity onPress={() => setPreview(null)} style={styles.previewButton} accessibilityRole="button" accessibilityLabel="Zamknij podgląd">
+              <Feather name="x" size={24} color={colors.white} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      {notice.overlay}
     </KeyboardAvoidingView>
   );
 }
@@ -1165,6 +1182,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border.default,
     gap: spacing.md,
+  },
+  fileThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.background.tertiary,
   },
   fileIcon: {
     width: 40,
@@ -1529,23 +1552,43 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     color: colors.text.tertiary,
   },
-  takePhotoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.primary.gold,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
+  addFiles: {
+    gap: spacing.xs,
     marginBottom: spacing.md,
   },
-  takePhotoButtonDisabled: {
-    opacity: 0.6,
+  addFilesHint: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.text.tertiary,
   },
-  takePhotoButtonText: {
-    color: colors.text.primary,
-    fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.semibold,
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.94)',
+    justifyContent: 'center',
+  },
+  previewImage: {
+    flex: 1,
+    width: '100%',
+  },
+  previewBar: {
+    position: 'absolute',
+    top: spacing.xxl,
+    left: spacing.md,
+    right: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  previewName: {
+    flex: 1,
+    color: colors.white,
+    fontSize: typography.fontSizes.sm,
+  },
+  previewButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
   },
 });

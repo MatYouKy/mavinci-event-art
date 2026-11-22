@@ -114,8 +114,10 @@ export const tasksApi = createApi({
 
           if (scope?.employeeId) {
             // Embedded non-null filter keeps unrelated tasks out without a large ID list.
+            // Zapytania (wiersze `is_inquiry`) są w lejku sprzedaży, nie na liście zadań pracownika.
             query = query.eq('assigned_filter.employee_id', scope.employeeId)
-              .not('assigned_filter', 'is', null);
+              .not('assigned_filter', 'is', null)
+              .eq('is_inquiry', false);
           } else {
             query = query.eq('is_private', false).eq('is_inquiry', false);
             query = scope?.inquiryId ? query.eq('inquiry_id', scope.inquiryId) : query.is('event_id', null);

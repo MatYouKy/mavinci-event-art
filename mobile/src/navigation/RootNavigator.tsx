@@ -26,7 +26,7 @@ import PortfolioScreen from '../screens/PortfolioScreen';
 import PortfolioItemScreen from '../screens/PortfolioItemScreen';
 import PresentationsScreen from '../screens/PresentationsScreen';
 import PresentationScreen from '../screens/PresentationScreen';
-import ShowcaseOfferScreen from '../screens/ShowcaseOfferScreen';
+import ShowcaseOfferScreen, { type ShowcaseOfferRouteParams } from '../screens/ShowcaseOfferScreen';
 import MaterialsScreen from '../screens/MaterialsScreen';
 import DriveScreen from '../screens/DriveScreen';
 import PdfViewerScreen from '../screens/PdfViewerScreen';
@@ -58,8 +58,11 @@ export type RootStackParamList = {
   /** Strefa sprzedawcy → Prezentacje: działy i karty na spotkania z klientami (podgląd jak u klienta). */
   Presentations: undefined;
   Presentation: { id: string; title?: string };
-  /** Oferta ze spotkania (koszyk z pokazu, klient, utworzenie oferty i PDF); `configure` — konfigurator sceny lub ekranu LED na start. */
-  ShowcaseOffer: { configure?: { productId: string; name: string; itemId?: string | null; itemTitle?: string } } | undefined;
+  /**
+   * Oferta ze spotkania (koszyk z pokazu, klient, utworzenie oferty i PDF); `configure` — konfigurator sceny lub ekranu LED na start;
+   * `inquiry` — oferta do zapytania z karty zapytania (klient i zapytanie od razu w szkicu).
+   */
+  ShowcaseOffer: ShowcaseOfferRouteParams;
   /** Materiały — baza plików firmy (marki, foldery, podgląd, udostępnianie, wgrywanie); `folder` — folder otwarty na start. */
   Materials: { company?: string; folder?: string } | undefined;
   /** Dysk — chmura firmy jak w CRM, na Macu i w Finderze (Eventy, Materiały, Oferty, Kalkulacje, Umowy, Magazyn); `section`, `node` — folder na start. */

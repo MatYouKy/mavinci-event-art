@@ -6,12 +6,21 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { calculateOfferDiscount, type OfferDiscountMode } from '@/lib/CRM/Offers/offerDiscount';
 import { getOfferStatusBadgeProps } from '../../helpers/statusColors';
 import { getOfferPricingTotals, getOfferSummary } from '@/lib/CRM/Offers/offerTotals';
+import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
+
+/** Jak klient widzi rabat w PDF (`offers.discount_display`). */
+const DISCOUNT_DISPLAYS = [
+  { key: 'lines', label: 'Przy pozycjach', hint: 'Klient widzi rabat każdej pozycji i rabat na ofertę.' },
+  { key: 'total', label: 'Rabat łączny', hint: 'Pozycje w cenach przed rabatem, pod tabelą jeden rabat łączny.' },
+  { key: 'none', label: 'Ceny po rabacie', hint: 'Klient widzi tylko ceny po rabacie — bez kwoty rabatu.' },
+] as const;
 
 export const OfferDetails = ({ offer, canEdit = false, onSaved }: { offer: any; canEdit?: boolean; onSaved?: () => unknown }) => {
   const { showSnackbar } = useSnackbar();
   const [editingDiscount, setEditingDiscount] = useState(false);
   const [loading, setLoading] = useState(false);
   const [discountDraft, setDiscountDraft] = useState<{ mode: OfferDiscountMode; value: string } | null>(null);
+  const [savingDisplay, setSavingDisplay] = useState(false);
   useEffect(() => { setEditingDiscount(false); setDiscountDraft(null); }, [offer.id]);
   const badge = getOfferStatusBadgeProps(offer.status);
   const discountBase = getOfferPricingTotals(offer);
@@ -26,6 +35,20 @@ export const OfferDetails = ({ offer, canEdit = false, onSaved }: { offer: any; 
   // Rabaty pozycji i rabat na ofertę osobno (jak podsumowanie wyceny w PDF, na Macu i w aplikacji).
   const summary = getOfferSummary(offer, totals);
   const customerLogisticsNet = summary.logisticsNet;
+  const discountDisplay = DISCOUNT_DISPLAYS.find((display) => display.key === offer.discount_display) || DISCOUNT_DISPLAYS[0];
+  const saveDiscountDisplay = async (value: string) => {
+    if (!canEditDiscount || savingDisplay || value === discountDisplay.key) return;
+    setSavingDisplay(true);
+    try {
+      const { error } = await supabase.from('offers').update({ discount_display: value }).eq('id', offer.id).select('id').single();
+      if (error) throw error;
+      await onSaved?.();
+      showSnackbar('Zapisano — wygeneruj PDF ponownie, żeby klient zobaczył zmianę', 'success');
+    } catch (error: any) {
+      const missing = ['42703', 'PGRST204'].includes(error?.code);
+      showSnackbar(missing ? 'Wybór rabatu w PDF wymaga migracji 20261124120000_offer_discount_display.sql' : error?.message || 'Nie udało się zapisać ustawienia rabatu', 'error');
+    } finally { setSavingDisplay(false); }
+  };
   const saveDiscount = async () => {
     if (!canEditDiscount || !discountPreview || loading) return;
     setLoading(true);
@@ -43,6 +66,7 @@ export const OfferDetails = ({ offer, canEdit = false, onSaved }: { offer: any; 
 
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+      <FullScreenLoader show={savingDisplay} title="Zapisuję ustawienie rabatu" description="Zmiana obejmie PDF po ponownym wygenerowaniu." />
       <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Informacje</h2>
 
       <div className="mb-4">
@@ -68,6 +92,18 @@ export const OfferDetails = ({ offer, canEdit = false, onSaved }: { offer: any; 
         </tbody></table>
         <p className="mt-2 text-xs text-[#e5e4e2]/50">Kwoty w PLN · VAT {totals.hasMixedVatRates ? 'według stawek pozycji' : `${totals.taxPercent}%`}: {totals.taxAmount.toFixed(2)} zł</p>
         {summary.discountNote && <p className="mt-2 text-xs text-[#e5e4e2]/50">{summary.discountNote}</p>}
+        {totals.source === 'offer' && (
+          <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
+            <label className="flex flex-wrap items-center gap-2 text-xs text-[#e5e4e2]/60">
+              <span>Rabat w PDF dla klienta</span>
+              <select value={discountDisplay.key} disabled={!canEditDiscount || savingDisplay} onChange={(event) => void saveDiscountDisplay(event.target.value)}
+                className="rounded-lg border border-white/10 bg-[#1c1f33] px-2 py-1.5 text-xs text-[#e5e4e2] disabled:opacity-60">
+                {DISCOUNT_DISPLAYS.map((display) => <option key={display.key} value={display.key}>{display.label}</option>)}
+              </select>
+            </label>
+            <p className="mt-1 text-xs text-[#e5e4e2]/45">{discountDisplay.hint}</p>
+          </div>
+        )}
         {customerLogisticsNet > 0 && <p className="mt-2 text-xs text-[#e5e4e2]/50">Logistyka jest ujęta w sumie. Rabat od całej oferty obejmuje również jej cenę.</p>}
       </div>
 

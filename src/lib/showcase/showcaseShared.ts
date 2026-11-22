@@ -621,7 +621,7 @@ export type ShowcaseOfferLine = {
   /** Pakiet „wycena indywidualna” — cenę uzgadnia sprzedawca. */
   priceOnRequest: boolean;
   agreedPrice: number | null;
-  /** Rabat tej pozycji w procentach (0–100) — jak rabat pozycji w kreatorze ofert; tylko w trybie rabatu „na pozycje”. */
+  /** Rabat tej pozycji w procentach (0–100) — jak rabat pozycji w kreatorze ofert; rabat całej oferty liczy się po nim. */
   discountPercent: number;
   /** Karta pokazu, z której dodano pozycję. */
   itemId: string | null;
@@ -660,24 +660,28 @@ export type ShowcaseOfferEvent = { name: string; date: string; location: string;
 export type ShowcaseOfferLocation = { id: string; name: string; city: string; address: string; label: string };
 
 /**
- * Rabat w ofercie — wybór sprzedawcy (zapamiętany w jego ustawieniach, `employees.preferences.offerWizard.discountMode`):
- * `offer` — jeden rabat na całą ofertę (od wartości pozycji), `lines` — osobny rabat każdej pozycji. Tryby się wykluczają,
- * więc w ofercie i w PDF zawsze widać jeden rodzaj rabatu.
+ * Jak klient widzi rabat w PDF oferty (`offers.discount_display`) — wybór sprzedawcy, zapamiętany w jego ustawieniach
+ * (`employees.preferences.offerWizard.discountDisplay`). Rabaty pozycji i rabat całej oferty działają zawsze i razem; zmienia się
+ * tylko prezentacja: `lines` — rabat przy pozycjach i w podsumowaniu, `total` — jeden rabat łączny pod tabelą (pozycje w cenach
+ * przed rabatem), `none` — tylko ceny po rabacie (bez kwot rabatu).
  */
-export type ShowcaseOfferDiscountMode = 'offer' | 'lines';
-export const SHOWCASE_OFFER_DISCOUNT_MODES: ReadonlyArray<{ key: ShowcaseOfferDiscountMode; label: string }> = [
-  { key: 'offer', label: 'Na całą ofertę' },
-  { key: 'lines', label: 'Na pozycje' },
+export type ShowcaseOfferDiscountDisplay = 'lines' | 'total' | 'none';
+export const SHOWCASE_OFFER_DISCOUNT_DISPLAYS: ReadonlyArray<{ key: ShowcaseOfferDiscountDisplay; label: string; hint: string }> = [
+  { key: 'lines', label: 'Przy pozycjach', hint: 'Klient widzi rabat każdej pozycji i rabat na ofertę.' },
+  { key: 'total', label: 'Rabat łączny', hint: 'Pozycje w cenach przed rabatem, pod tabelą jeden rabat łączny.' },
+  { key: 'none', label: 'Ceny po rabacie', hint: 'Klient widzi tylko ceny po rabacie — bez kwoty rabatu.' },
 ];
-export const isShowcaseOfferDiscountMode = (value: unknown): value is ShowcaseOfferDiscountMode => value === 'offer' || value === 'lines';
+export const isShowcaseOfferDiscountDisplay = (value: unknown): value is ShowcaseOfferDiscountDisplay =>
+  value === 'lines' || value === 'total' || value === 'none';
 
 export type ShowcaseOfferDraft = {
   /** Identyfikator przyszłej oferty — ponowne „Utwórz ofertę” po zerwanym połączeniu nie tworzy drugiej. */
   id: string;
   lines: ShowcaseOfferLine[];
-  /** Rabat całej oferty (tryb `offer`; w trybie `lines` zawsze 0). */
+  /** Rabat całej oferty — liczy się od wartości pozycji po ich rabatach. */
   discountPercent: number;
-  discountMode: ShowcaseOfferDiscountMode;
+  /** Jak klient widzi rabat w PDF. */
+  discountDisplay: ShowcaseOfferDiscountDisplay;
   client: ShowcaseOfferClient;
   /** Otwarte zapytanie klienta (oferta jako kolejny wariant) albo `null` — nowe zapytanie. */
   inquiryId: string | null;
@@ -695,8 +699,8 @@ export type ShowcaseOfferSetup = {
   canApprove: boolean;
   guardrails: { enabled: boolean; maxDiscountPercent: number; minMarginPercent: number };
   validDays: number;
-  /** Zapamiętany tryb rabatu sprzedawcy — dla nowego szkicu (zmiana: `op=offerDiscountMode`). */
-  discountMode: ShowcaseOfferDiscountMode;
+  /** Zapamiętany sposób pokazania rabatu w PDF — dla nowego szkicu (zmiana: `op=offerDiscountDisplay`). */
+  discountDisplay: ShowcaseOfferDiscountDisplay;
 };
 
 export type ShowcaseOfferClientHit = {
@@ -809,12 +813,12 @@ export const emptyShowcaseOfferClient = (): ShowcaseOfferClient => ({
 export const isShowcaseOfferPlaceholder = (client: ShowcaseOfferClient) =>
   Boolean(client.placeholder && !client.organizationId && !client.contactId && !client.company && !client.firstName && !client.lastName);
 
-export function emptyShowcaseOfferDraft(discountMode: ShowcaseOfferDiscountMode = 'offer'): ShowcaseOfferDraft {
+export function emptyShowcaseOfferDraft(discountDisplay: ShowcaseOfferDiscountDisplay = 'lines'): ShowcaseOfferDraft {
   return {
     id: showcaseOfferDraftId(),
     lines: [],
     discountPercent: 0,
-    discountMode,
+    discountDisplay,
     client: emptyShowcaseOfferClient(),
     inquiryId: null,
     inquiryTitle: '',
@@ -898,15 +902,11 @@ export function normalizeShowcaseOfferDraft(raw: unknown): ShowcaseOfferDraft {
   const contactId = isShowcaseUuid(client.contactId) ? client.contactId.toLowerCase() : null;
   const guests = Number(event.guestCount);
   const date = typeof event.date === 'string' ? event.date.trim() : '';
-  // Szkic sprzed wyboru trybu (bez `discountMode`) z rabatami pozycji — tryb „na pozycje”.
-  const discountMode: ShowcaseOfferDiscountMode = isShowcaseOfferDiscountMode(value.discountMode)
-    ? value.discountMode
-    : lines.some((line) => line.discountPercent > 0) ? 'lines' : 'offer';
   return {
     id: isShowcaseUuid(value.id) ? value.id.toLowerCase() : showcaseOfferDraftId(),
-    lines: discountMode === 'lines' ? lines : lines.map((line) => (line.discountPercent ? { ...line, discountPercent: 0 } : line)),
-    discountPercent: discountMode === 'offer' ? showcaseOfferDiscount(value.discountPercent) : 0,
-    discountMode,
+    lines,
+    discountPercent: showcaseOfferDiscount(value.discountPercent),
+    discountDisplay: isShowcaseOfferDiscountDisplay(value.discountDisplay) ? value.discountDisplay : 'lines',
     client: {
       organizationId,
       organizationName: showcaseLine(client.organizationName, 200),
@@ -931,24 +931,6 @@ export function normalizeShowcaseOfferDraft(raw: unknown): ShowcaseOfferDraft {
     },
     note: showcaseText(value.note, SHOWCASE_OFFER_LIMITS.note),
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt.slice(0, 40) : '',
-  };
-}
-
-/**
- * Zmiana trybu rabatu z zachowaniem wartości oferty. Na pozycje — każda pozycja dostaje dotychczasowy rabat całej oferty.
- * Na całą ofertę — rabat łączny pozycji (`effectivePercent`, `ShowcaseOfferPreview.effectiveDiscountPercent`); bez podglądu
- * cen — wspólny rabat pozycji, jeśli wszystkie mają ten sam, inaczej bez rabatu.
- */
-export function switchShowcaseOfferDiscountMode(draft: ShowcaseOfferDraft, mode: ShowcaseOfferDiscountMode, effectivePercent: number | null = null): ShowcaseOfferDraft {
-  if (draft.discountMode === mode) return draft;
-  if (mode === 'lines') {
-    const percent = showcaseOfferDiscount(draft.discountPercent);
-    return { ...draft, discountMode: mode, discountPercent: 0, lines: draft.lines.map((line) => ({ ...line, discountPercent: percent })) };
-  }
-  const shared = draft.lines.length && draft.lines.every((line) => line.discountPercent === draft.lines[0].discountPercent) ? draft.lines[0].discountPercent : 0;
-  return {
-    ...draft, discountMode: mode, discountPercent: showcaseOfferDiscount(effectivePercent ?? shared),
-    lines: draft.lines.map((line) => (line.discountPercent ? { ...line, discountPercent: 0 } : line)),
   };
 }
 

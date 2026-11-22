@@ -7,10 +7,10 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import {
-  SHOWCASE_OFFER_DISCOUNT_MODES, SHOWCASE_OFFER_LIMITS, addShowcaseOfferLine, emptyShowcaseOfferClient, emptyShowcaseOfferDraft, formatShowcaseAmount,
+  SHOWCASE_OFFER_DISCOUNT_DISPLAYS, SHOWCASE_OFFER_LIMITS, addShowcaseOfferLine, emptyShowcaseOfferClient, emptyShowcaseOfferDraft, formatShowcaseAmount,
   formatShowcasePercent, isShowcaseOfferEmail, isShowcaseOfferPlaceholder, normalizeShowcaseOfferDraft, showcaseOfferApprovalHint, showcaseOfferDiscount,
-  showcaseOfferLineFor, showcaseOfferPrice, showcaseOfferProblem, switchShowcaseOfferDiscountMode,
-  type ShowcaseOfferAddResult, type ShowcaseOfferDiscountMode, type ShowcaseOfferApproval, type ShowcaseOfferClient, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit,
+  showcaseOfferLineFor, showcaseOfferPrice, showcaseOfferProblem,
+  type ShowcaseOfferAddResult, type ShowcaseOfferDiscountDisplay, type ShowcaseOfferApproval, type ShowcaseOfferClient, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit,
   type ShowcaseOfferDraft, type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferKind, type ShowcaseOfferLine,
   type ShowcaseOfferLocation, type ShowcaseOfferPreview, type ShowcaseOfferResult, type ShowcaseOfferSetup, type ShowcaseOfferStatus,
   type ShowcaseProductView, type ShowcaseUrls,
@@ -24,9 +24,9 @@ import { useDragList } from './showcaseUi';
  * i od razu tworzy ofertę z PDF. Potem: PDF na ekranie, wysyłka e-mailem, prośba o akceptację rabatu powyżej progu, oferta
  * w CRM. Szkic zostaje w przeglądarce (osobno dla każdego pracownika); ceny i rabat liczy serwer jak kreator ofert.
  * Ten sam przepływ na Macu (natywny pokaz) i w aplikacji na iPadzie. Pozycje także z katalogu („Dodaj pozycję”), miejsce —
- * z podpowiedzi bazy lokalizacji albo wpisane ręcznie. Rabat — wg preferencji sprzedawcy (zapamiętanej na serwerze): na całą
- * ofertę albo osobno na każdą pozycję; zmiana trybu przelicza rabat bez zmiany wartości oferty. Klient może być roboczy (sama
- * nazwa, bez dodawania do bazy) — przypisuje się go później w CRM.
+ * z podpowiedzi bazy lokalizacji albo wpisane ręcznie. Rabat pozycji i rabat całej oferty — razem, z rabatem łącznym; jak klient
+ * widzi rabat w PDF (przy pozycjach, rabat łączny, same ceny po rabacie) — wybór sprzedawcy zapamiętany na serwerze. Osoba
+ * kontaktowa firmy — lista wyboru. Klient może być roboczy (sama nazwa, bez dodawania do bazy) — przypisuje się go później w CRM.
  */
 
 type Theme = { accent: string; surface: string; heading: string };
@@ -39,7 +39,6 @@ const STORAGE = 'mavinci.showcase.offer';
 const DISCOUNT_PRESETS = [0, 5, 10, 15];
 /** Rabat pozycji: 0–100% co 1 punkt (na iPadzie lista wyboru to kółko jak wybór godziny). */
 const DISCOUNT_STEPS = Array.from({ length: 101 }, (_, index) => index);
-const hasDiscounts = (draft: ShowcaseOfferDraft) => draft.discountPercent > 0 || draft.lines.some((line) => line.discountPercent > 0);
 const TEXT = '#e5e4e2';
 /** Cyfry zwykłym fontem — w foncie nagłówków marki „0” wygląda jak „O”. */
 const DIGITS: CSSProperties = { fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' };
@@ -51,13 +50,13 @@ export type ShowcaseOfferState = {
   add: (product: ShowcaseProductView, choice: Choice, item: ItemRef) => { result: ShowcaseOfferAddResult['result'] | 'unavailable'; label: string };
   has: (product: ShowcaseProductView, choice: Choice) => boolean;
   reset: () => void;
-  /** Zmiana trybu rabatu (przeliczenie szkicu, zapamiętanie wyboru na serwerze); `false` — wyboru nie zapamiętano. */
-  setDiscountMode: (mode: ShowcaseOfferDiscountMode, effectivePercent: number | null) => Promise<boolean>;
+  /** Jak klient widzi rabat w PDF (szkic + zapamiętanie wyboru na serwerze); `false` — wyboru nie zapamiętano. */
+  setDiscountDisplay: (display: ShowcaseOfferDiscountDisplay) => Promise<boolean>;
 };
 
 /**
- * Szkic oferty ze spotkania: uprawnienia, progi i tryb rabatu sprzedawcy z serwera, szkic w przeglądarce (osobno dla każdego
- * pracownika). Tryb rabatu z ustawień obowiązuje w nowym szkicu i w szkicu bez rabatów.
+ * Szkic oferty ze spotkania: uprawnienia, progi i rabat w PDF z ustawień sprzedawcy (serwer), szkic w przeglądarce (osobno dla
+ * każdego pracownika). Rabat w PDF z ustawień obowiązuje w nowym, jeszcze nieruszanym szkicu.
  */
 export function useShowcaseOffer(): ShowcaseOfferState {
   const [setup, setSetup] = useState<ShowcaseOfferSetup | null>(null);
@@ -71,8 +70,8 @@ export function useShowcaseOffer(): ShowcaseOfferState {
   useEffect(() => {
     let active = true;
     showcaseGet<ShowcaseOfferSetup>('offerSetup')
-      // Serwer sprzed trybu rabatu (bez `discountMode`) — rabat na całą ofertę.
-      .then((value) => { if (active) setSetup({ ...value, discountMode: value.discountMode === 'lines' ? 'lines' : 'offer' }); })
+      // Serwer bez tego ustawienia — rabat przy pozycjach.
+      .then((value) => { if (active) setSetup({ ...value, discountDisplay: ['total', 'none'].includes(value.discountDisplay) ? value.discountDisplay : 'lines' }); })
       .catch(() => { if (active) setSetup(null); });
     supabase.auth.getSession().then(({ data }) => {
       const user = data.session?.user?.id;
@@ -91,12 +90,12 @@ export function useShowcaseOffer(): ShowcaseOfferState {
     try { window.localStorage.setItem(key.current, JSON.stringify(draft)); } catch { /* bez pamięci przeglądarki */ }
   }, [draft]);
 
-  // Tryb rabatu sprzedawcy w szkicu bez rabatów (zmiana trybu niczego tu nie przelicza).
-  const preferredMode = setup?.discountMode;
+  // Rabat w PDF z ustawień sprzedawcy — w szkicu jeszcze nieruszanym.
+  const preferredDisplay = setup?.discountDisplay;
   useEffect(() => {
-    if (!preferredMode) return;
-    setDraft((current) => (current.discountMode === preferredMode || hasDiscounts(current) ? current : { ...current, discountMode: preferredMode }));
-  }, [preferredMode, draft.id]);
+    if (!preferredDisplay) return;
+    setDraft((current) => (current.updatedAt || current.discountDisplay === preferredDisplay ? current : { ...current, discountDisplay: preferredDisplay }));
+  }, [preferredDisplay, draft.id]);
 
   const update = useCallback((change: (draft: ShowcaseOfferDraft) => ShowcaseOfferDraft) => {
     setDraft((current) => ({ ...change(current), updatedAt: new Date().toISOString() }));
@@ -115,18 +114,18 @@ export function useShowcaseOffer(): ShowcaseOfferState {
     const line = showcaseOfferLineFor(product, choice, null);
     return Boolean(line && draft.lines.some((entry) => entry.key === line.key));
   }, [draft.lines]);
-  const reset = useCallback(() => setDraft(emptyShowcaseOfferDraft(setupRef.current?.discountMode)), []);
-  const setDiscountMode = useCallback(async (mode: ShowcaseOfferDiscountMode, effectivePercent: number | null) => {
-    setDraft((current) => ({ ...switchShowcaseOfferDiscountMode(current, mode, effectivePercent), updatedAt: new Date().toISOString() }));
-    setSetup((current) => (current ? { ...current, discountMode: mode } : current));
+  const reset = useCallback(() => setDraft(emptyShowcaseOfferDraft(setupRef.current?.discountDisplay)), []);
+  const setDiscountDisplay = useCallback(async (display: ShowcaseOfferDiscountDisplay) => {
+    setDraft((current) => ({ ...current, discountDisplay: display, updatedAt: new Date().toISOString() }));
+    setSetup((current) => (current ? { ...current, discountDisplay: display } : current));
     try {
-      await showcasePost<{ discountMode: ShowcaseOfferDiscountMode }>('offerDiscountMode', { discountMode: mode });
+      await showcasePost<{ discountDisplay: ShowcaseOfferDiscountDisplay }>('offerDiscountDisplay', { discountDisplay: display });
       return true;
     } catch {
       return false;
     }
   }, []);
-  return { setup, draft, update, add, has, reset, setDiscountMode };
+  return { setup, draft, update, add, has, reset, setDiscountDisplay };
 }
 
 /** Przycisk „Do oferty” na kafelku wariantu / pakietu i w nagłówku karty. */
@@ -251,10 +250,9 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
   /** Klient roboczy (sama nazwa, bez bazy). */
   const placeholderChosen = !chosen && isShowcaseOfferPlaceholder(client);
   const setClient = (patch: Partial<ShowcaseOfferClient>) => update((current) => ({ ...current, client: { ...current.client, ...patch } }));
-  const linesMode = draft.discountMode === 'lines';
 
   // Podgląd cen (serwer) po zmianie pozycji, rabatu albo liczby osób.
-  const previewKey = JSON.stringify({ lines: draft.lines, discount: draft.discountPercent, mode: draft.discountMode, guests: draft.event.guestCount });
+  const previewKey = JSON.stringify({ lines: draft.lines, discount: draft.discountPercent, guests: draft.event.guestCount });
   useEffect(() => {
     if (result) return;
     if (!draft.lines.length) { setPreview(null); setPreviewError(''); return; }
@@ -348,25 +346,14 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
   const hint = showcaseOfferApprovalHint(setup, preview?.effectiveDiscountPercent ?? draft.discountPercent);
   /** Rabat wszystkich pozycji, jeśli wszystkie mają ten sam (lista „Ten sam rabat na wszystkie pozycje”). */
   const sharedLineDiscount = draft.lines.length && draft.lines.every((line) => line.discountPercent === draft.lines[0].discountPercent) ? draft.lines[0].discountPercent : null;
-  /**
-   * Tryb rabatu (preferencja sprzedawcy): wartość oferty zostaje — rabat całej oferty trafia na każdą pozycję, a rabaty pozycji
-   * zamieniają się w rabat łączny całej oferty (z aktualnego podglądu cen).
-   */
-  const changeDiscountMode = (mode: ShowcaseOfferDiscountMode) => {
-    if (mode === draft.discountMode) return;
-    const hadDiscount = hasDiscounts(draft);
-    const effective = preview && !previewing && !previewError ? preview.effectiveDiscountPercent : null;
-    const next = switchShowcaseOfferDiscountMode(draft, mode, effective);
-    setCustomDiscount(mode === 'offer' && !DISCOUNT_PRESETS.includes(next.discountPercent) ? String(next.discountPercent).replace('.', ',') : '');
-    onNotice(!hadDiscount
-      ? mode === 'lines' ? 'Rabat ustawiasz teraz przy każdej pozycji.' : 'Rabat ustawiasz teraz na całą ofertę.'
-      : mode === 'lines' ? `Rabat ${formatShowcasePercent(draft.discountPercent)} jest teraz przy każdej pozycji.`
-        : next.discountPercent > 0 ? `Rabaty pozycji zamienione na rabat całej oferty: ${formatShowcasePercent(next.discountPercent)}.`
-          : 'Rabaty pozycji usunięte — ustaw rabat na całą ofertę.');
-    void offer.setDiscountMode(mode, effective).then((saved) => {
-      if (!saved) onNotice('Nie udało się zapamiętać trybu rabatu na serwerze — obowiązuje w tej ofercie.', 'error');
+  /** Jak klient widzi rabat w PDF (preferencja sprzedawcy, zapamiętana na serwerze dla kolejnych ofert). */
+  const changeDiscountDisplay = (display: ShowcaseOfferDiscountDisplay) => {
+    if (display === draft.discountDisplay) return;
+    void offer.setDiscountDisplay(display).then((saved) => {
+      if (!saved) onNotice('Nie udało się zapamiętać ustawienia na serwerze — obowiązuje w tej ofercie.', 'error');
     });
   };
+  const discountDisplayOption = SHOWCASE_OFFER_DISCOUNT_DISPLAYS.find((display) => display.key === draft.discountDisplay) || SHOWCASE_OFFER_DISCOUNT_DISPLAYS[0];
   const canCreate = Boolean(setup?.canOffer) && !problem && !previewing && Boolean(preview) && !busy;
 
   const generatePdf = async (id: string, number: string) => {
@@ -645,21 +632,21 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
                     {client.organizationId && context && (
                       <div>
                         <div className="mb-2 text-[13px] uppercase tracking-wide text-[#e5e4e2]/50">Osoba kontaktowa</div>
-                        <div className="flex flex-wrap gap-2">
-                          {context.persons.map((person) => {
-                            const active = client.contactId === person.id;
-                            return (
-                              <button key={person.id} type="button" onClick={() => { setNewPerson(false); setClient({ contactId: active ? null : person.id, contactName: active ? '' : person.name, firstName: '', lastName: '', email: '', phone: '' }); }}
-                                className="h-11 rounded-full border px-4 text-[15px]" style={active ? { borderColor: theme.accent, background: `${theme.accent}26`, color: theme.accent } : { borderColor: 'rgba(255,255,255,.15)' }}>
-                                {person.name}
-                              </button>
-                            );
-                          })}
-                          <button type="button" onClick={() => { setNewPerson((value) => !value); setClient({ contactId: null, contactName: '' }); }}
-                            className="flex h-11 items-center gap-1.5 rounded-full border px-4 text-[15px]" style={newPerson ? { borderColor: theme.accent, color: theme.accent } : { borderColor: 'rgba(255,255,255,.15)' }}>
-                            <Plus className="h-4 w-4" />Nowa osoba
-                          </button>
-                        </div>
+                        <select value={newPerson ? 'new' : client.contactId || ''} aria-label="Osoba kontaktowa"
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            if (value === 'new') { setNewPerson(true); setClient({ contactId: null, contactName: '' }); return; }
+                            const person = context.persons.find((entry) => entry.id === value) || null;
+                            setNewPerson(false);
+                            setClient({ contactId: person?.id || null, contactName: person?.name || '', firstName: '', lastName: '', email: '', phone: '' });
+                          }}
+                          className={inputClass}>
+                          <option value="">Bez osoby kontaktowej (oferta na firmę)</option>
+                          {context.persons.map((person) => (
+                            <option key={person.id} value={person.id}>{[person.name, person.email || person.phone].filter(Boolean).join(' — ')}</option>
+                          ))}
+                          <option value="new">+ Nowa osoba kontaktowa</option>
+                        </select>
                         {newPerson && (
                           <div className="mt-3 grid grid-cols-2 gap-3">
                             <Field label="Imię"><input value={client.firstName} onChange={(event) => setClient({ firstName: event.target.value })} className={inputClass} autoComplete="off" /></Field>
@@ -794,7 +781,7 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
                           </div>
                           <div className="shrink-0 text-right">
                             <div className="text-[17px] font-semibold tabular-nums" style={accent}>{view && !view.error ? formatShowcaseAmount(view.subtotal) : '—'}</div>
-                            {view && !view.error && linesMode && line.discountPercent > 0 && <div className="text-[13px] text-[#e5e4e2]/45 tabular-nums line-through">{formatShowcaseAmount(view.listSubtotal)}</div>}
+                            {view && !view.error && line.discountPercent > 0 && <div className="text-[13px] text-[#e5e4e2]/45 tabular-nums line-through">{formatShowcaseAmount(view.listSubtotal)}</div>}
                             {view && !view.error && <div className="text-[13px] text-[#e5e4e2]/45 tabular-nums">{view.quantity} × {formatShowcaseAmount(view.unitPrice)}{view.days > 1 ? ` × ${view.days} dni` : ''}</div>}
                           </div>
                         </div>
@@ -803,10 +790,8 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
                             ? <span className="rounded-full bg-black/30 px-4 py-2.5 text-[14px] text-[#e5e4e2]/70">{view.quantity} {view.unit === 'stół' ? 'stołów' : 'osób'} (z liczby osób)</span>
                             : <Stepper value={line.quantity} min={1} max={SHOWCASE_OFFER_LIMITS.quantity} suffix="szt." theme={theme} onChange={(quantity) => setLine(line.key, { quantity })} />}
                           <Stepper value={line.days} min={1} max={SHOWCASE_OFFER_LIMITS.days} suffix={line.days === 1 ? 'dzień' : 'dni'} theme={theme} onChange={(days) => setLine(line.key, { days })} />
-                          {linesMode && (
-                            <DiscountSelect value={line.discountPercent} theme={theme} label={`Rabat pozycji: ${view?.name || line.label}`}
-                              onChange={(discountPercent) => setLine(line.key, { discountPercent })} />
-                          )}
+                          <DiscountSelect value={line.discountPercent} theme={theme} label={`Rabat pozycji: ${view?.name || line.label}`}
+                            onChange={(discountPercent) => setLine(line.key, { discountPercent })} />
                           {line.priceOnRequest && (
                             <label className="relative">
                               <span className="sr-only">Uzgodniona cena netto</span>
@@ -828,29 +813,19 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
               </Section>
 
               <Section title="Rabat" icon={<BadgePercent className="h-5 w-5" />}>
-                <div role="tablist" aria-label="Rodzaj rabatu" className="flex rounded-full p-1 ring-1 ring-white/15">
-                  {SHOWCASE_OFFER_DISCOUNT_MODES.map((mode) => {
-                    const active = draft.discountMode === mode.key;
-                    return (
-                      <button key={mode.key} type="button" role="tab" aria-selected={active} onClick={() => changeDiscountMode(mode.key)}
-                        className="h-11 flex-1 rounded-full px-4 text-[15px]" style={active ? { background: theme.accent, color: theme.surface, fontWeight: 600 } : undefined}>
-                        {mode.label}
-                      </button>
-                    );
-                  })}
+                <div className="space-y-2">
+                  <div className="text-[13px] uppercase tracking-wide text-[#e5e4e2]/50">Rabat pozycji</div>
+                  <p className="text-[14px] text-[#e5e4e2]/55">Przy każdej pozycji („Rabat” pod pozycją).</p>
+                  {draft.lines.length > 1 && (
+                    <label className="flex flex-wrap items-center gap-3 text-[15px]">
+                      <span className="text-[#e5e4e2]/70">Ten sam rabat na wszystkie pozycje</span>
+                      <DiscountSelect value={sharedLineDiscount} theme={theme} label="Rabat każdej pozycji"
+                        onChange={(discountPercent) => update((current) => ({ ...current, lines: current.lines.map((line) => ({ ...line, discountPercent })) }))} />
+                    </label>
+                  )}
                 </div>
-                {linesMode ? (
-                  <>
-                    <p className="text-[14px] text-[#e5e4e2]/55">Rabat ustawiasz przy każdej pozycji („Rabat” pod pozycją). Klient zobaczy rabat przy pozycji w PDF.</p>
-                    {draft.lines.length > 1 && (
-                      <label className="flex flex-wrap items-center gap-3 text-[15px]">
-                        <span className="text-[#e5e4e2]/70">Ten sam rabat na wszystkie pozycje</span>
-                        <DiscountSelect value={sharedLineDiscount} theme={theme} label="Rabat każdej pozycji"
-                          onChange={(discountPercent) => update((current) => ({ ...current, lines: current.lines.map((line) => ({ ...line, discountPercent })) }))} />
-                      </label>
-                    )}
-                  </>
-                ) : (
+                <div className="space-y-2">
+                  <div className="text-[13px] uppercase tracking-wide text-[#e5e4e2]/50">Rabat na całą ofertę</div>
                   <div className="flex flex-wrap items-center gap-2">
                     {DISCOUNT_PRESETS.map((value) => (
                       <button key={value} type="button" onClick={() => { setCustomDiscount(''); update((current) => ({ ...current, discountPercent: value })); }}
@@ -870,8 +845,26 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
                       <span className="pointer-events-none absolute right-4 top-2.5 text-[15px] text-[#e5e4e2]/50">%</span>
                     </div>
                   </div>
+                  <p className="text-[14px] text-[#e5e4e2]/55">Liczy się od wartości pozycji po ich rabatach.</p>
+                </div>
+                {preview && preview.effectiveDiscountPercent > 0 && (
+                  <p className="text-[15px]">Rabat łączny: <span style={accent}>{formatShowcasePercent(preview.effectiveDiscountPercent)}</span> · −{formatShowcaseAmount(preview.lineDiscountAmount + preview.discountAmount)} netto</p>
                 )}
-                <p className="text-[13px] text-[#e5e4e2]/45">Tryb rabatu zapamiętujemy — obowiązuje w kolejnych ofertach, także na Macu, iPadzie i telefonie.</p>
+                <div className="space-y-2">
+                  <div className="text-[13px] uppercase tracking-wide text-[#e5e4e2]/50">Rabat w PDF dla klienta</div>
+                  <div role="tablist" aria-label="Rabat w PDF dla klienta" className="flex rounded-full p-1 ring-1 ring-white/15">
+                    {SHOWCASE_OFFER_DISCOUNT_DISPLAYS.map((display) => {
+                      const active = draft.discountDisplay === display.key;
+                      return (
+                        <button key={display.key} type="button" role="tab" aria-selected={active} title={display.hint} onClick={() => changeDiscountDisplay(display.key)}
+                          className="h-11 flex-1 rounded-full px-3 text-[15px]" style={active ? { background: theme.accent, color: theme.surface, fontWeight: 600 } : undefined}>
+                          {display.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[13px] text-[#e5e4e2]/45">{discountDisplayOption.hint} Wybór zapamiętujemy — także na Macu, iPadzie i telefonie.</p>
+                </div>
                 {hint && <p className="flex gap-2 text-[14px] text-amber-200"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{hint}</p>}
               </Section>
 
@@ -888,10 +881,13 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
                     <>
                       <div className="flex justify-between text-[#e5e4e2]/60"><span>Wartość pozycji netto</span><span className="tabular-nums">{formatShowcaseAmount(preview.listNet + preview.lineDiscountAmount)}</span></div>
                       {preview.lineDiscountAmount > 0 && (
-                        <div className="flex justify-between text-[#e5e4e2]/60"><span>Rabaty pozycji · łącznie {formatShowcasePercent(preview.effectiveDiscountPercent)}</span><span className="tabular-nums">−{formatShowcaseAmount(preview.lineDiscountAmount)}</span></div>
+                        <div className="flex justify-between text-[#e5e4e2]/60"><span>Rabaty pozycji</span><span className="tabular-nums">−{formatShowcaseAmount(preview.lineDiscountAmount)}</span></div>
                       )}
                       {preview.discountAmount > 0 && (
-                        <div className="flex justify-between text-[#e5e4e2]/60"><span>Rabat {formatShowcasePercent(preview.discountPercent)}</span><span className="tabular-nums">−{formatShowcaseAmount(preview.discountAmount)}</span></div>
+                        <div className="flex justify-between text-[#e5e4e2]/60"><span>Rabat na ofertę {formatShowcasePercent(preview.discountPercent)}</span><span className="tabular-nums">−{formatShowcaseAmount(preview.discountAmount)}</span></div>
+                      )}
+                      {preview.lineDiscountAmount > 0 && preview.discountAmount > 0 && (
+                        <div className="flex justify-between text-[#e5e4e2]/60"><span>Rabat łączny {formatShowcasePercent(preview.effectiveDiscountPercent)}</span><span className="tabular-nums">−{formatShowcaseAmount(preview.lineDiscountAmount + preview.discountAmount)}</span></div>
                       )}
                     </>
                   )}

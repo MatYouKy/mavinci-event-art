@@ -94,8 +94,8 @@ export interface Preferences {
   };
   offerWizard?: {
     catalogViewMode?: 'list' | 'table';
-    /** Rabat w ofercie: na całą ofertę albo osobno na każdą pozycję (oferta ze spotkania — CRM, Mac, iPad, telefon). */
-    discountMode?: 'offer' | 'lines';
+    /** Jak klient widzi rabat w PDF oferty ze spotkania: przy pozycjach, rabat łączny, ceny po rabacie (CRM, Mac, iPad, telefon). */
+    discountDisplay?: 'lines' | 'total' | 'none';
   };
   offerCatalog?: {
     viewMode?: 'grid' | 'list' | 'table';

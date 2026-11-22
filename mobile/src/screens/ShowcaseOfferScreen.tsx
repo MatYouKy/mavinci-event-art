@@ -17,12 +17,12 @@ import {
   showcaseOfferGeneratePdf, showcaseOfferLocations, showcaseOfferPdf, showcaseOfferPreview, showcaseOfferProduct, showcaseOfferStatus, showcaseProducts,
   type ShowcaseOfferFailure, type ShowcaseProductOption,
 } from '../lib/showcaseApi';
-import { useShowcaseOffer, type ShowcaseOfferChoice } from '../lib/showcaseOffer';
+import { presetShowcaseOfferDraft, useShowcaseOffer, type ShowcaseOfferChoice } from '../lib/showcaseOffer';
 import {
-  SHOWCASE_OFFER_DISCOUNT_MODES, SHOWCASE_OFFER_LIMITS, emptyShowcaseOfferClient, formatShowcaseAmount, formatShowcasePercent, isShowcaseOfferEmail,
+  SHOWCASE_OFFER_DISCOUNT_DISPLAYS, SHOWCASE_OFFER_LIMITS, emptyShowcaseOfferClient, formatShowcaseAmount, formatShowcasePercent, isShowcaseOfferEmail,
   isShowcaseOfferPlaceholder, normalizeShowcaseOfferDraft, showcaseMediaKey, showcaseOfferApprovalHint, showcaseOfferConfiguredLine, showcaseOfferDiscount,
-  showcaseOfferLineFor, showcaseOfferPrice, showcaseOfferProblem, switchShowcaseOfferDiscountMode,
-  type ShowcaseMedia, type ShowcaseOfferDiscountMode, type ShowcaseOfferApproval, type ShowcaseOfferClient, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferConfiguration,
+  showcaseOfferLineFor, showcaseOfferPrice, showcaseOfferProblem,
+  type ShowcaseMedia, type ShowcaseOfferDiscountDisplay, type ShowcaseOfferApproval, type ShowcaseOfferClient, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferConfiguration,
   type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferLine, type ShowcaseOfferLocation, type ShowcaseOfferPreview,
   type ShowcaseOfferResult, type ShowcaseProductView, type ShowcaseUrls,
 } from '../lib/showcaseShared';
@@ -32,16 +32,24 @@ import {
  * na kartach albo „Dodaj pozycję” z katalogu (kolejność — przeciąganie za uchwyt ≡), klient z CRM albo nowy (bez duplikatów),
  * otwarte zapytanie klienta albo nowe (źródło „Rozmowa / spotkanie”), miejsce z bazy lokalizacji albo wpisane, liczba osób,
  * rabat w progach (powyżej progu — akceptacja przed wysłaniem), utworzenie oferty i PDF, PDF na ekranie, wysyłka e-mailem.
- * Rabat — wg preferencji sprzedawcy (zapamiętanej na serwerze): na całą ofertę albo osobno na każdą pozycję; zmiana trybu
- * przelicza rabat bez zmiany wartości oferty. Pozycje z miniaturą zdjęcia produktu; przesunięcie pozycji w lewo (albo uchwyt ‹‹
- * przy prawej krawędzi) odsłania akcje: zmiana (inny wariant, pakiet albo konfiguracja), rabat pozycji (kółko jak wybór godziny;
- * w trybie „na pozycje”), usunięcie. Scena i ekran LED — od
+ * Rabat pozycji i rabat całej oferty — razem, z rabatem łącznym w podsumowaniu; jak klient widzi rabat w PDF (przy pozycjach,
+ * rabat łączny, same ceny po rabacie) — wybór sprzedawcy zapamiętany na serwerze. Pozycje z miniaturą zdjęcia produktu; przesunięcie
+ * pozycji w lewo (albo uchwyt ‹‹ przy prawej krawędzi) wsuwa akcje nad prawą część wiersza (zdjęcie, nazwa i ilości zostają na
+ * miejscu): zmiana (inny wariant, pakiet albo konfiguracja), rabat pozycji (kółko jak wybór godziny), usunięcie. Osoba kontaktowa
+ * firmy — lista wyboru. Scena i ekran LED — od
  * razu konfigurator (`ShowcaseConfigurator`, także z karty pokazu: „Skonfiguruj”). Klient może być roboczy (sama nazwa, bez
  * bazy) — przypisuje się go później w CRM. Ceny liczy serwer CRM; szkic zostaje na urządzeniu.
  */
 
 /** Konfigurator otwarty z karty pokazu („Skonfiguruj” przy scenie albo ekranie LED). */
-export type ShowcaseOfferRouteParams = { configure?: { productId: string; name: string; itemId?: string | null; itemTitle?: string } } | undefined;
+/** Klient i zapytanie z karty zapytania (tablet) — oferta jako kolejny wariant tego zapytania. */
+export type ShowcaseOfferInquiryParam = {
+  id: string; title: string; organizationId: string | null; organizationName: string; contactId: string | null; contactName: string; guestCount: number | null;
+};
+export type ShowcaseOfferRouteParams = {
+  configure?: { productId: string; name: string; itemId?: string | null; itemTitle?: string };
+  inquiry?: ShowcaseOfferInquiryParam;
+} | undefined;
 
 type Picker = 'date' | 'time' | null;
 const PRESETS = [0, 5, 10, 15];
@@ -95,6 +103,7 @@ export default function ShowcaseOfferScreen() {
   const [emailForm, setEmailForm] = useState({ to: '', subject: '', text: '', accountId: '' });
   const [sent, setSent] = useState(false);
   const [discountTarget, setDiscountTarget] = useState<DiscountTarget | null>(null);
+  const [personPicker, setPersonPicker] = useState(false);
   const [discountValue, setDiscountValue] = useState(0);
   const [picker, setPicker] = useState<Picker>(null);
   const [dragging, setDragging] = useState(false);
@@ -133,8 +142,28 @@ export default function ShowcaseOfferScreen() {
     return () => clearTimeout(timer);
   }, [message]);
 
+  // „Nowa oferta” z karty zapytania (tablet): klient i zapytanie od razu w szkicu, pozycje i rabaty szkicu zostają.
+  const inquiryParam = (route.params as ShowcaseOfferRouteParams)?.inquiry;
+  useEffect(() => {
+    if (!inquiryParam?.id) return;
+    const target = inquiryParam;
+    navigation.setParams({ inquiry: undefined });
+    setResult(null); setApproval(null); setEmail(null); setSent(false); setApprovalNote('');
+    setQuery(''); setHits([]); setNewClient(false); setNewPerson(false);
+    void presetShowcaseOfferDraft((current) => ({
+      ...current,
+      inquiryId: target.id,
+      inquiryTitle: target.title,
+      client: {
+        ...emptyShowcaseOfferClient(), organizationId: target.organizationId, organizationName: target.organizationName,
+        contactId: target.contactId, contactName: target.contactName,
+      },
+      event: current.event.guestCount == null && target.guestCount ? { ...current.event, guestCount: target.guestCount } : current.event,
+    })).then(() => notify(`Oferta do zapytania „${target.title}” — dodaj pozycje z katalogu albo konfiguratora.`));
+  }, [inquiryParam, navigation]);
+
   // Podgląd cen z serwera.
-  const previewKey = JSON.stringify({ lines: draft.lines, discount: draft.discountPercent, mode: draft.discountMode, guests: draft.event.guestCount });
+  const previewKey = JSON.stringify({ lines: draft.lines, discount: draft.discountPercent, guests: draft.event.guestCount });
   useEffect(() => {
     if (result) return;
     if (!draft.lines.length) { setPreview(null); setPreviewError(''); return; }
@@ -217,7 +246,6 @@ export default function ShowcaseOfferScreen() {
     update((current) => ({ ...current, lines: current.lines.filter((entry) => entry.key !== line.key) }));
     notify(`Usunięto z oferty: ${line.label}`);
   };
-  const linesMode = draft.discountMode === 'lines';
   const openDiscount = (target: DiscountTarget) => {
     const shared = draft.lines.length && draft.lines.every((entry) => entry.discountPercent === draft.lines[0].discountPercent) ? draft.lines[0].discountPercent : 0;
     setDiscountValue(target.kind === 'line' ? draft.lines.find((entry) => entry.key === target.key)?.discountPercent ?? 0
@@ -233,23 +261,20 @@ export default function ShowcaseOfferScreen() {
     else if (target.kind === 'all') update((current) => ({ ...current, lines: current.lines.map((line) => ({ ...line, discountPercent: percent })) }));
     else update((current) => ({ ...current, discountPercent: percent }));
   };
-  /**
-   * Tryb rabatu (preferencja sprzedawcy): wartość oferty zostaje — rabat całej oferty trafia na każdą pozycję, a rabaty pozycji
-   * zamieniają się w rabat łączny całej oferty (z aktualnego podglądu cen).
-   */
-  const changeDiscountMode = (mode: ShowcaseOfferDiscountMode) => {
-    if (mode === draft.discountMode) return;
-    const hadDiscount = draft.discountMode === 'offer' ? draft.discountPercent > 0 : draft.lines.some((line) => line.discountPercent > 0);
-    const effective = preview && !previewing && !previewError ? preview.effectiveDiscountPercent : null;
-    const next = switchShowcaseOfferDiscountMode(draft, mode, effective);
-    notify(!hadDiscount
-      ? mode === 'lines' ? 'Rabat ustawiasz teraz przy każdej pozycji.' : 'Rabat ustawiasz teraz na całą ofertę.'
-      : mode === 'lines' ? `Rabat ${formatShowcasePercent(draft.discountPercent)} jest teraz przy każdej pozycji.`
-        : next.discountPercent > 0 ? `Rabaty pozycji zamienione na rabat całej oferty: ${formatShowcasePercent(next.discountPercent)}.`
-          : 'Rabaty pozycji usunięte — ustaw rabat na całą ofertę.');
-    void offer.setDiscountMode(mode, effective).then((saved) => {
-      if (!saved) notify('Nie udało się zapamiętać trybu rabatu na serwerze — obowiązuje w tej ofercie.', true);
+  /** Jak klient widzi rabat w PDF (preferencja sprzedawcy, zapamiętana na serwerze dla kolejnych ofert). */
+  const changeDiscountDisplay = (display: ShowcaseOfferDiscountDisplay) => {
+    if (display === draft.discountDisplay) return;
+    void offer.setDiscountDisplay(display).then((saved) => {
+      if (!saved) notify('Nie udało się zapamiętać ustawienia na serwerze — obowiązuje w tej ofercie.', true);
     });
+  };
+  const chosenPerson = context?.persons.find((person) => person.id === client.contactId) || null;
+  const choosePerson = (personId: string | null) => {
+    setPersonPicker(false);
+    if (personId === 'new') { setNewPerson(true); setClient({ contactId: null, contactName: '' }); return; }
+    const person = context?.persons.find((entry) => entry.id === personId) || null;
+    setNewPerson(false);
+    setClient({ contactId: person?.id || null, contactName: person?.name || '', firstName: '', lastName: '', email: '', phone: '' });
   };
   const chooseInquiry = (inquiry: ShowcaseOfferInquiry | null) => update((current) => ({
     ...current, inquiryId: inquiry?.id || null, inquiryTitle: inquiry?.title || '',
@@ -555,14 +580,19 @@ export default function ShowcaseOfferScreen() {
                   {client.organizationId && context ? (
                     <>
                       <Text style={styles.label}>Osoba kontaktowa</Text>
-                      <View style={styles.wrap}>
-                        {context.persons.map((person) => chip(person.name, client.contactId === person.id, () => {
-                          const active = client.contactId === person.id;
-                          setNewPerson(false);
-                          setClient({ contactId: active ? null : person.id, contactName: active ? '' : person.name, firstName: '', lastName: '', email: '', phone: '' });
-                        }, person.id))}
-                        {chip('+ Nowa osoba', newPerson, () => { setNewPerson((value) => !value); setClient({ contactId: null, contactName: '' }); }, 'new-person')}
-                      </View>
+                      <TouchableOpacity onPress={() => setPersonPicker(true)} style={styles.select} accessibilityRole="button"
+                        accessibilityLabel={`Osoba kontaktowa: ${newPerson ? 'nowa osoba' : chosenPerson?.name || client.contactName || 'bez osoby kontaktowej'}`}>
+                        <Feather name={newPerson ? 'user-plus' : 'user'} size={18} color={chosenPerson || newPerson ? accent : colors.text.tertiary} />
+                        <View style={styles.flex}>
+                          <Text style={chosenPerson || newPerson || client.contactName ? styles.text : styles.placeholder} numberOfLines={1}>
+                            {newPerson ? 'Nowa osoba kontaktowa' : chosenPerson?.name || client.contactName || 'Wybierz osobę (opcjonalnie)'}
+                          </Text>
+                          {chosenPerson && (chosenPerson.email || chosenPerson.phone) ? (
+                            <Text style={styles.muted} numberOfLines={1}>{[chosenPerson.email, chosenPerson.phone].filter(Boolean).join(' · ')}</Text>
+                          ) : null}
+                        </View>
+                        <Feather name="chevron-down" size={18} color={colors.text.tertiary} />
+                      </TouchableOpacity>
                       {newPerson ? (
                         <View style={styles.gapSm}>
                           {input(client.firstName, (firstName) => setClient({ firstName }), 'Imię')}
@@ -711,22 +741,22 @@ export default function ShowcaseOfferScreen() {
               {!draft.lines.length ? <Text style={styles.muted}>Dodaj pozycję z katalogu („Dodaj pozycję”) albo przyciskiem „Do oferty” przy wariancie i pakiecie na kartach pokazu.</Text> : null}
               {draft.lines.length ? (
                 <Text style={styles.muted}>
-                  {draft.lines.length > 1 ? 'Przeciągnij pozycję za uchwyt ≡, żeby zmienić kolejność. ' : ''}Przesuń pozycję w lewo (albo dotknij ‹‹ z prawej), żeby ją zmienić{linesMode ? ', dać rabat' : ''} albo usunąć.
+                  {draft.lines.length > 1 ? 'Przeciągnij pozycję za uchwyt ≡, żeby zmienić kolejność. ' : ''}Przesuń pozycję w lewo (albo dotknij ‹‹ z prawej), żeby ją zmienić, dać rabat albo usunąć.
                 </Text>
               ) : null}
               <ReorderableList items={draft.lines} keyOf={(line) => line.key} onMove={moveLine} onDragChange={setDragging} gap={spacing.sm}
                 renderItem={(line, _, handle) => {
                   const view = lineView(line.key);
                   const priced = Boolean(view && !view.error);
-                  const discounted = linesMode && line.discountPercent > 0;
+                  const discounted = line.discountPercent > 0;
                   return (
-                    <SwipeableRow edgeHint containerStyle={styles.swipe} rowStyle={{ backgroundColor: surface }}
+                    <SwipeableRow edgeHint reveal="overlay" containerStyle={styles.swipe} rowStyle={{ backgroundColor: surface }}
                       actions={[
                         {
                           key: 'edit', label: line.kind === 'configured' ? 'Konfiguruj' : 'Zmień', icon: line.kind === 'configured' ? 'sliders' : 'edit-2',
                           color: accent, foreground: surface, onPress: () => editLine(line),
                         },
-                        ...(linesMode ? [{ key: 'discount', label: 'Rabat', icon: 'percent' as const, color: '#475569', onPress: () => openDiscount({ kind: 'line', key: line.key, label: view?.name || line.label }) }] : []),
+                        { key: 'discount', label: 'Rabat', icon: 'percent', color: '#475569', onPress: () => openDiscount({ kind: 'line', key: line.key, label: view?.name || line.label }) },
                         { key: 'delete', label: 'Usuń', icon: 'trash-2', color: '#DC2626', onPress: () => removeLine(line) },
                       ]}>
                       <View style={[styles.line, { paddingRight: SWIPE_EDGE_WIDTH + spacing.xs }]}>
@@ -750,14 +780,12 @@ export default function ShowcaseOfferScreen() {
                             ? <Text style={styles.muted}>{view.quantity} {view.unit === 'stół' ? 'stołów' : 'osób'} (z liczby osób)</Text>
                             : <Stepper value={line.quantity} min={1} max={SHOWCASE_OFFER_LIMITS.quantity} suffix="szt." accent={accent} onChange={(quantity) => setLine(line.key, { quantity })} />}
                           <Stepper value={line.days} min={1} max={SHOWCASE_OFFER_LIMITS.days} suffix={line.days === 1 ? 'dzień' : 'dni'} accent={accent} onChange={(days) => setLine(line.key, { days })} />
-                          {linesMode ? (
-                            <TouchableOpacity onPress={() => openDiscount({ kind: 'line', key: line.key, label: view?.name || line.label })}
-                              style={[styles.discountChip, discounted && { borderColor: accent, backgroundColor: glow(0.08) }]}
-                              accessibilityRole="button" accessibilityLabel={`Rabat pozycji: ${formatShowcasePercent(line.discountPercent)}`}>
-                              <Feather name="percent" size={14} color={discounted ? accent : colors.text.tertiary} />
-                              <Text style={[styles.chipText, discounted && { color: accent }]}>{discounted ? `Rabat −${formatShowcasePercent(line.discountPercent)}` : 'Rabat'}</Text>
-                            </TouchableOpacity>
-                          ) : null}
+                          <TouchableOpacity onPress={() => openDiscount({ kind: 'line', key: line.key, label: view?.name || line.label })}
+                            style={[styles.discountChip, discounted && { borderColor: accent, backgroundColor: glow(0.08) }]}
+                            accessibilityRole="button" accessibilityLabel={`Rabat pozycji: ${formatShowcasePercent(line.discountPercent)}`}>
+                            <Feather name="percent" size={14} color={discounted ? accent : colors.text.tertiary} />
+                            <Text style={[styles.chipText, discounted && { color: accent }]}>{discounted ? `Rabat −${formatShowcasePercent(line.discountPercent)}` : 'Rabat'}</Text>
+                          </TouchableOpacity>
                         </View>
                         {line.priceOnRequest ? (
                           <TextInput defaultValue={line.agreedPrice == null ? '' : String(line.agreedPrice).replace('.', ',')} onChangeText={(value) => setLine(line.key, { agreedPrice: showcaseOfferPrice(value) })}
@@ -770,40 +798,39 @@ export default function ShowcaseOfferScreen() {
                 }} />
             </View>
 
-            {/* Rabat — na całą ofertę albo na każdą pozycję (preferencja sprzedawcy) */}
+            {/* Rabat — pozycji i całej oferty razem; jak klient widzi rabat w PDF (preferencja sprzedawcy) */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Rabat</Text>
+              <Text style={styles.label}>Rabat pozycji</Text>
+              <Text style={styles.muted}>„Rabat” pod pozycją albo przesunięcie pozycji w lewo.</Text>
+              {draft.lines.length > 1 ? (
+                <TouchableOpacity onPress={() => openDiscount({ kind: 'all' })} style={[styles.chip, styles.selfStart]} accessibilityRole="button">
+                  <Text style={[styles.chipText, { color: accent }]}>Ten sam rabat na wszystkie pozycje…</Text>
+                </TouchableOpacity>
+              ) : null}
+              <Text style={styles.label}>Rabat na całą ofertę</Text>
+              <View style={styles.wrap}>
+                {PRESETS.map((value) => chip(`${value}%`, draft.discountPercent === value, () => update((current) => ({ ...current, discountPercent: value })), `p${value}`))}
+                {chip(PRESETS.includes(draft.discountPercent) ? 'Inny…' : `Inny: ${formatShowcasePercent(draft.discountPercent)}`, !PRESETS.includes(draft.discountPercent),
+                  () => openDiscount({ kind: 'offer' }), 'custom')}
+              </View>
+              <Text style={styles.muted}>Liczy się od wartości pozycji po ich rabatach.</Text>
+              {preview && preview.effectiveDiscountPercent > 0 ? (
+                <Text style={styles.text}>Rabat łączny: <Text style={{ color: accent }}>{formatShowcasePercent(preview.effectiveDiscountPercent)}</Text> · −{formatShowcaseAmount(preview.lineDiscountAmount + preview.discountAmount)} netto</Text>
+              ) : null}
+              <Text style={styles.label}>Rabat w PDF dla klienta</Text>
               <View style={[styles.segment, { borderColor: glow(0.15) }]} accessibilityRole="tablist">
-                {SHOWCASE_OFFER_DISCOUNT_MODES.map((mode) => {
-                  const active = draft.discountMode === mode.key;
+                {SHOWCASE_OFFER_DISCOUNT_DISPLAYS.map((display) => {
+                  const active = draft.discountDisplay === display.key;
                   return (
-                    <TouchableOpacity key={mode.key} onPress={() => changeDiscountMode(mode.key)} style={[styles.segmentItem, active && { backgroundColor: accent }]}
-                      accessibilityRole="tab" accessibilityState={{ selected: active }}>
-                      <Text style={[styles.chipText, active && { color: surface, fontWeight: typography.fontWeights.semibold }]}>{mode.label}</Text>
+                    <TouchableOpacity key={display.key} onPress={() => changeDiscountDisplay(display.key)} style={[styles.segmentItem, active && { backgroundColor: accent }]}
+                      accessibilityRole="tab" accessibilityState={{ selected: active }} accessibilityHint={display.hint}>
+                      <Text style={[styles.chipText, active && { color: surface, fontWeight: typography.fontWeights.semibold }]} numberOfLines={1}>{display.label}</Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
-              {linesMode ? (
-                <>
-                  <Text style={styles.muted}>Rabat ustawiasz przy każdej pozycji: „Rabat” pod pozycją albo przesunięcie pozycji w lewo. Klient zobaczy rabat przy pozycji w PDF.</Text>
-                  {draft.lines.length > 1 ? (
-                    <TouchableOpacity onPress={() => openDiscount({ kind: 'all' })} style={[styles.chip, styles.selfStart]} accessibilityRole="button">
-                      <Text style={[styles.chipText, { color: accent }]}>Ten sam rabat na wszystkie pozycje…</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <View style={styles.wrap}>
-                    {PRESETS.map((value) => chip(`${value}%`, draft.discountPercent === value, () => update((current) => ({ ...current, discountPercent: value })), `p${value}`))}
-                    {chip(PRESETS.includes(draft.discountPercent) ? 'Inny…' : `Inny: ${formatShowcasePercent(draft.discountPercent)}`, !PRESETS.includes(draft.discountPercent),
-                      () => openDiscount({ kind: 'offer' }), 'custom')}
-                  </View>
-                  <Text style={styles.muted}>Jeden rabat od wartości wszystkich pozycji. Rabat na wybrane pozycje — „Na pozycje”.</Text>
-                </>
-              )}
-              <Text style={styles.muted}>Tryb rabatu zapamiętujemy — obowiązuje w kolejnych ofertach, także w CRM i na Macu.</Text>
+              <Text style={styles.muted}>{SHOWCASE_OFFER_DISCOUNT_DISPLAYS.find((display) => display.key === draft.discountDisplay)?.hint} Wybór zapamiętujemy — także w CRM i na Macu.</Text>
               {hint ? <Text style={styles.hint}>{hint}</Text> : null}
             </View>
 
@@ -821,10 +848,13 @@ export default function ShowcaseOfferScreen() {
                     <>
                       <View style={styles.totalRow}><Text style={styles.muted}>Wartość pozycji netto</Text><Text style={styles.muted}>{formatShowcaseAmount(preview.listNet + preview.lineDiscountAmount)}</Text></View>
                       {preview.lineDiscountAmount > 0 ? (
-                        <View style={styles.totalRow}><Text style={styles.muted}>Rabaty pozycji · łącznie {formatShowcasePercent(preview.effectiveDiscountPercent)}</Text><Text style={styles.muted}>−{formatShowcaseAmount(preview.lineDiscountAmount)}</Text></View>
+                        <View style={styles.totalRow}><Text style={styles.muted}>Rabaty pozycji</Text><Text style={styles.muted}>−{formatShowcaseAmount(preview.lineDiscountAmount)}</Text></View>
                       ) : null}
                       {preview.discountAmount > 0 ? (
                         <View style={styles.totalRow}><Text style={styles.muted}>Rabat na ofertę {formatShowcasePercent(preview.discountPercent)}</Text><Text style={styles.muted}>−{formatShowcaseAmount(preview.discountAmount)}</Text></View>
+                      ) : null}
+                      {preview.lineDiscountAmount > 0 && preview.discountAmount > 0 ? (
+                        <View style={styles.totalRow}><Text style={styles.muted}>Rabat łączny {formatShowcasePercent(preview.effectiveDiscountPercent)}</Text><Text style={styles.muted}>−{formatShowcaseAmount(preview.lineDiscountAmount + preview.discountAmount)}</Text></View>
                       ) : null}
                     </>
                   ) : null}
@@ -889,6 +919,9 @@ export default function ShowcaseOfferScreen() {
           : discountTarget?.kind === 'all' ? (preview ? preview.listNet + preview.lineDiscountAmount : null) : preview?.listNet ?? null}
         onCancel={() => setDiscountTarget(null)} onApply={applyDiscount} />
 
+      <PersonSheet visible={personPicker} persons={context?.persons || []} selected={newPerson ? 'new' : client.contactId} accent={accent} surface={surface}
+        onClose={() => setPersonPicker(false)} onChoose={choosePerson} />
+
       <AddLineModal visible={addingLine} accent={accent} surface={surface} replacing={replacing}
         onClose={() => { setAddingLine(false); setReplacing(null); }} onAdd={replacing ? replaceWith : addLine} onConfigure={configureProduct} />
 
@@ -904,6 +937,39 @@ export default function ShowcaseOfferScreen() {
         </View>
       </Modal>
     </KeyboardAvoidingView>
+  );
+}
+
+/** Wybór osoby kontaktowej firmy (lista na całej szerokości, dotyk): bez osoby, osoby firmy, nowa osoba. */
+function PersonSheet({ visible, persons, selected, accent, surface, onClose, onChoose }: {
+  visible: boolean; persons: ShowcaseOfferClientContext['persons']; selected: string | null; accent: string; surface: string;
+  onClose: () => void; onChoose: (personId: string | null) => void;
+}) {
+  const option = (key: string, title: string, detail: string, active: boolean, icon: React.ComponentProps<typeof Feather>['name'], value: string | null) => (
+    <TouchableOpacity key={key} onPress={() => onChoose(value)} style={[styles.inquiry, active && { borderColor: accent, backgroundColor: glow(0.06) }]}
+      accessibilityRole="button" accessibilityState={{ selected: active }}>
+      <Feather name={icon} size={18} color={active ? accent : colors.text.tertiary} />
+      <View style={styles.flex}>
+        <Text style={styles.text} numberOfLines={1}>{title}</Text>
+        {detail ? <Text style={styles.muted} numberOfLines={1}>{detail}</Text> : null}
+      </View>
+      {active ? <Feather name="check" size={18} color={accent} /> : null}
+    </TouchableOpacity>
+  );
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} supportedOrientations={['portrait', 'landscape']}>
+      <View style={styles.sheetBackdrop}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Zamknij wybór osoby" />
+        <View style={[styles.sheet, styles.personSheet, { backgroundColor: surface }]}>
+          <Text style={styles.heading}>Osoba kontaktowa</Text>
+          <ScrollView style={styles.personList} contentContainerStyle={styles.gapSm}>
+            {option('none', 'Bez osoby kontaktowej', 'Oferta na firmę', !selected, 'slash', null)}
+            {persons.map((person) => option(person.id, person.name, [person.email, person.phone].filter(Boolean).join(' · '), selected === person.id, 'user', person.id))}
+            {option('new', 'Nowa osoba kontaktowa', 'Imię, nazwisko, e-mail, telefon — bez duplikatów', selected === 'new', 'user-plus', 'new')}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1119,6 +1185,9 @@ const styles = StyleSheet.create({
   chip: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: borderRadius.full, borderWidth: 1, borderColor: glow(0.15) },
   segment: { flexDirection: 'row', borderRadius: borderRadius.full, borderWidth: 1, padding: 3, gap: 3 },
   selfStart: { alignSelf: 'flex-start' },
+  select: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: glow(0.15), backgroundColor: shade(0.2) },
+  personSheet: { width: '100%', maxWidth: 560, maxHeight: '80%' },
+  personList: { flexGrow: 0 },
   segmentItem: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.sm, borderRadius: borderRadius.full },
   chipText: { color: colors.text.primary, fontSize: typography.fontSizes.sm },
   chosen: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: borderRadius.lg, backgroundColor: shade(0.25) },

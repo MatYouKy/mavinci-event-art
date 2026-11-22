@@ -444,6 +444,24 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
     e.target.value = '';
   };
 
+  /** Wklejenie obrazu (np. zrzutu ekranu) w formularzu dodaje go do załączników; zwykły tekst wkleja się jak dotąd. */
+  const handleAttachmentPaste = (e: React.ClipboardEvent) => {
+    if (saving || savedTaskId) return;
+    const pasted = Array.from(e.clipboardData?.files || []);
+    if (!pasted.length) return;
+    if (!e.clipboardData.getData('text/plain')) e.preventDefault();
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const named = pasted.map((file, index) => (file.name && file.name !== 'image.png'
+      ? file
+      : new File([file], `obraz-ze-schowka-${stamp}${index ? `-${index + 1}` : ''}.${(file.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png'}`,
+        { type: file.type || 'image/png', lastModified: now.getTime() })));
+    setAttachmentFiles((previous) => [...previous, ...named.filter((file) =>
+      !previous.some((existing) => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified),
+    )]);
+  };
+
   const uploadTaskAttachments = async (taskId: string) => {
     if (!currentEmployee) throw new Error('Brak zalogowanego pracownika');
     for (const file of attachmentFiles) {
@@ -892,7 +910,7 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4 p-6">
+            <form onSubmit={handleSubmit} onPaste={handleAttachmentPaste} className="space-y-4 p-6">
               <fieldset disabled={saving || Boolean(savedTaskId)} className="space-y-4">
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Tytuł *</label>
@@ -923,7 +941,7 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
                   <input type="file" multiple onChange={handleAttachmentSelect} className="sr-only" disabled={saving || Boolean(savedTaskId)} />
                   <Paperclip className="h-4 w-4" /> Dodaj pliki
                 </label>
-                <p className="mt-2 text-xs text-[#e5e4e2]/60">Zdjęcia, PDF-y, dokumenty i inne pliki. Możesz wybrać kilka naraz.</p>
+                <p className="mt-2 text-xs text-[#e5e4e2]/60">Zdjęcia, PDF-y, dokumenty i inne pliki. Możesz wybrać kilka naraz albo wkleić zrzut ekranu (Ctrl+V / ⌘V).</p>
                 <div className="mt-3 space-y-2">
                   {attachmentFiles.map((file, index) => (
                     <div key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-3 rounded-lg bg-[#e5e4e2]/5 p-2">

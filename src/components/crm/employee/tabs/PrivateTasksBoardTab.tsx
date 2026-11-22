@@ -12,6 +12,8 @@ import {
   Calendar,
   Play,
   Clock,
+  FileText,
+  Paperclip,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { shouldAutomateTaskTimer } from '@/lib/CRM/tasks/taskTimerPreference';
@@ -20,6 +22,30 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useMobile } from '@/hooks/useMobile';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import TaskAssigneeAvatars, { Assignee } from '@/components/crm/TaskAssigneeAvatars';
+
+/** Miniatura wybranego załącznika (zdjęcie) albo ikona pliku — jak w formularzu „Zadania firmowe”. */
+function TaskAttachmentPreview({ file }: { file: File }) {
+  const [preview, setPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file.type.startsWith('image/')) { setPreview(null); return; }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  return preview
+    ? <img src={preview} alt={file.name} className="h-12 w-12 shrink-0 rounded object-cover" />
+    : <FileText className="h-12 w-12 shrink-0 p-2 text-[#d3bb73]" />;
+}
+
+/** Obraz wklejony ze schowka (np. zrzut ekranu) dostaje czytelną, niepowtarzalną nazwę. */
+function namePastedFile(file: File, index: number): File {
+  if (file.name && file.name !== 'image.png') return file;
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const extension = (file.type.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png';
+  return new File([file], `obraz-ze-schowka-${stamp}${index ? `-${index + 1}` : ''}.${extension}`, { type: file.type || 'image/png', lastModified: now.getTime() });
+}
 
 interface Task {
   owner_id: string;
@@ -78,6 +104,7 @@ export default function PrivateTasksBoardTab({
   const [showTimerModal, setShowTimerModal] = useState(false);
   const [taskToStart, setTaskToStart] = useState<Task | null>(null);
   const [activeTimer, setActiveTimer] = useState<any>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
 
   const isMobile = useMobile(1024);
   const [activeColumnIndex, setActiveColumnIndex] = useState(0);
@@ -229,8 +256,9 @@ export default function PrivateTasksBoardTab({
           }
 
           const isRelevant =
-            (newTask.is_private && newTask.owner_id === employeeId) ||
-            (!newTask.is_private && assignees?.some((a) => a.employee_id === employeeId));
+            !(newTask as Task & { is_inquiry?: boolean | null }).is_inquiry && (
+              (newTask.is_private && newTask.owner_id === employeeId) ||
+              (!newTask.is_private && assignees?.some((a) => a.employee_id === employeeId)));
 
           if (isRelevant) {
             setTasks((prevTasks) => [
@@ -337,7 +365,9 @@ export default function PrivateTasksBoardTab({
         `,
         )
         .eq('task_assignees.employee_id', employeeId)
-        .eq('is_private', false);
+        .eq('is_private', false)
+        // Zapytania są w lejku sprzedaży, nie na tablicy zadań (także te z dawnym przypisaniem).
+        .eq('is_inquiry', false);
 
       if (assignedError) throw assignedError;
 
@@ -671,6 +701,7 @@ export default function PrivateTasksBoardTab({
         due_date: '',
       });
     }
+    setAttachmentFiles([]);
     setShowModal(true);
   };
 
@@ -679,6 +710,52 @@ export default function PrivateTasksBoardTab({
     newTaskIdRef.current = null;
     setShowModal(false);
     setEditingTask(null);
+    setAttachmentFiles([]);
+  };
+
+  const addAttachmentFiles = (selected: File[]) => {
+    setAttachmentFiles((previous) => [...previous, ...selected.filter((file) =>
+      !previous.some((existing) => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified),
+    )]);
+  };
+
+  const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    addAttachmentFiles(Array.from(e.target.files || []));
+    e.target.value = '';
+  };
+
+  /** Wklejenie obrazu (np. zrzutu ekranu) w formularzu dodaje go do załączników; zwykły tekst wkleja się jak dotąd. */
+  const handleAttachmentPaste = (e: React.ClipboardEvent) => {
+    if (saving) return;
+    const pasted = Array.from(e.clipboardData?.files || []);
+    if (!pasted.length) return;
+    if (!e.clipboardData.getData('text/plain')) e.preventDefault();
+    addAttachmentFiles(pasted.map(namePastedFile));
+  };
+
+  const uploadTaskAttachments = async (taskId: string) => {
+    const uploader = currentEmployee?.id || employeeId;
+    for (const file of attachmentFiles) {
+      const extension = file.name.includes('.') ? file.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') : '';
+      const filePath = `task-attachments/${taskId}/${crypto.randomUUID()}${extension ? `.${extension}` : ''}`;
+      const { error: uploadError } = await supabase.storage.from('event-files').upload(filePath, file);
+      if (uploadError) throw new Error(`Nie udało się przesłać pliku „${file.name}”.`);
+      const { data: { publicUrl } } = supabase.storage.from('event-files').getPublicUrl(filePath);
+      const { error } = await supabase.from('task_attachments').insert({
+        task_id: taskId,
+        file_name: file.name,
+        file_url: publicUrl,
+        file_type: file.type || 'application/octet-stream',
+        file_size: file.size,
+        uploaded_by: uploader,
+      });
+      if (error) {
+        await supabase.storage.from('event-files').remove([filePath]);
+        throw new Error(`Nie udało się zapisać załącznika „${file.name}”.`);
+      }
+      // Wysłane pliki znikają z listy — ponowny zapis prześle tylko pozostałe.
+      setAttachmentFiles((previous) => previous.filter((pending) => pending !== file));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -693,7 +770,9 @@ export default function PrivateTasksBoardTab({
     savingRef.current = true;
     setSaving(true);
     let taskSaved = false;
+    let uploading = false;
     try {
+      let savedId: string;
       if (editingTask) {
         const { error } = await supabase
           .from('tasks')
@@ -707,7 +786,7 @@ export default function PrivateTasksBoardTab({
           .eq('id', editingTask.id);
 
         if (error) throw error;
-        showSnackbar('Zadanie zostało zaktualizowane', 'success');
+        savedId = editingTask.id;
       } else {
         const taskId = newTaskIdRef.current ?? crypto.randomUUID();
         newTaskIdRef.current = taskId;
@@ -737,20 +816,26 @@ export default function PrivateTasksBoardTab({
         }, { onConflict: 'task_id,employee_id', ignoreDuplicates: true });
 
         if (assignError) throw assignError;
-        showSnackbar('Zadanie zostało utworzone', 'success');
+        savedId = taskId;
       }
 
+      uploading = true;
+      await uploadTaskAttachments(savedId);
+      showSnackbar(editingTask ? 'Zadanie zostało zaktualizowane' : 'Zadanie zostało utworzone', 'success');
       savingRef.current = false;
       handleCloseModal();
       void fetchTasks();
     } catch (error) {
       console.error('Error saving private task:', error);
       showSnackbar(
-        taskSaved
-          ? 'Zadanie jest zapisane, ale nie udało się dokończyć przypisania. Ponów zapis — nie powstanie drugie zadanie.'
-          : 'Nie udało się potwierdzić zapisu zadania. Możesz ponowić zapis bez tworzenia duplikatu.',
+        uploading
+          ? `Zadanie jest zapisane. ${error instanceof Error ? error.message : 'Nie udało się przesłać załączników.'} Ponów zapis, aby przesłać pozostałe pliki — nie powstanie drugie zadanie.`
+          : taskSaved
+            ? 'Zadanie jest zapisane, ale nie udało się dokończyć przypisania. Ponów zapis — nie powstanie drugie zadanie.'
+            : 'Nie udało się potwierdzić zapisu zadania. Możesz ponowić zapis bez tworzenia duplikatu.',
         'error',
       );
+      if (uploading) void fetchTasks();
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -1060,7 +1145,7 @@ export default function PrivateTasksBoardTab({
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4 p-6">
+            <form onSubmit={handleSubmit} onPaste={handleAttachmentPaste} className="space-y-4 p-6">
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/80">Tytuł</label>
                 <input
@@ -1079,6 +1164,29 @@ export default function PrivateTasksBoardTab({
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="min-h-[100px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/80">Załączniki</label>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20">
+                  <input type="file" multiple onChange={handleAttachmentSelect} className="sr-only" disabled={saving} />
+                  <Paperclip className="h-4 w-4" /> Dodaj pliki
+                </label>
+                <p className="mt-2 text-xs text-[#e5e4e2]/60">Zdjęcia, PDF-y, dokumenty i inne pliki. Możesz wybrać kilka naraz albo wkleić zrzut ekranu (Ctrl+V / ⌘V).</p>
+                <div className="mt-3 space-y-2">
+                  {attachmentFiles.map((file, index) => (
+                    <div key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-3 rounded-lg bg-[#e5e4e2]/5 p-2">
+                      <TaskAttachmentPreview file={file} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-[#e5e4e2]" title={file.name}>{file.name}</p>
+                        <p className="text-xs text-[#e5e4e2]/60">{(file.size / 1024).toLocaleString('pl-PL', { maximumFractionDigits: 1 })} KB</p>
+                      </div>
+                      <button type="button" disabled={saving} onClick={() => setAttachmentFiles((previous) => previous.filter((_, i) => i !== index))} aria-label={`Usuń załącznik ${file.name}`} className="rounded p-2 text-red-400 hover:bg-red-500/10 disabled:opacity-50">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

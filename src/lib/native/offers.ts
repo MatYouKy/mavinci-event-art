@@ -286,7 +286,7 @@ function assumptionsView(offer: Row) {
 }
 
 /** Tabela „Podsumowanie” jak `OfferDetails` (pozycje, logistyka, rabaty pozycji, rabat na ofertę, razem — `getOfferSummary`). */
-function summaryView(offer: Row) {
+function summaryView(offer: Row, discountDisplay: string) {
   const totals = getOfferPricingTotals(offer);
   const summary = getOfferSummary(offer, totals);
   return {
@@ -300,6 +300,8 @@ function summaryView(offer: Row) {
     discount: {
       listNet: totals.listNet, taxPercent: totals.taxPercent, amount: totals.discountAmount, percent: totals.discountPercent,
       logisticsNet: summary.logisticsNet, lineDiscountNet: summary.lineDiscount,
+      /** Jak klient widzi rabat w PDF: `lines` (przy pozycjach) | `total` (rabat łączny) | `none` (tylko ceny po rabacie). */
+      display: discountDisplay,
     },
   };
 }
@@ -325,6 +327,9 @@ export async function offerDetail(ctx: NativeContext, id: string) {
     // Szkic wcześniej zaakceptowanej oferty (`OfferDraftRevisionActions`).
     ctx.supabase.from('offer_draft_revisions').select('saved_revision').eq('offer_id', key).maybeSingle(),
   ]);
+  // Rabat w PDF — osobno: bez migracji 20261124120000 kolumny nie ma (wtedy rabat przy pozycjach), a strona oferty działa dalej.
+  const displayRow = await ctx.supabase.from('offers').select('discount_display').eq('id', key).maybeSingle();
+  const discountDisplay = !displayRow.error && ['total', 'none'].includes(String((displayRow.data as Row | null)?.discount_display)) ? String((displayRow.data as Row).discount_display) : 'lines';
   const englishPdf = (english.data || null) as Row | null;
   const canManage = !permission.error && permission.data === true;
   const seller = offer.sales_channel === 'seller_portal';
@@ -446,7 +451,7 @@ export async function offerDetail(ctx: NativeContext, id: string) {
     assumptions: assumptionsView(offer),
     vatRate,
     items: items.map((item) => itemView(item, vatRate, thumbs)),
-    summary: summaryView(offer),
+    summary: summaryView(offer, discountDisplay),
     history: historyRows.map((row) => ({
       id: String(row.id),
       type: text(row.change_type),

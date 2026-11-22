@@ -1,8 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Nowe zadanie i edycja — jak formularz w CRM: tytuł, opis, załączniki (tablica firmowa), priorytet, kolumna, termin
-/// wykonania i przypisani pracownicy (tablica firmowa). Tablica prywatna zapisuje zadanie prywatne z identyfikatorem
+/// Nowe zadanie i edycja — jak formularz w CRM: tytuł, opis, załączniki (każda tablica, jak w aplikacji na telefonie), priorytet,
+/// kolumna, termin wykonania i przypisani pracownicy (tablica firmowa). Tablica prywatna zapisuje zadanie prywatne z identyfikatorem
 /// nadanym raz na formularz, więc ponowienie po zerwanym połączeniu nie tworzy duplikatu.
 @MainActor struct TaskEditorSheet: View {
     @ObservedObject var store: TasksStore
@@ -29,7 +29,7 @@ import UniformTypeIdentifiers
     @State private var prepared = false
 
     private var editing: BoardTask? { request.task }
-    /// Tablica firmowa i tablica wydarzenia: przypisania i załączniki (tablica prywatna — tylko własne zadania).
+    /// Tablica firmowa i tablica wydarzenia: przypisania (tablica prywatna — tylko własne zadania). Załączniki — na każdej tablicy.
     private var company: Bool { store.board != .mine }
     private var valid: Bool { !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var matches: [MeetingPerson] {
@@ -55,20 +55,18 @@ import UniformTypeIdentifiers
                 }
                 .disabled(savedID != nil)
 
-                if company {
-                    Section("Załączniki") {
-                        ForEach(files) { file in
-                            HStack {
-                                Image(systemName: file.contentType.hasPrefix("image/") ? "photo" : "doc").foregroundStyle(theme.accent)
-                                VStack(alignment: .leading) { Text(file.name).lineLimit(1); Text(file.sizeLabel).font(.caption).foregroundStyle(.secondary) }
-                                Spacer()
-                                Button { files.removeAll { $0.id == file.id } } label: { Image(systemName: "minus.circle.fill") }
-                                    .buttonStyle(.borderless).foregroundStyle(.red).disabled(saving || savedID != nil).help("Usuń załącznik")
-                            }
+                Section("Załączniki") {
+                    ForEach(files) { file in
+                        HStack {
+                            Image(systemName: file.contentType.hasPrefix("image/") ? "photo" : "doc").foregroundStyle(theme.accent)
+                            VStack(alignment: .leading) { Text(file.name).lineLimit(1); Text(file.sizeLabel).font(.caption).foregroundStyle(.secondary) }
+                            Spacer()
+                            Button { files.removeAll { $0.id == file.id } } label: { Image(systemName: "minus.circle.fill") }
+                                .buttonStyle(.borderless).foregroundStyle(.red).disabled(saving || savedID != nil).help("Usuń załącznik")
                         }
-                        Button { importing = true } label: { Label("Dodaj pliki", systemImage: "paperclip") }.disabled(saving || savedID != nil)
-                        Text("Zdjęcia, PDF-y, dokumenty i inne pliki. Możesz wybrać kilka naraz.").font(.caption).foregroundStyle(.secondary)
                     }
+                    Button { importing = true } label: { Label("Dodaj pliki", systemImage: "paperclip") }.disabled(saving || savedID != nil)
+                    Text("Zdjęcia, PDF-y, dokumenty i inne pliki. Możesz wybrać kilka naraz.").font(.caption).foregroundStyle(.secondary)
                 }
 
                 Section {
@@ -125,7 +123,7 @@ import UniformTypeIdentifiers
                     .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(!valid || saving)
             }.padding(16)
         }
-        .frame(minWidth: 560, idealWidth: 600, minHeight: 520, idealHeight: company ? 700 : 520)
+        .frame(minWidth: 560, idealWidth: 600, minHeight: 520, idealHeight: company ? 700 : 600)
         .background(theme.page)
         .overlay { if saving { PendingOverlay(text: savedID != nil ? "Przesyłanie załączników…" : "Zapisywanie zadania…") } }
         .interactiveDismissDisabled(saving)
@@ -177,7 +175,7 @@ import UniformTypeIdentifiers
                 savedID = id
             }
             // Załączniki po zapisie zadania; przesłane znikają z listy, więc ponowienie nie dubluje plików.
-            if let id, company {
+            if let id {
                 for file in files {
                     try await store.upload(file.url, to: id)
                     files.removeAll { $0.id == file.id }

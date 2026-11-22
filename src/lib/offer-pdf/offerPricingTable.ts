@@ -5,6 +5,8 @@ import { PDFDocument, PDFFont, PDFPage, rgb, RGB } from 'pdf-lib';
  * Item discounts: rows carrying `line_discount_percent` > 0 add a "Rabat" column and show their values after that discount;
  * `config.line_discount_amount` / `offer_discount_amount` / `offer_discount_percent` split the summary into
  * "before discount → item discounts → offer discount → total". Without them the single combined discount row stays as before.
+ * Compact layout: `cell_padding_x` / `cell_padding_y`, `summary_row_height`, `total_height`, `col_days_width` (defaults keep older
+ * templates as they were). Summary rows are separated by thin rules.
  */
 export function drawPaginatedOfferPricingTable(
   pdf: PDFDocument, pageIndex: number, items: any[], totalNet: number,
@@ -29,8 +31,12 @@ export function drawPaginatedOfferPricingTable(
   const fontSize = Math.max(7, Math.min(12, config.body_font_size || 9));
   const headerSize = Math.max(7, Math.min(11, config.header_font_size || 9));
   const lineHeight = fontSize + 3;
-  const headerHeight = Math.max(config.header_height || 34, headerSize * 2 + 12);
-  const rowHeight = Math.max(config.row_height || 27, lineHeight + 12);
+  const padX = Math.max(2, Math.min(8, Number(config.cell_padding_x ?? 5)));
+  const padY = Math.max(2, Math.min(10, Number(config.cell_padding_y ?? 6)));
+  const headerHeight = Math.max(config.header_height || 34, headerSize * 2 + 2 * padY);
+  const rowHeight = Math.max(config.row_height || 27, lineHeight + 2 * padY);
+  const summaryRowHeight = Math.max(fontSize + 2 * padY, Number(config.summary_row_height || 28));
+  const totalHeight = Math.max(fontSize * 2 + 14, Number(config.total_height || 44));
   const showSummary = config.show_summary !== false;
   const discount = Number(config.discount_amount || 0);
   // Split summary (item discounts and the offer discount) only when the caller provides both parts.
@@ -39,7 +45,7 @@ export function drawPaginatedOfferPricingTable(
   const offerDiscount = splitDiscount ? Math.max(0, Number(config.offer_discount_amount) || 0) : discount;
   const discountRows = discount > 0 ? 1 + (splitDiscount ? (lineDiscount > 0 ? 1 : 0) + (offerDiscount > 0 ? 1 : 0) : 1) : 0;
   const summaryGap = 12;
-  const summaryHeight = showSummary ? summaryGap + 44 + discountRows * 28 : 0;
+  const summaryHeight = showSummary ? summaryGap + totalHeight + discountRows * summaryRowHeight : 0;
   const bottom = 110; // Reserved for continuation notes and the document footer.
   const continuationTop = 122;
   const capacity = height - continuationTop - headerHeight - bottom;
@@ -52,7 +58,7 @@ export function drawPaginatedOfferPricingTable(
     { key: 'name', label: t('Nazwa pozycji'), width: 0, align: 'left' },
     ...(config.show_quantity === false ? [] : [{ key: 'quantity', label: t('Ilość'), width: config.col_qty_width || 34, align: 'center' as const }]),
     { key: 'unit', label: t('Jedn.'), width: config.col_unit_width || 32, align: 'center' },
-    { key: 'days', label: t('Dni'), width: 28, align: 'center' },
+    { key: 'days', label: t('Dni'), width: config.col_days_width || 28, align: 'center' },
   ];
   if (config.show_unit_price_net !== false) columns.push({ key: 'price', label: t('Cena jedn.\nnetto'), width: config.col_unit_price_width || 56, align: 'right' });
   if (items.some(item => Number(item.line_discount_percent) > 0)) columns.push({ key: 'discount', label: t('Rabat'), width: config.col_discount_width || 38, align: 'center' });
@@ -98,11 +104,11 @@ export function drawPaginatedOfferPricingTable(
     computedNet += net;
     computedGross += gross;
     const name = String(item.name || item.product?.name || t('Pozycja'));
-    const nameLines = wrap(name, columns[1].width - 10);
+    const nameLines = wrap(name, columns[1].width - 2 * padX);
     // Only calculation rows opt in: never substitute catalog equipment copy.
     const description = String(item.calculation_description || '').trim();
     const lines = [...nameLines, ...(description && description !== name.trim()
-      ? wrap(description, columns[1].width - 10) : [])];
+      ? wrap(description, columns[1].width - 2 * padX) : [])];
     const lineDiscountPercent = Number(item.line_discount_percent) || 0;
     const values = {
       lp: `${index + 1}.`, days: Number(item.days ?? 1).toLocaleString(english ? 'en-GB' : 'pl-PL'), quantity: quantity.toLocaleString(english ? 'en-GB' : 'pl-PL'), unit: item.unit || t('szt.'),
@@ -111,7 +117,7 @@ export function drawPaginatedOfferPricingTable(
     };
     for (let offset = 0; offset < lines.length; offset += maxLines) {
       const part = lines.slice(offset, offset + maxLines);
-      rows.push({ index, lines: part, values, height: Math.max(rowHeight, part.length * lineHeight + 12), continued: offset > 0, parentId: item.pricing_parent_id, descriptionStart: nameLines.length - offset });
+      rows.push({ index, lines: part, values, height: Math.max(rowHeight, part.length * lineHeight + 2 * padY), continued: offset > 0, parentId: item.pricing_parent_id, descriptionStart: nameLines.length - offset });
     }
   });
 
@@ -140,9 +146,9 @@ export function drawPaginatedOfferPricingTable(
   const drawCell = (page: PDFPage, value: string, x: number, y: number, w: number, size: number, font: PDFFont, ink: RGB, align: Column['align'] = 'left') => {
     const safeValue = String(value).replace(/[\r\n\t]/g, ' ');
     const naturalWidth = font.widthOfTextAtSize(safeValue, size);
-    const fitted = naturalWidth > w - 10 ? size * (w - 10) / naturalWidth : size;
+    const fitted = naturalWidth > w - 2 * padX ? size * (w - 2 * padX) / naturalWidth : size;
     const textWidth = font.widthOfTextAtSize(safeValue, fitted);
-    page.drawText(safeValue, { x: align === 'right' ? x + w - 5 - textWidth : align === 'center' ? x + (w - textWidth) / 2 : x + 5, y, size: fitted, font, color: ink });
+    page.drawText(safeValue, { x: align === 'right' ? x + w - padX - textWidth : align === 'center' ? x + (w - textWidth) / 2 : x + padX, y, size: fitted, font, color: ink });
   };
   const borderColor = color(config.border_color, '#ded9d4');
   const drawGrid = (page: PDFPage, top: number, end: number) => {
@@ -177,10 +183,10 @@ export function drawPaginatedOfferPricingTable(
       let x = left;
       columns.forEach(col => {
         if (col.key === 'name') {
-          row.lines.forEach((line, i) => drawCell(page, line, x, y - 6 - fontSize - i * lineHeight, col.width, i >= row.descriptionStart ? Math.max(7, fontSize - 1) : fontSize, regular, i >= row.descriptionStart ? color(config.description_color, '#575c66') : textColor));
+          row.lines.forEach((line, i) => drawCell(page, line, x, y - padY - fontSize - i * lineHeight, col.width, i >= row.descriptionStart ? Math.max(6.5, fontSize - 1) : fontSize, regular, i >= row.descriptionStart ? color(config.description_color, '#575c66') : textColor));
 
         }
-        else drawCell(page, row.continued ? (col.key === 'lp' ? `${row.index + 1}. ${english ? 'cont.' : 'cd.'}` : '') : row.values[col.key], x, y - 6 - fontSize, col.width, fontSize, regular, textColor, col.align);
+        else drawCell(page, row.continued ? (col.key === 'lp' ? `${row.index + 1}. ${english ? 'cont.' : 'cd.'}` : '') : row.values[col.key], x, y - padY - fontSize, col.width, fontSize, regular, textColor, col.align);
         x += col.width;
       });
       drawGrid(page, y, y - row.height);
@@ -200,15 +206,18 @@ export function drawPaginatedOfferPricingTable(
       if (discount > 0) {
         const listNet = Number(config.list_net ?? computedNet);
         const listGross = Number(config.list_gross ?? computedGross);
+        const textY = summaryRowHeight / 2 + fontSize / 2 - 0.5;
         const summaryRow = (label: string, netValue: number, grossValue: number) => {
-          page.drawRectangle({ x: left, y: y - 28, width: tableWidth, height: 28, color: color(config.row_odd_bg_color, '#f4f0e8') });
-          drawCell(page, label, left, y - 18, labelWidth, fontSize, bold, textColor);
+          page.drawRectangle({ x: left, y: y - summaryRowHeight, width: tableWidth, height: summaryRowHeight, color: color(config.row_odd_bg_color, '#f4f0e8') });
+          drawCell(page, label, left, y - textY, labelWidth, fontSize, bold, textColor);
           let x = left;
           columns.forEach(col => {
-            if (col.key === 'net' || col.key === 'gross') drawCell(page, money(col.key === 'net' ? netValue : grossValue), x, y - 18, col.width, fontSize, bold, textColor, 'right');
+            if (col.key === 'net' || col.key === 'gross') drawCell(page, money(col.key === 'net' ? netValue : grossValue), x, y - textY, col.width, fontSize, bold, textColor, 'right');
             x += col.width;
           });
-          y -= 28;
+          y -= summaryRowHeight;
+          // Separator: each summary row (before discount, item discounts, offer discount) stands apart from the next one.
+          page.drawLine({ start: { x: left, y }, end: { x: left + tableWidth, y }, thickness: 0.8, color: color(config.summary_separator_color, '#cbc0b2') });
         };
         summaryRow(t('RAZEM PRZED RABATEM (PLN)'), listNet, listGross);
         if (!splitDiscount) {
@@ -222,13 +231,13 @@ export function drawPaginatedOfferPricingTable(
             : `${english ? 'DISCOUNT' : 'RABAT'} ${offerPercent}% (PLN)`, -offerDiscount, -round((lineDiscount > 0 ? computedGross : listGross) - gross));
         }
       }
-      page.drawRectangle({ x: left, y: y - 44, width: tableWidth, height: 44, color: headerColor });
-      drawCell(page, partial ? t('RAZEM WPISANE CENY (PLN)') : discount > 0 ? t('RAZEM PO RABACIE (PLN)') : t('RAZEM (PLN)'), left, y - 26, labelWidth, fontSize, bold, headerText);
+      page.drawRectangle({ x: left, y: y - totalHeight, width: tableWidth, height: totalHeight, color: headerColor });
+      drawCell(page, partial ? t('RAZEM WPISANE CENY (PLN)') : discount > 0 ? t('RAZEM PO RABACIE (PLN)') : t('RAZEM (PLN)'), left, y - (totalHeight / 2 + fontSize / 2 - 1), labelWidth, fontSize, bold, headerText);
       let x = left;
       columns.forEach(col => {
         if (col.key === 'net' || col.key === 'gross') {
-          drawCell(page, col.key === 'net' ? t('Netto razem') : t('Brutto razem'), x, y - 13, col.width, 7, regular, headerText, 'right');
-          drawCell(page, hasPrices ? money(col.key === 'net' ? net : gross) : '—', x, y - 30, col.width, fontSize + 1, bold, headerText, 'right');
+          drawCell(page, col.key === 'net' ? t('Netto razem') : t('Brutto razem'), x, y - totalHeight * 0.295, col.width, Math.min(7, fontSize - 1), regular, headerText, 'right');
+          drawCell(page, hasPrices ? money(col.key === 'net' ? net : gross) : '—', x, y - totalHeight * 0.68, col.width, fontSize + 1, bold, headerText, 'right');
         }
         x += col.width;
       });

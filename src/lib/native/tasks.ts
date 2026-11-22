@@ -7,7 +7,8 @@ import { formatSystemSubject } from '@/lib/ui/systemLabels';
  * Zadania na Macu — te same tablice co w CRM:
  *  - „Zadania firmowe” (`/crm/tasks`, `TasksPageClient` + `tasksApi.getTasksList`): zadania niebędące prywatnymi, zapytaniami
  *    ani zadaniami wydarzeń,
- *  - „Moje zadania” (`/crm/tasks/mine`, `PrivateTasksBoardTab`): prywatne zadania pracownika i zadania, do których jest przypisany,
+ *  - „Moje zadania” (`/crm/tasks/mine`, `PrivateTasksBoardTab`): prywatne zadania pracownika i zadania, do których jest przypisany
+ *    (bez zapytań — te są w lejku sprzedaży),
  *  - „Zadania wydarzenia” (karta wydarzenia, `EventTasksBoard`): wszystkie zadania z `event_id` wydarzenia.
  * Tokenem pracownika (RLS). Przypisania, osoba pracująca, liczba komentarzy i załączników — zbiorczo, zmiany wykrywa skrót koszyków.
  */
@@ -62,8 +63,9 @@ async function loadBoard(ctx: NativeContext, board: TaskBoard, eventId?: string 
   } else {
     const [own, assigned] = await Promise.all([
       pages(() => s.from('tasks').select(FIELDS).eq('is_private', true).eq('owner_id', ctx.employee.id)),
+      // Zapytania (wiersze `is_inquiry`) są w lejku sprzedaży, nie na tablicy zadań — także te z dawnym przypisaniem.
       pages(() => s.from('tasks').select(`${FIELDS},task_assignees!inner(employee_id)`)
-        .eq('task_assignees.employee_id', ctx.employee.id).eq('is_private', false)),
+        .eq('task_assignees.employee_id', ctx.employee.id).eq('is_private', false).eq('is_inquiry', false)),
     ]);
     const byId = new Map<string, Row>();
     for (const task of [...own, ...assigned]) byId.set(String(task.id), task);

@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import type {
   ShowcaseBrand, ShowcaseConfigEdit, ShowcaseHome, ShowcaseItemDetail, ShowcaseOfferApproval, ShowcaseOfferClientContext, ShowcaseOfferClientHit,
-  ShowcaseOfferConfiguration, ShowcaseOfferDiscountMode, ShowcaseOfferDraft,
+  ShowcaseOfferConfiguration, ShowcaseOfferDiscountDisplay, ShowcaseOfferDraft,
   ShowcaseOfferEmailSetup, ShowcaseOfferLocation, ShowcaseOfferPreview, ShowcaseOfferResult, ShowcaseOfferSetup, ShowcaseOfferStatus,
   ShowcaseProductView, ShowcaseUrls,
 } from './showcaseShared';
@@ -103,9 +103,9 @@ export const showcaseOfferConfigure = (body: { productId?: string; snapshot?: Re
 export const showcaseOfferCreate = (draft: ShowcaseOfferDraft) => post<ShowcaseOfferResult>('offerCreate', { draft });
 export const showcaseOfferStatus = (id: string) => get<ShowcaseOfferStatus>('offerStatus', { id });
 export const showcaseOfferApproval = (id: string, note: string) => post<ShowcaseOfferApproval>('offerApproval', { id, note });
-/** Zapamiętany tryb rabatu sprzedawcy (cała oferta / każda pozycja) — ten sam w CRM, na Macu i w aplikacji. */
-export const showcaseOfferDiscountMode = (discountMode: ShowcaseOfferDiscountMode) =>
-  post<{ discountMode: ShowcaseOfferDiscountMode }>('offerDiscountMode', { discountMode });
+/** Zapamiętany sposób pokazania rabatu klientowi w PDF — ten sam w CRM, na Macu i w aplikacji. */
+export const showcaseOfferDiscountDisplay = (discountDisplay: ShowcaseOfferDiscountDisplay) =>
+  post<{ discountDisplay: ShowcaseOfferDiscountDisplay }>('offerDiscountDisplay', { discountDisplay });
 export const showcaseOfferPdf = (id: string) => get<{ url: string; name: string }>('offerPdf', { id });
 export const showcaseOfferEmail = (id: string) => get<ShowcaseOfferEmailSetup>('offerEmail', { id });
 export const showcaseOfferEmailSend = (body: { id: string; to: string; subject: string; text: string; accountId: string; recipientName: string }) =>

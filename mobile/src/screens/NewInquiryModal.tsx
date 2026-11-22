@@ -23,7 +23,27 @@ import { useAuth } from '../contexts/AuthContext';
 import SpecialDayNotice from '../components/SpecialDayNotice';
 import { toISODate } from '../lib/publicHolidays';
 import { SearchableDropdown } from '@/components/SearchableDropdown';
-import { sendTaskAssignmentPush } from '../services/taskAssignmentNotifications';
+import { SelectField } from '../components/Inquiries/InquiryKit';
+import { forgetFunnel, inquiriesPost } from '../lib/inquiriesApi';
+import { warsawDate } from '../lib/inquiryWorkspace';
+import { showcaseOfferDraftId } from '../lib/showcaseShared';
+
+/*
+ * Nowe zapytanie z telefonu (lista zapytań, kalendarz) — ten sam zapis co CRM i Mac (`/bridge/native/v1/inquiries`, `op=create`):
+ * zapytanie trafia do lejka sprzedaży (etap „Nowe”, źródło, opiekun albo wspólna kolejka / przydział automatyczny SLA),
+ * nie do listy zadań — bez przypisania jak do zadania i bez powiadomienia „nowe zadanie”.
+ */
+
+/** Źródła zapytania wpisywanego ręcznie (jak „Źródło” w oknie CRM i na Macu). */
+const INQUIRY_SOURCES = [
+  { id: 'phone', label: 'Telefon' },
+  { id: 'meeting', label: 'Rozmowa / spotkanie' },
+  { id: 'referral', label: 'Polecenie' },
+  { id: 'social_media', label: 'Social media' },
+  { id: 'other', label: 'Inne źródło' },
+];
+
+type CreateInquiryReply = { id?: string; ownerId?: string | null; ownerName?: string | null; autoAssigned?: boolean };
 
 interface NewInquiryModalProps {
   visible: boolean;
@@ -106,6 +126,12 @@ export default function NewInquiryModal({
   const [eventDate, setEventDate] = useState(initialDate || '');
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  // Inquiry subject and source (jak w CRM)
+  const [subject, setSubject] = useState('');
+  const [source, setSource] = useState('phone');
+  // Identyfikator nadany raz na formularz — ponowienie zapisu nie tworzy drugiego zapytania.
+  const inquiryIdRef = useRef<string | null>(null);
+
   // Other fields
   const [scope, setScope] = useState('');
   const [budget, setBudget] = useState('');
@@ -137,6 +163,9 @@ export default function NewInquiryModal({
   }, [visible, allowed]);
 
   const resetForm = () => {
+    inquiryIdRef.current = null;
+    setSubject('');
+    setSource('phone');
     setClientName('');
     setClientPhone('');
     setClientEmail('');
@@ -194,123 +223,51 @@ export default function NewInquiryModal({
     savingRef.current = true;
     setSaving(true);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
-        Alert.alert('Błąd', 'Brak aktywnej sesji. Zaloguj się ponownie.');
-        setSaving(false);
-        return;
-      }
-
-      const { data: minRow } = await supabase
-        .from('tasks')
-        .select('order_index')
-        .order('order_index', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      const newOrderIndex = (minRow?.order_index ?? 0) - 1;
-
+      const person = clientName.trim() || selectedContactLabel || '';
+      const clientText = person || selectedOrgLabel || '';
       const clientLabel =
-        selectedOrgLabel ||
-        selectedContactLabel ||
-        clientName.trim() ||
-        clientPhone.trim() ||
-        clientEmail.trim() ||
-        'nieznany';
-      const title = `Zapytanie: ${clientLabel}`;
-
-      const locationText = selectedLocationLabel || locationFreeText.trim() || '';
+        selectedOrgLabel || selectedContactLabel || clientName.trim() || clientPhone.trim() || clientEmail.trim() || 'nieznany';
       const selectedDate = eventDate.trim() || null;
+      const inquiryId = inquiryIdRef.current ?? showcaseOfferDraftId();
+      inquiryIdRef.current = inquiryId;
 
-      const descParts: string[] = [];
-      if (selectedDate) descParts.push(`Termin: ${selectedDate}`);
-      if (locationText) descParts.push(`Lokalizacja: ${locationText}`);
-      if (scope.trim()) descParts.push(`Zakres: ${scope.trim()}`);
-      if (budget.trim()) descParts.push(`Budżet: ${budget.trim()}`);
-      if (expectations.trim()) descParts.push(`Oczekiwania: ${expectations.trim()}`);
-      const contactBits = [clientName.trim(), clientPhone.trim(), clientEmail.trim()].filter(
-        Boolean,
-      );
-      if (contactBits.length) descParts.push(`Kontakt: ${contactBits.join(' | ')}`);
-      if (selectedOrgLabel) descParts.push(`Organizacja: ${selectedOrgLabel}`);
-      if (selectedContactLabel) descParts.push(`Osoba kontaktowa: ${selectedContactLabel}`);
-      if (selectedEmployeeLabel) descParts.push(`Przypisano: ${selectedEmployeeLabel}`);
-
-
-      const inquiryDetails = {
-        termin: selectedDate,
-        location_text: locationText || null,
-        location_id: selectedLocationId,
-        scope: scope.trim() || null,
-        budget: budget.trim() || null,
-        expectations: expectations.trim() || null,
-        client_text: clientName.trim() || null,
-        client_organization_id: selectedOrgId,
-        client_contact_id: selectedContactId,
-        client_phone: clientPhone.trim() || null,
-        client_email: clientEmail.trim() || null,
-        assigned_employee_id: selectedEmployeeId,
-      };
-
-      const { data: insertedTask, error: insertError } = await supabase
-      .from('tasks')
-      .insert([
-        {
-          title,
-          description: descParts.join('\n'),
-          priority: 'urgent',
-          status: 'todo',
-          board_column: 'todo',
-          order_index: newOrderIndex,
-          due_date: selectedDate
-            ? new Date(selectedDate + 'T23:59:00').toISOString()
-            : null,
-    
-          created_by: session.user.id,
-          owner_id: session.user.id,
-    
-          is_private: false,
-          event_id: null,
-          is_inquiry: true,
-          inquiry_details: inquiryDetails,
+      const reply = await inquiriesPost<CreateInquiryReply>('create', {
+        id: inquiryId,
+        form: {
+          subject: subject.trim() || clientLabel,
+          source,
+          // Sam dzień wydarzenia (jak z kalendarza na Macu): początek dnia w czasie polskim.
+          termin: selectedDate ? `${selectedDate}T00:00` : '',
+          dueDate: selectedDate ? warsawDate(selectedDate, '00:00').toISOString() : '',
+          scope: scope.trim(),
+          guestCount: '',
+          budget: budget.trim(),
+          expectations: expectations.trim(),
+          clientText,
+          clientCompany: person && selectedOrgLabel ? selectedOrgLabel : '',
+          clientOrganizationId: selectedOrgId || '',
+          clientContactId: selectedContactId || '',
+          clientPhone: clientPhone.trim(),
+          clientEmail: clientEmail.trim(),
+          locationText: selectedLocationLabel || locationFreeText.trim() || '',
+          locationId: selectedLocationId || '',
+          ownerId: selectedEmployeeId || '',
+          contacted: false,
+          nextActionAt: '',
         },
-      ])
-      .select('id')
-      .single();
-
-      if (insertError) {
-        Alert.alert('Błąd', 'Nie udało się zapisać zapytania: ' + insertError.message);
-        setSaving(false);
-        return;
-      }
-
-      // Assign employee if selected
-      if (selectedEmployeeId && insertedTask?.id) {
-        const emp = employees.find((e) => e.id === selectedEmployeeId);
-        if (emp) {
-          const { data: assignment, error: assignmentError } = await supabase
-            .from('task_assignees')
-            .insert({
-              task_id: insertedTask.id,
-              employee_id: emp.id,
-              assigned_by: employee?.id,
-            })
-            .select('id')
-            .single();
-
-          if (assignmentError) throw assignmentError;
-
-          await sendTaskAssignmentPush(assignment.id);
-        }
-      }
+      });
+      forgetFunnel();
 
       setSaving(false);
       resetForm();
       onSaved?.();
       onClose();
-      Alert.alert('Zapisano', 'Zapytanie zostało dodane do listy zadań z najwyższym priorytetem.');
+      Alert.alert(
+        'Zapisano',
+        reply.ownerName
+          ? `Zapytanie trafiło do lejka sprzedaży — opiekun: ${reply.ownerName}${reply.autoAssigned ? ' (przydział automatyczny)' : ''}.`
+          : 'Zapytanie trafiło do lejka sprzedaży — wspólna kolejka zapytań.',
+      );
     } catch (e: any) {
       Alert.alert('Błąd', e?.message || 'Nieznany błąd');
     } finally {
@@ -386,8 +343,26 @@ export default function NewInquiryModal({
             setOpenedDropdown(null);
           }}
         >
+          {/* Subject and source */}
+          <Text style={styles.sectionLabel}>Zapytanie</Text>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Temat (opcjonalnie)</Text>
+            <TextInput
+              style={styles.input}
+              value={subject}
+              onChangeText={setSubject}
+              placeholder="Np. oprawa techniczna wesela — bez tematu: nazwa klienta"
+              placeholderTextColor={colors.text.tertiary}
+              onFocus={handleFormInputFocus}
+            />
+          </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Źródło zapytania</Text>
+            <SelectField value={source} options={INQUIRY_SOURCES} onChange={setSource} />
+          </View>
+
           {/* Event date section */}
-          <Text style={styles.sectionLabel}>Data wydarzenia</Text>
+          <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Data wydarzenia</Text>
           {initialDate ? (
             <View style={styles.dateInfo}>
               <Feather name="calendar" size={16} color={colors.primary.gold} />
@@ -624,13 +599,13 @@ export default function NewInquiryModal({
           )}
 
           {/* Employee assignment */}
-          <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Przypisz pracownika</Text>
+          <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Opiekun zapytania</Text>
 
           <SearchableDropdown
             dropdownId="employee"
             openedDropdown={openedDropdown}
             setOpenedDropdown={setOpenedDropdown}
-            label="Pracownik odpowiedzialny"
+            label="Opiekun (bez wyboru — wspólna kolejka zapytań)"
             placeholder="Szukaj pracownika..."
             icon="user-check"
             items={employees}

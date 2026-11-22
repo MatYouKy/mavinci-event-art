@@ -1093,6 +1093,7 @@ struct OfferDiscountPreview {
     @State private var mode = "amount"
     @State private var value = ""
     @State private var saving = false
+    @State private var savingDisplay = false
 
     /// Rabat całej oferty: zarządzający, oferta wyceniana z pozycji (jak `canEditDiscount`).
     private var canEditDiscount: Bool { detail.canEdit && !detail.summary.calculation && state.canWrite }
@@ -1141,6 +1142,7 @@ struct OfferDiscountPreview {
                     .controlSize(.small)
                 }
             }
+            if !detail.summary.calculation { discountDisplayPicker }
             Divider()
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
                 GridRow {
@@ -1208,6 +1210,26 @@ struct OfferDiscountPreview {
     }
 
     private func signed(_ value: Double) -> String { value < 0 ? "−" + OfferText.amount(-value) : OfferText.amount(value) }
+
+    /// Jak klient widzi rabat w PDF (`OfferDetails` — „Rabat w PDF dla klienta”): przy pozycjach, rabat łączny, ceny po rabacie.
+    private var discountDisplayPicker: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Picker("Rabat w PDF dla klienta", selection: Binding(get: { base.display ?? "lines" }, set: { value in Task { await saveDisplay(value) } })) {
+                ForEach(OfferDetail.Discount.displays, id: \.key) { option in Text(option.label).tag(option.key) }
+            }
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            .disabled(!canEditDiscount || savingDisplay)
+            Text(base.displayHint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func saveDisplay(_ value: String) async {
+        guard value != (base.display ?? "lines"), !savingDisplay else { return }
+        savingDisplay = true
+        defer { savingDisplay = false }
+        _ = await store.change(detail.offer.id, "discountDisplaySave", ["display": .string(value)], success: "Zapisano — wygeneruj PDF ponownie, żeby klient zobaczył zmianę")
+    }
 }
 
 // MARK: Rabaty pozycji i rabat na ofertę (teksty jak w CRM — `OfferBasicInfo`, `OfferDetails`)
@@ -1225,6 +1247,14 @@ extension OfferDetail.Totals {
 }
 
 extension OfferDetail.Discount {
+    /// Rabat w PDF dla klienta (`offers.discount_display`).
+    static let displays: [(key: String, label: String, hint: String)] = [
+        ("lines", "Przy pozycjach", "Klient widzi rabat każdej pozycji i rabat na ofertę."),
+        ("total", "Rabat łączny", "Pozycje w cenach przed rabatem, pod tabelą jeden rabat łączny."),
+        ("none", "Ceny po rabacie", "Klient widzi tylko ceny po rabacie — bez kwoty rabatu."),
+    ]
+    var displayHint: String { Self.displays.first { $0.key == (display ?? "lines") }?.hint ?? "" }
+
     /// Podpowiedź edytora rabatu: podstawa (wartość po rabatach pozycji, z logistyką).
     var baseHint: String {
         let logistics = logisticsNet > 0 ? " — pozycje oferty wraz z logistyką" : ""

@@ -1668,6 +1668,38 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
     const sortedOfferItems = [...(offer.offer_items || [])]
       .sort((a: any, b: any) => a.display_order - b.display_order);
 
+    // Rabat w PDF (`offers.discount_display`): przy pozycjach (domyślnie), rabat łączny (pozycje w cenach przed rabatem, jeden rabat
+    // pod tabelą) albo tylko ceny po rabacie (rabat pozycji i całej oferty rozłożony na pozycje, bez kwot rabatu). Strona produktu
+    // i wiersz wyceny pokazują tę samą wartość pozycji.
+    const discountDisplay: 'lines' | 'total' | 'none' = offer.discount_display === 'total' || offer.discount_display === 'none' ? offer.discount_display : 'lines';
+    const pdfMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+    /** Rozkład kwoty na wartości (proporcjonalnie, w groszach; reszta przy największej wartości). */
+    const distributeMoney = (values: number[], amount: number) => {
+      const total = values.reduce((sum, value) => sum + Math.max(0, value), 0);
+      const target = Math.min(pdfMoney(Math.max(0, amount)), pdfMoney(total));
+      if (total <= 0 || target <= 0) return values.map(() => 0);
+      const shares = values.map((value) => pdfMoney(target * Math.max(0, value) / total));
+      const largest = values.indexOf(Math.max(...values));
+      shares[largest] = pdfMoney(shares[largest] + target - shares.reduce((sum, share) => sum + share, 0));
+      return shares;
+    };
+    const displayedItemNet = new Map<string, number>();
+    if (discountDisplay !== 'lines' && !demoMode) {
+      const listOf = (item: any) => pdfMoney(pdfMoney(Number(item.quantity ?? 1) * Number(item.days ?? 1) * Number(item.unit_price ?? 0))
+        + Number(item.transport_cost || 0) + Number(item.logistics_cost || 0));
+      if (discountDisplay === 'total') {
+        sortedOfferItems.forEach((item: any) => displayedItemNet.set(String(item.id), listOf(item)));
+      } else {
+        // Wartości po rabatach pozycji (+ logistyka oferty) — podstawa rabatu całej oferty; jego udział zmniejsza każdą pozycję.
+        const rows = [
+          ...sortedOfferItems.map((item: any) => ({ id: String(item.id), net: pdfMoney(Number(item.total ?? listOf(item))) })),
+          ...(offer.logistics_enabled && Number(offer.logistics_price_net || 0) > 0 ? [{ id: 'offer-logistics', net: pdfMoney(Number(offer.logistics_price_net)) }] : []),
+        ];
+        const shares = distributeMoney(rows.map((row) => row.net), Number(offer.discount_amount || 0));
+        rows.forEach((row, index) => displayedItemNet.set(row.id, pdfMoney(row.net - shares[index])));
+      }
+    }
+
     const { data: selectedTemplateCategory } = templateCategoryId
       ? await supabase
           .from('offer_template_categories')
@@ -2618,7 +2650,8 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
         : [];
       const quantity = Number(item.quantity || 0);
       const unitPrice = Number(item.unit_price || item.final_price || 0);
-      const itemTotal = Number(item.total ?? quantity * Number(item.days ?? 1) * unitPrice);
+      // Wartość pozycji jak w wycenie (rabat w PDF: rabat łączny — przed rabatem, ceny po rabacie — z udziałem rabatu oferty).
+      const itemTotal = displayedItemNet.get(String(item.id)) ?? Number(item.total ?? quantity * Number(item.days ?? 1) * unitPrice);
       const benefitsNarrative = benefits.length
         ? `Ten zakres łączy ${benefits
             .map((benefit: string) => benefit.trim().replace(/[.!?]+$/, '').toLocaleLowerCase('pl-PL'))
@@ -3200,7 +3233,7 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
           configured_scope_title:english?'INCLUDED IN THE PRICE':'CENA OBEJMUJE',
           configured_scope:chunk.join('\n'),
           configured_price:`${formatMoney(entry.itemTotal)} ${english?'NET':'NETTO'}`,
-          configured_quantity:`${entry.quantity} ${english?'set(s)':'zest. / podestów'} × ${entry.item.days??1} ${english?'day(s)':'dni'}${Number(entry.item.discount_percent||0)>0 ? (english?' · item discount included':' · po rabacie pozycji') : ''}${english?' · final total and VAT in the quotation summary':' · końcowa wartość i VAT w podsumowaniu oferty'}`,
+          configured_quantity:`${entry.quantity} ${english?'set(s)':'zest. / podestów'} × ${entry.item.days??1} ${english?'day(s)':'dni'}${Number(entry.item.discount_percent||0)>0 && discountDisplay==='lines' ? (english?' · item discount included':' · po rabacie pozycji') : ''}${english?' · final total and VAT in the quotation summary':' · końcowa wartość i VAT w podsumowaniu oferty'}`,
         });
         first=false;
       }while(offset<lines.length);
@@ -3316,24 +3349,34 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
         const addon = item.pricing_configuration?.addons?.find((addon: any) => row.id === `${item.id}:${addon.id}`);
         return { ...row, name: addon ? addon.name : item.name || row.name, description: '', calculation_note: '' };
       });
-      // Item discount (offer_items.discount_amount, never on transport/logistics): split over the item's rows (package base
-      // and add-ons) by their value, the remainder on the last row, so the rows add up to the recorded item total.
+      // Item discount shown in its rows ("Rabat przy pozycjach"; offer_items.discount_amount, never on transport/logistics): split
+      // over the item's rows (package base and add-ons) by their value, so the rows add up to the recorded item total.
       const itemDiscount = !usesAcceptedCalculation ? roundPricingMoney(Math.max(0, Number(item.discount_amount || 0))) : 0;
       const itemList = roundPricingMoney(rows.reduce((sum: number, row: any) => sum + Number(row.subtotal || 0), 0));
-      if (itemDiscount > 0 && itemList > 0) {
+      if (discountDisplay === 'lines' && itemDiscount > 0 && itemList > 0) {
         const percent = Number(item.discount_percent || 0) > 0 ? Number(item.discount_percent) : itemDiscount / itemList * 100;
-        let left = Math.min(itemDiscount, itemList);
+        const lists = rows.map((row: any) => roundPricingMoney(Number(row.subtotal || 0)));
+        const shares = distributeMoney(lists, itemDiscount);
         rows.forEach((row: any, index: number) => {
-          const list = roundPricingMoney(Number(row.subtotal || 0));
-          const share = index === rows.length - 1 ? left : Math.min(left, roundPricingMoney(itemDiscount * list / itemList));
-          left = roundPricingMoney(left - share);
-          rows[index] = { ...row, list_subtotal: list, subtotal: roundPricingMoney(list - share), line_discount_percent: Math.round(percent * 100) / 100 };
+          rows[index] = { ...row, list_subtotal: lists[index], subtotal: roundPricingMoney(lists[index] - shares[index]), line_discount_percent: Math.round(percent * 100) / 100 };
         });
       }
       // Preserve payable legacy transport/logistics beside the parent product.
       const extra = !usesAcceptedCalculation
         ? roundPricingMoney(Number(item.transport_cost || 0) + Number(item.logistics_cost || 0)) : 0;
       if (extra > 0) rows.push({ id: `${item.id}:logistics`, name: `${item.name} / transport i logistyka`, quantity: 1, unit: 'usł.', unit_price: extra, subtotal: extra, vat_rate: Number(offer.tax_percent ?? 23) });
+      // "Ceny po rabacie": rows carry the item's value after all discounts (no discount amounts), unit price from that value.
+      const target = discountDisplay === 'none' && !usesAcceptedCalculation ? displayedItemNet.get(String(item.id)) : undefined;
+      if (target !== undefined) {
+        const lists = rows.map((row: any) => roundPricingMoney(Number(row.subtotal || 0)));
+        const shares = distributeMoney(lists, roundPricingMoney(lists.reduce((sum: number, value: number) => sum + value, 0) - target));
+        rows.forEach((row: any, index: number) => {
+          if (shares[index] <= 0) return;
+          const net = roundPricingMoney(lists[index] - shares[index]);
+          const units = Number(row.quantity ?? 1) * Number(row.days ?? 1);
+          rows[index] = { ...row, list_subtotal: lists[index], subtotal: net, unit_price: units > 0 ? roundPricingMoney(net / units) : row.unit_price };
+        });
+      }
       return rows;
     });
     const listValueOf = (item: any) => Number(item.list_subtotal ?? item.subtotal ?? 0);
@@ -3351,6 +3394,22 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
     // Offer rows share its VAT rate; accepted calculations may retain mixed VAT rates.
     const pricingTotalGross = usesAcceptedCalculation ? pricingListGross
       : roundPricingMoney(pricingTotalNet * (1 + Number(offer.tax_percent ?? 23) / 100));
+    // Summary rows by `discountDisplay`: split (item discounts, offer discount), one combined discount, or none at all.
+    const pricingSummaryConfig = discountDisplay === 'none'
+      ? { discount_amount: 0 }
+      : discountDisplay === 'total'
+        ? { discount_amount: pricingDiscountAmount, list_net: pricingListNet, list_gross: pricingListGross, discount_percent: pricingDiscountPercent }
+        : {
+          discount_amount: pricingDiscountAmount, list_net: pricingListNet, list_gross: pricingListGross, discount_percent: pricingDiscountPercent,
+          line_discount_amount: pricingLineDiscount, offer_discount_amount: pricingOfferDiscount, offer_discount_percent: pricingOfferDiscountPercent,
+        };
+    // Compact quotation table (smaller type, tighter cells) — the page is narrow and the name column needs the room.
+    const compactPricingTable = {
+      col_lp_width: 18, col_qty_width: 26, col_unit_width: 28, col_days_width: 22, col_unit_price_width: 52, col_discount_width: 30,
+      col_vat_width: 26, col_value_net_width: 58, col_value_gross_width: 58,
+      row_height: 20, header_height: 28, body_font_size: 8, header_font_size: 7.5,
+      cell_padding_x: 3.5, cell_padding_y: 4.5, summary_row_height: 22, total_height: 36,
+    };
 
     const packageComparisonRequested = Boolean(
       offerData.package_mode && (offerData.offer_packages || []).length > 0,
@@ -3375,26 +3434,13 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
         {
           ...(pricingResult.tableConfig || {}),
           continuation_background_color: '#faf7f2',
-          col_lp_width: 22,
-          col_qty_width: 34,
-          col_unit_width: 32,
-          col_unit_price_width: 56,
-          col_vat_width: 34,
-          col_value_net_width: 66,
-          col_value_gross_width: 66,
-          header_height: 34,
+          ...compactPricingTable,
           show_unit_price_net: true,
           show_value_net: true,
           show_value_gross: true,
           show_vat_column: true,
           show_summary: !packageComparisonRequested,
-          discount_amount: pricingDiscountAmount,
-          list_net: pricingListNet,
-          list_gross: pricingListGross,
-          discount_percent: pricingDiscountPercent,
-          line_discount_amount: pricingLineDiscount,
-          offer_discount_amount: pricingOfferDiscount,
-          offer_discount_percent: pricingOfferDiscountPercent,
+          ...pricingSummaryConfig,
           total_gross: pricingTotalGross,
         },
       );
@@ -3432,7 +3478,7 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
           : 'Zakres i wartości wynikają bezpośrednio z pozycji zatwierdzonych w CRM.',
         total_label_title: demoMode ? (demoPartialPrices ? 'SUMA WPISANYCH CEN BRUTTO' : 'PRÓBNA WARTOŚĆ BRUTTO') : 'ŁĄCZNA WARTOŚĆ OFERTY BRUTTO',
         total_net_summary: `WARTOŚĆ NETTO: ${demoMode && !demoHasPrices ? '—' : formatMoney(pricingTotalNet)}`,
-        discount_summary: pricingDiscountAmount > 0
+        discount_summary: pricingDiscountAmount > 0 && discountDisplay !== 'none'
           ? `RABAT ${pricingDiscountPercent.toFixed(2)}% · ${formatMoney(pricingDiscountAmount)}`
           : '',
         pricing_note: demoMode
@@ -3469,25 +3515,9 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
             show_summary: !packageComparisonRequested,
             table_bottom_margin: 110,
             demo_mode: demoMode,
-            discount_amount: pricingDiscountAmount,
-            list_net: pricingListNet,
-            list_gross: pricingListGross,
-            discount_percent: pricingDiscountPercent,
-            line_discount_amount: pricingLineDiscount,
-            offer_discount_amount: pricingOfferDiscount,
-            offer_discount_percent: pricingOfferDiscountPercent,
+            ...pricingSummaryConfig,
             show_borders: false,
-            col_lp_width: 22,
-            col_qty_width: 34,
-            col_unit_width: 32,
-            col_unit_price_width: 56,
-            col_vat_width: 34,
-            col_value_net_width: 66,
-            col_value_gross_width: 66,
-            row_height: 27,
-            header_height: 34,
-            body_font_size: 9,
-            header_font_size: 9,
+            ...compactPricingTable,
           },
         );
       }

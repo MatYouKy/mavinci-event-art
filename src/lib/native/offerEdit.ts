@@ -423,6 +423,24 @@ export async function saveOfferDiscount(ctx: NativeContext, body: Row) {
   return offerDetail(ctx, id);
 }
 
+/**
+ * Jak klient widzi rabat w PDF (`offers.discount_display`, migracja 20261124120000): przy pozycjach, rabat łączny albo tylko ceny
+ * po rabacie — jak wybór w `OfferDetails`. Zmiana oznacza PDF jako nieaktualny (wyzwalacz wersji treści oferty).
+ */
+export async function saveOfferDiscountDisplay(ctx: NativeContext, body: Row) {
+  const id = uuid(body.id);
+  await editable(ctx, id, DISCOUNT_SELECT);
+  const display = body.display === 'total' || body.display === 'none' ? body.display : body.display === 'lines' ? 'lines' : null;
+  if (!display) fail('Nieznany sposób pokazania rabatu.');
+  const { data, error } = await ctx.supabase.from('offers').update({ discount_display: display }).eq('id', id).select('id').maybeSingle();
+  if (error) {
+    if (['42703', 'PGRST204'].includes(error.code || '')) fail('Wybór rabatu w PDF wymaga migracji 20261124120000_offer_discount_display.sql.');
+    fail(error.message || 'Nie udało się zapisać ustawienia rabatu.');
+  }
+  if (!data) fail('Nie masz uprawnień do zmiany tej oferty.');
+  return offerDetail(ctx, id);
+}
+
 // MARK: Pozycje: kolejność, układ w PDF, warianty, usunięcie
 
 async function offerItem(ctx: NativeContext, offer: string, item: unknown) {

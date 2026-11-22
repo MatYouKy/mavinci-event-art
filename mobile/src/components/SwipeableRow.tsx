@@ -49,6 +49,11 @@ interface SwipeableRowProps {
   /** Wygląd kontenera (np. zaokrąglenie) i wiersza (tło zasłaniające akcje). */
   containerStyle?: StyleProp<ViewStyle>;
   rowStyle?: StyleProp<ViewStyle>;
+  /**
+   * `slide` (domyślnie) — wiersz przesuwa się w lewo i odsłania akcje. `overlay` — wiersz stoi w miejscu (zdjęcie, nazwa, ilości
+   * zostają widoczne), a akcje wsuwają się z prawej nad jego prawą część; uchwyt ‹‹ jedzie razem z nimi.
+   */
+  reveal?: 'slide' | 'overlay';
 }
 
 export default function SwipeableRow({
@@ -63,7 +68,9 @@ export default function SwipeableRow({
   edgeHint = false,
   containerStyle,
   rowStyle,
+  reveal = 'slide',
 }: SwipeableRowProps) {
+  const overlay = reveal === 'overlay';
   const buttons: SwipeAction[] = actions?.length
     ? actions
     : [{ key: 'delete', label: actionLabel, icon: actionIcon, color: actionColor, onPress: () => onDelete?.() }];
@@ -262,6 +269,72 @@ export default function SwipeableRow({
     action.onPress();
   };
 
+  const actionButtons = buttons.map((action) => (
+    <TouchableOpacity
+      key={action.key}
+      style={[
+        styles.actionButton,
+        {
+          width: singleActionWidth,
+          backgroundColor: action.color,
+        },
+      ]}
+      activeOpacity={0.8}
+      onPress={() => handleActionPress(action)}
+      accessibilityRole="button"
+      accessibilityLabel={action.label}
+    >
+      <Feather
+        name={action.icon}
+        size={20}
+        color={action.foreground || '#FFFFFF'}
+      />
+
+      <Text style={[styles.actionText, action.foreground ? { color: action.foreground } : null]}>
+        {action.label}
+      </Text>
+    </TouchableOpacity>
+  ));
+
+  const edge = edgeHint ? (
+    <TouchableOpacity
+      style={overlay ? styles.edgeOverlay : styles.edge}
+      onPress={() => (isOpenRef.current ? close() : open())}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={buttons.map((action) => action.label).join(', ')}
+      accessibilityHint="Pokazuje akcje wiersza. Możesz też przesunąć wiersz w lewo."
+    >
+      <View style={styles.edgeGrip}>
+        <Feather name="chevrons-left" size={16} color={colors.text.tertiary} />
+      </View>
+    </TouchableOpacity>
+  ) : null;
+
+  if (overlay) {
+    // Wiersz bez ruchu; pas akcji (z uchwytem) przesuwa się o szerokość akcji: zamknięty — widać tylko uchwyt przy krawędzi.
+    return (
+      <View style={[styles.container, containerStyle]}>
+        <View {...panResponder.panHandlers} style={[styles.row, rowStyle]}>
+          {children}
+        </View>
+        <Animated.View
+          pointerEvents="box-none"
+          style={[
+            styles.overlayLayer,
+            {
+              width: actionWidth + SWIPE_EDGE_WIDTH,
+              transform: [{ translateX: Animated.add(translateX, actionWidth) }],
+            },
+          ]}
+        >
+          {edge || <View style={{ width: SWIPE_EDGE_WIDTH }} pointerEvents="none" />}
+          <View style={styles.overlayActions}>{actionButtons}</View>
+        </Animated.View>
+      </View>
+    );
+  }
+
   return (
     <View
       style={[
@@ -280,32 +353,7 @@ export default function SwipeableRow({
           },
         ]}
       >
-        {buttons.map((action) => (
-          <TouchableOpacity
-            key={action.key}
-            style={[
-              styles.actionButton,
-              {
-                width: singleActionWidth,
-                backgroundColor: action.color,
-              },
-            ]}
-            activeOpacity={0.8}
-            onPress={() => handleActionPress(action)}
-            accessibilityRole="button"
-            accessibilityLabel={action.label}
-          >
-            <Feather
-              name={action.icon}
-              size={20}
-              color={action.foreground || '#FFFFFF'}
-            />
-
-            <Text style={[styles.actionText, action.foreground ? { color: action.foreground } : null]}>
-              {action.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {actionButtons}
       </View>
 
       <Animated.View
@@ -319,20 +367,7 @@ export default function SwipeableRow({
         ]}
       >
         {children}
-        {edgeHint ? (
-          <TouchableOpacity
-            style={styles.edge}
-            onPress={() => (isOpenRef.current ? close() : open())}
-            disabled={disabled}
-            accessibilityRole="button"
-            accessibilityLabel={buttons.map((action) => action.label).join(', ')}
-            accessibilityHint="Pokazuje akcje wiersza. Możesz też przesunąć wiersz w lewo."
-          >
-            <View style={styles.edgeGrip}>
-              <Feather name="chevrons-left" size={16} color={colors.text.tertiary} />
-            </View>
-          </TouchableOpacity>
-        ) : null}
+        {edge}
       </Animated.View>
     </View>
   );
@@ -369,6 +404,30 @@ const styles = StyleSheet.create({
     width: 32,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  overlayLayer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+  },
+
+  edgeOverlay: {
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  overlayActions: {
+    flex: 1,
+    flexDirection: 'row',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: -2, height: 0 },
+    elevation: 6,
   },
 
   edgeGrip: {

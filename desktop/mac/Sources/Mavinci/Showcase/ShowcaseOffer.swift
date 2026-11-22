@@ -7,9 +7,10 @@ import AppKit
 // pakiecie albo w nagłówku karty, potem klient (z CRM albo nowy, bez duplikatów), otwarte zapytanie klienta albo nowe zapytanie
 // (źródło „Rozmowa / spotkanie”), rabat w progach (powyżej progu — prośba o akceptację przed wysłaniem), utworzenie oferty i PDF,
 // PDF na ekranie, wysyłka e-mailem, oferta albo zapytanie w aplikacji. Szkic oferty zostaje na dysku (zaszyfrowany, osobno dla
-// konta); ceny, rabat i akceptację liczy serwer CRM tymi samymi funkcjami co kreator ofert. Rabat — wg preferencji sprzedawcy
-// (zapamiętanej na serwerze, ta sama w CRM i na iPadzie): na całą ofertę albo osobno na każdą pozycję; zmiana trybu przelicza rabat
-// bez zmiany wartości oferty. Klient może być roboczy (sama nazwa, bez dodawania do bazy) — przypisuje się go później w CRM.
+// konta); ceny, rabat i akceptację liczy serwer CRM tymi samymi funkcjami co kreator ofert. Rabat pozycji i rabat całej oferty —
+// razem, z rabatem łącznym; jak klient widzi rabat w PDF (przy pozycjach, rabat łączny, same ceny po rabacie) — wybór sprzedawcy
+// zapamiętany na serwerze (ten sam w CRM i na iPadzie). Osoba kontaktowa firmy — lista wyboru. Klient może być roboczy (sama
+// nazwa, bez dodawania do bazy) — przypisuje się go później w CRM.
 // Nowe pola szkicu są opcjonalne — szkic zapisany na dysku przez starszą wersję aplikacji wczytuje się bez błędu.
 
 // MARK: Modele (jak `ShowcaseOffer*` w `showcaseShared.ts`)
@@ -25,7 +26,7 @@ struct ShowcaseOfferLine: Codable, Hashable, Identifiable {
     var days: Int
     var priceOnRequest: Bool
     var agreedPrice: Double?
-    /// Rabat pozycji (0–100%) — tylko w trybie rabatu „na pozycje”.
+    /// Rabat pozycji (0–100%); rabat całej oferty liczy się po nim.
     var discountPercent: Double?
     var itemId: String?
     var itemTitle: String
@@ -75,10 +76,10 @@ struct ShowcaseOfferLocation: Decodable, Identifiable, Hashable {
 struct ShowcaseOfferDraft: Codable, Equatable {
     var id: String
     var lines: [ShowcaseOfferLine] = []
-    /// Rabat całej oferty (tryb `offer`; w trybie `lines` — 0).
+    /// Rabat całej oferty — od wartości pozycji po ich rabatach.
     var discountPercent: Double = 0
-    /// `offer` | `lines` (`nil` — szkic sprzed wyboru trybu: rabat na całą ofertę).
-    var discountMode: String?
+    /// Jak klient widzi rabat w PDF: `lines` | `total` | `none` (`nil` — przy pozycjach).
+    var discountDisplay: String?
     var client = ShowcaseOfferClient()
     var inquiryId: String?
     var inquiryTitle = ""
@@ -88,8 +89,7 @@ struct ShowcaseOfferDraft: Codable, Equatable {
 
     static func empty() -> ShowcaseOfferDraft { ShowcaseOfferDraft(id: UUID().uuidString.lowercased()) }
 
-    var linesMode: Bool { discountMode == "lines" }
-    var hasDiscounts: Bool { discountPercent > 0 || lines.contains { $0.discount > 0 } }
+    var display: String { discountDisplay ?? "lines" }
 }
 
 struct ShowcaseOfferSetup: Decodable {
@@ -103,8 +103,8 @@ struct ShowcaseOfferSetup: Decodable {
     var canApprove: Bool
     var guardrails: Guardrails
     var validDays: Int
-    /// Zapamiętany tryb rabatu sprzedawcy (`offer` | `lines`); starszy serwer go nie wysyła.
-    var discountMode: String?
+    /// Zapamiętany rabat w PDF sprzedawcy (`lines` | `total` | `none`); starszy serwer go nie wysyła.
+    var discountDisplay: String?
 }
 
 struct ShowcaseOfferClientHit: Decodable, Hashable {
@@ -237,66 +237,17 @@ enum ShowcaseOfferRules {
     static let discountPresets: [Double] = [0, 5, 10, 15]
     /// Rabat pozycji z listy: 0–100% co 1 punkt.
     static let discountSteps: [Double] = (0...100).map(Double.init)
-    /// Tryby rabatu (jak `SHOWCASE_OFFER_DISCOUNT_MODES`).
-    static let discountModes: [(key: String, label: String)] = [("offer", "Na całą ofertę"), ("lines", "Na pozycje")]
+    /// Rabat w PDF dla klienta (jak `SHOWCASE_OFFER_DISCOUNT_DISPLAYS`).
+    static let discountDisplays: [(key: String, label: String, hint: String)] = [
+        ("lines", "Przy pozycjach", "Klient widzi rabat każdej pozycji i rabat na ofertę."),
+        ("total", "Rabat łączny", "Pozycje w cenach przed rabatem, pod tabelą jeden rabat łączny."),
+        ("none", "Ceny po rabacie", "Klient widzi tylko ceny po rabacie — bez kwoty rabatu."),
+    ]
 
     /// Lista wartości rabatu z bieżącą (np. 12,5% po zamianie trybu).
     static func discountSteps(including value: Double?) -> [Double] {
         guard let value, !discountSteps.contains(value) else { return discountSteps }
         return (discountSteps + [value]).sorted()
-    }
-
-    /// Zmiana trybu rabatu z zachowaniem wartości oferty (jak `switchShowcaseOfferDiscountMode`): na pozycje — każda pozycja dostaje
-    /// rabat całej oferty; na całą ofertę — rabat łączny pozycji z podglądu cen (bez podglądu — wspólny rabat pozycji albo 0).
-    static func switchMode(_ draft: ShowcaseOfferDraft, to mode: String, effective: Double?) -> ShowcaseOfferDraft {
-        var next = draft
-        guard (draft.discountMode ?? "offer") != mode else { return next }
-        next.discountMode = mode
-        if mode == "lines" {
-            let percent = min(100, max(0, (draft.discountPercent * 100).rounded() / 100))
-            next.discountPercent = 0
-            for index in next.lines.indices { next.lines[index].discountPercent = percent }
-        } else {
-            let first = draft.lines.first?.discount ?? 0
-            let shared = draft.lines.allSatisfy { $0.discount == first } ? first : 0
-            next.discountPercent = min(100, max(0, ((effective ?? shared) * 100).rounded() / 100))
-            for index in next.lines.indices { next.lines[index].discountPercent = nil }
-        }
-        return next
-    }
-
-    static func key(_ productID: String, kind: String, option: String?) -> String { "\(productID):\(kind):\(option ?? "")" }
-
-    /// Pozycja z produktu karty. Bez wariantu lub pakietu — wybór domyślny jak w CRM (pierwszy pakiet, polecany wariant, produkt);
-    /// produkt z konfiguratorem albo wycofany z katalogu nie trafia do oferty z pokazu.
-    static func line(for product: ShowcaseProduct, kind requested: String, option requestedOption: String?, item: (id: String, title: String)?) -> ShowcaseOfferLine? {
-        guard product.configurable != true, product.isActive else { return nil }
-        var kind = requested
-        var option = requestedOption
-        if kind == "product" {
-            if let first = product.packages.first {
-                kind = "package"; option = first.id
-            } else if let variant = product.variants.first(where: \.recommended) ?? product.variants.first {
-                kind = "variant"; option = variant.id
-            }
-        }
-        var label = product.name
-        var onRequest = false
-        if kind == "variant" {
-            guard let variant = product.variants.first(where: { $0.id == option }) else { return nil }
-            label = "\(product.name) — \(variant.name)"
-        } else if kind == "package" {
-            guard let pack = product.packages.first(where: { $0.id == option }) else { return nil }
-            label = "\(product.name) — \(pack.name)"
-            onRequest = pack.priceOnRequest
-        } else {
-            option = nil
-        }
-        let productID = product.id.lowercased()
-        let optionID = kind == "variant" ? option?.lowercased() : option
-        return ShowcaseOfferLine(key: key(productID, kind: kind, option: optionID), productId: productID, kind: kind, optionId: optionID,
-                                 label: String(label.prefix(240)), quantity: 1, days: 1, priceOnRequest: onRequest, agreedPrice: nil,
-                                 itemId: item?.id, itemTitle: String((item?.title ?? "").prefix(120)))
     }
 
     static func trimmed(_ value: String) -> String { value.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -403,22 +354,23 @@ enum ShowcaseOfferRules {
             let saved = await Task.detached(priority: .userInitiated) { try? sealed.load() }.value
             guard namespace == next, let saved, draft.lines.isEmpty else { return }
             replace(saved)
-            applyPreferredMode()
         }
     }
 
-    /// Tryb rabatu sprzedawcy w szkicu bez rabatów (zmiana trybu niczego tu nie przelicza).
-    private func applyPreferredMode() {
-        guard let mode = setup?.discountMode, (draft.discountMode ?? "offer") != mode, !draft.hasDiscounts else { return }
-        draft.discountMode = mode
+    /// Rabat w PDF z ustawień sprzedawcy — w szkicu jeszcze nieruszanym.
+    private func applyPreferredDisplay() {
+        guard let display = setup?.discountDisplay, draft.updatedAt.isEmpty, draft.display != display else { return }
+        var next = draft
+        next.discountDisplay = display
+        replace(next)
     }
 
-    /// Zmiana trybu rabatu: przeliczenie szkicu i zapamiętanie wyboru sprzedawcy na serwerze (`false` — wyboru nie zapamiętano).
-    func setDiscountMode(_ mode: String, effective: Double?) async -> Bool {
-        draft = ShowcaseOfferRules.switchMode(draft, to: mode, effective: effective)
-        setup?.discountMode = mode
+    /// Jak klient widzi rabat w PDF: zmiana w szkicu i zapamiętanie wyboru sprzedawcy na serwerze (`false` — wyboru nie zapamiętano).
+    func setDiscountDisplay(_ display: String) async -> Bool {
+        draft.discountDisplay = display
+        setup?.discountDisplay = display
         do {
-            _ = try await post("offerDiscountMode", ["discountMode": .string(mode)])
+            _ = try await post("offerDiscountDisplay", ["discountDisplay": .string(display)])
             return true
         } catch {
             return false
@@ -455,7 +407,7 @@ enum ShowcaseOfferRules {
     /// Nowy szkic po utworzeniu oferty (w trybie rabatu sprzedawcy).
     func clearDraft() {
         var next = ShowcaseOfferDraft.empty()
-        next.discountMode = setup?.discountMode
+        next.discountDisplay = setup?.discountDisplay
         draft = next
     }
 
@@ -507,9 +459,9 @@ enum ShowcaseOfferRules {
 
     func loadSetup() async {
         guard let data = try? await get(["op": "offerSetup"]), var value = try? JSONDecoder().decode(ShowcaseOfferSetup.self, from: data) else { return }
-        value.discountMode = value.discountMode == "lines" ? "lines" : "offer"
+        value.discountDisplay = ["total", "none"].contains(value.discountDisplay ?? "") ? value.discountDisplay : "lines"
         setup = value
-        applyPreferredMode()
+        applyPreferredDisplay()
     }
 
     func preview(_ draft: ShowcaseOfferDraft) async throws -> ShowcaseOfferPreview {
@@ -743,7 +695,7 @@ struct ShowcaseOfferAddButton: View {
 
     private var previewKey: String {
         let lines = draft.lines.map { "\($0.key)|\($0.quantity)|\($0.days)|\($0.agreedPrice ?? -1)|\($0.discount)" }.joined(separator: ",")
-        return "\(lines)#\(draft.discountPercent)#\(draft.discountMode ?? "offer")#\(draft.event.guestCount ?? -1)#\(result?.offerId ?? "")"
+        return "\(lines)#\(draft.discountPercent)#\(draft.event.guestCount ?? -1)#\(result?.offerId ?? "")"
     }
     private var clientKey: String { "\(client.organizationId ?? "")|\(client.contactId ?? "")" }
 
@@ -855,30 +807,16 @@ struct ShowcaseOfferAddButton: View {
             }
             if client.organizationId != nil, let context {
                 Text("Osoba kontaktowa").font(.caption).foregroundStyle(.secondary)
-                let flow = ShowcaseFlowRow(spacing: 6)
-                flow {
+                Picker("Osoba kontaktowa", selection: Binding(get: { newPerson ? "new" : (client.contactId ?? "") }, set: { choosePerson($0) })) {
+                    Text("Bez osoby kontaktowej (oferta na firmę)").tag("")
                     ForEach(context.persons) { person in
-                        let active = client.contactId == person.id
-                        Button {
-                            newPerson = false
-                            update { $0.client.contactId = active ? nil : person.id; $0.client.contactName = active ? "" : person.name
-                                $0.client.firstName = ""; $0.client.lastName = ""; $0.client.email = ""; $0.client.phone = "" }
-                        } label: {
-                            Text(person.name).padding(.horizontal, 10).padding(.vertical, 5)
-                                .background(Capsule().fill(active ? accent.opacity(0.2) : Color.secondary.opacity(0.1)))
-                                .overlay(Capsule().stroke(active ? accent : Color.clear))
-                        }
-                        .buttonStyle(.plain)
+                        Text([person.name, person.email.isEmpty ? person.phone : person.email].filter { !$0.isEmpty }.joined(separator: " — ")).tag(person.id)
                     }
-                    Button {
-                        newPerson.toggle()
-                        update { $0.client.contactId = nil; $0.client.contactName = "" }
-                    } label: {
-                        Label("Nowa osoba", systemImage: "plus").padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(Capsule().fill(newPerson ? accent.opacity(0.2) : Color.secondary.opacity(0.1)))
-                    }
-                    .buttonStyle(.plain)
+                    Divider()
+                    Text("+ Nowa osoba kontaktowa").tag("new")
                 }
+                .labelsHidden()
+                .frame(maxWidth: 420, alignment: .leading)
                 if newPerson { personFields }
             }
             if let context {
@@ -963,6 +901,22 @@ struct ShowcaseOfferAddButton: View {
         query = ""
         hits = []
         newPerson = false
+    }
+
+    /// Osoba kontaktowa z listy: bez osoby, osoba firmy albo nowa osoba (`new`).
+    private func choosePerson(_ id: String) {
+        if id == "new" {
+            newPerson = true
+            update { $0.client.contactId = nil; $0.client.contactName = "" }
+            return
+        }
+        newPerson = false
+        let person = context?.persons.first { $0.id == id }
+        update { next in
+            next.client.contactId = person?.id
+            next.client.contactName = person?.name ?? ""
+            next.client.firstName = ""; next.client.lastName = ""; next.client.email = ""; next.client.phone = ""
+        }
     }
 
     private func clearClient() {
@@ -1162,7 +1116,7 @@ struct ShowcaseOfferAddButton: View {
                 Spacer(minLength: 4)
                 VStack(alignment: .trailing, spacing: 1) {
                     Text(view.flatMap { $0.error == nil ? ShowcaseOfferRules.amount($0.subtotal) : nil } ?? "—").font(.body.weight(.semibold)).foregroundStyle(accent).monospacedDigit()
-                    if let view, view.error == nil, draft.linesMode, line.discount > 0, let list = view.listSubtotal {
+                    if let view, view.error == nil, line.discount > 0, let list = view.listSubtotal {
                         Text(ShowcaseOfferRules.amount(list)).font(.caption).strikethrough().foregroundStyle(.secondary).monospacedDigit()
                     }
                     if let view, view.error == nil {
@@ -1178,9 +1132,7 @@ struct ShowcaseOfferAddButton: View {
                     Stepper("\(line.quantity) szt.", value: lineBinding(line.key, \.quantity), in: 1...ShowcaseOfferRules.quantity)
                 }
                 Stepper(line.days == 1 ? "1 dzień" : "\(line.days) dni", value: lineBinding(line.key, \.days), in: 1...ShowcaseOfferRules.days)
-                if draft.linesMode {
-                    discountPicker(value: line.discount, label: "Rabat pozycji: \(line.label)") { value in setLineDiscount(line.key, value) }
-                }
+                discountPicker(value: line.discount, label: "Rabat pozycji: \(line.label)") { value in setLineDiscount(line.key, value) }
                 Spacer(minLength: 0)
                 Button(role: .destructive) { update { $0.lines.removeAll { $0.key == line.key } } } label: { Image(systemName: "trash") }
                     .buttonStyle(.borderless).help("Usuń z oferty")
@@ -1249,17 +1201,17 @@ struct ShowcaseOfferAddButton: View {
     private var discountSection: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
-                Picker("Rodzaj rabatu", selection: Binding(get: { draft.discountMode ?? "offer" }, set: { changeDiscountMode($0) })) {
-                    ForEach(ShowcaseOfferRules.discountModes, id: \.key) { mode in Text(mode.label).tag(mode.key) }
+                Text("Rabat pozycji").font(.caption).foregroundStyle(.secondary)
+                linesDiscountControls
+                Text("Rabat na całą ofertę").font(.caption).foregroundStyle(.secondary)
+                offerDiscountControls
+                Text("Liczy się od wartości pozycji po ich rabatach.").font(.caption).foregroundStyle(.secondary)
+                if let preview, (preview.effectiveDiscountPercent ?? 0) > 0 {
+                    Text("Rabat łączny: \(ShowcaseOfferRules.percent(preview.effectiveDiscountPercent ?? 0)) · −\(ShowcaseOfferRules.amount((preview.lineDiscountAmount ?? 0) + preview.discountAmount)) netto")
+                        .font(.callout)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                if draft.linesMode {
-                    linesDiscountControls
-                } else {
-                    offerDiscountControls
-                }
-                Text("Tryb rabatu zapamiętujemy — obowiązuje w kolejnych ofertach, także w CRM, na iPadzie i telefonie.").font(.caption).foregroundStyle(.secondary)
+                Divider()
+                discountDisplayControls
                 let hint = ShowcaseOfferRules.approvalHint(offer.setup, discount: preview?.effectiveDiscountPercent ?? preview?.discountPercent ?? draft.discountPercent)
                 if !hint.isEmpty { Label(hint, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.orange) }
             }
@@ -1268,9 +1220,9 @@ struct ShowcaseOfferAddButton: View {
         } label: { Label("Rabat", systemImage: "percent") }
     }
 
-    /// Tryb „na pozycje”: rabat przy pozycjach, ten sam rabat dla wszystkich naraz.
+    /// Rabat przy pozycjach (lista przy każdej pozycji) i ten sam rabat dla wszystkich naraz.
     @ViewBuilder private var linesDiscountControls: some View {
-        Text("Rabat ustawiasz przy każdej pozycji. Klient zobaczy rabat przy pozycji w PDF.").font(.callout).foregroundStyle(.secondary)
+        Text("Przy każdej pozycji — lista „Rabat” pod pozycją.").font(.callout).foregroundStyle(.secondary)
         if draft.lines.count > 1 {
             let first = draft.lines.first?.discount ?? 0
             let mixed = !draft.lines.allSatisfy { $0.discount == first }
@@ -1283,7 +1235,7 @@ struct ShowcaseOfferAddButton: View {
         }
     }
 
-    /// Tryb „na całą ofertę”: progi i własny procent.
+    /// Rabat całej oferty: progi i własny procent.
     private var offerDiscountControls: some View {
         HStack(spacing: 6) {
             ForEach(ShowcaseOfferRules.discountPresets, id: \.self) { value in
@@ -1307,28 +1259,25 @@ struct ShowcaseOfferAddButton: View {
         }
     }
 
-    /// Tryb rabatu (preferencja sprzedawcy): wartość oferty zostaje — rabat całej oferty trafia na każdą pozycję, a rabaty pozycji
-    /// zamieniają się w rabat łączny całej oferty (z aktualnego podglądu cen).
-    private func changeDiscountMode(_ mode: String) {
-        guard mode != (draft.discountMode ?? "offer") else { return }
-        let hadDiscount = draft.hasDiscounts
-        let effective = previewing || previewError != nil ? nil : preview?.effectiveDiscountPercent
-        let next = ShowcaseOfferRules.switchMode(draft, to: mode, effective: effective)
-        customDiscount = mode == "offer" && !ShowcaseOfferRules.discountPresets.contains(next.discountPercent)
-            ? ShowcaseOfferRules.percent(next.discountPercent).replacingOccurrences(of: "%", with: "") : ""
-        let message: String
-        if !hadDiscount {
-            message = mode == "lines" ? "Rabat ustawiasz teraz przy każdej pozycji." : "Rabat ustawiasz teraz na całą ofertę."
-        } else if mode == "lines" {
-            message = "Rabat \(ShowcaseOfferRules.percent(draft.discountPercent)) jest teraz przy każdej pozycji."
-        } else {
-            message = next.discountPercent > 0 ? "Rabaty pozycji zamienione na rabat całej oferty: \(ShowcaseOfferRules.percent(next.discountPercent))."
-                : "Rabaty pozycji usunięte — ustaw rabat na całą ofertę."
+    /// Jak klient widzi rabat w PDF (preferencja sprzedawcy, zapamiętana na serwerze dla kolejnych ofert).
+    private var discountDisplayControls: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Rabat w PDF dla klienta").font(.caption).foregroundStyle(.secondary)
+            Picker("Rabat w PDF dla klienta", selection: Binding(get: { draft.display }, set: { changeDiscountDisplay($0) })) {
+                ForEach(ShowcaseOfferRules.discountDisplays, id: \.key) { option in Text(option.label).tag(option.key) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Text((ShowcaseOfferRules.discountDisplays.first { $0.key == draft.display }?.hint ?? "") + " Wybór zapamiętujemy — także w CRM, na iPadzie i telefonie.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        notify(message, false)
+    }
+
+    private func changeDiscountDisplay(_ display: String) {
+        guard display != draft.display else { return }
         Task {
-            let saved = await offer.setDiscountMode(mode, effective: effective)
-            if !saved { notify("Nie udało się zapamiętać trybu rabatu na serwerze — obowiązuje w tej ofercie.", true) }
+            let saved = await offer.setDiscountDisplay(display)
+            if !saved { notify("Nie udało się zapamiętać ustawienia na serwerze — obowiązuje w tej ofercie.", true) }
         }
     }
 
@@ -1356,10 +1305,13 @@ struct ShowcaseOfferAddButton: View {
                 if preview.discountAmount > 0 || lineDiscount > 0 {
                     totalRow("Wartość pozycji netto", ShowcaseOfferRules.amount(preview.listNet + lineDiscount))
                     if lineDiscount > 0 {
-                        totalRow("Rabaty pozycji · łącznie \(ShowcaseOfferRules.percent(preview.effectiveDiscountPercent ?? 0))", "−" + ShowcaseOfferRules.amount(lineDiscount))
+                        totalRow("Rabaty pozycji", "−" + ShowcaseOfferRules.amount(lineDiscount))
                     }
                     if preview.discountAmount > 0 {
-                        totalRow("Rabat \(ShowcaseOfferRules.percent(preview.discountPercent))", "−" + ShowcaseOfferRules.amount(preview.discountAmount))
+                        totalRow("Rabat na ofertę \(ShowcaseOfferRules.percent(preview.discountPercent))", "−" + ShowcaseOfferRules.amount(preview.discountAmount))
+                    }
+                    if lineDiscount > 0 && preview.discountAmount > 0 {
+                        totalRow("Rabat łączny \(ShowcaseOfferRules.percent(preview.effectiveDiscountPercent ?? 0))", "−" + ShowcaseOfferRules.amount(lineDiscount + preview.discountAmount))
                     }
                 }
                 totalRow("Netto · VAT \(Int(preview.taxPercent))% \(ShowcaseOfferRules.amount(preview.tax))", ShowcaseOfferRules.amount(preview.net))

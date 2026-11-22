@@ -84,7 +84,7 @@ export const EVENT_STEP_ROLE_LABELS: Record<EventStepRole, string> = {
   warehouse: 'Magazyn',
   manager: 'Kierownik realizacji',
   driver: 'Kierowca',
-  admin: 'Administrator',
+  admin: 'Administracja i finanse',
   author: 'Prowadzący wydarzenie',
 };
 
@@ -197,6 +197,16 @@ export const EVENT_STEP_TARGET_TAB: Record<string, string> = {
 
 const LIVE_STATUSES: EventStepStatus[] = ['open', 'in_progress', 'problem'];
 
+/**
+ * „Biorę to” (przypisanie kroku do siebie) ma sens tylko tam, gdzie krok wykonuje konkretna osoba.
+ * Kroki administracji i finansów zamykane przez system (faktura, wpłata, zatwierdzenie podsumowania) zamyka samo zdarzenie
+ * w systemie — każdy z uprawnieniem do faktur widzi je w kolejce, ale nie „bierze” ich na siebie.
+ */
+export function eventStepCanBeTaken(step: Pick<EventStep, 'owner_role' | 'system_managed' | 'is_mine'>): boolean {
+  if (step.is_mine) return false;
+  return !(step.system_managed && step.owner_role === 'admin');
+}
+
 export function isEventStepLive(step: Pick<EventStep, 'status'>): boolean {
   return LIVE_STATUSES.includes(step.status);
 }
@@ -208,7 +218,7 @@ export function eventStepAvailableActions(step: EventStep): EventStepAction[] {
   if (live && step.can_act) {
     if (!step.system_managed) actions.push('done');
     if (step.source !== 'system' && step.status !== 'in_progress') actions.push('start');
-    if (!step.is_mine) actions.push('take');
+    if (eventStepCanBeTaken(step)) actions.push('take');
     actions.push('problem');
   }
   if (live && step.can_override) actions.push('skip');
@@ -566,7 +576,7 @@ export const EVENT_STEPS_HELP: EventStepsHelpSection[] = [
   },
   {
     role: 'admin',
-    title: 'Administrator',
+    title: 'Administracja i finanse',
     summary: 'Pilnujesz terminów całego procesu i rozliczenia wydarzenia.',
     responsibilities: [
       'Faktura i wpłata za wydarzenie — kroki rozliczenia zamykają się same po wystawieniu faktury i zaksięgowaniu wpłaty.',

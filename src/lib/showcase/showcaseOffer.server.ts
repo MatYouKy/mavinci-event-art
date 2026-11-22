@@ -12,8 +12,8 @@ import type { ProductConfigurationSnapshot } from '@/lib/CRM/Offers/modularProdu
 import { fail, isObject, isUuid, text, type Row } from '@/lib/social/socialCommon.server';
 import { inquiryTitleLabel, systemLabel } from '@/lib/ui/systemLabels';
 import {
-  SHOWCASE_OFFER_LIMITS, isShowcaseOfferDiscountMode, isShowcaseOfferEmail, isShowcaseOfferPlaceholder, normalizeShowcaseOfferDraft, showcaseOfferProblem,
-  showcaseOfferScope, type ShowcaseOfferApproval, type ShowcaseOfferDiscountMode, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferDraft,
+  SHOWCASE_OFFER_LIMITS, isShowcaseOfferDiscountDisplay, isShowcaseOfferEmail, isShowcaseOfferPlaceholder, normalizeShowcaseOfferDraft, showcaseOfferProblem,
+  showcaseOfferScope, type ShowcaseOfferApproval, type ShowcaseOfferDiscountDisplay, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferDraft,
   type ShowcaseConfigNode, type ShowcaseConfigView, type ShowcaseOfferConfiguration,
   type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferLine, type ShowcaseOfferLocation, type ShowcaseOfferPerson,
   type ShowcaseOfferPreview,
@@ -105,13 +105,13 @@ const personName = (row: Row) => text(row.full_name).trim() || [text(row.first_n
 
 // MARK: Ustawienia
 
-/** Sekcja `offerWizard` ustawień pracownika (`employees.preferences`) — tryb rabatu w ofercie. */
+/** Sekcja `offerWizard` ustawień pracownika (`employees.preferences`) — sposób pokazania rabatu w PDF oferty. */
 const offerWizardPreferences = (preferences: unknown): Row => {
   const wizard = isObject(preferences) ? (preferences as Row).offerWizard : null;
   return isObject(wizard) ? (wizard as Row) : {};
 };
 
-/** Czy pracownik tworzy oferty z pokazu, progi rabatu, czy sam akceptuje rabaty i jego tryb rabatu (cała oferta / pozycje). */
+/** Czy pracownik tworzy oferty z pokazu, progi rabatu, czy sam akceptuje rabaty i jak pokazuje rabat klientowi w PDF. */
 export async function showcaseOfferSetup(ctx: NativeContext): Promise<ShowcaseOfferSetup> {
   const [allowed, approve, limits, profile] = await Promise.all([
     ctx.supabase.rpc('sales_showcase_offer_can'),
@@ -122,7 +122,7 @@ export async function showcaseOfferSetup(ctx: NativeContext): Promise<ShowcaseOf
   if (allowed.error && !missingFunction(allowed.error)) fail('Nie udało się sprawdzić uprawnień do ofert.', 500);
   const guard = (limits.data || null) as Row | null;
   const enabled = allowed.data === true;
-  const savedMode = offerWizardPreferences((profile.data as Row | null)?.preferences).discountMode;
+  const savedDisplay = offerWizardPreferences((profile.data as Row | null)?.preferences).discountDisplay;
   return {
     canOffer: enabled,
     reason: allowed.error ? MIGRATION : enabled ? '' : DENIED,
@@ -133,24 +133,24 @@ export async function showcaseOfferSetup(ctx: NativeContext): Promise<ShowcaseOf
       minMarginPercent: number(guard?.min_margin_percent, 25),
     },
     validDays: SHOWCASE_OFFER_LIMITS.validDays,
-    discountMode: isShowcaseOfferDiscountMode(savedMode) ? savedMode : 'offer',
+    discountDisplay: isShowcaseOfferDiscountDisplay(savedDisplay) ? savedDisplay : 'lines',
   };
 }
 
 /**
- * Zapamiętanie trybu rabatu sprzedawcy (`employees.preferences.offerWizard.discountMode`) — ten sam w CRM, na Macu, iPadzie
- * i telefonie. Własny wiersz pracownika, jego tokenem (RLS); pozostałe ustawienia zostają bez zmian.
+ * Zapamiętanie, jak sprzedawca pokazuje rabat klientowi w PDF (`employees.preferences.offerWizard.discountDisplay`) — to samo w CRM,
+ * na Macu, iPadzie i telefonie. Własny wiersz pracownika, jego tokenem (RLS); pozostałe ustawienia zostają bez zmian.
  */
-export async function showcaseOfferDiscountMode(ctx: NativeContext, body: Row): Promise<{ discountMode: ShowcaseOfferDiscountMode }> {
-  if (!isShowcaseOfferDiscountMode(body.discountMode)) fail('Nieznany tryb rabatu.', 400);
-  const discountMode = body.discountMode;
+export async function showcaseOfferDiscountDisplay(ctx: NativeContext, body: Row): Promise<{ discountDisplay: ShowcaseOfferDiscountDisplay }> {
+  if (!isShowcaseOfferDiscountDisplay(body.discountDisplay)) fail('Nieznany sposób pokazania rabatu.', 400);
+  const discountDisplay = body.discountDisplay;
   const { data, error } = await ctx.supabase.from('employees').select('preferences').eq('id', ctx.employee.id).maybeSingle();
   if (error || !data) fail('Nie udało się odczytać ustawień.', 500);
   const preferences = isObject((data as Row).preferences) ? ((data as Row).preferences as Row) : {};
-  const next = { ...preferences, offerWizard: { ...offerWizardPreferences(preferences), discountMode } };
+  const next = { ...preferences, offerWizard: { ...offerWizardPreferences(preferences), discountDisplay } };
   const saved = await ctx.supabase.from('employees').update({ preferences: next }).eq('id', ctx.employee.id).select('id').maybeSingle();
-  if (saved.error || !saved.data) fail('Nie udało się zapamiętać trybu rabatu.', 500);
-  return { discountMode };
+  if (saved.error || !saved.data) fail('Nie udało się zapamiętać ustawienia rabatu w PDF.', 500);
+  return { discountDisplay };
 }
 
 // MARK: Klient
@@ -775,6 +775,11 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
   }
   const { error: totalsError } = await ctx.supabase.from('offers').update(totals).eq('id', offer.id);
   if (totalsError) failWith('Oferta została utworzona, ale nie udało się zapisać rabatu. Otwórz ją w CRM i sprawdź rabat.', 400, keep);
+  // Rabat w PDF inny niż domyślny („przy pozycjach”) — bez migracji 20261124120000 PDF pokaże rabat przy pozycjach.
+  if (draft.discountDisplay !== 'lines') {
+    const { error: displayError } = await ctx.supabase.from('offers').update({ discount_display: draft.discountDisplay }).eq('id', offer.id);
+    if (displayError) console.warn('[showcase] discount_display', displayError.code, displayError.message);
+  }
   // Najnowsza oferta zapytania (jak „Nowa oferta” w zapytaniu) — bez blokowania, gdy zapytanie zmienił ktoś inny.
   await ctx.supabase.from('tasks').update({ linked_offer_id: offer.id }).eq('id', inquiryId);
 

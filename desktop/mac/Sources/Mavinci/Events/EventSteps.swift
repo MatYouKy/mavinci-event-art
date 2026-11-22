@@ -58,7 +58,7 @@ struct EventStepsSnapshot: Codable, Hashable {
 enum EventStepRules {
     static let roles: [String: String] = [
         "sales": "Sprzedawca", "warehouse": "Magazyn", "manager": "Kierownik realizacji", "driver": "Kierowca",
-        "admin": "Administrator", "author": "Prowadzący wydarzenie",
+        "admin": "Administracja i finanse", "author": "Prowadzący wydarzenie",
     ]
     static let stages: [(String, String)] = [
         ("formalities", "Formalności"), ("handoff", "Przekazanie"), ("preparation", "Przygotowanie i zamówienia"),
@@ -136,13 +136,19 @@ enum EventStepRules {
         if step.live && step.can_act == true {
             if step.system_managed != true { result.append("done") }
             if step.source != "system" && step.status != "in_progress" { result.append("start") }
-            if !step.mine { result.append("take") }
+            if canBeTaken(step) { result.append("take") }
             result.append("problem")
         }
         if step.live && step.can_override == true { result.append("skip") }
         let reopenable = step.status == "skipped" || (step.status == "done" && !processKeys.contains(step.key))
         if reopenable && (step.can_override == true || step.completed_by_me == true) { result.append("reopen") }
         return result
+    }
+    /// „Biorę to” (`eventStepCanBeTaken`): nie przy własnym kroku i nie przy krokach administracji i finansów zamykanych przez system
+    /// (faktura, wpłata, zatwierdzenie podsumowania) — te zamyka samo zdarzenie w systemie.
+    static func canBeTaken(_ step: EventStep) -> Bool {
+        if step.mine { return false }
+        return !(step.system_managed == true && step.owner_role == "admin")
     }
     static func primary(_ step: EventStep, _ actions: [String]) -> String? {
         if step.kind == "order" && actions.contains("start") { return "start" }

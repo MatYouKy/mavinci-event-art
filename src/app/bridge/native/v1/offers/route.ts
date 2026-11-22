@@ -13,6 +13,7 @@ import {
   saveOfferAssumptions,
   saveOfferBasic,
   saveOfferDiscount,
+  saveOfferDiscountDisplay,
   updateOfferItemPresentation,
 } from '@/lib/native/offerEdit';
 import {
@@ -73,7 +74,7 @@ export const maxDuration = 300;
  * oferty), op=pdf&id=… (podpisany adres zapisanego PDF), op=editor&id=… (dane do edycji informacji podstawowych),
  * op=contacts&organization=… (osoby kontaktowe organizacji), op=calculations&id=…&event=… (kalkulacje), op=assumptions&id=…;
  * POST op=status (szkic, wysłana, odrzucona, wygasła) | delete | linkLocation {id, locationId} (miejsce oferty → lokalizacja, okładka
- * z jej „Tłem ofert”) | basicSave | assumptionsSave | assumptionsAI | discountSave |
+ * z jej „Tłem ofert”) | basicSave | assumptionsSave | assumptionsAI | discountSave | discountDisplaySave {id, display: lines | total | none} |
  * itemsReorder | itemPresentation (układ w PDF, warianty) | itemDelete (`src/lib/native/offerEdit.ts`);
  * pozycje (`src/lib/native/offerItems.ts`): GET op=itemCatalog&id=… | itemEditor&id=…&item=…; POST op=itemPreview (wycena
  * szkicu) | itemAdd | itemUpdate | audienceSave (liczba osób i stołów do wyceny);
@@ -160,6 +161,7 @@ export async function POST(request: Request) {
       case 'assumptionsSave': return nativeJson(await saveOfferAssumptions(ctx, body));
       case 'assumptionsAI': return nativeJson(await draftOfferAssumptions(ctx, body));
       case 'discountSave': return nativeJson(await saveOfferDiscount(ctx, body));
+      case 'discountDisplaySave': return nativeJson(await saveOfferDiscountDisplay(ctx, body));
       case 'itemsReorder': return nativeJson(await reorderOfferItems(ctx, body));
       case 'itemPresentation': return nativeJson(await updateOfferItemPresentation(ctx, body));
       case 'itemDelete': return nativeJson(await deleteOfferItem(ctx, body));
