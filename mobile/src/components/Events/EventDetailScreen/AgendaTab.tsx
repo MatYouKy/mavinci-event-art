@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   agendaTime: { fontSize: 11, color: colors.primary.gold, fontWeight: '700', marginBottom: 2 },
-  agendaTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 14, color: colors.text.primary, fontWeight: '600' },
+  agendaTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 14, color: colors.text.primary, fontWeight: '400' },
   agendaDesc: { fontSize: 12, color: colors.text.secondary, marginTop: 2, lineHeight: 18 },
   agendaNotesSection: {
     marginTop: 16,
@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
   agendaNotesSectionTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text.secondary,
     marginBottom: 8,
     textTransform: 'uppercase',
@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '400',
     color: colors.text.primary,
   },
 

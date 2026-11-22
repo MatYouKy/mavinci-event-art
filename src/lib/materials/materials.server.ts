@@ -1,14 +1,14 @@
 import 'server-only';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { NativeContext } from '@/lib/native/auth';
 import { evaluateInBrowser } from '@/lib/print/pdfRenderer.server';
 import {
-  MATERIALS_MAX_FILE_BYTES, MATERIALS_MAX_BATCH, NO_MATERIAL_ACCESS, cleanMaterialName, cleanMaterialTags, materialExtension,
-  materialKind, numberedMaterialName, type MaterialAccess, type MaterialKind, type MaterialSystemFolder,
+  MATERIALS_MAX_FILE_BYTES, MATERIALS_MAX_BATCH, MATERIAL_ALBUM_LIMITS, NO_MATERIAL_ACCESS, cleanMaterialAlbumName, cleanMaterialName,
+  cleanMaterialTags, materialExtension, materialKind, numberedMaterialName, type MaterialAccess, type MaterialKind, type MaterialSystemFolder,
 } from './materialsShared';
 
 /*
- * Materiały — baza plików firmy (`/bridge/native/v1/materials`: CRM, w kolejnych etapach Finder, Mac i telefon).
+ * Materiały — baza plików firmy (`/bridge/native/v1/materials`: CRM, Finder — Mavinci → Materiały, aplikacja na Maca i telefon).
  * Wszystko tokenem pracownika — RLS i funkcje bazy z migracji `20261120120000_materials_library.sql`, więc każdy klient widzi
  * dokładnie to, co w CRM. Treść plików nie przechodzi przez serwer: wysyłka i pobieranie przez podpisane adresy magazynu
  * (prywatny bucket `materials`). Serwer potwierdza wysyłkę (rozmiar i typ z magazynu), robi miniatury zdjęć, gdy klient
@@ -968,8 +968,26 @@ async function trashWithBatches(ctx: NativeContext, ids: string[]) {
 const trashIdsOf = (value: unknown) =>
   Array.from(new Set((Array.isArray(value) ? value : []).map((v) => String(v).toLowerCase()).filter((v) => UUID.test(v)))).slice(0, 500);
 
+/** Wpisy kosza po identyfikatorach usuniętych plików i folderów (Finder zna tylko je) — najnowszy wpis każdego elementu. */
+async function trashIdsOfItems(ctx: NativeContext, value: unknown): Promise<string[]> {
+  const itemIds = trashIdsOf(value);
+  if (!itemIds.length) return [];
+  const { data, error } = await ctx.supabase.from('material_trash').select('id,item_id,deleted_at').in('item_id', itemIds)
+    .order('deleted_at', { ascending: false });
+  if (error) dbFail(error, 'Nie udało się odczytać kosza.');
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const r of (data || []) as Row[]) {
+    if (seen.has(r.item_id)) continue;
+    seen.add(r.item_id);
+    ids.push(r.id as string);
+  }
+  return ids;
+}
+
+/** Przywrócenie z kosza: `ids` — wpisy kosza (CRM), `itemIds` — usunięte pliki i foldery (Finder). */
 export async function materialsRestore(ctx: NativeContext, body: Row) {
-  const ids = trashIdsOf(body.ids);
+  const ids = Array.from(new Set([...trashIdsOf(body.ids), ...(await trashIdsOfItems(ctx, body.itemIds))]));
   if (!ids.length) return { restored: 0, skipped: 0 };
   const { data, error } = await ctx.supabase.rpc('restore_material_trash', { p_ids: ids });
   if (error) dbFail(error, 'Nie udało się przywrócić.');
@@ -994,9 +1012,9 @@ async function dropTrash(ctx: NativeContext, ids: string[]) {
   return (removed || []).length;
 }
 
-/** Usunięcie na zawsze (wskazane wpisy albo cały kosz marki: `companyId` + `all: true`). */
+/** Usunięcie na zawsze (wskazane wpisy, usunięte elementy z Findera — `itemIds`, albo cały kosz marki: `companyId` + `all: true`). */
 export async function materialsDeleteForever(ctx: NativeContext, body: Row) {
-  let ids = trashIdsOf(body.ids);
+  let ids = Array.from(new Set([...trashIdsOf(body.ids), ...(await trashIdsOfItems(ctx, body.itemIds))]));
   if (body.all === true) {
     const companyId = uuidOf(body.companyId, 'Wybierz markę.');
     await requireAccess(ctx, companyId, 'manage');
@@ -1043,4 +1061,471 @@ export async function materialsPurge(ctx: NativeContext) {
   ]);
   const { data: tombstones } = await s.rpc('purge_material_tombstones');
   return { trash, versions: (versions || []).length, uploads: (dropped || []).length, objects, tombstones: Number(tombstones || 0) };
+}
+
+// MARK: Finder — Mavinci → Materiały → marka → foldery i pliki (rozszerzenie File Provider aplikacji na Maca)
+//
+// Mac trzyma kopię całego drzewa (bez treści plików — ta pobiera się przy otwarciu): `sync` na start, potem `changes` od
+// kursora (zmienione foldery i pliki, ślady usunięć z `material_tombstones`, z zakładką 5 min) i lista marek z zakresami
+// (odebrany dostęp albo zmiana „zarządzania” — Mac porównuje z kopią). Kursor starszy niż 25 dni albo za dużo zmian →
+// `reset` (Mac wczytuje wszystko od nowa). Zapis: `createFolder`, `prepareUpload` / `completeUpload` (jak w CRM),
+// `update` (nazwa, folder; treść — `prepareUpload` z `replaceId`), `finderRemove` (do kosza), `restore` / `deleteForever`
+// z `itemIds`. Kosz w Finderze: elementy usunięte przez zalogowanego pracownika (`finderTrash`).
+
+const SYNC_OVERLAP_MS = 5 * 60_000;
+const SYNC_CURSOR_MAX_AGE_MS = 25 * 24 * 3600_000;
+const SYNC_MAX_ROWS = 100_000;
+const CHANGES_MAX_ROWS = 20_000;
+const SYNC_FILE_COLUMNS =
+  'id,company_id,folder_id,name,status,mime_type,size_bytes,content_sha256,content_version,meta_version,created_at,updated_at';
+
+export type MaterialSyncCompany = { id: string; name: string; manage: boolean };
+/** Plik w Finderze — bez miniatur i autorów (podpisywanie adresów tysięcy plików przy każdej synchronizacji jest zbędne). */
+export type MaterialSyncFile = {
+  id: string; companyId: string; folderId: string | null; name: string; mime: string; size: number; sha256: string | null;
+  contentVersion: number; metaVersion: number; createdAt: string | null; updatedAt: string | null;
+};
+
+const syncFile = (r: Row): MaterialSyncFile => ({
+  id: r.id,
+  companyId: r.company_id,
+  folderId: r.folder_id ?? null,
+  name: text(r.name) || 'plik',
+  mime: text(r.mime_type) || 'application/octet-stream',
+  size: Number(r.size_bytes || 0),
+  sha256: r.content_sha256 ?? null,
+  contentVersion: Number(r.content_version || 1),
+  metaVersion: Number(r.meta_version || 1),
+  createdAt: r.created_at ?? null,
+  updatedAt: r.updated_at ?? null,
+});
+
+/** Wszystkie wiersze stronami po 1000 z informacją o przekroczeniu limitu (niepełna lista nie może udawać pełnej). */
+async function fetchRows(build: (from: number, to: number) => Page, max: number) {
+  const rows: any[] = [];
+  for (let from = 0; from < max; from += PAGE) {
+    const { data, error } = await build(from, from + PAGE - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE) return { rows, truncated: false };
+  }
+  return { rows, truncated: true };
+}
+
+/** Marki z dostępem do Materiałów i zakres „zarządzanie” (dodawanie, zmiany i kosz w Finderze). */
+async function syncCompanies(ctx: NativeContext): Promise<MaterialSyncCompany[]> {
+  return (await materialCompanies(ctx)).map((c) => ({ id: c.id, name: c.name, manage: c.access.manage }));
+}
+
+/** Całe drzewo Materiałów pracownika (wszystkie marki z dostępem). Bez dostępu — pusta lista marek (Finder ukrywa folder). */
+export async function materialsSync(ctx: NativeContext) {
+  const cursor = new Date().toISOString();
+  const companies = await syncCompanies(ctx);
+  if (!companies.length) return { cursor, companies, folders: [], files: [] };
+  const ids = companies.map((c) => c.id);
+  const s = ctx.supabase;
+  const [folders, files] = await Promise.all([
+    fetchRows((a, b) => s.from('material_folders').select(FOLDER_COLUMNS).in('company_id', ids).order('id').range(a, b), SYNC_MAX_ROWS),
+    fetchRows((a, b) => s.from('material_files').select(SYNC_FILE_COLUMNS).in('company_id', ids).eq('status', 'ready')
+      .order('id').range(a, b), SYNC_MAX_ROWS),
+  ]).catch((error) => dbFail(error, 'Nie udało się pobrać Materiałów.'));
+  if (folders.truncated || files.truncated) fail('W Materiałach jest za dużo plików, by pokazać je w Finderze.', 413);
+  return { cursor, companies, folders: folders.rows.map(folderItem), files: files.rows.map(syncFile) };
+}
+
+/** Zmiany od kursora: foldery, gotowe pliki, usunięcia i bieżąca lista marek. */
+export async function materialsChanges(ctx: NativeContext, since: string | null) {
+  const started = Date.now();
+  const cursor = new Date(started).toISOString();
+  const sinceMs = since ? Date.parse(since) : NaN;
+  if (!Number.isFinite(sinceMs) || started - sinceMs > SYNC_CURSOR_MAX_AGE_MS) return { cursor, reset: true };
+  const from = new Date(sinceMs - SYNC_OVERLAP_MS).toISOString();
+  const companies = await syncCompanies(ctx);
+  if (!companies.length) return { cursor, reset: false, companies, folders: [], files: [], deleted: [] };
+  const ids = companies.map((c) => c.id);
+  const s = ctx.supabase;
+  const [folders, files, tombstones] = await Promise.all([
+    fetchRows((a, b) => s.from('material_folders').select(FOLDER_COLUMNS).in('company_id', ids).gte('updated_at', from)
+      .order('updated_at').order('id').range(a, b), CHANGES_MAX_ROWS),
+    fetchRows((a, b) => s.from('material_files').select(SYNC_FILE_COLUMNS).in('company_id', ids).eq('status', 'ready')
+      .gte('updated_at', from).order('updated_at').order('id').range(a, b), CHANGES_MAX_ROWS),
+    fetchRows((a, b) => s.from('material_tombstones').select('id,kind,item_id,company_id,deleted_at').in('company_id', ids)
+      .gte('deleted_at', from).order('id').range(a, b), CHANGES_MAX_ROWS),
+  ]).catch((error) => dbFail(error, 'Nie udało się pobrać zmian w Materiałach.'));
+  if (folders.truncated || files.truncated || tombstones.truncated) return { cursor, reset: true };
+  // Element, który znów istnieje (np. przywrócony z kosza), wygrywa ze swoim śladem usunięcia.
+  const alive = new Set<string>([...folders.rows.map((f) => f.id as string), ...files.rows.map((f) => f.id as string)]);
+  const deleted = new Map<string, { kind: 'file' | 'folder'; id: string; companyId: string }>();
+  for (const t of tombstones.rows) {
+    if (alive.has(t.item_id)) continue;
+    deleted.set(t.item_id, { kind: t.kind === 'folder' ? 'folder' : 'file', id: t.item_id, companyId: t.company_id });
+  }
+  return {
+    cursor,
+    reset: false,
+    companies,
+    folders: folders.rows.map(folderItem),
+    files: files.rows.map(syncFile),
+    deleted: Array.from(deleted.values()),
+  };
+}
+
+/** Jeden folder albo gotowy plik (Finder pyta o element spoza kopii). */
+export async function materialsSyncItem(ctx: NativeContext, kind: string, idValue: string) {
+  const id = uuidOf(idValue, 'Nie znaleziono elementu.', 404);
+  if (kind === 'folder') return { item: folderItem(await folderRow(ctx, id)) };
+  const row = await fileRow(ctx, id);
+  if (row.status !== 'ready') fail('Nie znaleziono pliku.', 404);
+  return { item: syncFile(row) };
+}
+
+/** Plik z najnowszego wpisu kosza (stan sprzed usunięcia) — albo 404. */
+async function trashedFileRow(ctx: NativeContext, id: string): Promise<Row> {
+  const { data, error } = await ctx.supabase.from('material_trash')
+    .select('item_id,company_id,parent_folder_id,name,storage_path,size_bytes,mime_type,snapshot,deleted_at')
+    .eq('item_id', id).eq('kind', 'file').order('deleted_at', { ascending: false }).limit(1).maybeSingle();
+  if (error) dbFail(error, 'Nie udało się odczytać pliku.');
+  if (!data) fail('Nie znaleziono pliku.', 404);
+  const t = data as Row;
+  return {
+    ...(t.snapshot && typeof t.snapshot === 'object' ? (t.snapshot as Row) : {}),
+    id: t.item_id, company_id: t.company_id, folder_id: t.parent_folder_id, name: t.name, storage_path: t.storage_path,
+    size_bytes: t.size_bytes, mime_type: t.mime_type,
+  };
+}
+
+/** Podpisany adres treści (1 h) i aktualne wersje pliku; plik w koszu (podgląd w Koszu Findera) — treść z wpisu kosza. */
+export async function materialsDownload(ctx: NativeContext, idValue: string) {
+  const id = uuidOf(idValue, 'Nie znaleziono pliku.', 404);
+  const { data, error } = await ctx.supabase.from('material_files').select(FILE_COLUMNS).eq('id', id).eq('status', 'ready').maybeSingle();
+  if (error) dbFail(error, 'Nie udało się odczytać pliku.');
+  const row: Row = (data as Row | null) || (await trashedFileRow(ctx, id));
+  const path = text(row.storage_path);
+  if (!path) fail('Pliku nie ma w magazynie.', 410, { code: 'missing' });
+  const { data: signed, error: signError } = await ctx.supabase.storage.from(MATERIALS_BUCKET).createSignedUrl(path, SIGNED_TTL);
+  if (signError || !signed?.signedUrl) fail('Pliku nie ma już w magazynie.', 410, { code: 'missing' });
+  return { url: signed.signedUrl, item: syncFile(row) };
+}
+
+/** Kosz w Finderze: elementy usunięte przez zalogowanego pracownika w markach, którymi zarządza (RLS kosza). */
+export async function materialsFinderTrash(ctx: NativeContext) {
+  const { rows } = await fetchRows((a, b) => ctx.supabase.from('material_trash')
+    .select('id,kind,item_id,company_id,parent_folder_id,name,size_bytes,mime_type,batch,deleted_at')
+    .eq('deleted_by', ctx.employee.id).order('deleted_at', { ascending: false }).order('id').range(a, b), 5_000)
+    .catch((error) => dbFail(error, 'Nie udało się odczytać kosza.'));
+  return {
+    items: rows.map((r) => ({
+      id: r.id as string,
+      kind: r.kind === 'folder' ? 'folder' : 'file',
+      itemId: r.item_id as string,
+      companyId: r.company_id as string,
+      parentId: (r.parent_folder_id ?? null) as string | null,
+      name: text(r.name) || (r.kind === 'folder' ? 'Folder' : 'plik'),
+      size: Number(r.size_bytes || 0),
+      mime: text(r.mime_type),
+      batch: String(r.batch),
+      deletedAt: r.deleted_at ?? null,
+    })),
+  };
+}
+
+/**
+ * Zmiana z Findera: nazwa i folder (w obrębie marki; `parentId: null` — główny folder marki). Treść pliku zmienia się przez
+ * `prepareUpload` z `replaceId` i `completeUpload` (wersje, konflikt 409 z aktualnym plikiem).
+ */
+export async function materialsFinderUpdate(ctx: NativeContext, body: Row) {
+  const id = uuidOf(body.id, 'Nieprawidłowy element.');
+  const s = ctx.supabase;
+  const otherCompany = (companyId: string) =>
+    body.companyId !== undefined && body.companyId !== null && String(body.companyId).toLowerCase() !== companyId;
+
+  if (body.kind === 'folder') {
+    const folder = await folderRow(ctx, id);
+    const patch: Row = {};
+    if (body.name !== undefined) {
+      const name = nameOf(body.name, 'Podaj nazwę folderu.');
+      if (name !== folder.name) patch.name = name;
+    }
+    if ('parentId' in body) {
+      if (otherCompany(folder.company_id)) fail('Foldery można przenosić tylko w obrębie jednej marki.', 400, { code: 'crossCompany' });
+      const parentId = await targetFolder(ctx, folder.company_id, body.parentId);
+      if (parentId !== (folder.parent_id ?? null)) patch.parent_id = parentId;
+    }
+    if (!Object.keys(patch).length) return { item: folderItem(folder) };
+    const { data, error } = await s.from('material_folders').update(patch).eq('id', id).select(FOLDER_COLUMNS).maybeSingle();
+    if (error) dbFail(error, 'Nie udało się zmienić folderu.', 'Folder o tej nazwie już jest w tym miejscu.');
+    if (!data) fail('Nie masz uprawnień do zmiany tego folderu.', 403, { code: 'forbidden' });
+    return { item: folderItem(data as Row) };
+  }
+
+  const file = await fileRow(ctx, id);
+  if (file.status !== 'ready') fail('Plik jest jeszcze wysyłany.', 409);
+  const patch: Row = {};
+  if (body.name !== undefined) {
+    const name = nameOf(body.name, 'Podaj nazwę pliku.');
+    if (name !== file.name) patch.name = name;
+  }
+  if ('parentId' in body) {
+    if (otherCompany(file.company_id)) fail('Pliki można przenosić tylko w obrębie jednej marki.', 400, { code: 'crossCompany' });
+    const folderId = await targetFolder(ctx, file.company_id, body.parentId);
+    if (folderId !== (file.folder_id ?? null)) patch.folder_id = folderId;
+  }
+  if (!Object.keys(patch).length) return { item: syncFile(file) };
+  const { data, error } = await s.from('material_files').update(patch).eq('id', id).eq('status', 'ready').select(FILE_COLUMNS).maybeSingle();
+  if (error) dbFail(error, 'Nie udało się zmienić pliku.', 'Plik o tej nazwie już jest w tym folderze.');
+  if (!data) fail('Nie masz uprawnień do zmiany tego pliku.', 403, { code: 'forbidden' });
+  return { item: syncFile(data as Row) };
+}
+
+/** Usunięcie z Findera (do kosza na 30 dni). Element, którego już nie ma, to sukces; brak uprawnień — 403. */
+export async function materialsFinderRemove(ctx: NativeContext, body: Row) {
+  const id = uuidOf(body.id, 'Nieprawidłowy element.');
+  const table = body.kind === 'folder' ? 'material_folders' : 'material_files';
+  const { data, error } = await ctx.supabase.from(table).delete().eq('id', id).select('id');
+  if (error) dbFail(error, 'Nie udało się usunąć.');
+  if (!data?.length) {
+    const { data: still } = await ctx.supabase.from(table).select('id').eq('id', id).maybeSingle();
+    if (still) fail('Nie masz uprawnień do usunięcia tego elementu.', 403, { code: 'forbidden' });
+    return { ok: true, gone: true };
+  }
+  return { ok: true };
+}
+
+// MARK: Albumy — Materiały → Albumy (główna baza zdjęć): odnośniki do plików marki, bez kopiowania
+// Migracja `20261122140000_material_albums.sql`. Plik w koszu znika z albumu do czasu przywrócenia; usunięty na zawsze —
+// odnośnik znika (wyzwalacz). Te same uprawnienia co Materiały (RLS `materials_can`).
+
+const ALBUM_COLUMNS = 'id,company_id,name,description,cover_file_id,sort_order,created_by,created_at,updated_at';
+const ALBUMS_MISSING = 'Albumy nie są jeszcze włączone na serwerze — potrzebna migracja 20261122140000_material_albums.sql.';
+
+export type MaterialAlbumItem = {
+  id: string; companyId: string; name: string; description: string; coverFileId: string | null; sortOrder: number; count: number;
+  coverUrl: string | null; createdAt: string | null; updatedAt: string | null;
+};
+
+function albumFail(error: any, fallback: string): never {
+  const code = String(error?.code || '');
+  if (code === '42P01' || code === 'PGRST205' || code === 'PGRST202' || code === '42883') fail(ALBUMS_MISSING, 503, { code: 'migration' });
+  if (code === '23505') fail('Album o tej nazwie już jest w tej marce.', 409, { code: 'exists' });
+  if (code === 'P0002') fail('Nie znaleziono albumu.', 404);
+  dbFail(error, fallback);
+}
+
+const albumIdsOf = (value: unknown) =>
+  Array.from(new Set((Array.isArray(value) ? value : []).map((v) => String(v).toLowerCase()).filter((v) => UUID.test(v))))
+    .slice(0, MATERIAL_ALBUM_LIMITS.batch);
+
+async function albumRow(ctx: NativeContext, id: string): Promise<Row> {
+  const { data, error } = await ctx.supabase.from('material_albums').select(ALBUM_COLUMNS).eq('id', id).maybeSingle();
+  if (error) albumFail(error, 'Nie udało się odczytać albumu.');
+  if (!data) fail('Nie znaleziono albumu.', 404);
+  return data as Row;
+}
+
+/** Pliki albumów w kolejności (tylko istniejące, gotowe pliki). */
+async function albumEntries(ctx: NativeContext, albumIds: string[]) {
+  if (!albumIds.length) return { entries: [] as Array<{ albumId: string; fileId: string; sortOrder: number }>, files: new Map<string, Row>() };
+  const items = await fetchAll((a, b) => ctx.supabase.from('material_album_items').select('album_id,file_id,sort_order,added_at')
+    .in('album_id', albumIds).order('sort_order').order('added_at').range(a, b)).catch((error) => albumFail(error, 'Nie udało się odczytać albumów.'));
+  const fileIds = Array.from(new Set(items.map((r: Row) => String(r.file_id))));
+  const files = new Map<string, Row>();
+  for (let i = 0; i < fileIds.length; i += 200) {
+    const { data, error } = await ctx.supabase.from('material_files').select(FILE_COLUMNS).in('id', fileIds.slice(i, i + 200)).eq('status', 'ready');
+    if (error) dbFail(error, 'Nie udało się odczytać plików albumu.');
+    for (const r of (data || []) as Row[]) files.set(String(r.id), r);
+  }
+  const entries = items.filter((r: Row) => files.has(String(r.file_id)))
+    .map((r: Row) => ({ albumId: String(r.album_id), fileId: String(r.file_id), sortOrder: Number(r.sort_order || 0) }));
+  return { entries, files };
+}
+
+async function albumItems(ctx: NativeContext, rows: Row[]): Promise<MaterialAlbumItem[]> {
+  const { entries, files } = await albumEntries(ctx, rows.map((r) => String(r.id)));
+  const covers = new Map<string, Row>();
+  for (const row of rows) {
+    const own = entries.filter((e) => e.albumId === row.id);
+    const chosen = (row.cover_file_id && own.find((e) => e.fileId === row.cover_file_id))
+      || own.find((e) => files.get(e.fileId)?.thumbnail_path) || own[0];
+    const file = chosen ? files.get(chosen.fileId) : undefined;
+    if (file) covers.set(String(row.id), file);
+  }
+  const thumbs = await signedUrls(ctx, MATERIALS_BUCKET, Array.from(covers.values()).map((f) => f.thumbnail_path));
+  return rows.map((row) => {
+    const cover = covers.get(String(row.id));
+    return {
+      id: String(row.id),
+      companyId: String(row.company_id),
+      name: text(row.name) || 'Album',
+      description: text(row.description),
+      coverFileId: cover ? String(cover.id) : null,
+      sortOrder: Number(row.sort_order || 0),
+      count: entries.filter((e) => e.albumId === row.id).length,
+      coverUrl: cover?.thumbnail_path ? thumbs.get(cover.thumbnail_path) || null : null,
+      createdAt: row.created_at ?? null,
+      updatedAt: row.updated_at ?? null,
+    };
+  });
+}
+
+/** Albumy marki (`company`) albo wszystkich marek z dostępem (bez `company`). */
+export async function materialsAlbums(ctx: NativeContext, params: URLSearchParams) {
+  const companyId = optionalUuid(params.get('company'), 'Nieprawidłowa marka.');
+  if (companyId) await requireAccess(ctx, companyId, 'view');
+  let query = ctx.supabase.from('material_albums').select(ALBUM_COLUMNS).order('sort_order').order('name').limit(1000);
+  if (companyId) query = query.eq('company_id', companyId);
+  const { data, error } = await query;
+  if (error) albumFail(error, 'Nie udało się pobrać albumów.');
+  const albums = await albumItems(ctx, (data || []) as Row[]);
+  return { companyId, albums, access: await materialAccess(ctx, companyId) };
+}
+
+/** Album z plikami w kolejności albumu. */
+export async function materialsAlbum(ctx: NativeContext, idValue: string) {
+  const row = await albumRow(ctx, uuidOf(idValue, 'Nie znaleziono albumu.', 404));
+  const [album] = await albumItems(ctx, [row]);
+  const { entries, files } = await albumEntries(ctx, [String(row.id)]);
+  const items = await fileItems(ctx, entries.map((e) => files.get(e.fileId)!).filter(Boolean));
+  return { album, files: items, access: await materialAccess(ctx, String(row.company_id)) };
+}
+
+/** Pliki do albumu: tylko gotowe pliki tej samej marki; już dodane — bez zmian. */
+async function addToAlbum(ctx: NativeContext, album: Row, value: unknown) {
+  const ids = albumIdsOf(value);
+  if (!ids.length) return { added: 0, skipped: 0 };
+  const { data: files, error } = await ctx.supabase.from('material_files').select('id').in('id', ids)
+    .eq('company_id', album.company_id).eq('status', 'ready');
+  if (error) dbFail(error, 'Nie udało się odczytać plików.');
+  const allowed = new Set(((files || []) as Row[]).map((r) => String(r.id)));
+  const { data: present, error: presentError } = await ctx.supabase.from('material_album_items').select('file_id,sort_order').eq('album_id', album.id);
+  if (presentError) albumFail(presentError, 'Nie udało się odczytać albumu.');
+  const already = new Set(((present || []) as Row[]).map((r) => String(r.file_id)));
+  let order = Math.max(0, ...((present || []) as Row[]).map((r) => Number(r.sort_order || 0)));
+  const rows = ids.filter((id) => allowed.has(id) && !already.has(id))
+    .map((id) => ({ album_id: album.id, file_id: id, company_id: album.company_id, sort_order: (order += 1) }));
+  if (rows.length) {
+    const { error: insertError } = await ctx.supabase.from('material_album_items')
+      .upsert(rows, { onConflict: 'album_id,file_id', ignoreDuplicates: true });
+    if (insertError) albumFail(insertError, 'Nie udało się dodać plików do albumu.');
+  }
+  return { added: rows.length, skipped: ids.length - rows.length };
+}
+
+export async function materialsCreateAlbum(ctx: NativeContext, body: Row) {
+  const companyId = uuidOf(body.companyId, 'Wybierz markę.');
+  await requireAccess(ctx, companyId, 'manage');
+  const name = cleanMaterialAlbumName(body.name);
+  if (!name) fail('Podaj nazwę albumu.');
+  const { data: last } = await ctx.supabase.from('material_albums').select('sort_order').eq('company_id', companyId)
+    .order('sort_order', { ascending: false }).limit(1);
+  const { data, error } = await ctx.supabase.from('material_albums').insert({
+    company_id: companyId, name, description: text(body.description).trim().slice(0, MATERIAL_ALBUM_LIMITS.description),
+    sort_order: (Number(((last || []) as Row[])[0]?.sort_order) || 0) + 1,
+  }).select(ALBUM_COLUMNS).single();
+  if (error) albumFail(error, 'Nie udało się utworzyć albumu.');
+  const added = await addToAlbum(ctx, data as Row, body.fileIds);
+  const [album] = await albumItems(ctx, [await albumRow(ctx, String((data as Row).id))]);
+  return { album, ...added };
+}
+
+export async function materialsUpdateAlbum(ctx: NativeContext, body: Row) {
+  const row = await albumRow(ctx, uuidOf(body.id, 'Nie znaleziono albumu.', 404));
+  await requireAccess(ctx, String(row.company_id), 'manage');
+  const patch: Row = {};
+  if ('name' in body) {
+    const name = cleanMaterialAlbumName(body.name);
+    if (!name) fail('Podaj nazwę albumu.');
+    patch.name = name;
+  }
+  if ('description' in body) patch.description = text(body.description).trim().slice(0, MATERIAL_ALBUM_LIMITS.description);
+  if ('coverFileId' in body) patch.cover_file_id = optionalUuid(body.coverFileId, 'Nieprawidłowy plik.');
+  if (!Object.keys(patch).length) return { album: (await albumItems(ctx, [row]))[0] };
+  const { data, error } = await ctx.supabase.from('material_albums').update(patch).eq('id', row.id).select(ALBUM_COLUMNS).maybeSingle();
+  if (error) albumFail(error, 'Nie udało się zapisać albumu.');
+  if (!data) fail('Nie masz uprawnień do zmian w Materiałach tej marki.', 403, { code: 'forbidden' });
+  return { album: (await albumItems(ctx, [data as Row]))[0] };
+}
+
+/** Usunięcie albumu — pliki zostają w Materiałach. */
+export async function materialsDeleteAlbum(ctx: NativeContext, body: Row) {
+  const row = await albumRow(ctx, uuidOf(body.id, 'Nie znaleziono albumu.', 404));
+  await requireAccess(ctx, String(row.company_id), 'manage');
+  const { error } = await ctx.supabase.from('material_albums').delete().eq('id', row.id);
+  if (error) albumFail(error, 'Nie udało się usunąć albumu.');
+  return { deleted: String(row.id) };
+}
+
+export async function materialsAlbumAdd(ctx: NativeContext, body: Row) {
+  const row = await albumRow(ctx, uuidOf(body.id, 'Nie znaleziono albumu.', 404));
+  await requireAccess(ctx, String(row.company_id), 'manage');
+  return addToAlbum(ctx, row, body.fileIds);
+}
+
+/** Usunięcie odnośników z albumu — pliki zostają w Materiałach. */
+export async function materialsAlbumRemove(ctx: NativeContext, body: Row) {
+  const row = await albumRow(ctx, uuidOf(body.id, 'Nie znaleziono albumu.', 404));
+  await requireAccess(ctx, String(row.company_id), 'manage');
+  const ids = albumIdsOf(body.fileIds);
+  if (!ids.length) return { removed: 0 };
+  const { data, error } = await ctx.supabase.from('material_album_items').delete().eq('album_id', row.id).in('file_id', ids).select('file_id');
+  if (error) albumFail(error, 'Nie udało się usunąć plików z albumu.');
+  if (row.cover_file_id && ids.includes(String(row.cover_file_id))) {
+    await ctx.supabase.from('material_albums').update({ cover_file_id: null }).eq('id', row.id);
+  }
+  return { removed: (data || []).length };
+}
+
+export async function materialsAlbumReorder(ctx: NativeContext, body: Row) {
+  const id = uuidOf(body.id, 'Nie znaleziono albumu.', 404);
+  const { error } = await ctx.supabase.rpc('material_album_reorder', { p_album: id, p_files: albumIdsOf(body.fileIds) });
+  if (error) albumFail(error, 'Nie udało się zmienić kolejności.');
+  return { ok: true };
+}
+
+export async function materialsAlbumsReorder(ctx: NativeContext, body: Row) {
+  const companyId = uuidOf(body.companyId, 'Wybierz markę.');
+  const { error } = await ctx.supabase.rpc('material_albums_reorder', { p_company: companyId, p_ids: albumIdsOf(body.ids) });
+  if (error) albumFail(error, 'Nie udało się zmienić kolejności albumów.');
+  return { ok: true };
+}
+
+// MARK: Dla innych modułów (Prezentacje): plik z serwera do Materiałów i odczyt pliku
+
+/** Plik Materiałów tokenem pracownika (RLS — tylko pliki marek z dostępem). */
+export async function materialFileRow(ctx: NativeContext, idValue: unknown): Promise<Row> {
+  return fileRow(ctx, uuidOf(idValue, 'Nie znaleziono pliku w Materiałach.', 404));
+}
+
+/** Folder domyślny marki (`photos` — „Zdjęcia”) albo `null` — główny folder marki. */
+export async function materialSystemFolder(ctx: NativeContext, companyId: string, key: MaterialSystemFolder) {
+  const { data } = await ctx.supabase.from('material_folders').select('id,name').eq('company_id', companyId).eq('system_key', key).limit(1).maybeSingle();
+  return data ? { id: String((data as Row).id), name: text((data as Row).name) } : null;
+}
+
+/**
+ * Plik z serwera (np. zdjęcie dodane w Prezentacjach z dysku) do folderu marki. Ten sam plik (SHA-256) jest już w marce —
+ * bez duplikatu (`existing: true`). Zwraca wiersz pliku (`FILE_COLUMNS`).
+ */
+export async function materialsStoreBytes(ctx: NativeContext, input: {
+  companyId: string; folderId: string | null; name: string; mime: string; bytes: Buffer;
+}): Promise<{ row: Row; existing: boolean }> {
+  await requireAccess(ctx, input.companyId, 'manage');
+  if (input.bytes.length > MATERIALS_MAX_FILE_BYTES) fail('Plik jest większy niż 2 GB.', 413);
+  const folderId = await targetFolder(ctx, input.companyId, input.folderId);
+  const sha256 = createHash('sha256').update(input.bytes).digest('hex');
+  const { data: existing } = await ctx.supabase.from('material_files').select(FILE_COLUMNS)
+    .eq('company_id', input.companyId).eq('content_sha256', sha256).eq('status', 'ready').order('created_at').limit(1).maybeSingle();
+  if (existing) return { row: existing as Row, existing: true };
+  const mime = mimeOf(input.mime);
+  const row = await insertUploading(ctx, {
+    companyId: input.companyId, folderId, name: cleanMaterialName(input.name) || 'zdjecie', mime, size: input.bytes.length, sha256, rename: true,
+  });
+  const { error } = await ctx.supabase.storage.from(MATERIALS_BUCKET).upload(row.storage_path, input.bytes, { contentType: mime, upsert: false });
+  if (error) {
+    console.error('[materials] store bytes', error.message);
+    await ctx.supabase.from('material_files').delete().eq('id', row.id).eq('status', 'uploading');
+    await removeUnused(ctx, [row.storage_path]);
+    fail('Nie udało się zapisać pliku w Materiałach.', 502);
+  }
+  await materialsCompleteUpload(ctx, { fileId: row.id, path: row.storage_path, sha256 });
+  return { row: await fileRow(ctx, String(row.id)), existing: false };
 }

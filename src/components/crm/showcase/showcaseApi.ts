@@ -1,18 +1,28 @@
 import { supabase } from '@/lib/supabase/browser';
 import { OFFER_PDF_STEPS } from '@/lib/offer-pdf/progress';
 import { readOfferPdfResult } from '@/lib/offer-pdf/readProgress';
-import type { ShowcaseItemDetail, ShowcaseMedia, ShowcaseSectionView, ShowcaseUrls } from '@/lib/showcase/showcaseShared';
+import type {
+  ShowcaseAlbumOption, ShowcaseItemDetail, ShowcaseMedia, ShowcasePhotoBase, ShowcaseSectionView, ShowcaseUrls,
+} from '@/lib/showcase/showcaseShared';
 
 /*
  * Klient API „Prezentacji” (Strefa sprzedawcy) w CRM — to samo API co Mac i iPad (`/bridge/native/v1/showcase`, token sesji
  * pracownika, `x-mavinci-client: web`). Zdjęcia z dysku idą na serwer (wersje WebP powstają na serwerze Next).
  */
 
-export type ShowcasePhotoSource = 'product' | 'site' | 'material' | 'event' | 'social';
+/** Źródła w oknie wyboru zdjęć: baza zdjęć (Materiały i albumy), produkty, realizacje, biblioteka social media. */
+export type ShowcasePhotoSource = 'material' | 'product' | 'site' | 'social';
 export type ShowcaseProductOption = { id: string; name: string; category: string; priceNet: number | null; unit: string; thumbnailUrl: string | null };
 export type ShowcaseRealizationOption = { id: string; title: string; location: string; date: string | null; photos: number; thumbnailUrl: string | null };
 export type ShowcaseEventOption = { id: string; name: string; date: string | null };
 export type ShowcasePhotoResult = { photo: ShowcaseMedia; urls: ShowcaseUrls };
+/** Zdjęcie z dysku: `materials` — zapisane w bazie zdjęć (Materiały → Zdjęcia), `existing` — ten plik już tam był. */
+export type ShowcaseUploadResult = ShowcasePhotoResult & {
+  stored?: 'materials' | 'presentation';
+  existing?: boolean;
+  file?: { id: string; name: string; folderName: string; companyName: string } | null;
+};
+export type ShowcasePhotoBaseReply = { base: ShowcasePhotoBase; albums: ShowcaseAlbumOption[]; canView: boolean; problem: string };
 export type { ShowcaseItemDetail, ShowcaseSectionView };
 
 const ENDPOINT = '/bridge/native/v1/showcase';
@@ -48,15 +58,28 @@ export async function showcasePost<T>(op: string, body: Record<string, unknown>)
   return parse<T>(await fetch(ENDPOINT, { method: 'POST', headers: await headers(true), body: JSON.stringify({ ...body, op }) }));
 }
 
-/** Zdjęcie z dysku → wersje WebP (serwer) → zdjęcie do dodania w edytorze karty albo okładka działu. */
-export async function showcaseUploadPhoto(target: { itemId?: string; sectionId?: string }, file: File): Promise<ShowcasePhotoResult> {
-  const query = new URLSearchParams({ op: 'upload' });
+/**
+ * Zdjęcie z dysku → baza zdjęć (Materiały → marka → Zdjęcia; ten sam plik drugi raz się nie zapisze) i wersja WebP do pokazu
+ * (serwer) → zdjęcie do dodania w edytorze karty albo okładka działu. Bez prawa zmian w Materiałach — zdjęcie zostaje tylko
+ * w prezentacji (wtedy potrzebna karta albo dział).
+ */
+export async function showcaseUploadPhoto(target: { itemId?: string; sectionId?: string }, file: File): Promise<ShowcaseUploadResult> {
+  const query = new URLSearchParams({ op: 'upload', base: '1', name: file.name.slice(0, 200) });
   if (target.itemId) query.set('item', target.itemId);
   if (target.sectionId) query.set('section', target.sectionId);
   const response = await fetch(`${ENDPOINT}?${query.toString()}`, {
     method: 'POST', headers: { ...(await headers(false)), 'Content-Type': file.type || 'application/octet-stream' }, body: file,
   });
-  return parse<ShowcasePhotoResult>(response);
+  return parse<ShowcaseUploadResult>(response);
+}
+
+/** Komunikat po wgraniu: ile zdjęć, gdzie trafiły (baza zdjęć) i ile już tam było. */
+export function showcaseUploadSummary(results: ShowcaseUploadResult[], next: string): string {
+  const stored = results.filter((result) => result.stored === 'materials');
+  const existing = stored.filter((result) => result.existing).length;
+  const place = stored[0]?.file ? ` — w bazie zdjęć: Materiały → ${stored[0].file.companyName} → ${stored[0].file.folderName}` : '';
+  const again = existing ? ` (${existing === stored.length && existing === 1 ? 'to zdjęcie już tam było' : `już było: ${existing}`})` : '';
+  return `Dodano zdjęcia: ${results.length}${place}${again}${next ? ` — ${next}` : ''}`;
 }
 
 /** PDF oferty jak „Generuj PDF” w CRM (`/bridge/offers/generate-pdf`, postęp krok po kroku w NDJSON). */

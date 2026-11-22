@@ -422,10 +422,19 @@ async function viewOf(ctx: NativeContext, s: ProductConfigurationSnapshot, quant
 /**
  * POST op=modular: `productId` (nowa konfiguracja z karty produktu) albo `snapshot` (zapisana lub bieżąca konfiguracja),
  * `edits` — zmiany w kolejności wprowadzenia, `refresh` — ponowne pobranie sprzętu i cen rentalnych, `quantity` — liczba
- * zestawów w ofercie (do porównania modułów LED ze stanem magazynu). Zwraca konfigurację po zmianach i widok.
+ * zestawów w ofercie (do porównania modułów LED ze stanem magazynu), `view: false` — bez widoku. Zwraca konfigurację po
+ * zmianach i widok.
  */
 export async function configureModular(ctx: NativeContext, body: Row) {
   if (!canConfigure(ctx)) fail('Nie masz uprawnień do konfiguracji ofert.');
+  return configureModularView(ctx, body);
+}
+
+/**
+ * To samo co `configureModular`, bez sprawdzania uprawnień do ofert — dla „Oferty ze spotkania” w Prezentacjach
+ * (`showcaseOffer.server.ts`), gdzie dostęp sprawdza `sales_showcase_offer_can`, a widok bez stawek części przygotowuje pokaz.
+ */
+export async function configureModularView(ctx: NativeContext, body: Row) {
   let snapshot: ProductConfigurationSnapshot;
   if (body.snapshot) {
     snapshot = modularSnapshotOf(body.snapshot);
@@ -442,5 +451,10 @@ export async function configureModular(ctx: NativeContext, body: Row) {
   const loadError = await withEquipment(ctx, snapshot, body.refresh === true);
   // Warianty zależne od wysokości (np. nogi) dobierane automatycznie po każdej zmianie (`selectStageHeight`, jak w CRM).
   if (snapshot.profile === 'warehouse_stage') snapshot = selectStageHeight(snapshot as WarehouseStageSnapshot);
+  // `view: false` — sama konfiguracja ze świeżym sprzętem (wycena oferty ze spotkania), bez budowania widoku.
+  if (body.view === false) {
+    if (loadError) fail(loadError);
+    return { snapshot, view: null };
+  }
   return { snapshot, view: await viewOf(ctx, snapshot, numberOf(body.quantity), loadError) };
 }

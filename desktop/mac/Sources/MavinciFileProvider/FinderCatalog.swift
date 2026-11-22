@@ -9,7 +9,7 @@ import UniformTypeIdentifiers
 // dostęp), zawartość wydarzeń otwartych w Finderze i kosz CRM (elementy usunięte przez tego pracownika). Z niej powstają
 // nazwy (unikalne w folderze) i elementy Findera; zmiany z serwera (`changes`) aktualizują tylko wydarzenia już otwarte.
 // Zapisy z Findera idą do serwera CRM, a odmowa serwera (uprawnienia, zajęta nazwa) cofa zmianę w Finderze.
-// Zmiana konta = nowa kopia.
+// Zmiana konta = nowa kopia. Materiały (Mavinci → Materiały) ma osobna kopia — `MaterialsCatalog.swift`.
 
 actor FinderCatalog {
     static let shared = FinderCatalog()
@@ -165,7 +165,8 @@ actor FinderCatalog {
             return trashRoots()
         case .workingSet:
             return try await everything()
-        case .file, .unknown:
+        case .file, .unknown, .materials, .brand, .materialFolder, .materialFile, .drive, .driveFile:
+            // Materiały obsługuje `MaterialsCatalog`, Dysk — `DriveCatalog`.
             throw NSFileProviderError(.noSuchItem)
         }
     }
@@ -191,7 +192,7 @@ actor FinderCatalog {
             if state.files[id] == nil, let trashed = state.trash[id] { return trashItem(trashed) }
             let file = try await knownFile(id)
             return fileItem(file, names: siblingNames(event: file.eventId, parent: file.parentId))
-        case .workingSet, .trash, .unknown:
+        case .workingSet, .trash, .unknown, .materials, .brand, .materialFolder, .materialFile, .drive, .driveFile:
             throw NSFileProviderError(.noSuchItem)
         }
     }
@@ -427,6 +428,17 @@ actor FinderCatalog {
             if isFolder { state.folders[id] = nil } else { state.files[id] = nil }
             let restored = try await serverItem(identifier)
             if restored.parentItemIdentifier == item.parentItemIdentifier { return (restored, false) }
+        }
+        // Z Eventy do Materiałów: plik — kopia w Materiałach (jak „Zapisz w Materiałach” w CRM), oryginał zostaje
+        // w wydarzeniu; folder — wraca na miejsce (foldery wydarzeń nie przenoszą się do Materiałów).
+        if moved, FinderID.parse(item.parentItemIdentifier).isMaterials {
+            if !isFolder {
+                do { try await MaterialsCatalog.shared.copyEventFile(id, into: item.parentItemIdentifier) } catch {
+                    NSLog("[Mavinci Finder] kopia do Materiałów: %@", error.localizedDescription)
+                }
+            }
+            let current = try await serverItem(identifier)
+            return (current, false)
         }
 
         var body: [String: Any] = ["op": "update", "kind": isFolder ? "folder" : "file", "id": id]

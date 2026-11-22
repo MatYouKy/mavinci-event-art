@@ -5,8 +5,8 @@ import Foundation
 // MARK: „Mavinci” w pasku bocznym Findera — po stronie aplikacji
 //
 // Po zalogowaniu aplikacja zapisuje w kontenerze grupy adresy serwera i sesję (`FinderShared`) i rejestruje domenę
-// File Provider; dalej pliki obsługuje rozszerzenie `MavinciFileProvider` (osobny proces, działa też przy zamkniętej
-// aplikacji). Gdy aplikacja jest otwarta, co minutę prosi Findera o sprawdzenie zmian na serwerze. Wylogowanie usuwa
+// File Provider; dalej pliki (Eventy, Materiały i Dysk: Oferty, Kalkulacje, Umowy, Magazyn) obsługuje rozszerzenie `MavinciFileProvider` (osobny proces, działa też
+// przy zamkniętej aplikacji). Gdy aplikacja jest otwarta, co minutę prosi Findera o sprawdzenie zmian na serwerze. Wylogowanie usuwa
 // domenę razem z pobranymi kopiami plików. Bez rozszerzenia w pakiecie (budowanie bez podpisu zespołem) nic nie robi.
 
 @MainActor
@@ -76,8 +76,35 @@ enum FinderDomain {
 
     /// Folder wydarzenia (albo cały „Mavinci”) w nowym oknie Findera.
     static func reveal(event id: String? = nil) async {
+        await reveal(identifier: id.map { "event:" + $0 })
+    }
+
+    /// Materiały w Finderze: folder (`folder`), główny folder marki (`company`) albo cały folder „Materiały”.
+    static func reveal(materialsFolder folder: String?, company: String?) async {
+        await reveal(identifier: folder.map { "mfolder:" + $0 } ?? company.map { "mbrand:" + $0 } ?? "materials")
+    }
+
+    /// Dysk w Finderze: folder działu (`offers`, `offers:2026-11`, `warehouse:item:<id>`…).
+    static func reveal(driveNode node: String) async {
+        await reveal(identifier: "drive:" + node)
+    }
+
+    /// Plik Dysku w Finderze (`offer:<id>`, `equipment-file:<id>`…).
+    static func reveal(driveFile id: String) async {
+        await reveal(identifier: "dfile:" + id)
+    }
+
+    /// Plik dodany w aplikacji do Dysku (np. do sprzętu) — rozszerzenie wczyta Dysk od nowa przy najbliższym sprawdzeniu zmian.
+    static func driveChanged() {
+        guard available else { return }
+        FinderShared.markDriveChanged()
+        signal()
+    }
+
+    /// Element rozszerzenia (identyfikator jak w `FinderID`) — gdy jeszcze go nie ma w Finderze, otwiera się „Mavinci”.
+    private static func reveal(identifier raw: String?) async {
         guard available, let manager = NSFileProviderManager(for: Self.domain) else { return }
-        let target = id.map { NSFileProviderItemIdentifier(rawValue: "event:" + $0) } ?? .rootContainer
+        let target = raw.map { NSFileProviderItemIdentifier(rawValue: $0) } ?? .rootContainer
         if let url = try? await manager.getUserVisibleURL(for: target) {
             NSWorkspace.shared.activateFileViewerSelecting([url])
         } else if let root = try? await manager.getUserVisibleURL(for: .rootContainer) {

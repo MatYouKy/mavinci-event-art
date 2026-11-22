@@ -1,7 +1,7 @@
 import React from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing } from '../../../theme';
+import { colors, spacing, tone } from '../../../theme';
 import { STATUS_COLORS, STATUS_LABELS } from '../../../screens/EventsScreen';
 import {
   EVENT_ACCESS_ROLE_LABELS,
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text.primary,
   },
   headerMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 2 },
@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
   },
   noticeText: { flex: 1, fontSize: 13, lineHeight: 18, color: colors.text.secondary },
   errorBox: { padding: spacing.md, gap: 4 },
-  errorText: { color: '#ff9999', fontSize: 14 },
+  errorText: { color: tone('#ff9999'), fontSize: 14 },
   link: { color: colors.primary.gold, paddingVertical: 8 },
   section: {
     padding: spacing.md,
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.primary.gold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,

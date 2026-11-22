@@ -50,7 +50,7 @@ LocaleConfig.locales['pl'] = {
 };
 LocaleConfig.defaultLocale = 'pl';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography, tone } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
@@ -588,7 +588,7 @@ const styles = StyleSheet.create({
   colleagueBadgeText: { fontSize: 10, color: colors.text.tertiary, fontWeight: '600' },
   normBox: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: 2 },
   normText: { fontSize: 12, color: colors.text.secondary },
-  normHolidays: { fontSize: 12, color: '#fca5a5' },
+  normHolidays: { fontSize: 12, color: tone('#fca5a5') },
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
@@ -626,11 +626,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text.primary,
     paddingHorizontal: spacing.md,
     marginBottom: spacing.sm,
-    textTransform: 'capitalize',
+    textTransform: 'uppercase',
   },
   eventsList: {
     paddingHorizontal: spacing.md,
@@ -659,7 +659,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '400',
     color: colors.text.primary,
     marginBottom: 4,
   },

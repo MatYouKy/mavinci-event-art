@@ -17,7 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { sortTasksByUrgency } from '../lib/taskSort';
-import { colors, spacing, typography, borderRadius } from '../theme';
+import { colors, spacing, typography, borderRadius, tone } from '../theme';
 import SalesDaySection from '../components/SalesDaySection';
 import MyScheduleSection from '../components/MyScheduleSection';
 import MyEventStepsSection from '../components/Events/MyEventStepsSection';
@@ -43,7 +43,7 @@ const EVENT_STATUS_COLORS: Record<string, string> = {
   inquiry: '#6b7280',
   offer_to_send: '#3b82f6',
   offer_sent: '#6366f1',
-  offer_accepted: '#34d399',
+  offer_accepted: tone('#34d399'),
   in_preparation: '#eab308',
   in_progress: '#a855f7',
   completed: '#22c55e',
@@ -649,7 +649,7 @@ const styles = StyleSheet.create({
   name: {
     fontSize: typography.fontSizes.xxxl,
     color: colors.text.primary,
-    fontWeight: typography.fontWeights.bold,
+    fontWeight: '400',
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     letterSpacing: 2,
@@ -684,7 +684,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.semibold,
+    fontWeight: '400',
     color: colors.text.primary,
     marginBottom: spacing.sm,
   },
@@ -707,7 +707,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     flex: 1,
     fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.semibold,
+    fontWeight: '400',
     color: colors.text.primary,
   },
   labelsRow: {

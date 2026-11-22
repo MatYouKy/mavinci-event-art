@@ -12,3 +12,5 @@ export const theme = {
 export type Theme = typeof theme;
 
 export { colors, spacing, borderRadius, typography };
+/** Motyw CRM pracownika (Burgund, Granat, Ciemny, Jasny) — `appPalette().scheme` dla elementów systemowych. */
+export { appPalette, appTheme, glow, ink, shade, tone, withAlpha } from './appTheme';

@@ -69,20 +69,24 @@ struct ShowcaseRefInfo: Hashable {
     var thumb: String?
 }
 
+/// Karta albo dział, do którego trafia zdjęcie; `none` — nowy dział (tylko baza zdjęć, produkty i realizacje).
 enum ShowcaseUploadTarget {
-    case item(String), section(String)
+    case item(String), section(String), none
     var query: String {
         switch self {
         case .item(let id): return "item=\(id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id)"
         case .section(let id): return "section=\(id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id)"
+        case .none: return ""
         }
     }
     var body: [String: JSONValue] {
         switch self {
         case .item(let id): return ["itemId": .string(id)]
         case .section(let id): return ["sectionId": .string(id)]
+        case .none: return [:]
         }
     }
+    var canCopy: Bool { if case .none = self { return false } else { return true } }
 }
 
 @MainActor final class ShowcaseStore: ObservableObject {
@@ -328,13 +332,17 @@ enum ShowcaseUploadTarget {
     }
 
     /// Nowa karta w dziale — pusta (szkielet pokazu) albo z produktu katalogu („Utwórz z produktu”).
-    func createItem(sectionID: String, title: String?, productID: String?) async {
+    /// Nowa karta; `example` — karta z przykładu z instrukcji („?”): pełna treść do podejrzenia i przerobienia, ukryta.
+    func createItem(sectionID: String, title: String?, productID: String?, example: Bool = false) async {
         var body: [String: JSONValue] = ["sectionId": .string(sectionID)]
         if let title, !title.isEmpty { body["title"] = .string(String(title.prefix(ShowcaseLimits.title))) }
         if let productID { body["productId"] = .string(productID) }
+        if example { body["example"] = .bool(true) }
         creating = false
-        let success = productID == nil ? "Utworzono kartę" : "Utworzono kartę z danymi produktu — dodaj zdjęcia i pytania klientów"
-        if let detail = await runDetail(productID == nil ? "Tworzę kartę" : "Tworzę kartę z produktu", "createItem", body, success: success) {
+        let success = example ? "Utworzono kartę z przykładu (ukryta) — dodaj zdjęcia z bazy i produkt, potem pokaż ją na spotkaniach"
+            : productID == nil ? "Utworzono kartę" : "Utworzono kartę z danymi produktu — dodaj zdjęcia i pytania klientów"
+        let pending = example ? "Tworzę kartę z przykładu" : productID == nil ? "Tworzę kartę" : "Tworzę kartę z produktu"
+        if let detail = await runDetail(pending, "createItem", body, success: success) {
             self.sectionID = detail.item.sectionId
             openedID = detail.item.id
         }
@@ -347,6 +355,22 @@ enum ShowcaseUploadTarget {
             "isActive": .bool(draft.isActive), "productIds": .array(draft.productIDs.map { JSONValue.string($0) }), "content": draft.content.json,
         ]
         return await runDetail("Zapisuję kartę", "saveItem", body, success: "Zapisano kartę")
+    }
+
+    /// Asystent AI: propozycje treści z danych produktów karty i opisu od sprzedawcy (bez zapisu — wstawia sprzedawca).
+    func assist(draft: ShowcaseDraft, brief: String, fields: [ShowcaseAiField]) async throws -> ShowcaseAiSuggestion {
+        guard let workspace, workspace.canWrite else { throw NativeFailure(status: 0, message: "Asystent AI wymaga połączenia z serwerem CRM.", fieldErrors: [:]) }
+        let body: [String: JSONValue] = [
+            "title": .string(draft.title), "tagline": .string(draft.tagline), "productIds": .array(draft.productIDs.map { JSONValue.string($0) }),
+            "content": draft.content.json, "brief": .string(String(brief.prefix(2000))), "fields": .array(fields.map { JSONValue.string($0.rawValue) }),
+        ]
+        return try JSONDecoder().decode(ShowcaseAiSuggestion.self, from: try await post("assist", body, timeout: 180))
+    }
+
+    /// Instrukcja „?” (te same rozdziały co w CRM i w telefonie — `presentationsHelp.ts` na serwerze).
+    func help() async throws -> ShowcaseHelpManual {
+        struct Reply: Decodable { let manual: ShowcaseHelpManual }
+        return try JSONDecoder().decode(Reply.self, from: try await fetch(["op": "help"])).manual
     }
 
     func duplicateItem(_ id: String) async {
@@ -363,7 +387,8 @@ enum ShowcaseUploadTarget {
     }
 
     // MARK: Działy i kolejność
-    func saveSection(_ draft: ShowcaseSectionDraft) async {
+    /// Zapis działu; `pendingCover` — okładka z dysku wybrana przed utworzeniem działu (wgrywa się zaraz po utworzeniu).
+    func saveSection(_ draft: ShowcaseSectionDraft, pendingCover: URL? = nil) async {
         guard let workspace = guardWrite() else { return }
         var body: [String: JSONValue] = [
             "title": .string(draft.title), "subtitle": .string(draft.subtitle), "icon": .string(draft.icon), "isActive": .bool(draft.isActive),
@@ -376,10 +401,21 @@ enum ShowcaseUploadTarget {
             let reply = try JSONDecoder().decode(Reply.self, from: data)
             await load(quiet: true)
             if draft.sectionID == nil {
-                workspace.succeed("Utworzono dział — dodaj okładkę i karty")
+                workspace.succeed("Utworzono dział — dodaj karty")
                 sectionID = reply.section.id
                 var next = ShowcaseSectionDraft(reply.section)
-                next.cover = draft.cover
+                next.cover = reply.section.cover ?? draft.cover
+                if let pendingCover, let photo = await upload([pendingCover], target: .section(reply.section.id), next: "okładka zapisana").first?.photo {
+                    next.cover = photo
+                    var coverBody = body
+                    coverBody["id"] = .string(reply.section.id)
+                    coverBody["version"] = .number(Double(reply.section.version))
+                    coverBody["cover"] = (try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(photo))) ?? .null
+                    if let saved = try? JSONDecoder().decode(Reply.self, from: try await post("saveSection", coverBody)) {
+                        next = ShowcaseSectionDraft(saved.section)
+                        await load(quiet: true)
+                    }
+                }
                 sectionSheet = next
             } else {
                 workspace.succeed("Zapisano dział")
@@ -432,16 +468,17 @@ enum ShowcaseUploadTarget {
     }
 
     // MARK: Zdjęcia
-    /// Zdjęcia z Findera lub z okna wyboru (JPEG, PNG, WebP bez zmian; HEIC, TIFF i większe — JPEG) → serwer CRM zapisuje wersje WebP.
-    func upload(_ files: [URL], target: ShowcaseUploadTarget) async -> [ShowcasePhotoReply] {
+    /// Zdjęcia z Findera lub z okna wyboru (JPEG, PNG, WebP bez zmian; HEIC, TIFF i większe — JPEG) → baza zdjęć (Materiały →
+    /// Zdjęcia, ten sam plik drugi raz się nie zapisze) i wersja WebP do pokazu; bez prawa zmian w Materiałach — tylko prezentacja.
+    func upload(_ files: [URL], target: ShowcaseUploadTarget, next: String = "zapisz zmiany") async -> [ShowcasePhotoReply] {
         guard let workspace = guardWrite() else { return [] }
-        var replies: [ShowcasePhotoReply] = []
+        var replies: [ShowcaseUploadReply] = []
         var errors: [String] = []
         for (index, file) in files.enumerated() {
             do {
-                let reply = try await workspace.withPending("Wgrywam zdjęcia (\(index + 1)/\(files.count))") { () async throws -> ShowcasePhotoReply in
+                let reply = try await workspace.withPending("Wgrywam zdjęcia do bazy (\(index + 1)/\(files.count))") { () async throws -> ShowcaseUploadReply in
                     let prepared = try await Task.detached(priority: .userInitiated) { try SocialStore.prepare(file) }.value
-                    return try await uploadBytes(prepared.0, mime: prepared.1, target: target)
+                    return try await uploadBytes(prepared.0, mime: prepared.1, name: Self.uploadName(file.lastPathComponent, mime: prepared.1), target: target)
                 }
                 replies.append(reply)
                 remember(urls: reply.urls)
@@ -450,16 +487,42 @@ enum ShowcaseUploadTarget {
             }
         }
         if let first = errors.first { workspace.error = first }
-        else if !replies.isEmpty { workspace.succeed("Dodano zdjęcia: \(replies.count) — zapisz zmiany") }
-        return replies
+        else if !replies.isEmpty { workspace.succeed(Self.uploadSummary(replies, next: next)) }
+        if replies.contains(where: { $0.stored == "materials" }) { FinderDomain.signal() }
+        return replies.map(\.reply)
     }
 
-    private func uploadBytes(_ data: Data, mime: String, target: ShowcaseUploadTarget) async throws -> ShowcasePhotoReply {
+    /// Nazwa w Materiałach zgodna z treścią (HEIC i TIFF zamienione na JPEG dostają „.jpg”).
+    static func uploadName(_ name: String, mime: String) -> String {
+        let base = (name as NSString).deletingPathExtension.isEmpty ? "zdjecie" : (name as NSString).deletingPathExtension
+        let ext = (name as NSString).pathExtension.lowercased()
+        switch mime {
+        case "image/png": return ext == "png" ? name : base + ".png"
+        case "image/webp": return ext == "webp" ? name : base + ".webp"
+        default: return ["jpg", "jpeg"].contains(ext) ? name : base + ".jpg"
+        }
+    }
+
+    /// „Dodano zdjęcia: 2 — w bazie zdjęć: Materiały → Mavinci → Zdjęcia (to zdjęcie już tam było) — zapisz zmiany”.
+    static func uploadSummary(_ replies: [ShowcaseUploadReply], next: String) -> String {
+        let stored = replies.filter { $0.stored == "materials" }
+        let existing = stored.filter { $0.existing == true }.count
+        var text = "Dodano zdjęcia: \(replies.count)"
+        if let file = stored.first?.file { text += " — w bazie zdjęć: Materiały → \(file.companyName) → \(file.folderName)" }
+        if existing > 0 { text += existing == 1 && stored.count == 1 ? " (to zdjęcie już tam było)" : " (już było: \(existing))" }
+        if !next.isEmpty { text += " — \(next)" }
+        return text
+    }
+
+    private func uploadBytes(_ data: Data, mime: String, name: String, target: ShowcaseUploadTarget) async throws -> ShowcaseUploadReply {
         guard let api else { throw AppError.configuration }
         guard data.count <= ShowcaseLimits.uploadBytes else {
             throw NativeFailure(status: 413, message: "Zdjęcie może mieć najwyżej 40 MB.", fieldErrors: [:])
         }
-        guard let url = URL(string: api.base.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/bridge/native/v1/showcase?op=upload&\(target.query)") else { throw AppError.configuration }
+        let unreserved = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
+        let fileName = String(name.prefix(200)).addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
+        let suffix = target.query.isEmpty ? "" : "&\(target.query)"
+        guard let url = URL(string: api.base.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/bridge/native/v1/showcase?op=upload&base=1&name=\(fileName)\(suffix)") else { throw AppError.configuration }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 240
@@ -474,18 +537,19 @@ enum ShowcaseUploadTarget {
             let object = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
             throw NativeFailure(status: status, message: object?["error"] as? String ?? "Nie udało się wgrać zdjęcia.", fieldErrors: [:])
         }
-        return try JSONDecoder().decode(ShowcasePhotoReply.self, from: body)
+        return try JSONDecoder().decode(ShowcaseUploadReply.self, from: body)
     }
 
-    /// Zdjęcia z okna wyboru: produkt i realizacja — bez kopiowania (adresy z listy), Materiały, wydarzenie i social media — kopia WebP.
+    /// Zdjęcia z okna wyboru: produkt i realizacja — bez kopiowania (adresy z listy), baza zdjęć — odnośnik do Materiałów
+    /// (wspólna wersja WebP do pokazu), social media — kopia WebP.
     func pick(_ photos: [ShowcasePickPhoto], source: ShowcasePhotoSource, target: ShowcaseUploadTarget) async -> [ShowcasePhotoReply] {
         guard let workspace = guardWrite() else { return [] }
         var replies: [ShowcasePhotoReply] = []
         var errors: [String] = []
         for (index, photo) in photos.enumerated() {
             if let media = photo.media {
-                let full: String? = media.source == .site ? media.path : photo.thumbnailUrl
-                let thumb: String? = media.source == .site ? (media.thumb ?? media.path) : photo.thumbnailUrl
+                let thumb: String? = photo.thumbnailUrl ?? (media.source == .site ? (media.thumb ?? media.path) : nil)
+                let full: String? = photo.url ?? (media.source == .site ? media.path : thumb)
                 let reply = ShowcasePhotoReply(photo: media, urls: [media.key: ShowcaseURLPair(url: full, thumb: thumb)])
                 replies.append(reply)
                 remember(urls: reply.urls)
@@ -496,6 +560,7 @@ enum ShowcaseUploadTarget {
                 body["source"] = .string(source.rawValue)
                 body["fileId"] = .string(photo.id)
                 body["caption"] = .string((photo.name as NSString).deletingPathExtension)
+                if source == .material { body["reference"] = .bool(true) }
                 let data = try await workspace.withPending("Dodaję zdjęcia (\(index + 1)/\(photos.count))") { try await post("import", body, timeout: 180) }
                 let reply = try JSONDecoder().decode(ShowcasePhotoReply.self, from: data)
                 replies.append(reply)
@@ -539,16 +604,62 @@ enum ShowcaseUploadTarget {
         return try JSONDecoder().decode(Reply.self, from: try await fetch(params)).events
     }
 
-    func photos(source: ShowcasePhotoSource, owner: String?, query text: String) async throws -> ShowcasePhotosReply {
+    func photos(source: ShowcasePhotoSource, owner: String?, query text: String, album: String? = nil, offset: Int = 0) async throws -> ShowcasePhotosReply {
         var params = ["op": "photos", "source": source.rawValue]
         switch source {
         case .product: if let owner { params["product"] = owner }
         case .site: if let owner { params["realization"] = owner }
-        case .event: if let owner { params["event"] = owner }
         case .material, .social:
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { params["q"] = trimmed }
+            if source == .material {
+                if let album { params["album"] = album }
+                if offset > 0 { params["offset"] = String(offset) }
+            }
         }
         return try JSONDecoder().decode(ShowcasePhotosReply.self, from: try await fetch(params))
+    }
+
+    /// Baza zdjęć: dokąd trafiają zdjęcia z dysku i albumy (Materiały → Albumy).
+    func photoBase() async throws -> ShowcasePhotoBaseReply {
+        try JSONDecoder().decode(ShowcasePhotoBaseReply.self, from: try await fetch(["op": "photoBase"]))
+    }
+
+    /// Pliki z bazy do albumu (odnośniki, bez kopiowania) — `nil` przy błędzie (komunikat w pasku).
+    func addToAlbum(_ album: ShowcaseAlbumOption, fileIDs: [String]) async -> (added: Int, skipped: Int)? {
+        guard let workspace = guardWrite(), let api, !fileIDs.isEmpty else { return nil }
+        struct Reply: Decodable { let added: Int; let skipped: Int }
+        do {
+            let data = try await workspace.withPending("Dodaję do albumu") {
+                try await api.post("/materials", ["op": .string("albumAdd"), "id": .string(album.id), "fileIds": .array(fileIDs.map { .string($0) })])
+            }
+            let reply = try JSONDecoder().decode(Reply.self, from: data)
+            if reply.added > 0 { workspace.succeed("Dodano do albumu „\(album.name)”: \(reply.added) — bez kopiowania plików") }
+            else { workspace.notice = "Album „\(album.name)” ma już to zdjęcie albo zdjęcie należy do innej marki." }
+            return (reply.added, reply.skipped)
+        } catch {
+            workspace.error = failureText(error, "Nie udało się dodać do albumu.")
+            return nil
+        }
+    }
+
+    /// Nowy album w bazie zdjęć (opcjonalnie z wybranymi plikami) — identyfikator albumu.
+    func createAlbum(companyID: String, name: String, fileIDs: [String]) async -> String? {
+        guard let workspace = guardWrite(), let api else { return nil }
+        struct Album: Decodable { let id: String }
+        struct Reply: Decodable { let album: Album; let added: Int }
+        do {
+            let data = try await workspace.withPending("Tworzę album") {
+                try await api.post("/materials", [
+                    "op": .string("createAlbum"), "companyId": .string(companyID), "name": .string(name), "fileIds": .array(fileIDs.map { .string($0) }),
+                ])
+            }
+            let reply = try JSONDecoder().decode(Reply.self, from: data)
+            workspace.succeed(reply.added > 0 ? "Utworzono album „\(name)” (\(reply.added) zdj.)" : "Utworzono album „\(name)”")
+            return reply.album.id
+        } catch {
+            workspace.error = failureText(error, "Nie udało się utworzyć albumu.")
+            return nil
+        }
     }
 }

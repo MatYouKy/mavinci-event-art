@@ -32,7 +32,8 @@ WITH_FINDER=0
 if [ -n "$TEAM_IDENTITY" ] && [ "$IDENTITY" = "$TEAM_IDENTITY" ]; then WITH_FINDER=1; fi
 swift build -c "$CONFIGURATION"
 BIN="$(swift build -c "$CONFIGURATION" --show-bin-path)/Mavinci"
-# Rozszerzenie Findera — osobny program (punkt wejścia NSExtensionMain), kompilowany z plikami wspólnymi z aplikacją.
+# Rozszerzenie Findera — osobny program (punkt wejścia NSExtensionMain), kompilowany z plikami wspólnymi z aplikacją
+# (sesja i adresy serwera — FinderShared, miniatury i skróty plików Materiałów — MaterialMedia).
 if [ "$WITH_FINDER" = 1 ]; then
   EXT_BUILD="build/finder-$CONFIGURATION"
   mkdir -p "$EXT_BUILD"
@@ -40,7 +41,7 @@ if [ "$WITH_FINDER" = 1 ]; then
     -target "$(uname -m)-apple-macos14.0" \
     -Xlinker -e -Xlinker _NSExtensionMain \
     -o "$EXT_BUILD/MavinciFileProvider" \
-    Sources/MavinciFileProvider/*.swift Sources/Mavinci/Finder/FinderShared.swift
+    Sources/MavinciFileProvider/*.swift Sources/Mavinci/Finder/FinderShared.swift Sources/Mavinci/Finder/MaterialMedia.swift
 fi
 mkdir -p build
 if [ "$CONFIGURATION" = "debug" ]; then

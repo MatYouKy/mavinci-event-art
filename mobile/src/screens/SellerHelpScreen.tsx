@@ -5,12 +5,14 @@ import { RouteProp, useRoute } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import { MANAGER_HELP } from '../lib/managerHelp';
+import { PRESENTATIONS_HELP } from '../lib/presentationsHelp';
 import { searchHelp, type HelpChapter } from '../lib/helpTypes';
 import { SELLER_JOURNEY_STAGES } from '../lib/offerJourney';
 
 /*
- * Instrukcja opiekuna sprzedawców — ta sama treść co panel „?” w CRM i „Instrukcja” na Macu
- * (wspólne kopie managerHelp.ts i helpTypes.ts). Wejście: „?” w „Moich sprzedawcach” i w karcie sprzedawcy.
+ * Instrukcja pod znakiem „?” — ta sama treść co panel „?” w CRM i „Instrukcja” na Macu (wspólne kopie managerHelp.ts,
+ * presentationsHelp.ts i helpTypes.ts). Opiekun sprzedawców: „?” w „Moich sprzedawcach” i w karcie sprzedawcy;
+ * Prezentacje (`audience: 'presentations'`): „?” na liście prezentacji.
  */
 
 type HelpRoute = RouteProp<RootStackParamList, 'SellerHelp'>;
@@ -18,13 +20,15 @@ type HelpRoute = RouteProp<RootStackParamList, 'SellerHelp'>;
 export default function SellerHelpScreen() {
   const route = useRoute<HelpRoute>();
   const initial = route.params?.chapter || '';
+  const presentations = route.params?.audience === 'presentations';
+  const manual = presentations ? PRESENTATIONS_HELP : MANAGER_HELP;
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState<Record<string, boolean>>(initial ? { [initial]: true } : {});
   const scrollRef = useRef<ScrollView>(null);
   const scrolled = useRef(false);
 
   const searching = query.trim().length > 0;
-  const chapters = useMemo(() => (searching ? searchHelp(MANAGER_HELP, query) : MANAGER_HELP.chapters), [query, searching]);
+  const chapters = useMemo(() => (searching ? searchHelp(manual, query) : manual.chapters), [manual, query, searching]);
 
   const toggle = (id: string) => setOpen((current) => ({ ...current, [id]: !current[id] }));
 
@@ -39,12 +43,12 @@ export default function SellerHelpScreen() {
           placeholderTextColor={colors.text.tertiary}
           style={styles.searchInput}
           autoCorrect={false}
-          accessibilityLabel="Szukaj w instrukcji opiekuna"
+          accessibilityLabel={presentations ? 'Szukaj w instrukcji prezentacji' : 'Szukaj w instrukcji opiekuna'}
           clearButtonMode="while-editing"
         />
       </View>
 
-      {!searching && (
+      {!searching && !presentations && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Oś w 5 etapach</Text>
           <Text style={styles.summary}>Hotel i Ty widzicie tę samą oś. Pod osią jest zdanie „Teraz” — kto działa i co dalej.</Text>
@@ -164,7 +168,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.primary.gold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,

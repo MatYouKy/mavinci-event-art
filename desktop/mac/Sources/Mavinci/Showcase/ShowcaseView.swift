@@ -39,6 +39,7 @@ enum ShowcaseDrag {
     @Environment(\.crmTheme) private var theme
     @State private var sectionTarget: String?
     @State private var itemTarget: String?
+    @State private var helpShown = false
 
     var body: some View {
         content
@@ -53,6 +54,9 @@ enum ShowcaseDrag {
             }
             .sheet(item: $store.preview) { request in
                 ShowcasePreviewSheet(store: store, request: request).environmentObject(state).environment(\.crmTheme, theme)
+            }
+            .sheet(isPresented: $helpShown) {
+                ShowcaseHelpSheet(store: store).environmentObject(state).environment(\.crmTheme, theme)
             }
     }
 
@@ -94,7 +98,12 @@ enum ShowcaseDrag {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Label("Strefa sprzedawcy", systemImage: "person.crop.circle.badge.checkmark").font(.callout).foregroundStyle(theme.accent)
-                Text("Prezentacje").font(.title.weight(.light))
+                HStack(spacing: 6) {
+                    Text("Prezentacje").font(.title.weight(.light))
+                    Button { helpShown = true } label: { Image(systemName: "questionmark.circle").font(.title3) }
+                        .buttonStyle(.borderless).foregroundStyle(theme.accent)
+                        .help("Instrukcja: jak przygotować treściwą prezentację (z przykładem)")
+                }
                 Text("Materiały na spotkania z klientami: jak to wygląda, korzyści, galeria, przygotowanie.")
                     .font(.callout).foregroundStyle(.secondary).lineLimit(2)
             }

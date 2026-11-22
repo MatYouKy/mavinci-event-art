@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.primary.gold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,

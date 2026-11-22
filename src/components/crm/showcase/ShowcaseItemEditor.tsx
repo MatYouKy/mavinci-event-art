@@ -3,18 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import {
   AlertTriangle, CheckCircle2, ChevronDown, CircleDashed, Copy, ExternalLink, FolderOpen, GripVertical, Images, Package, Plus, Save, Tablet,
-  Trash2, Upload, X,
+  Trash2, Upload, Wand2, X,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
 import { useDialog } from '@/contexts/DialogContext';
 import {
-  SHOWCASE_BLOCK_KINDS, SHOWCASE_BLOCK_STYLES, SHOWCASE_KIND_LABELS, SHOWCASE_LIMITS, emptyShowcaseBlock, normalizeShowcaseContent,
-  showcaseChecklist, showcaseMediaKey,
+  SHOWCASE_BLOCK_KINDS, SHOWCASE_BLOCK_STYLES, SHOWCASE_KIND_LABELS, SHOWCASE_LIMITS, applyShowcaseAiSuggestion, emptyShowcaseBlock,
+  normalizeShowcaseContent, showcaseChecklist, showcaseMediaKey,
   type ShowcaseBlock, type ShowcaseBlockKind, type ShowcaseContent, type ShowcaseItemDetail, type ShowcaseUrls,
 } from '@/lib/showcase/showcaseShared';
 import { cardClass, dangerButton, inputClass, primaryButton, secondaryButton } from '../social/socialUi';
-import { errorMessage, showcaseGet, showcasePost, showcaseUploadPhoto, type ShowcasePhotoResult } from './showcaseApi';
+import { errorMessage, showcaseGet, showcasePost, showcaseUploadPhoto, showcaseUploadSummary, type ShowcaseUploadResult } from './showcaseApi';
+import ShowcaseAssistant from './ShowcaseAssistant';
 import ShowcaseBlockEditor from './ShowcaseBlockEditor';
 import ShowcaseListPicker from './ShowcaseListPicker';
 import ShowcasePhotoPicker from './ShowcasePhotoPicker';
@@ -53,6 +54,7 @@ export default function ShowcaseItemEditor({ id, onChanged, onDeleted, onOpen, o
   const [refInfo, setRefInfo] = useState<Record<string, { title: string; thumb: string | null }>>({});
   const [photoPicker, setPhotoPicker] = useState<PhotoTarget | null>(null);
   const [productPicker, setProductPicker] = useState(false);
+  const [assistant, setAssistant] = useState(false);
   const [realizationPicker, setRealizationPicker] = useState<string | null>(null);
   const [addMenu, setAddMenu] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -139,7 +141,7 @@ export default function ShowcaseItemEditor({ id, onChanged, onDeleted, onOpen, o
   const missing = checks.filter((check) => !check.ok);
 
   /** Zdjęcia do zdjęcia głównego (pierwsze) albo do bloku. */
-  const addPhotos = (target: PhotoTarget, results: ShowcasePhotoResult[]) => {
+  const addPhotos = (target: PhotoTarget, results: ShowcaseUploadResult[]) => {
     if (!results.length) return;
     setUrls((current) => Object.assign({ ...current }, ...results.map((result) => result.urls)));
     const photos = results.map((result) => result.photo);
@@ -169,7 +171,7 @@ export default function ShowcaseItemEditor({ id, onChanged, onDeleted, onOpen, o
       return;
     }
     const files = target === 'hero' ? images.slice(0, 1) : images;
-    const results: ShowcasePhotoResult[] = [];
+    const results: ShowcaseUploadResult[] = [];
     showLoader('Wgrywam zdjęcia', `0 z ${files.length}`);
     try {
       for (const [index, file] of files.entries()) {
@@ -177,7 +179,7 @@ export default function ShowcaseItemEditor({ id, onChanged, onDeleted, onOpen, o
         if (file.size > SHOWCASE_LIMITS.uploadBytes) { showSnackbar(`${file.name}: zdjęcie może mieć najwyżej 40 MB.`, 'warning'); continue; }
         results.push(await showcaseUploadPhoto({ itemId: item.id }, file));
       }
-      if (results.length) showSnackbar(`Dodano zdjęcia: ${results.length} — zapisz kartę`, 'success');
+      if (results.length) showSnackbar(showcaseUploadSummary(results, 'zapisz kartę'), 'success');
     } catch (cause) {
       showSnackbar(errorMessage(cause, 'Nie udało się wgrać zdjęcia.'), 'error');
     } finally {
@@ -246,6 +248,7 @@ export default function ShowcaseItemEditor({ id, onChanged, onDeleted, onOpen, o
         {/* Przełącznik i przyciski przechodzą pod tytuł razem (MacBook Air), nigdy pojedynczo. */}
         <div className="ml-auto flex max-w-full shrink-0 flex-wrap items-center gap-3">
           <Toggle checked={draft.isActive} onChange={(isActive) => setDraft({ ...draft, isActive })} label={draft.isActive ? 'Widoczna na spotkaniach' : 'Ukryta (szkic)'} />
+          <button type="button" className={secondaryButton} onClick={() => setAssistant(true)} title="Propozycje treści z danych produktów karty"><Wand2 className="h-4 w-4" />Asystent AI</button>
           <button type="button" className={secondaryButton} onClick={preview}><Tablet className="h-4 w-4" />Podgląd na iPadzie</button>
           <button type="button" className={secondaryButton} onClick={() => void duplicate()} title="Kopia karty w tym samym dziale"><Copy className="h-4 w-4" /></button>
           <button type="button" className={dangerButton} onClick={() => void remove()} title="Usuń kartę"><Trash2 className="h-4 w-4" /></button>
@@ -371,6 +374,18 @@ export default function ShowcaseItemEditor({ id, onChanged, onDeleted, onOpen, o
         <ShowcasePhotoPicker target={{ itemId: item.id }} products={products} single={photoPicker === 'hero'}
           title={photoPicker === 'hero' ? 'Zdjęcie główne karty' : 'Dodaj zdjęcia do bloku'}
           onClose={() => setPhotoPicker(null)} onPick={(results) => { addPhotos(photoPicker, results); setPhotoPicker(null); showSnackbar('Dodano zdjęcia — zapisz kartę', 'success'); }} />
+      )}
+      {assistant && (
+        <ShowcaseAssistant input={{ title: draft.title, tagline: draft.tagline, productIds: draft.productIds, content }} onClose={() => setAssistant(false)}
+          onApply={(suggestion, fields) => {
+            setDraft((current) => {
+              if (!current) return current;
+              const next = applyShowcaseAiSuggestion({ tagline: current.tagline, content: current.content }, suggestion, fields);
+              return { ...current, tagline: next.tagline, content: next.content };
+            });
+            setAssistant(false);
+            showSnackbar(`Wstawiono propozycje asystenta (${fields.length}) — sprawdź tekst i zapisz kartę`, 'success');
+          }} />
       )}
       {productPicker && (
         <ShowcaseListPicker mode="products" title="Produkty z katalogu" exclude={draft.productIds} onClose={() => setProductPicker(false)}

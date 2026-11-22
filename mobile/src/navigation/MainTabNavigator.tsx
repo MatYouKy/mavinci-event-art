@@ -27,7 +27,8 @@ import FleetScreen from '../screens/FleetScreen';
 import ClientsScreen from '../screens/ClientsScreen';
 import TendersScreen from '../screens/TendersScreen';
 import MessagesScreen from '../screens/MessagesScreen';
-import CustomDrawer from '../components/CustomDrawer';
+import CustomDrawer, { setMenuBadge } from '../components/CustomDrawer';
+import { useTabletLayout } from '../hooks/useTabletLayout';
 import { useUnreadChatCount } from '../services/chatNotifications';
 import { consumeNotificationTarget } from '../../App';
 import { routeNotification, navigateToCalendarTab, NotificationTargetData } from './navigationRef';
@@ -62,6 +63,17 @@ export default function MainTabNavigator() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [pendingMeetingId, setPendingMeetingId] = useState<string | null>(null);
   const { unreadCount: unreadChatCount } = useUnreadChatCount(canView(employee, 'chat') ? employee?.id : undefined);
+  // Tablet w poziomie: stały pasek boczny (RootNavigator) zastępuje przycisk menu i dolny pasek zakładek.
+  const { sidebar } = useTabletLayout();
+
+  useEffect(() => {
+    if (sidebar) setDrawerVisible(false);
+  }, [sidebar]);
+
+  // Licznik Komunikatora także w menu (na tablecie w poziomie dolny pasek zakładek jest ukryty).
+  useEffect(() => {
+    setMenuBadge('Messages', unreadChatCount);
+  }, [unreadChatCount]);
 
   useForegroundEffect((signal) => {
     if (!employee?.id) {
@@ -157,8 +169,13 @@ export default function MainTabNavigator() {
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: true,
-          headerLeft: () => (
-            <TouchableOpacity onPress={() => setDrawerVisible(true)} style={{ marginLeft: 16 }}>
+          headerLeft: sidebar ? undefined : () => (
+            <TouchableOpacity
+              onPress={() => setDrawerVisible(true)}
+              style={{ marginLeft: 16 }}
+              accessibilityRole="button"
+              accessibilityLabel="Menu"
+            >
               <Feather name="menu" color={colors.text.primary} size={24} />
             </TouchableOpacity>
           ),
@@ -203,7 +220,7 @@ export default function MainTabNavigator() {
             backgroundColor: colors.background.secondary,
           },
           headerTintColor: colors.text.primary,
-          tabBarStyle: {
+          tabBarStyle: sidebar ? { display: 'none' } : {
             backgroundColor: colors.background.secondary,
             borderTopColor: colors.border.default,
             borderTopWidth: 1,
@@ -213,7 +230,7 @@ export default function MainTabNavigator() {
           tabBarLabelStyle: {
             fontFamily: typography.fontFamilies.heading,
             fontSize: 8,
-            fontWeight: typography.fontWeights.regular,
+            fontWeight: '400',
             textTransform: 'uppercase',
           },
         })}

@@ -1,5 +1,5 @@
 import { getEventNotificationTab, EventNotificationTab } from '../lib/eventNotificationTarget';
-import { createNavigationContainerRef } from '@react-navigation/native';
+import { createNavigationContainerRef, NavigationState, PartialState, StackActions } from '@react-navigation/native';
 import { Linking } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { getSellerChatTarget } from '../lib/sellerChatTarget';
@@ -26,6 +26,56 @@ export type NotificationTargetData = {
   inquiry_id?: string;
   followup_kind?: string;
 };
+
+/** Pozycje menu, które są zakładkami ekranu głównego (`MainTabNavigator`); pozostałe to ekrany nad nim (`RootNavigator`). */
+const MENU_TAB_SCREENS = new Set([
+  'Dashboard', 'Calendar', 'Meetings', 'Profile', 'Settings', 'Messages', 'Inbox', 'Events', 'Tasks', 'Inquiries',
+  'Equipment', 'TimeTracking', 'Employees', 'Fleet', 'Clients', 'Tenders',
+]);
+
+/** Ekrany otwierane z działu menu — w menu podświetlony jest ten dział. */
+const MENU_SECTION_OF: Record<string, string> = {
+  Presentation: 'Presentations',
+  ShowcaseOffer: 'Presentations',
+  SocialPost: 'SocialMedia',
+  SocialQuickPost: 'SocialMedia',
+  PortfolioItem: 'Portfolio',
+  Materials: 'Drive',
+};
+
+type AnyNavigationState = NavigationState | PartialState<NavigationState>;
+
+/** Ekran na wierzchu (`root`) i dział menu do podświetlenia (`menu`) ze stanu nawigacji. */
+export function menuRouteOf(state: AnyNavigationState | undefined): { root?: string; menu?: string } {
+  const route = state?.routes[state.index ?? state.routes.length - 1];
+  if (!route) return {};
+  if (route.name !== 'Main') return { root: route.name, menu: MENU_SECTION_OF[route.name] ?? route.name };
+  const tabs = route.state as AnyNavigationState | undefined;
+  const tab = tabs?.routes[tabs.index ?? 0]?.name
+    ?? (typeof (route.params as { screen?: unknown } | undefined)?.screen === 'string' ? (route.params as { screen: string }).screen : 'Dashboard');
+  return { root: 'Main', menu: tab };
+}
+
+/**
+ * Przejście z menu (stały pasek boczny tabletu): jak menu CRM — zamyka ekrany otwarte nad zakładkami i otwiera dział
+ * (bez narastającej historii). Ponowne wybranie otwartego działu nic nie zmienia.
+ */
+export function navigateFromMenu(screen: string) {
+  if (!navigationRef.isReady()) return;
+  const root = navigationRef.getRootState();
+  const current = menuRouteOf(root);
+  if (current.root === screen) return;
+  if (root && root.index > 0) navigationRef.dispatch({ ...StackActions.popToTop(), target: root.key });
+  if (screen === 'Tasks') {
+    navigationRef.navigate('Main', { screen: 'Tasks', params: { screen: 'TasksList', initial: false } });
+  } else if (screen === 'Inquiries') {
+    navigationRef.navigate('Main', { screen: 'Inquiries', params: { screen: 'InquiriesList', initial: false } });
+  } else if (MENU_TAB_SCREENS.has(screen)) {
+    navigationRef.navigate('Main', { screen });
+  } else {
+    navigationRef.navigate(screen);
+  }
+}
 
 export function navigateToChat(conversationId: string) {
   if (navigationRef.isReady()) {

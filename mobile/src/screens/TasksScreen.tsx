@@ -28,6 +28,7 @@ import { sortTasksByUrgency } from '../lib/taskSort';
 import { fetchEmployeeTasks, createPrivateEmployeeTask } from '../services/employeeTasks';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
+import { TABLET_SIDEBAR_WIDTH, useContentWidth, useTabletLayout } from '../hooks/useTabletLayout';
 
 type TasksStackParamList = {
   TasksList: undefined;
@@ -38,8 +39,11 @@ type TasksStackParamList = {
 
 type TasksNavigationProp = NativeStackNavigationProp<TasksStackParamList, 'TasksList'>;
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const COLUMN_WIDTH = SCREEN_WIDTH - 32;
+/**
+ * Tablica kolumn: szerokość strony (treść obok paska bocznego na tablecie w poziomie) i lewa krawędź treści na ekranie —
+ * aktualizowane przy każdym renderze ekranu (gesty przeciągania czytają bieżące wartości).
+ */
+const board = { width: Dimensions.get('window').width, left: 0 };
 
 interface Task {
   id: string;
@@ -86,7 +90,7 @@ const BOARD_COLUMNS = [
 ];
 
 const CARD_HEIGHT = 110;
-const COLUMN_SWIPE_THRESHOLD = Math.min(100, SCREEN_WIDTH * 0.24);
+const columnSwipeThreshold = () => Math.min(100, board.width * 0.24);
 const COLUMN_SWIPE_ACTIVATION = 8;
 const COLUMN_EDGE_SWITCH_ZONE = 44;
 const COLUMN_EDGE_UNLOCK_ZONE = 96;
@@ -229,10 +233,12 @@ function DraggableTaskCard({
         let previewColumnIndex = previewColumnIndexRef.current;
         const movedEnough = Math.abs(gestureState.dx) > COLUMN_SWIPE_ACTIVATION;
 
+        // Położenie palca względem treści (na tablecie w poziomie po lewej jest pasek boczny).
+        const moveX = gestureState.moveX - board.left;
         if (
           edgeLockRef.current &&
-          gestureState.moveX > COLUMN_EDGE_UNLOCK_ZONE &&
-          gestureState.moveX < SCREEN_WIDTH - COLUMN_EDGE_UNLOCK_ZONE
+          moveX > COLUMN_EDGE_UNLOCK_ZONE &&
+          moveX < board.width - COLUMN_EDGE_UNLOCK_ZONE
         ) {
           edgeLockRef.current = null;
         }
@@ -240,7 +246,7 @@ function DraggableTaskCard({
         if (
           movedEnough &&
           !edgeLockRef.current &&
-          gestureState.moveX <= COLUMN_EDGE_SWITCH_ZONE &&
+          moveX <= COLUMN_EDGE_SWITCH_ZONE &&
           previewColumnIndex < BOARD_COLUMNS.length - 1
         ) {
           previewColumnIndex += 1;
@@ -250,7 +256,7 @@ function DraggableTaskCard({
         } else if (
           movedEnough &&
           !edgeLockRef.current &&
-          gestureState.moveX >= SCREEN_WIDTH - COLUMN_EDGE_SWITCH_ZONE &&
+          moveX >= board.width - COLUMN_EDGE_SWITCH_ZONE &&
           previewColumnIndex > 0
         ) {
           previewColumnIndex -= 1;
@@ -259,7 +265,7 @@ function DraggableTaskCard({
           latestPropsRef.current.onPreviewColumnChange(previewColumnIndex);
         }
 
-        const pageCompensation = (previewColumnIndex - sourceColumnIndex) * SCREEN_WIDTH;
+        const pageCompensation = (previewColumnIndex - sourceColumnIndex) * board.width;
         pan.setValue({ x: gestureState.dx + pageCompensation, y: 0 });
 
         if (previewColumnIndex !== sourceColumnIndex) {
@@ -304,7 +310,7 @@ function DraggableTaskCard({
         const currentColumnIndex = latestPropsRef.current.columnIndex;
         let targetIndex = previewColumnIndexRef.current;
 
-        if (targetIndex === currentColumnIndex && Math.abs(gestureState.dx) >= COLUMN_SWIPE_THRESHOLD) {
+        if (targetIndex === currentColumnIndex && Math.abs(gestureState.dx) >= columnSwipeThreshold()) {
           targetIndex = gestureState.dx < 0 ? currentColumnIndex + 1 : currentColumnIndex - 1;
         }
 
@@ -469,6 +475,10 @@ function DraggableTaskCard({
 
 export default function TasksScreen() {
   const navigation = useNavigation<TasksNavigationProp>();
+  const contentWidth = useContentWidth();
+  const { sidebar } = useTabletLayout();
+  board.width = contentWidth;
+  board.left = sidebar ? TABLET_SIDEBAR_WIDTH : 0;
   const { employee, session } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -601,7 +611,7 @@ export default function TasksScreen() {
     if (targetColumnIndex >= 0) {
       setTimeout(() => {
         boardScrollRef.current?.scrollTo({
-          x: targetColumnIndex * SCREEN_WIDTH,
+          x: targetColumnIndex * board.width,
           animated: true,
         });
       }, 40);
@@ -633,7 +643,7 @@ export default function TasksScreen() {
 
       if (previousColumnIndex >= 0) {
         boardScrollRef.current?.scrollTo({
-          x: previousColumnIndex * SCREEN_WIDTH,
+          x: previousColumnIndex * board.width,
           animated: true,
         });
       }
@@ -750,7 +760,7 @@ export default function TasksScreen() {
         {BOARD_COLUMNS.map((column) => {
           const columnTasks = getTasksByColumn(column.id);
           return (
-            <View key={column.id} style={styles.column}>
+            <View key={column.id} style={[styles.column, { width: contentWidth - 32 }]}>
               <View style={[styles.columnHeader, { borderLeftColor: column.color }]}>
                 <Text style={styles.columnTitle}>{column.title}</Text>
                 <View style={styles.columnBadge}>
@@ -790,7 +800,7 @@ export default function TasksScreen() {
                       }}
                       onPreviewColumnChange={(targetColumnIndex) => {
                         boardScrollRef.current?.scrollTo({
-                          x: targetColumnIndex * SCREEN_WIDTH,
+                          x: targetColumnIndex * board.width,
                           animated: false,
                         });
                       }}
@@ -1073,7 +1083,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   column: {
-    width: COLUMN_WIDTH,
     marginHorizontal: 16,
     paddingBottom: spacing.md,
   },
@@ -1092,7 +1101,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.bold,
+    fontWeight: '400',
     color: colors.text.primary,
   },
   columnBadge: {
@@ -1158,7 +1167,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     flex: 1,
     fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.bold,
+    fontWeight: '400',
     color: colors.text.primary,
     marginRight: spacing.sm,
   },
@@ -1280,7 +1289,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.bold,
+    fontWeight: '400',
     color: colors.text.primary,
     marginBottom: spacing.md,
     textAlign: 'center',
@@ -1346,7 +1355,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.bold,
+    fontWeight: '400',
     color: colors.text.primary,
   },
   createModalSaveBtn: {

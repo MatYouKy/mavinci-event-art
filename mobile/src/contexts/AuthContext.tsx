@@ -3,6 +3,7 @@ import { supabase, Employee } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import { removeSyncedCrmContactsFromDevice } from '../services/crmContactSync';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
+import { disableFilesProvider, ensureFilesProvider, signalFilesProvider } from '../lib/filesProvider';
 
 interface AuthContextType {
   session: Session | null;
@@ -97,6 +98,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (lookupAbortRef.current === controller) lookupAbortRef.current = null;
     };
   }, [userId, email, signingOut]);
+
+  // „Mavinci” w aplikacji Pliki (iPhone, iPad): lokalizacja zarejestrowana dla tego konta, prośba o sprawdzenie zmian przy
+  // powrocie na pierwszy plan i co 5 minut, dopóki aplikacja jest otwarta (rozszerzenie samo sprawdza je przy przeglądaniu).
+  useForegroundEffect((signal) => {
+    if (!employee?.id || !userId) return;
+    const owner = userId;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (signal.aborted || signingOutRef.current || data.session?.user.id !== owner) return;
+      return ensureFilesProvider(data.session).then(() => { if (!signal.aborted) signalFilesProvider(); });
+    }).catch(() => undefined);
+    const timer = setInterval(() => signalFilesProvider(), 5 * 60_000);
+    return () => clearInterval(timer);
+  }, [employee?.id, userId]);
+
+  // Bez sesji (wylogowanie, także wymuszone) — sesja rozszerzenia unieważniona, lokalizacja usunięta.
+  useEffect(() => {
+    if (sessionReady && !userId && !signingOut) void disableFilesProvider();
+  }, [sessionReady, userId, signingOut]);
 
   useForegroundEffect((signal) => {
     if (!employee?.id) return;
@@ -220,6 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setOnlineEmployeeIds([]);
     try {
       await removeSyncedCrmContactsFromDevice();
+      await disableFilesProvider();
       const { error } = await supabase.auth.signOut({ scope: 'local' });
       if (error) throw error;
       setSession(null);

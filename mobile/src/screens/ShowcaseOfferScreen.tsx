@@ -1,31 +1,40 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Image, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { WebView } from 'react-native-webview';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import ReorderableList from '../components/ReorderableList';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import ShowcaseConfigurator, { type ShowcaseConfiguratorTarget } from '../components/ShowcaseConfigurator';
+import { crmThemeShowcaseAccent } from '../theme/crmThemePalette';
+import { appPalette, colors, spacing, borderRadius, typography, glow, ink, shade } from '../theme';
 import {
   showcaseBrand, showcaseOfferApproval, showcaseOfferClient, showcaseOfferClients, showcaseOfferCreate, showcaseOfferEmail, showcaseOfferEmailSend,
-  showcaseOfferGeneratePdf, showcaseOfferPdf, showcaseOfferPreview, showcaseOfferStatus, type ShowcaseOfferFailure,
+  showcaseOfferGeneratePdf, showcaseOfferLocations, showcaseOfferPdf, showcaseOfferPreview, showcaseOfferProduct, showcaseOfferStatus, showcaseProducts,
+  type ShowcaseOfferFailure, type ShowcaseProductOption,
 } from '../lib/showcaseApi';
-import { useShowcaseOffer } from '../lib/showcaseOffer';
+import { useShowcaseOffer, type ShowcaseOfferChoice } from '../lib/showcaseOffer';
 import {
   SHOWCASE_OFFER_LIMITS, emptyShowcaseOfferClient, formatShowcaseAmount, formatShowcasePercent, isShowcaseOfferEmail, normalizeShowcaseOfferDraft,
-  showcaseOfferApprovalHint, showcaseOfferDiscount, showcaseOfferPrice, showcaseOfferProblem,
-  type ShowcaseOfferApproval, type ShowcaseOfferClient, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferEmailSetup,
-  type ShowcaseOfferInquiry, type ShowcaseOfferLine, type ShowcaseOfferPreview, type ShowcaseOfferResult,
+  showcaseMediaKey, showcaseOfferApprovalHint, showcaseOfferConfiguredLine, showcaseOfferDiscount, showcaseOfferLineFor, showcaseOfferPrice, showcaseOfferProblem,
+  type ShowcaseMedia, type ShowcaseOfferApproval, type ShowcaseOfferClient, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferConfiguration,
+  type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferLine, type ShowcaseOfferLocation, type ShowcaseOfferPreview,
+  type ShowcaseOfferResult, type ShowcaseProductView, type ShowcaseUrls,
 } from '../lib/showcaseShared';
 
 /*
  * „Oferta ze spotkania” w aplikacji (iPad i telefon) — ten sam przepływ co pokaz w CRM i na Macu: pozycje dodane „Do oferty”
- * na kartach (kolejność — przeciąganie za uchwyt ≡), klient z CRM albo nowy (bez duplikatów), otwarte zapytanie klienta albo
- * nowe (źródło „Rozmowa / spotkanie”), liczba osób, rabat w progach (powyżej progu — akceptacja przed wysłaniem), utworzenie
- * oferty i PDF, PDF na ekranie, wysyłka e-mailem. Ceny liczy serwer CRM; szkic zostaje na urządzeniu.
+ * na kartach albo „Dodaj pozycję” z katalogu (kolejność — przeciąganie za uchwyt ≡), klient z CRM albo nowy (bez duplikatów),
+ * otwarte zapytanie klienta albo nowe (źródło „Rozmowa / spotkanie”), miejsce z bazy lokalizacji albo wpisane, liczba osób,
+ * rabat w progach (powyżej progu — akceptacja przed wysłaniem), utworzenie oferty i PDF, PDF na ekranie, wysyłka e-mailem.
+ * Pozycje z miniaturą zdjęcia produktu i edycją (inny wariant, pakiet albo konfiguracja); scena i ekran LED — przez
+ * konfigurator (`ShowcaseConfigurator`, także z karty pokazu: „Skonfiguruj”). Ceny liczy serwer CRM; szkic zostaje na urządzeniu.
  */
+
+/** Konfigurator otwarty z karty pokazu („Skonfiguruj” przy scenie albo ekranie LED). */
+export type ShowcaseOfferRouteParams = { configure?: { productId: string; name: string; itemId?: string | null; itemTitle?: string } } | undefined;
 
 type Picker = 'date' | 'time' | null;
 const PRESETS = [0, 5, 10, 15];
@@ -49,11 +58,13 @@ const parseDraftDate = (value: string) => {
 
 export default function ShowcaseOfferScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const offer = useShowcaseOffer();
   const { draft, update, setup } = offer;
   const brand = showcaseBrand();
-  const accent = brand?.accent || colors.primary.gold;
-  const surface = brand?.surface || '#1c1f33';
+  // Pokaz w kolorach motywu CRM na tym urządzeniu (jak w CRM i na Macu), akcent z księgi znaku (w jasnym motywie — motywu).
+  const accent = crmThemeShowcaseAccent(appPalette(), brand?.accent);
+  const surface = colors.background.elevated;
 
   const [preview, setPreview] = useState<ShowcaseOfferPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -77,7 +88,25 @@ export default function ShowcaseOfferScreen() {
   const [dragging, setDragging] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [locationHits, setLocationHits] = useState<ShowcaseOfferLocation[]>([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [addingLine, setAddingLine] = useState(false);
+  /** Edytowana pozycja (inny wariant albo pakiet) — okno katalogu od razu na produkcie. */
+  const [replacing, setReplacing] = useState<ShowcaseOfferLine | null>(null);
+  const [configTarget, setConfigTarget] = useState<ShowcaseConfiguratorTarget | null>(null);
   const scroll = useRef<ScrollView>(null);
+  const configureParam = (route.params as ShowcaseOfferRouteParams)?.configure;
+
+  // „Skonfiguruj” na karcie pokazu — konfigurator od razu po wejściu na ekran oferty.
+  useEffect(() => {
+    if (!configureParam?.productId) return;
+    setConfigTarget({
+      productId: configureParam.productId, productName: configureParam.name, snapshot: null, quantity: 1, lineKey: null,
+      item: configureParam.itemId ? { id: configureParam.itemId, title: configureParam.itemTitle || '' } : null,
+    });
+    navigation.setParams({ configure: undefined });
+  }, [configureParam, navigation]);
 
   const client = draft.client;
   const chosen = Boolean(client.organizationId || client.contactId);
@@ -127,6 +156,20 @@ export default function ShowcaseOfferScreen() {
     }, 300);
     return () => { active = false; clearTimeout(timer); };
   }, [query, chosen]);
+
+  // Podpowiedzi miejsca z bazy lokalizacji (jak w CRM i na Macu).
+  useEffect(() => {
+    if (!locationOpen) return;
+    let active = true;
+    setLocationLoading(true);
+    const timer = setTimeout(() => {
+      showcaseOfferLocations(draft.event.location)
+        .then((value) => { if (active) setLocationHits(value.locations); })
+        .catch(() => { if (active) setLocationHits([]); })
+        .finally(() => { if (active) setLocationLoading(false); });
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [locationOpen, draft.event.location]);
 
   // Osoby firmy i otwarte zapytania klienta.
   useEffect(() => {
@@ -282,6 +325,68 @@ export default function ShowcaseOfferScreen() {
     }
   };
 
+  const setLocation = (location: string, locationId: string | null) => update((current) => ({ ...current, event: { ...current.event, location, locationId } }));
+  const typedLocation = draft.event.location.trim();
+  const exactLocation = locationHits.some((hit) => hit.label.toLocaleLowerCase('pl-PL') === typedLocation.toLocaleLowerCase('pl-PL'));
+  const addLine = (product: ShowcaseProductView, choice: ShowcaseOfferChoice) => {
+    const outcome = offer.add(product, choice, null);
+    if (outcome.result === 'added') notify(`Dodano do oferty: ${outcome.label}`);
+    else if (outcome.result === 'exists') notify(`${outcome.label} jest już w ofercie.`);
+    else if (outcome.result === 'full') notify(`Oferta ma już ${SHOWCASE_OFFER_LIMITS.lines} pozycji.`, true);
+    else if (product.configurable) { configureProduct(product); return false; }
+    else notify(`${product.name} jest wycofany z katalogu.`, true);
+    return outcome.result === 'added';
+  };
+
+  /** Edycja pozycji z katalogu: inny wariant albo pakiet tego produktu (ilość i dni zostają). */
+  const replaceWith = (product: ShowcaseProductView, choice: ShowcaseOfferChoice) => {
+    if (!replacing) return false;
+    const line = showcaseOfferLineFor(product, choice, replacing.itemId ? { id: replacing.itemId, title: replacing.itemTitle } : null);
+    if (!line) { notify(`${product.name} jest wycofany z katalogu.`, true); return false; }
+    const outcome = offer.replaceLine(replacing.key, line);
+    if (outcome === 'replaced') notify(line.key === replacing.key ? `Bez zmian: ${line.label}` : `Zmieniono pozycję: ${line.label}`);
+    else if (outcome === 'exists') { notify(`${line.label} jest już w ofercie.`, true); return false; }
+    else notify('Tej pozycji nie ma już w ofercie.', true);
+    return true;
+  };
+
+  /** Scena albo ekran LED z okna katalogu — konfigurator po zamknięciu okna (iOS pokazuje jedno okno naraz). */
+  const configureProduct = (product: ShowcaseProductView) => {
+    setAddingLine(false);
+    setReplacing(null);
+    setTimeout(() => setConfigTarget({ productId: product.id, productName: product.name, snapshot: null, quantity: 1, lineKey: null, item: null }), 400);
+  };
+
+  const editLine = (line: ShowcaseOfferLine) => {
+    if (line.kind === 'configured' && line.modular) {
+      setConfigTarget({
+        productId: line.productId, productName: line.label, snapshot: line.modular, quantity: line.quantity, lineKey: line.key,
+        item: line.itemId ? { id: line.itemId, title: line.itemTitle } : null,
+      });
+      return;
+    }
+    setReplacing(line);
+    setAddingLine(true);
+  };
+
+  /** Konfiguracja gotowa: nowa pozycja albo zmiana zapisanej (to samo miejsce na liście, ilość i dni bez zmian). */
+  const saveConfiguration = (configuration: ShowcaseOfferConfiguration, target: ShowcaseConfiguratorTarget) => {
+    const existing = target.lineKey ? draft.lines.find((entry) => entry.key === target.lineKey) || null : null;
+    const line = showcaseOfferConfiguredLine({ id: target.productId, name: target.productName }, configuration.snapshot, configuration.view.title,
+      target.item, existing?.optionId || undefined);
+    if (!line) { notify('Konfiguracja jest za duża albo nieprawidłowa — uprość ją i spróbuj ponownie.', true); return; }
+    if (existing) {
+      const outcome = offer.replaceLine(existing.key, line);
+      notify(outcome === 'replaced' ? `Zapisano konfigurację: ${line.label}` : 'Tej pozycji nie ma już w ofercie.', outcome !== 'replaced');
+    } else {
+      const outcome = offer.addLine(line);
+      if (outcome === 'added') notify(`Dodano do oferty: ${line.label}`);
+      else if (outcome === 'full') notify(`Oferta ma już ${SHOWCASE_OFFER_LIMITS.lines} pozycji.`, true);
+      else notify(`${line.label} jest już w ofercie.`);
+    }
+    setConfigTarget(null);
+  };
+
   const newOffer = () => { setResult(null); setApproval(null); setEmail(null); setSent(false); setPreview(null); setApprovalNote(''); setCustomDiscount(''); };
 
   const datePart = draft.event.date.split('T')[0] || '';
@@ -291,15 +396,15 @@ export default function ShowcaseOfferScreen() {
     && emailForm.to.split(/[,;]/).map((value) => value.trim()).filter(Boolean).every(isShowcaseOfferEmail);
 
   const chip = (label: string, active: boolean, onPress: () => void, key?: string) => (
-    <TouchableOpacity key={key || label} onPress={onPress} style={[styles.chip, active && { borderColor: accent, backgroundColor: 'rgba(255,255,255,0.08)' }]} accessibilityState={{ selected: active }}>
+    <TouchableOpacity key={key || label} onPress={onPress} style={[styles.chip, active && { borderColor: accent, backgroundColor: glow(0.08) }]} accessibilityState={{ selected: active }}>
       <Text style={[styles.chipText, active && { color: accent }]}>{label}</Text>
     </TouchableOpacity>
   );
   const input = (value: string, onChange: (value: string) => void, placeholder: string, extra: Partial<React.ComponentProps<typeof TextInput>> = {}) => (
-    <TextInput value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor="rgba(229,228,226,0.35)" style={styles.input} autoCorrect={false} {...extra} />
+    <TextInput value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={ink(0.35)} style={styles.input} autoCorrect={false} {...extra} />
   );
   const inquiryRow = (active: boolean, title: string, detail: string, onPress: () => void, key: string) => (
-    <TouchableOpacity key={key} onPress={onPress} style={[styles.inquiry, active && { borderColor: accent, backgroundColor: 'rgba(255,255,255,0.06)' }]} accessibilityState={{ selected: active }}>
+    <TouchableOpacity key={key} onPress={onPress} style={[styles.inquiry, active && { borderColor: accent, backgroundColor: glow(0.06) }]} accessibilityState={{ selected: active }}>
       <Feather name={active ? 'check-circle' : 'circle'} size={18} color={active ? accent : colors.text.tertiary} />
       <View style={styles.flex}>
         <Text style={styles.text} numberOfLines={1}>{title}</Text>
@@ -475,7 +580,39 @@ export default function ShowcaseOfferScreen() {
                     </TouchableOpacity>
                     {datePart ? <TouchableOpacity onPress={() => setDate('', '')} hitSlop={8} accessibilityLabel="Wyczyść termin"><Feather name="x" size={18} color={colors.text.tertiary} /></TouchableOpacity> : null}
                   </View>
-                  {input(draft.event.location, (location) => update((current) => ({ ...current, event: { ...current.event, location } })), 'Miejsce (np. hotel, miasto)')}
+                  <View style={styles.gapXs}>
+                    <View style={[styles.input, styles.pickerButton]}>
+                      <Feather name="map-pin" size={16} color={accent} />
+                      <TextInput value={draft.event.location} onChangeText={(value) => { setLocation(value, null); setLocationOpen(true); }}
+                        onFocus={() => setLocationOpen(true)} onBlur={() => setTimeout(() => setLocationOpen(false), 200)}
+                        placeholder="Miejsce (np. Hotel Omega, Olsztyn)" placeholderTextColor={ink(0.35)} style={[styles.text, styles.flex, styles.bareInput]} autoCorrect={false} />
+                      {draft.event.locationId ? <Feather name="check-circle" size={16} color={accent} accessibilityLabel="Z bazy lokalizacji" /> : null}
+                    </View>
+                    {locationOpen && (locationHits.length > 0 || locationLoading || (typedLocation && !exactLocation)) ? (
+                      <View style={styles.suggestions}>
+                        {locationLoading && !locationHits.length ? <Text style={styles.muted}>Szukam w bazie lokalizacji…</Text> : null}
+                        {locationHits.slice(0, 6).map((hit) => (
+                          <TouchableOpacity key={hit.id} onPress={() => { setLocation(hit.label, hit.id); setLocationOpen(false); }} style={styles.hit}>
+                            <Feather name="map-pin" size={16} color={accent} />
+                            <View style={styles.flex}>
+                              <Text style={styles.text} numberOfLines={1}>{hit.label}</Text>
+                              {hit.address ? <Text style={styles.muted} numberOfLines={1}>{hit.address}</Text> : null}
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                        {typedLocation && !exactLocation ? (
+                          <TouchableOpacity onPress={() => { setLocation(typedLocation, null); setLocationOpen(false); }} style={styles.hit}>
+                            <Feather name="plus" size={16} color={colors.text.tertiary} />
+                            <Text style={[styles.muted, styles.flex]} numberOfLines={1}>Użyj wpisanego: „{typedLocation}”</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    <Text style={styles.muted}>
+                      {draft.event.locationId ? 'Z bazy lokalizacji — zapytanie i oferta będą powiązane z obiektem.'
+                        : typedLocation ? 'Własne miejsce — zapisze się jako tekst.' : 'Zacznij pisać — podpowiemy obiekty z bazy lokalizacji.'}
+                    </Text>
+                  </View>
                 </View>
               )}
               <Text style={styles.label}>Liczba osób</Text>
@@ -490,9 +627,15 @@ export default function ShowcaseOfferScreen() {
             <View style={styles.section}>
               <View style={styles.sectionHead}>
                 <Text style={styles.sectionTitle}>Pozycje ({draft.lines.length})</Text>
-                {previewing ? <ActivityIndicator color={accent} size="small" /> : null}
+                <View style={styles.row}>
+                  {previewing ? <ActivityIndicator color={accent} size="small" /> : null}
+                  <TouchableOpacity onPress={() => setAddingLine(true)} disabled={draft.lines.length >= SHOWCASE_OFFER_LIMITS.lines} hitSlop={8}
+                    style={[styles.addLine, { borderColor: accent }, draft.lines.length >= SHOWCASE_OFFER_LIMITS.lines && styles.disabled]} accessibilityRole="button">
+                    <Feather name="plus" size={16} color={accent} /><Text style={[styles.buttonText, { color: accent }]}>Dodaj pozycję</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              {!draft.lines.length ? <Text style={styles.muted}>Dodaj warianty i pakiety przyciskiem „Do oferty” na kartach pokazu — trafią tutaj.</Text> : null}
+              {!draft.lines.length ? <Text style={styles.muted}>Dodaj pozycję z katalogu („Dodaj pozycję”) albo przyciskiem „Do oferty” przy wariancie i pakiecie na kartach pokazu.</Text> : null}
               {draft.lines.length > 1 ? <Text style={styles.muted}>Przeciągnij pozycję za uchwyt ≡, żeby zmienić kolejność w ofercie.</Text> : null}
               <ReorderableList items={draft.lines} keyOf={(line) => line.key} onMove={moveLine} onDragChange={setDragging} gap={spacing.sm}
                 renderItem={(line, _, handle) => {
@@ -501,8 +644,11 @@ export default function ShowcaseOfferScreen() {
                     <View style={styles.line}>
                       <View style={styles.row}>
                         {handle}
+                        {view?.thumbnailUrl ? <Image source={{ uri: view.thumbnailUrl }} style={styles.lineThumb} accessibilityIgnoresInvertColors />
+                          : <View style={[styles.lineThumb, styles.catalogEmpty]}><Feather name={line.kind === 'configured' ? 'sliders' : 'package'} size={18} color={colors.text.tertiary} /></View>}
                         <View style={styles.flex}>
                           <Text style={styles.text}>{view?.name || line.label}</Text>
+                          {line.kind === 'configured' ? <Text style={styles.muted}>Z konfiguratora</Text> : null}
                           {line.itemTitle ? <Text style={styles.muted}>z karty „{line.itemTitle}”</Text> : null}
                         </View>
                         <View style={styles.alignEnd}>
@@ -515,6 +661,10 @@ export default function ShowcaseOfferScreen() {
                           ? <Text style={styles.muted}>{view.quantity} {view.unit === 'stół' ? 'stołów' : 'osób'} (z liczby osób)</Text>
                           : <Stepper value={line.quantity} min={1} max={SHOWCASE_OFFER_LIMITS.quantity} suffix="szt." accent={accent} onChange={(quantity) => setLine(line.key, { quantity })} />}
                         <Stepper value={line.days} min={1} max={SHOWCASE_OFFER_LIMITS.days} suffix={line.days === 1 ? 'dzień' : 'dni'} accent={accent} onChange={(days) => setLine(line.key, { days })} />
+                        <TouchableOpacity onPress={() => editLine(line)} hitSlop={8} style={styles.iconButton}
+                          accessibilityRole="button" accessibilityLabel={line.kind === 'configured' ? `Zmień konfigurację: ${line.label}` : `Zmień wariant lub pakiet: ${line.label}`}>
+                          <Feather name={line.kind === 'configured' ? 'sliders' : 'edit-2'} size={16} color={accent} />
+                        </TouchableOpacity>
                         <TouchableOpacity onPress={() => update((current) => ({ ...current, lines: current.lines.filter((entry) => entry.key !== line.key) }))} hitSlop={8}
                           style={styles.iconButton} accessibilityLabel={`Usuń: ${line.label}`}>
                           <Feather name="trash-2" size={16} color={colors.text.secondary} />
@@ -522,7 +672,7 @@ export default function ShowcaseOfferScreen() {
                       </View>
                       {line.priceOnRequest ? (
                         <TextInput defaultValue={line.agreedPrice == null ? '' : String(line.agreedPrice).replace('.', ',')} onChangeText={(value) => setLine(line.key, { agreedPrice: showcaseOfferPrice(value) })}
-                          placeholder="Uzgodniona cena netto (zł)" placeholderTextColor="rgba(229,228,226,0.35)" keyboardType="decimal-pad" style={styles.input} />
+                          placeholder="Uzgodniona cena netto (zł)" placeholderTextColor={ink(0.35)} keyboardType="decimal-pad" style={styles.input} />
                       ) : null}
                       {view?.error ? <Text style={styles.error}>{view.error}</Text> : null}
                     </View>
@@ -535,7 +685,7 @@ export default function ShowcaseOfferScreen() {
               <Text style={styles.sectionTitle}>Rabat</Text>
               <View style={styles.wrap}>
                 {PRESETS.map((value) => chip(`${value}%`, draft.discountPercent === value && !customDiscount, () => { setCustomDiscount(''); update((current) => ({ ...current, discountPercent: value })); }, `p${value}`))}
-                <TextInput value={customDiscount} placeholder="Inny %" placeholderTextColor="rgba(229,228,226,0.35)" keyboardType="decimal-pad" style={[styles.input, styles.discountInput]}
+                <TextInput value={customDiscount} placeholder="Inny %" placeholderTextColor={ink(0.35)} keyboardType="decimal-pad" style={[styles.input, styles.discountInput]}
                   onChangeText={(value) => {
                     const clean = value.replace(/[^\d.,]/g, '').slice(0, 6);
                     setCustomDiscount(clean);
@@ -590,7 +740,7 @@ export default function ShowcaseOfferScreen() {
             is24Hour
             locale="pl-PL"
             minuteInterval={5}
-            themeVariant="dark"
+            themeVariant={appPalette().scheme}
             onChange={(event, selected) => {
               if (Platform.OS === 'android') setPicker(null);
               if (event.type === 'dismissed' || !selected) return;
@@ -617,6 +767,11 @@ export default function ShowcaseOfferScreen() {
         </View>
       ) : null}
 
+      <AddLineModal visible={addingLine} accent={accent} surface={surface} replacing={replacing}
+        onClose={() => { setAddingLine(false); setReplacing(null); }} onAdd={replacing ? replaceWith : addLine} onConfigure={configureProduct} />
+
+      <ShowcaseConfigurator target={configTarget} accent={accent} surface={surface} onClose={() => setConfigTarget(null)} onSave={saveConfiguration} />
+
       <Modal visible={Boolean(pdfUrl)} animationType="slide" onRequestClose={() => setPdfUrl(null)} supportedOrientations={['portrait', 'landscape']}>
         <View style={[styles.flex, { backgroundColor: '#000' }]}>
           <View style={styles.pdfHead}>
@@ -627,6 +782,124 @@ export default function ShowcaseOfferScreen() {
         </View>
       </Modal>
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * „Dodaj pozycję”: produkt z katalogu (wyszukiwanie), potem wariant, pakiet albo sam produkt — jak „Do oferty” na kartach
+ * (CRM, Mac); scena i ekran LED — „Skonfiguruj” (konfigurator). `replacing` — edycja pozycji: od razu jej produkt.
+ */
+function AddLineModal({ visible, accent, surface, replacing, onClose, onAdd, onConfigure }: {
+  visible: boolean; accent: string; surface: string; replacing: ShowcaseOfferLine | null; onClose: () => void;
+  onAdd: (product: ShowcaseProductView, choice: ShowcaseOfferChoice) => boolean;
+  onConfigure: (product: ShowcaseProductView) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [options, setOptions] = useState<ShowcaseProductOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [problem, setProblem] = useState('');
+  const [product, setProduct] = useState<{ view: ShowcaseProductView; urls: ShowcaseUrls } | null>(null);
+
+  useEffect(() => { if (!visible) { setProduct(null); setQuery(''); setProblem(''); } }, [visible]);
+  // Edycja pozycji — od razu warianty i pakiety jej produktu.
+  useEffect(() => {
+    if (!visible || !replacing) return;
+    let active = true;
+    setLoading(true);
+    showcaseOfferProduct(replacing.productId)
+      .then((data) => { if (active) setProduct({ view: data.product, urls: data.urls }); })
+      .catch((cause) => { if (active) setProblem(cause instanceof Error ? cause.message : 'Nie udało się pobrać produktu.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [visible, replacing]);
+  useEffect(() => {
+    if (!visible || product || replacing) return;
+    let active = true;
+    const timer = setTimeout(() => {
+      setLoading(true);
+      showcaseProducts(query)
+        .then((data) => { if (active) { setOptions(data.products); setProblem(data.products.length ? '' : 'Brak produktów pasujących do wyszukiwania.'); } })
+        .catch((cause) => { if (active) { setOptions([]); setProblem(cause instanceof Error ? cause.message : 'Nie udało się pobrać katalogu.'); } })
+        .finally(() => { if (active) setLoading(false); });
+    }, query ? 250 : 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [visible, query, product]);
+
+  const open = async (id: string) => {
+    setLoading(true);
+    try {
+      const data = await showcaseOfferProduct(id);
+      // Scena albo ekran LED — konfigurator; bez wariantów i pakietów — od razu sam produkt.
+      if (data.product.configurable) { setProduct({ view: data.product, urls: data.urls }); return; }
+      if (!data.product.variants.length && !data.product.packages.length) { if (onAdd(data.product, { kind: 'product' })) onClose(); return; }
+      setProduct({ view: data.product, urls: data.urls });
+    } catch (cause) {
+      setProblem(cause instanceof Error ? cause.message : 'Nie udało się pobrać produktu.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const thumb = (media: ShowcaseMedia | null) => (media && product ? product.urls[showcaseMediaKey(media)]?.thumb || null : null);
+  const choose = (choice: ShowcaseOfferChoice) => { if (product && onAdd(product.view, choice)) onClose(); };
+  /** Wybrany wariant albo pakiet edytowanej pozycji. */
+  const current = (kind: string, id: string) => Boolean(replacing && replacing.kind === kind && replacing.optionId === id);
+  const optionRow = (key: string, title: string, detail: string, image: string | null, price: string, onPress: () => void, disabled = false) => (
+    <TouchableOpacity key={key} onPress={onPress} disabled={disabled} style={[styles.catalogRow, disabled && styles.disabled]}>
+      {image ? <Image source={{ uri: image }} style={styles.catalogThumb} /> : <View style={[styles.catalogThumb, styles.catalogEmpty]}><Feather name="package" size={18} color={colors.text.tertiary} /></View>}
+      <View style={styles.flex}>
+        <Text style={styles.text} numberOfLines={1}>{title}</Text>
+        {detail ? <Text style={styles.muted} numberOfLines={1}>{detail}</Text> : null}
+      </View>
+      {price ? <Text style={[styles.text, { color: accent }]}>{price}</Text> : null}
+    </TouchableOpacity>
+  );
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} supportedOrientations={['portrait', 'landscape']} presentationStyle="pageSheet">
+      <View style={[styles.flex, { backgroundColor: surface }]}>
+        <View style={styles.modalHead}>
+          {product && !replacing ? (
+            <TouchableOpacity onPress={() => setProduct(null)} hitSlop={10} style={styles.iconButton} accessibilityLabel="Wróć do katalogu"><Feather name="chevron-left" size={22} color={accent} /></TouchableOpacity>
+          ) : null}
+          <Text style={[styles.heading, styles.flex]} numberOfLines={1}>{replacing ? `Zmień: ${product?.view.name || replacing.label}` : product ? product.view.name : 'Dodaj pozycję z katalogu'}</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={10} style={styles.iconButton} accessibilityLabel="Zamknij"><Feather name="x" size={22} color={accent} /></TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
+          {!product && !replacing ? (
+            <>
+              <TextInput value={query} onChangeText={setQuery} placeholder="Szukaj produktu w katalogu" placeholderTextColor={ink(0.35)} style={styles.input}
+                autoCorrect={false} returnKeyType="search" />
+              {options.map((option) => optionRow(option.id, option.name,
+                [option.category, option.priceNet != null ? `${formatShowcaseAmount(option.priceNet)} netto${option.unit ? ` / ${option.unit}` : ''}` : ''].filter(Boolean).join(' · '),
+                option.thumbnailUrl, '', () => void open(option.id)))}
+            </>
+          ) : product ? (
+            <>
+              {product.view.configurable ? (
+                <View style={[styles.card, styles.gapSm]}>
+                  <Text style={styles.text}>Produkt z konfiguratorem: rozmiar, wysokość albo układ ekranu, warianty sprzętu i cena zestawu.</Text>
+                  <TouchableOpacity onPress={() => onConfigure(product.view)} style={[styles.primary, { backgroundColor: accent }]} accessibilityRole="button">
+                    <Feather name="sliders" size={18} color={surface} /><Text style={[styles.primaryText, { color: surface }]}>Skonfiguruj</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+              {replacing && !product.view.configurable && !product.view.packages.length && !product.view.variants.length ? (
+                <Text style={styles.muted}>Ten produkt nie ma wariantów ani pakietów — ilość i dni zmienisz na liście pozycji.</Text>
+              ) : null}
+              {!product.view.configurable && product.view.packages.length ? <Text style={styles.label}>Pakiety</Text> : null}
+              {!product.view.configurable ? product.view.packages.map((pack) => optionRow(pack.id, `${pack.name}${current('package', pack.id) ? ' · w ofercie' : ''}`, pack.scope, thumb(pack.image),
+                pack.priceOnRequest ? 'wycena indywidualna' : pack.priceNet != null ? formatShowcaseAmount(pack.priceNet) : '',
+                () => choose({ kind: 'package', optionId: pack.id }))) : null}
+              {!product.view.configurable && product.view.variants.length ? <Text style={styles.label}>Warianty</Text> : null}
+              {!product.view.configurable ? product.view.variants.map((variant) => optionRow(variant.id,
+                `${variant.name}${variant.recommended ? ' · polecany' : ''}${current('variant', variant.id) ? ' · w ofercie' : ''}`, variant.shortDescription, thumb(variant.image),
+                variant.priceNet != null ? formatShowcaseAmount(variant.priceNet) : '', () => choose({ kind: 'variant', optionId: variant.id }))) : null}
+            </>
+          ) : null}
+          {loading ? <ActivityIndicator color={accent} /> : problem ? <Text style={styles.muted}>{problem}</Text> : null}
+        </ScrollView>
+      </View>
+    </Modal>
   );
 }
 
@@ -650,21 +923,21 @@ const styles = StyleSheet.create({
   gap: { gap: spacing.md },
   gapSm: { gap: spacing.sm },
   gapXs: { gap: spacing.xs },
-  section: { gap: spacing.sm, padding: spacing.md, borderRadius: borderRadius.xl, backgroundColor: 'rgba(0,0,0,0.22)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  section: { gap: spacing.sm, padding: spacing.md, borderRadius: borderRadius.xl, backgroundColor: shade(0.22), borderWidth: 1, borderColor: glow(0.08) },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sectionTitle: { color: colors.text.primary, fontSize: typography.fontSizes.lg },
-  card: { gap: spacing.xs, padding: spacing.md, borderRadius: borderRadius.xl, backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  card: { gap: spacing.xs, padding: spacing.md, borderRadius: borderRadius.xl, backgroundColor: shade(0.25), borderWidth: 1, borderColor: glow(0.08) },
   warning: { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.35)', overflow: 'hidden' },
   heading: { color: colors.text.primary, fontSize: typography.fontSizes.lg },
   text: { color: colors.text.primary, fontSize: typography.fontSizes.md },
   muted: { color: colors.text.tertiary, fontSize: typography.fontSizes.sm },
-  placeholder: { color: 'rgba(229,228,226,0.35)', fontSize: typography.fontSizes.md },
+  placeholder: { color: ink(0.35), fontSize: typography.fontSizes.md },
   label: { color: colors.text.tertiary, fontSize: typography.fontSizes.xs, textTransform: 'uppercase', marginTop: spacing.xs },
   hint: { color: colors.status.warning, fontSize: typography.fontSizes.sm },
   error: { color: colors.status.error, fontSize: typography.fontSizes.sm },
   input: {
     minHeight: 46, borderRadius: borderRadius.lg, paddingHorizontal: spacing.md, paddingVertical: 10, color: colors.text.primary,
-    fontSize: typography.fontSizes.md, backgroundColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    fontSize: typography.fontSizes.md, backgroundColor: shade(0.3), borderWidth: 1, borderColor: glow(0.1),
   },
   multiline: { minHeight: 96, textAlignVertical: 'top' },
   discountInput: { minWidth: 96, minHeight: 40, paddingVertical: 6 },
@@ -672,34 +945,43 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   wrapRow: { flexWrap: 'wrap', marginTop: spacing.sm },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
-  chip: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: borderRadius.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+  chip: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: borderRadius.full, borderWidth: 1, borderColor: glow(0.15) },
   chipText: { color: colors.text.primary, fontSize: typography.fontSizes.sm },
-  chosen: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: borderRadius.lg, backgroundColor: 'rgba(0,0,0,0.25)' },
-  hit: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 52, paddingHorizontal: spacing.sm, borderRadius: borderRadius.lg, backgroundColor: 'rgba(0,0,0,0.2)' },
-  inquiry: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 52, paddingHorizontal: spacing.md, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  line: { padding: spacing.md, borderRadius: borderRadius.lg, backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', gap: spacing.xs },
+  chosen: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: borderRadius.lg, backgroundColor: shade(0.25) },
+  hit: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 52, paddingHorizontal: spacing.sm, borderRadius: borderRadius.lg, backgroundColor: shade(0.2) },
+  inquiry: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 52, paddingHorizontal: spacing.md, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: glow(0.08) },
+  line: { padding: spacing.md, borderRadius: borderRadius.lg, backgroundColor: shade(0.25), borderWidth: 1, borderColor: glow(0.08), gap: spacing.xs },
   alignEnd: { alignItems: 'flex-end' },
-  stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: borderRadius.full, backgroundColor: 'rgba(0,0,0,0.3)' },
+  stepper: { flexDirection: 'row', alignItems: 'center', borderRadius: borderRadius.full, backgroundColor: shade(0.3) },
   stepperButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   stepperValue: { minWidth: 64, textAlign: 'center', color: colors.text.primary, fontSize: typography.fontSizes.sm },
-  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: shade(0.3) },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
   total: { fontSize: typography.fontSizes.xl, fontWeight: typography.fontWeights.semibold },
   primary: { minHeight: 52, borderRadius: borderRadius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.sm },
   primaryText: { fontSize: typography.fontSizes.md, fontWeight: typography.fontWeights.semibold },
-  secondary: { minHeight: 52, borderRadius: borderRadius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: 'rgba(0,0,0,0.3)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  button: { minHeight: 44, paddingHorizontal: spacing.md, borderRadius: borderRadius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
+  secondary: { minHeight: 52, borderRadius: borderRadius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: shade(0.3), borderWidth: 1, borderColor: glow(0.1) },
+  button: { minHeight: 44, paddingHorizontal: spacing.md, borderRadius: borderRadius.full, alignItems: 'center', justifyContent: 'center', backgroundColor: shade(0.3) },
   buttonText: { fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.semibold },
   disabled: { opacity: 0.4 },
   center: { textAlign: 'center' },
-  pickerPanel: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingBottom: spacing.lg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
+  pickerPanel: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingBottom: spacing.lg, borderTopWidth: 1, borderTopColor: glow(0.1) },
   pickerHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.md },
   toast: {
     position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    padding: spacing.md, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: spacing.md, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: glow(0.12),
   },
   toastError: { borderColor: colors.status.error },
   busy: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   busyBox: { gap: spacing.md, alignItems: 'center', padding: spacing.lg, borderRadius: borderRadius.xl, maxWidth: 360 },
   pdfHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: 52, paddingBottom: spacing.sm },
+  bareInput: { paddingVertical: 0, minHeight: 0 },
+  suggestions: { gap: spacing.xs, padding: spacing.xs, borderRadius: borderRadius.lg, backgroundColor: shade(0.35), borderWidth: 1, borderColor: glow(0.1) },
+  addLine: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.md, borderRadius: borderRadius.full, borderWidth: 1 },
+  modalHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: glow(0.1) },
+  modalContent: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xxl },
+  catalogRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 64, padding: spacing.sm, borderRadius: borderRadius.lg, backgroundColor: shade(0.25), borderWidth: 1, borderColor: glow(0.08) },
+  catalogThumb: { width: 64, height: 48, borderRadius: borderRadius.md, backgroundColor: shade(0.3) },
+  catalogEmpty: { alignItems: 'center', justifyContent: 'center' },
+  lineThumb: { width: 56, height: 42, borderRadius: borderRadius.md, backgroundColor: shade(0.3) },
 });

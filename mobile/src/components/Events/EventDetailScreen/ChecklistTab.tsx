@@ -13,7 +13,7 @@ import {
 
 import { WebView } from 'react-native-webview';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing } from '../../../theme';
+import { colors, spacing, tone } from '../../../theme';
 import { supabase } from '../../../lib/supabase';
 import EquipmentChecklistPanel from '../EquipmentChecklist/EquipmentChecklistPanel';
 
@@ -432,8 +432,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 4,
   },
-  legacyConfirmedTitle: { color: '#34d399', fontSize: 13, fontWeight: '600' },
-  legacyConfirmedNotes: { color: '#fbbf24', fontSize: 12 },
+  legacyConfirmedTitle: { color: tone('#34d399'), fontSize: 13, fontWeight: '600' },
+  legacyConfirmedNotes: { color: tone('#fbbf24'), fontSize: 12 },
   emptyTab: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -478,7 +478,7 @@ const styles = StyleSheet.create({
   },
   checklistItemContent: { flex: 1 },
   checklistItemHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  checklistItemTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 13, color: colors.text.primary, fontWeight: '500', flex: 1 },
+  checklistItemTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 13, color: colors.text.primary, fontWeight: '400', flex: 1 },
   checklistItemTitleDone: {
     textDecorationLine: 'line-through',
     color: colors.text.tertiary,
@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
   checklistSectionTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.primary.gold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -594,7 +594,7 @@ const styles = StyleSheet.create({
   logisticsIconContainer: { width: 28, alignItems: 'center', paddingTop: 2 },
   logisticsContent: { flex: 1 },
   logisticsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logisticsTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 13, color: colors.text.primary, fontWeight: '600', flex: 1 },
+  logisticsTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 13, color: colors.text.primary, fontWeight: '400', flex: 1 },
   logisticsType: {
     fontSize: 10,
     color: colors.text.tertiary,
@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     flex: 1,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '400',
     color: colors.text.primary,
     marginRight: 12,
   },

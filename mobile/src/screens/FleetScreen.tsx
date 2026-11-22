@@ -30,7 +30,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { canManage, canView } from '../lib/permissions';
 import { supabase } from '../lib/supabase';
-import { borderRadius, colors, spacing, typography } from '../theme';
+import { borderRadius, colors, spacing, typography, tone } from '../theme';
 
 interface VehicleImage {
   id: string;
@@ -72,7 +72,7 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
   under_repair: { label: 'W naprawie', color: '#FB923C' },
   no_insurance: { label: 'Brak ważnego OC', color: colors.status.error },
   no_inspection: { label: 'Brak przeglądu', color: colors.status.error },
-  sold: { label: 'Sprzedany', color: '#60A5FA' },
+  sold: { label: 'Sprzedany', color: tone('#60A5FA') },
   scrapped: { label: 'Złomowany', color: colors.status.error },
 };
 
@@ -855,7 +855,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.text.primary,
     fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.bold,
+    fontWeight: '400',
   },
   vehicleSubtitle: { marginTop: 2, color: colors.text.tertiary, fontSize: typography.fontSizes.xs },
   vehicleMetaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
@@ -877,7 +877,7 @@ const styles = StyleSheet.create({
   alertBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   alertBadgeText: { color: colors.status.error, fontSize: 11, fontWeight: typography.fontWeights.bold },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 72 },
-  emptyTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', marginTop: spacing.md, color: colors.text.primary, fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold },
+  emptyTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', marginTop: spacing.md, color: colors.text.primary, fontSize: typography.fontSizes.lg, fontWeight: '400' },
   emptyText: { marginTop: spacing.xs, color: colors.text.tertiary, textAlign: 'center' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.65)' },
   modalCard: {
@@ -892,7 +892,7 @@ const styles = StyleSheet.create({
   modalHandle: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, marginTop: spacing.sm, backgroundColor: colors.border.default },
   modalHeader: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border.default },
   modalHeading: { flex: 1, minWidth: 0 },
-  modalTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', color: colors.text.primary, fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.bold },
+  modalTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', color: colors.text.primary, fontSize: typography.fontSizes.lg, fontWeight: '400' },
   modalSubtitle: { marginTop: 2, color: colors.text.tertiary, fontSize: typography.fontSizes.xs },
   closeButton: { padding: spacing.sm },
   modalContent: { padding: spacing.md, paddingBottom: spacing.lg },
@@ -907,7 +907,7 @@ const styles = StyleSheet.create({
   detailValue: { marginTop: 2, color: colors.text.primary, fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.semibold },
   usageBox: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md, padding: spacing.md, borderWidth: 1, borderColor: `${colors.primary.gold}55`, borderRadius: borderRadius.lg, backgroundColor: `${colors.primary.gold}12` },
   usageContent: { flex: 1 },
-  usageTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', color: colors.primary.gold, fontWeight: typography.fontWeights.semibold },
+  usageTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', color: colors.primary.gold, fontWeight: '400' },
   usageText: { marginTop: 2, color: colors.text.secondary, fontSize: typography.fontSizes.xs },
   operationSection: { marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border.default },
   operationHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
@@ -918,12 +918,12 @@ const styles = StyleSheet.create({
   operationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   operationButton: { flexGrow: 1, flexBasis: '46%', minHeight: 116, padding: spacing.md, borderWidth: 1, borderColor: colors.border.default, borderRadius: borderRadius.lg, backgroundColor: colors.background.secondary },
   operationIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: borderRadius.md, backgroundColor: `${colors.primary.gold}14` },
-  operationButtonTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', marginTop: spacing.sm, color: colors.text.primary, fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.bold },
+  operationButtonTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', marginTop: spacing.sm, color: colors.text.primary, fontSize: typography.fontSizes.sm, fontWeight: '400' },
   operationButtonText: { marginTop: 3, color: colors.text.tertiary, fontSize: 10, lineHeight: 14 },
   editDataButton: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.md, paddingVertical: spacing.xs },
   editDataButtonText: { color: colors.text.tertiary, fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.semibold },
   editSection: { marginTop: spacing.lg, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border.default },
-  sectionTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', marginBottom: spacing.md, color: colors.text.primary, fontSize: typography.fontSizes.md, fontWeight: typography.fontWeights.bold },
+  sectionTitle: { fontFamily: 'MBFAtom', textTransform: 'uppercase', marginBottom: spacing.md, color: colors.text.primary, fontSize: typography.fontSizes.md, fontWeight: '400' },
   inputLabel: { marginBottom: spacing.xs, color: colors.text.secondary, fontSize: typography.fontSizes.xs },
   statusOptions: { gap: spacing.sm, paddingBottom: spacing.md },
   statusOption: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.border.default, borderRadius: borderRadius.lg, backgroundColor: colors.background.secondary },

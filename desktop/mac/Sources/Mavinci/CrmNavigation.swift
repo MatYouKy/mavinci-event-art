@@ -17,7 +17,7 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "calendar": return "calendar"
         case "meetings": return "person.2"
         case "events": return "sparkles"
-        case "materials": return "archivebox"
+        case "materials": return "externaldrive"
         case "mavinciLive": return "play.tv"
         case "messages": return "envelope"
         case "campaigns": return "megaphone"
@@ -103,6 +103,8 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "/crm/marketing/social": return .socialMedia
         // Marketing → Realizacje: portfolio strony — kopie robocze, zdjęcia, SEO, publikacja (`Portfolio/`).
         case "/crm/marketing/portfolio": return .portfolio
+        // Dysk: Eventy, Materiały (baza plików marek), Oferty, Kalkulacje, Umowy i Magazyn — jak w Finderze (`Drive/`, `Materials/`).
+        case "/crm/materials": return .materials
         // Finanse: Centrum finansów, Terminy i monity, Zamknięcie miesięcy (`Finance/`); faktury i KSeF — w CRM.
         case "/crm/invoices": return .finance
         default: return nil
@@ -115,7 +117,7 @@ struct NavItem: Codable, Identifiable, Hashable {
 enum CrmScreen: String {
     case messages, meetings, companyTasks, myTasks, team, warehouse, kits, cables, rental, connectors, warehouseCategories, contracts, contractTemplates
     case products, offerTemplates, brochures, sellers, fleet, timeTracking, databases, locations, website, campaigns, finance, socialMedia, portfolio
-    case presentations
+    case presentations, materials
     /// Ekrany Magazynu (wspólna kopia danych `WarehouseStore`).
     var isWarehouse: Bool { [.warehouse, .kits, .cables, .rental, .connectors, .warehouseCategories].contains(self) }
 }

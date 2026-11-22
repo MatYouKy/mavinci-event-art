@@ -6,7 +6,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { appPalette, colors, spacing, borderRadius, typography } from '../theme';
 import ReorderableList from '../components/ReorderableList';
 import {
   PORTFOLIO_AI_SECTIONS, PORTFOLIO_ICONS, PORTFOLIO_LIMITS, normalizePortfolioContent, portfolioAddFeatures, portfolioCheckTarget, portfolioChecklist,
@@ -544,7 +544,7 @@ export default function PortfolioItemScreen() {
               trackColor={{ true: colors.primary.gold, false: colors.border.hover }} />
             {content.eventDate === null && <Text style={styles.muted}>bez daty</Text>}
             {content.eventDate !== null && Platform.OS === 'ios' && (
-              <DateTimePicker value={parseYmd(content.eventDate)} mode="date" display="compact" locale="pl-PL" themeVariant="dark"
+              <DateTimePicker value={parseYmd(content.eventDate)} mode="date" display="compact" locale="pl-PL" themeVariant={appPalette().scheme}
                 onChange={(_event, selected) => { if (selected) set({ eventDate: ymd(selected) }); }} />
             )}
             {content.eventDate !== null && Platform.OS !== 'ios' && (

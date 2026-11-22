@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   section: { margin: spacing.md, padding: spacing.md, borderRadius: borderRadius.lg, backgroundColor: colors.background.secondary, gap: spacing.sm },
   title: {
     fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.semibold, color: colors.text.primary,
+    fontWeight: '400', color: colors.text.primary,
   },
   kpis: { flexDirection: 'row', gap: spacing.sm },
   kpi: { flex: 1, padding: spacing.sm, borderRadius: borderRadius.md, backgroundColor: colors.background.tertiary, gap: 2 },
@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
   sellersCard: { padding: spacing.sm, borderRadius: borderRadius.md, backgroundColor: colors.background.tertiary, gap: spacing.xs },
   sellersTitle: {
     fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.semibold, color: colors.primary.gold, letterSpacing: 0.5,
+    fontWeight: '400', color: colors.primary.gold, letterSpacing: 0.5,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingVertical: 2 },
   chip: {

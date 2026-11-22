@@ -1,4 +1,18 @@
-import { useState } from 'react';
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import { Upload, X } from 'lucide-react';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
+import { DRIVE_UPLOAD_LIMITS, EMPLOYEE_DOCUMENT_LIMITS, EMPLOYEE_DOCUMENT_TYPES, driveEmployeeDocumentsNode, type EmployeeDocumentType } from '@/lib/drive/driveShared';
+import { formatMaterialBytes } from '@/lib/materials/materialsShared';
+import { cardClass, errorMessage, ghostButton, inputClass, primaryButton } from '@/components/crm/materials/materialsUi';
+import { uploadDriveFile } from '@/components/crm/drive/driveApi';
+
+/*
+ * Nowy dokument pracownika (profil → Dokumenty): plik z dysku komputera (do 50 MB) + nazwa, rodzaj, opis i termin ważności.
+ * Plik trafia do Dysku → Pracownicy → pracownik → Dokumenty (to samo API co Mac, Finder i telefon — `/bridge/native/v1/drive`).
+ */
 
 export function AddDocumentModal({
   isOpen,
@@ -11,108 +25,111 @@ export function AddDocumentModal({
   employeeId: string;
   onAdded: () => void;
 }) {
-  const [formData, setFormData] = useState({
-    name: '',
-    document_type: 'other',
-    file_url: '',
-    description: '',
-    expiry_date: '',
-  });
+  const { showSnackbar } = useSnackbar();
+  const { showLoader, hideLoader } = useGlobalLoader();
+  const [file, setFile] = useState<File | null>(null);
+  const [name, setName] = useState('');
+  const [documentType, setDocumentType] = useState<EmployeeDocumentType>('other');
+  const [description, setDescription] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [saving, setSaving] = useState(false);
+  const abort = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (isOpen) return;
+    setFile(null);
+    setName('');
+    setDocumentType('other');
+    setDescription('');
+    setExpiryDate('');
+  }, [isOpen]);
+
+  useEffect(() => () => abort.current?.abort(), []);
 
   if (!isOpen) return null;
 
-  const handleSubmit = async () => {
-    if (!formData.name || !formData.file_url) {
-      alert('Wypełnij nazwę i URL pliku');
+  const pick = (picked: File | null) => {
+    setFile(picked);
+    if (picked && !name.trim()) setName(picked.name.replace(/\.[A-Za-z0-9]{1,8}$/, '').slice(0, EMPLOYEE_DOCUMENT_LIMITS.name));
+  };
+
+  const tooLarge = Boolean(file && file.size > DRIVE_UPLOAD_LIMITS.file);
+
+  const submit = async () => {
+    if (!file || saving) return;
+    if (tooLarge) {
+      showSnackbar('Plik przekracza 50 MB — limit dokumentów pracownika.', 'error');
       return;
     }
-
+    setSaving(true);
+    const controller = new AbortController();
+    abort.current = controller;
+    showLoader('Dodaję dokument', file.name);
     try {
-      // Table employee_documents doesn't exist yet
-      alert('Funkcja dokumentów nie jest jeszcze dostępna');
+      await uploadDriveFile(driveEmployeeDocumentsNode(employeeId), file, () => undefined, controller.signal, {
+        title: name.trim(), documentType, description: description.trim(), expiryDate,
+      });
+      showSnackbar('Dodano dokument.', 'success');
+      onAdded();
       onClose();
-    } catch (err) {
-      console.error('Error adding document:', err);
-      alert('Błąd podczas dodawania dokumentu');
+    } catch (error) {
+      showSnackbar(errorMessage(error, 'Nie udało się dodać dokumentu.'), 'error');
+    } finally {
+      abort.current = null;
+      hideLoader();
+      setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
-        <h2 className="mb-6 text-xl font-light text-[#e5e4e2]">Dodaj dokument</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="add-document-title">
+      <div className={`${cardClass} w-full max-w-lg space-y-4 p-6 text-[#e5e4e2]`}>
+        <div className="flex items-center gap-2">
+          <h2 id="add-document-title" className="flex-1 text-xl font-light">Dodaj dokument</h2>
+          <button type="button" className={ghostButton} onClick={onClose} aria-label="Zamknij" disabled={saving}><X className="h-4 w-4" /></button>
+        </div>
 
-        <div className="space-y-4">
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa dokumentu *</label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
-              placeholder="np. Umowa zlecenie 2025"
-            />
-          </div>
+        <label className="block space-y-1.5 text-sm">
+          <span className="text-[#e5e4e2]/60">Plik *</span>
+          <input type="file" className={`${inputClass} w-full file:mr-3 file:rounded-md file:border-0 file:bg-[#d3bb73]/15 file:px-3 file:py-1 file:text-[#d3bb73]`}
+            onChange={(event) => pick(event.target.files?.[0] || null)} disabled={saving} />
+          {file && (
+            <span className={`block text-xs ${tooLarge ? 'text-red-300' : 'text-[#e5e4e2]/50'}`}>
+              {file.name} · {formatMaterialBytes(file.size)}{tooLarge ? ' — przekracza 50 MB' : ''}
+            </span>
+          )}
+        </label>
 
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ dokumentu</label>
-            <select
-              value={formData.document_type}
-              onChange={(e) => setFormData({ ...formData, document_type: e.target.value })}
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
-            >
-              <option value="contract">Umowa</option>
-              <option value="certificate">Certyfikat</option>
-              <option value="id_document">Dokument tożsamości</option>
-              <option value="other">Inny</option>
+        <label className="block space-y-1.5 text-sm">
+          <span className="text-[#e5e4e2]/60">Nazwa dokumentu</span>
+          <input value={name} onChange={(event) => setName(event.target.value)} maxLength={EMPLOYEE_DOCUMENT_LIMITS.name} className={`${inputClass} w-full`}
+            placeholder="np. Badania okresowe 2026" disabled={saving} />
+        </label>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block space-y-1.5 text-sm">
+            <span className="text-[#e5e4e2]/60">Rodzaj</span>
+            <select value={documentType} onChange={(event) => setDocumentType(event.target.value as EmployeeDocumentType)} className={`${inputClass} w-full`} disabled={saving}>
+              {EMPLOYEE_DOCUMENT_TYPES.map((entry) => <option key={entry.key} value={entry.key}>{entry.label}</option>)}
             </select>
-          </div>
+          </label>
+          <label className="block space-y-1.5 text-sm">
+            <span className="text-[#e5e4e2]/60">Ważny do</span>
+            <input type="date" value={expiryDate} onChange={(event) => setExpiryDate(event.target.value)} className={`${inputClass} w-full`} disabled={saving} />
+          </label>
+        </div>
 
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">URL pliku *</label>
-            <input
-              type="url"
-              value={formData.file_url}
-              onChange={(e) => setFormData({ ...formData, file_url: e.target.value })}
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
-              placeholder="https://..."
-            />
-          </div>
+        <label className="block space-y-1.5 text-sm">
+          <span className="text-[#e5e4e2]/60">Opis</span>
+          <textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={EMPLOYEE_DOCUMENT_LIMITS.description}
+            className={`${inputClass} min-h-[80px] w-full`} placeholder="Dodatkowe informacje…" disabled={saving} />
+        </label>
 
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="min-h-[80px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
-              placeholder="Dodatkowe informacje..."
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data ważności</label>
-            <input
-              type="date"
-              value={formData.expiry_date}
-              onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <button
-              onClick={handleSubmit}
-              className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-            >
-              Dodaj
-            </button>
-            <button
-              onClick={onClose}
-              className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
-            >
-              Anuluj
-            </button>
-          </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" className={ghostButton} onClick={onClose} disabled={saving}>Anuluj</button>
+          <button type="button" className={primaryButton} onClick={() => void submit()} disabled={!file || tooLarge || saving}>
+            <Upload className="h-4 w-4" />Dodaj
+          </button>
         </div>
       </div>
     </div>

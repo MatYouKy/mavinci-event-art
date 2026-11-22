@@ -11,7 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { canAcceptWarehouseHandoff, WarehouseHandoff, warehouseOwnerLabel } from '../../lib/warehouseHandoff';
 import { OPERATIONAL_LABELS } from '../../lib/operationalStages';
 import { supabase } from '../../lib/supabase';
-import { colors, spacing } from '../../theme';
+import { colors, spacing, tone } from '../../theme';
 
 export default function WarehouseHandoffPanel({ eventId, status, onAccepted }: {
   eventId: string;
@@ -130,8 +130,8 @@ export default function WarehouseHandoffPanel({ eventId, status, onAccepted }: {
         style={{ backgroundColor: colors.primary.gold, padding: 12, borderRadius: 8, opacity: openingChat ? 0.6 : 1 }}>
         {openingChat ? <ActivityIndicator color={colors.background.primary} /> : <Text style={{ color: colors.background.primary, fontWeight: '600' }}>Napisz do autora</Text>}
       </TouchableOpacity> : <Text style={{ color: colors.text.secondary }}>Skontaktuj się z autorem wydarzenia w sprawie kierownika. Twoje konto nie ma dostępu do komunikatora.</Text>}
-      {!!chatError && <Text accessibilityRole="alert" style={{ color: '#ff9999', marginTop: 8 }}>{chatError}</Text>}
+      {!!chatError && <Text accessibilityRole="alert" style={{ color: tone('#ff9999'), marginTop: 8 }}>{chatError}</Text>}
     </View>}
-    {!!error && <View style={{ marginTop: 10 }}><Text accessibilityRole="alert" style={{ color: '#ff9999' }}>{error}</Text><TouchableOpacity disabled={busy} onPress={() => void load()}><Text style={{ color: colors.primary.gold, paddingVertical: 10 }}>Odśwież</Text></TouchableOpacity></View>}
+    {!!error && <View style={{ marginTop: 10 }}><Text accessibilityRole="alert" style={{ color: tone('#ff9999') }}>{error}</Text><TouchableOpacity disabled={busy} onPress={() => void load()}><Text style={{ color: colors.primary.gold, paddingVertical: 10 }}>Odśwież</Text></TouchableOpacity></View>}
   </View>;
 }

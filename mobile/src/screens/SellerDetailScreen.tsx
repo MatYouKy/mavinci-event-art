@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text,
 import { Feather } from '@expo/vector-icons';
 import { RouteProp, useIsFocused, useRoute } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootNavigator';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { colors, spacing, borderRadius, typography, tone } from '../theme';
 import { useAuth } from '../contexts/AuthContext';
 import { canView } from '../lib/permissions';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
@@ -39,7 +39,7 @@ type DetailRoute = RouteProp<RootStackParamList, 'SellerDetail'>;
 type LoadStatus = 'loading' | 'ready' | 'denied' | 'error';
 type IconName = keyof typeof Feather.glyphMap;
 
-const ERROR_TEXT = '#ff9999';
+const ERROR_TEXT = tone('#ff9999');
 
 const formatDate = (value: string | null | undefined, withTime = false): string => {
   if (!value) return '';
@@ -472,7 +472,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.primary.gold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,

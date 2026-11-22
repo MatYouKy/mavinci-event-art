@@ -35,7 +35,7 @@ import SwipeableRow from '../components/SwipeableRow';
 import * as Notifications from 'expo-notifications';
 
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing, typography } from '../theme';
+import { appPalette, colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableDropdown } from '../components/SearchableDropdown';
@@ -1058,7 +1058,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
                       ? form.datetime_start || new Date()
                       : undefined
                   }
-                  themeVariant="dark"
+                  themeVariant={appPalette().scheme}
                   onChange={(event, selectedDate) => {
                     if (Platform.OS === 'android') {
                       setActiveMeetingPicker(null);
@@ -1586,7 +1586,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold as any,
+    fontWeight: '400',
     color: colors.text.primary,
   },
 
@@ -1608,7 +1608,7 @@ const styles = StyleSheet.create({
 
     fontFamily: 'MBFAtom',
     fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.medium as any,
+    fontWeight: '400',
     color: colors.primary.gold,
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -1651,7 +1651,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.semibold as any,
+    fontWeight: '400',
     color: colors.text.primary,
     flex: 1,
     marginRight: spacing.sm,
@@ -1712,7 +1712,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.semibold as any,
+    fontWeight: '400',
     color: colors.text.primary,
   },
 
@@ -1835,7 +1835,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
+    fontWeight: '400',
     color: colors.text.primary,
   },
 
@@ -1879,7 +1879,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold as any,
+    fontWeight: '400',
     color: colors.text.primary,
     marginBottom: spacing.lg,
   },
@@ -2174,7 +2174,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.semibold as any,
+    fontWeight: '400',
     color: colors.text.primary,
   },
 

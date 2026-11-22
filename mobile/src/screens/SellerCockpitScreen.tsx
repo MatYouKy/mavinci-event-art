@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { colors, spacing, borderRadius, typography, tone } from '../theme';
 import { useAuth } from '../contexts/AuthContext';
 import { canView } from '../lib/permissions';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
@@ -39,7 +39,7 @@ import { STATUS_LABELS as EVENT_STATUS_LABELS } from './EventsScreen';
 type LoadStatus = 'loading' | 'ready' | 'missing' | 'denied' | 'error';
 type IconName = keyof typeof Feather.glyphMap;
 
-const ERROR_TEXT = '#ff9999';
+const ERROR_TEXT = tone('#ff9999');
 
 const formatDate = (value: string | null | undefined, withTime = false): string => {
   if (!value) return '';
@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.primary.gold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,

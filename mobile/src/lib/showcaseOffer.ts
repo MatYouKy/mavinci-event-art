@@ -4,7 +4,7 @@ import { supabase } from './supabase';
 import { showcaseOfferSetup } from './showcaseApi';
 import {
   addShowcaseOfferLine, emptyShowcaseOfferDraft, normalizeShowcaseOfferDraft, showcaseOfferLineFor,
-  type ShowcaseOfferAddResult, type ShowcaseOfferDraft, type ShowcaseOfferKind, type ShowcaseOfferSetup, type ShowcaseProductView,
+  type ShowcaseOfferAddResult, type ShowcaseOfferDraft, type ShowcaseOfferKind, type ShowcaseOfferLine, type ShowcaseOfferSetup, type ShowcaseProductView,
 } from './showcaseShared';
 
 /*
@@ -96,6 +96,28 @@ export function useShowcaseOffer() {
     return { result: outcome.result, label: line.label };
   }, []);
 
+  /** Gotowa pozycja (np. z konfiguratora sceny i ekranu LED). */
+  const addLine = useCallback((line: ShowcaseOfferLine): ShowcaseOfferAddResult['result'] => {
+    const outcome = addShowcaseOfferLine(current, line, new Date().toISOString());
+    if (outcome.result === 'added') replace(outcome.draft);
+    return outcome.result;
+  }, []);
+
+  /**
+   * Edycja pozycji: inny wariant, pakiet albo konfiguracja — w tym samym miejscu listy, z dotychczasową ilością i dniami.
+   * `exists` — taka pozycja jest już w ofercie (np. ten sam wariant), `missing` — pozycji nie ma (usunięta w międzyczasie).
+   */
+  const replaceLine = useCallback((key: string, line: ShowcaseOfferLine): 'replaced' | 'exists' | 'missing' => {
+    const index = current.lines.findIndex((entry) => entry.key === key);
+    if (index < 0) return 'missing';
+    if (line.key !== key && current.lines.some((entry) => entry.key === line.key)) return 'exists';
+    const previous = current.lines[index];
+    const lines = [...current.lines];
+    lines[index] = { ...line, quantity: previous.quantity, days: previous.days, itemId: line.itemId || previous.itemId, itemTitle: line.itemTitle || previous.itemTitle };
+    replace({ ...current, lines, updatedAt: new Date().toISOString() });
+    return 'replaced';
+  }, []);
+
   const has = useCallback((product: ShowcaseProductView, choice: ShowcaseOfferChoice) => {
     const line = showcaseOfferLineFor(product, choice, null);
     return Boolean(line && draft.lines.some((entry) => entry.key === line.key));
@@ -103,5 +125,5 @@ export function useShowcaseOffer() {
 
   const reset = useCallback(() => replace(emptyShowcaseOfferDraft()), []);
 
-  return { draft, setup: offerSetup, canOffer: Boolean(offerSetup?.canOffer), update, add, has, reset };
+  return { draft, setup: offerSetup, canOffer: Boolean(offerSetup?.canOffer), update, add, addLine, replaceLine, has, reset };
 }

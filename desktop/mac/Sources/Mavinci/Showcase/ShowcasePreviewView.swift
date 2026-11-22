@@ -42,6 +42,32 @@ import CoreText
     }
 }
 
+/// Nagłówki pokazu z fontu księgi znaku: font nagłówków w pogrubieniu ucina części znaków, a jego „0” wygląda jak „O” — dlatego
+/// nagłówki są wersalikami (czytelne), wyłącznie krojem regularnym, a cyfry fontem treści. 1:1 z CRM (`ShowcasePresenter`) i telefonem.
+enum ShowcaseHeadingText {
+    static func attributed(_ text: String, heading: Font, digits: Font) -> AttributedString {
+        let upper = text.uppercased(with: Locale(identifier: "pl_PL"))
+        var result = AttributedString()
+        var run = ""
+        var runDigits = false
+        func flush() {
+            guard !run.isEmpty else { return }
+            var part = AttributedString(run)
+            part[AttributeScopes.SwiftUIAttributes.FontAttribute.self] = runDigits ? digits : heading
+            result.append(part)
+            run = ""
+        }
+        for character in upper {
+            let digit = character.isASCII && character.isNumber
+            if !run.isEmpty && digit != runDigits { flush() }
+            runDigits = digit
+            run.append(character)
+        }
+        flush()
+        return result
+    }
+}
+
 private enum ShowcaseScreen: Equatable {
     case home
     case section(String)
@@ -76,6 +102,7 @@ private struct ShowcaseLightbox: Equatable {
     let request: ShowcasePreviewRequest
     @EnvironmentObject private var state: Workspace
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.crmTheme) private var theme
     @State private var device: ShowcaseDevice
     @State private var screen: ShowcaseScreen
     @State private var showPrices = false
@@ -107,8 +134,14 @@ private struct ShowcaseLightbox: Equatable {
     private var brand: ShowcaseBrand {
         store.home?.brand ?? ShowcaseBrand(name: "Mavinci", logoUrl: nil, sygnetUrl: nil, accent: "#d3bb73", surface: "#1c1f33", headingFont: nil, bodyFont: nil)
     }
-    private var accent: Color { ShowcaseShared.color(brand.accent, fallback: .orange) }
-    private var surface: Color { ShowcaseShared.color(brand.surface, fallback: .black) }
+    // Pokaz w kolorach motywu CRM pracownika (Burgund, Granat, Ciemny, Jasny) — jak podgląd w CRM i tablet: tło — powierzchnia
+    // motywu, akcent — z księgi znaku (w jasnym motywie — akcent motywu), tekst i przyciemnienia odwrócone w jasnym motywie.
+    private var accent: Color { theme == .light ? theme.accent : ShowcaseShared.color(brand.accent, fallback: theme.accent) }
+    private var surface: Color { theme.card }
+    /// Tekst pokazu: w ciemnych motywach — biały, w jasnym — tekst motywu.
+    private var ink: Color { theme == .light ? theme.text : .white }
+    /// Przyciemnienie (kafle, gradienty na zdjęciach): w ciemnych motywach — czarne, w jasnym — białe (jak odwrócony CRM).
+    private var scrim: Color { theme == .light ? .white : .black }
     private var sheetSize: CGSize {
         let frame = NSScreen.main?.visibleFrame.size ?? CGSize(width: 1440, height: 900)
         return CGSize(width: min(1480, frame.width - 60), height: min(1000, frame.height - 60))
@@ -194,7 +227,7 @@ private struct ShowcaseLightbox: Equatable {
             }
             .frame(width: size.width, height: size.height)
             .clipShape(RoundedRectangle(cornerRadius: 30))
-            .environment(\.colorScheme, .dark)
+            .environment(\.colorScheme, theme.scheme)
         }
     }
 
@@ -217,7 +250,7 @@ private struct ShowcaseLightbox: Equatable {
             if screen != .home {
                 Button { back() } label: {
                     Label("Wróć", systemImage: "chevron.left").font(.system(size: 16)).foregroundStyle(accent)
-                        .padding(.horizontal, 14).frame(height: 44).background(Capsule().fill(Color.black.opacity(0.3)))
+                        .padding(.horizontal, 14).frame(height: 44).background(Capsule().fill(scrim.opacity(0.3)))
                 }
                 .buttonStyle(.plain)
             } else if let sygnet = brand.sygnetUrl {
@@ -226,13 +259,13 @@ private struct ShowcaseLightbox: Equatable {
             if let section = crumbSection {
                 // Okruszek: nazwa działu przenosi do działu (jak w CRM).
                 Button { screen = .section(section.id) } label: {
-                    Text(section.title).font(.system(size: 15)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                    Text(section.title).font(.system(size: 15)).foregroundStyle(ink.opacity(0.7)).lineLimit(1)
                         .padding(.horizontal, 8).frame(height: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).help("Przejdź do działu")
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.35))
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(ink.opacity(0.35))
             }
-            Text(crumb).font(.system(size: 15)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+            Text(crumb).font(.system(size: 15)).foregroundStyle(ink.opacity(0.7)).lineLimit(1)
             Spacer()
             if offer.canOffer {
                 Button { offerOpen.toggle(); if toast?.openOffer == true { toast = nil } } label: {
@@ -313,6 +346,10 @@ private struct ShowcaseLightbox: Equatable {
 
     private func titleFont(_ size: CGFloat) -> Font { headingFamily.map { Font.custom($0, size: size) } ?? .system(size: size, weight: .regular) }
     private func textFont(_ size: CGFloat) -> Font { bodyFamily.map { Font.custom($0, size: size) } ?? .system(size: size) }
+    /// Nagłówek pokazu — wersalikami, krojem regularnym, cyfry fontem treści (jak w CRM i na tablecie).
+    private func heading(_ text: String, _ size: CGFloat) -> Text {
+        Text(ShowcaseHeadingText.attributed(text, heading: titleFont(size), digits: textFont(size))).tracking(size * 0.02)
+    }
 
     // MARK: Dane
     private var currentItemID: String? {
@@ -342,15 +379,15 @@ private struct ShowcaseLightbox: Equatable {
                 HStack(alignment: .bottom, spacing: 24) {
                     if let logo = brand.logoUrl { SocialImageView(url: logo, contentMode: .fit).frame(maxWidth: 220, maxHeight: 96) }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Co możemy dla Państwa przygotować").font(titleFont(device.wide ? 44 : 36)).foregroundStyle(.white)
-                        Text("Wybierz dział, żeby zobaczyć, jak to wygląda.").font(textFont(18)).foregroundStyle(.white.opacity(0.6))
+                        heading("Co możemy dla Państwa przygotować", device.wide ? 44 : 36).foregroundStyle(ink)
+                        Text("Wybierz dział, żeby zobaczyć, jak to wygląda.").font(textFont(18)).foregroundStyle(ink.opacity(0.6))
                     }
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 20), count: columns), spacing: 20) {
                     ForEach(visibleSections) { section in sectionTile(section) }
                 }
                 if visibleSections.isEmpty {
-                    Text("Brak widocznych działów — dodaj dział i karty w edytorze.").font(textFont(18)).foregroundStyle(.white.opacity(0.5)).frame(maxWidth: .infinity)
+                    Text("Brak widocznych działów — dodaj dział i karty w edytorze.").font(textFont(18)).foregroundStyle(ink.opacity(0.5)).frame(maxWidth: .infinity)
                 }
             }
             .padding(.horizontal, 40).padding(.top, 96).padding(.bottom, 48)
@@ -366,19 +403,19 @@ private struct ShowcaseLightbox: Equatable {
                 if let cover = section.cover, let thumb = store.url(cover.key)?.thumb {
                     SocialImageView(url: thumb).opacity(0.85)
                 }
-                LinearGradient(colors: [.clear, .black.opacity(0.8)], startPoint: .top, endPoint: .bottom)
+                LinearGradient(colors: [.clear, scrim.opacity(0.8)], startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: 4) {
                     Image(systemName: ShowcaseIconInfo.symbol(section.icon)).font(.system(size: 22)).foregroundStyle(accent)
-                        .frame(width: 48, height: 48).background(RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.4)))
+                        .frame(width: 48, height: 48).background(RoundedRectangle(cornerRadius: 14).fill(scrim.opacity(0.4)))
                     Spacer()
-                    Text(section.title).font(titleFont(26)).foregroundStyle(.white).lineLimit(2)
-                    Text(subtitle).font(textFont(15)).foregroundStyle(.white.opacity(0.7)).lineLimit(2)
+                    heading(section.title, 26).foregroundStyle(ink).lineLimit(2)
+                    Text(subtitle).font(textFont(15)).foregroundStyle(ink.opacity(0.7)).lineLimit(2)
                 }
                 .padding(20)
             }
             .frame(height: device.wide ? 300 : 220)
             .clipShape(RoundedRectangle(cornerRadius: 24))
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.1)))
+            .overlay(RoundedRectangle(cornerRadius: 24).stroke(ink.opacity(0.1)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -394,8 +431,8 @@ private struct ShowcaseLightbox: Equatable {
                         Image(systemName: ShowcaseIconInfo.symbol(section.icon)).font(.system(size: 30)).foregroundStyle(accent)
                             .frame(width: 64, height: 64).background(RoundedRectangle(cornerRadius: 16).fill(accent.opacity(0.14)))
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(section.title).font(titleFont(40)).foregroundStyle(.white)
-                            if !section.subtitle.isEmpty { Text(section.subtitle).font(textFont(18)).foregroundStyle(.white.opacity(0.6)) }
+                            heading(section.title, 40).foregroundStyle(ink)
+                            if !section.subtitle.isEmpty { Text(section.subtitle).font(textFont(18)).foregroundStyle(ink.opacity(0.6)) }
                         }
                     }
                 }
@@ -411,7 +448,7 @@ private struct ShowcaseLightbox: Equatable {
                     ForEach(items) { item in itemTile(item, sectionID: id) }
                 }
                 if items.isEmpty {
-                    Text("Ten dział nie ma jeszcze widocznych kart.").font(textFont(18)).foregroundStyle(.white.opacity(0.5)).frame(maxWidth: .infinity)
+                    Text("Ten dział nie ma jeszcze widocznych kart.").font(textFont(18)).foregroundStyle(ink.opacity(0.5)).frame(maxWidth: .infinity)
                 }
             }
             .padding(.horizontal, 40).padding(.top, 96).padding(.bottom, 48)
@@ -436,20 +473,20 @@ private struct ShowcaseLightbox: Equatable {
     private func itemTile(_ item: ShowcaseItemSummary, sectionID: String) -> some View {
         Button { screen = .item(item.id, sectionID) } label: {
             VStack(alignment: .leading, spacing: 0) {
-                Color.black.opacity(0.3).aspectRatio(16.0 / 10.0, contentMode: .fit)
+                scrim.opacity(0.3).aspectRatio(16.0 / 10.0, contentMode: .fit)
                     .overlay { SocialImageView(url: store.url(item.thumbKey)?.thumb) }
                     .clipped()
                 VStack(alignment: .leading, spacing: 4) {
                     // Stała wysokość opisu — kafelki w rzędzie mają równą wysokość.
-                    Text(item.title).font(titleFont(22)).foregroundStyle(.white).lineLimit(2, reservesSpace: true)
+                    heading(item.title, 22).foregroundStyle(ink).lineLimit(2, reservesSpace: true)
                     Text(item.tagline).font(textFont(15)).foregroundStyle(accent).lineLimit(2, reservesSpace: true)
                 }
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(Color.black.opacity(0.25))
+            .background(scrim.opacity(0.25))
             .clipShape(RoundedRectangle(cornerRadius: 24))
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.1)))
+            .overlay(RoundedRectangle(cornerRadius: 24).stroke(ink.opacity(0.1)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -467,7 +504,7 @@ private struct ShowcaseLightbox: Equatable {
                         VStack(alignment: .leading, spacing: 0) {
                             ForEach(blocks) { block in blockSection(block, detail: detail).padding(.top, 86).id("preview-\(block.id)") }
                             if blocks.isEmpty {
-                                Text("Karta nie ma jeszcze treści do pokazania.").font(textFont(18)).foregroundStyle(.white.opacity(0.5)).frame(maxWidth: .infinity)
+                                Text("Karta nie ma jeszcze treści do pokazania.").font(textFont(18)).foregroundStyle(ink.opacity(0.5)).frame(maxWidth: .infinity)
                                     .padding(.top, 36)
                             }
                             if let nav = neighbours(detail.item.id) { neighbourNav(nav).padding(.top, 64) }
@@ -493,18 +530,18 @@ private struct ShowcaseLightbox: Equatable {
             } else {
                 RadialGradient(colors: [accent.opacity(0.35), surface], center: .topLeading, startRadius: 10, endRadius: 900)
             }
-            LinearGradient(colors: [.black.opacity(0.1), .black.opacity(0.3), .black.opacity(0.9)], startPoint: .top, endPoint: .bottom).allowsHitTesting(false)
+            LinearGradient(colors: [scrim.opacity(0.1), scrim.opacity(0.3), scrim.opacity(0.9)], startPoint: .top, endPoint: .bottom).allowsHitTesting(false)
             VStack(alignment: .leading, spacing: 12) {
-                Text(item.title).font(titleFont(56)).foregroundStyle(.white)
+                heading(item.title, 56).foregroundStyle(ink)
                 if !item.tagline.isEmpty { Text(item.tagline).font(textFont(24)).foregroundStyle(accent) }
-                if !item.content.lead.isEmpty { Text(item.content.lead).font(textFont(19)).foregroundStyle(.white.opacity(0.85)).frame(maxWidth: 900, alignment: .leading) }
+                if !item.content.lead.isEmpty { Text(item.content.lead).font(textFont(19)).foregroundStyle(ink.opacity(0.85)).frame(maxWidth: 900, alignment: .leading) }
                 if showPrices && !linked.isEmpty {
                     HStack(spacing: 8) {
                         ForEach(linked) { product in
                             let prefix: String = linked.count > 1 ? "\(product.name): " : "od "
                             Text(prefix + ShowcaseShared.price(product.priceNet) + (product.unit.isEmpty ? "" : " / \(product.unit)"))
                                 .font(textFont(16)).foregroundStyle(accent)
-                                .padding(.horizontal, 14).padding(.vertical, 6).background(Capsule().fill(Color.black.opacity(0.5)))
+                                .padding(.horizontal, 14).padding(.vertical, 6).background(Capsule().fill(scrim.opacity(0.5)))
                         }
                     }
                 }
@@ -558,7 +595,7 @@ private struct ShowcaseLightbox: Equatable {
         VStack(spacing: 20) {
             Rectangle().fill(accent.opacity(0.15)).frame(height: 1)
             Text("Karta \(nav.index + 1) z \(nav.count)\(nav.sectionTitle.isEmpty ? "" : " · \(nav.sectionTitle)") — przesuń palcem w bok, żeby przejść do sąsiedniej")
-                .font(textFont(15)).foregroundStyle(.white.opacity(0.5)).frame(maxWidth: .infinity)
+                .font(textFont(15)).foregroundStyle(ink.opacity(0.5)).frame(maxWidth: .infinity)
             HStack(spacing: 20) {
                 if let prev = nav.prev { neighbourCard(prev, direction: -1) } else { Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
                 if let next = nav.next { neighbourCard(next, direction: 1) } else { Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
@@ -570,15 +607,15 @@ private struct ShowcaseLightbox: Equatable {
         Button { move(direction) } label: {
             HStack(spacing: 20) {
                 if direction > 0 { neighbourText(item, direction: direction) }
-                Color.black.opacity(0.3).frame(width: 128, height: 80)
+                scrim.opacity(0.3).frame(width: 128, height: 80)
                     .overlay { SocialImageView(url: store.url(item.thumbKey)?.thumb) }
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                 if direction < 0 { neighbourText(item, direction: direction) }
             }
             .padding(16)
             .frame(maxWidth: .infinity, minHeight: 112)
-            .background(RoundedRectangle(cornerRadius: 24).fill(Color.black.opacity(0.25)))
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.1)))
+            .background(RoundedRectangle(cornerRadius: 24).fill(scrim.opacity(0.25)))
+            .overlay(RoundedRectangle(cornerRadius: 24).stroke(ink.opacity(0.1)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -592,16 +629,16 @@ private struct ShowcaseLightbox: Equatable {
                 if direction > 0 { Image(systemName: "chevron.right") }
             }
             .font(textFont(14)).foregroundStyle(accent)
-            Text(item.title).font(titleFont(22)).foregroundStyle(.white).lineLimit(2).multilineTextAlignment(direction > 0 ? .trailing : .leading)
+            heading(item.title, 22).foregroundStyle(ink).lineLimit(2).multilineTextAlignment(direction > 0 ? .trailing : .leading)
         }
         .frame(maxWidth: .infinity, alignment: direction > 0 ? .trailing : .leading)
     }
 
     private func blockSection(_ block: ShowcaseBlock, detail: ShowcaseDetail) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(block.title).font(titleFont(34)).foregroundStyle(.white)
+            heading(block.title, 34).foregroundStyle(ink)
             if block.kind != .text && !block.text.isEmpty {
-                Text(block.text).font(textFont(18)).foregroundStyle(.white.opacity(0.7)).frame(maxWidth: 900, alignment: .leading)
+                Text(block.text).font(textFont(18)).foregroundStyle(ink.opacity(0.7)).frame(maxWidth: 900, alignment: .leading)
             }
             blockContent(block, detail: detail).padding(.top, 16)
         }
@@ -618,7 +655,7 @@ private struct ShowcaseLightbox: Equatable {
         case .faq:
             faq(block.rows)
         case .text:
-            Text(block.text).font(textFont(19)).foregroundStyle(.white.opacity(0.85)).lineSpacing(4).frame(maxWidth: 960, alignment: .leading)
+            Text(block.text).font(textFont(19)).foregroundStyle(ink.opacity(0.85)).lineSpacing(4).frame(maxWidth: 960, alignment: .leading)
         case .realizations:
             realizations(block.refs.compactMap { id in detail.realizations.first { $0.id == id } }, urls: detail.urls)
         case .catalog:
@@ -633,12 +670,12 @@ private struct ShowcaseLightbox: Equatable {
         VStack(alignment: .leading, spacing: 24) {
             ForEach(Array(photos.enumerated()), id: \.element.id) { entry in
                 VStack(alignment: .leading, spacing: 8) {
-                    Color.black.opacity(0.3).frame(height: 560)
+                    scrim.opacity(0.3).frame(height: 560)
                         .overlay { SocialImageView(url: urls[entry.element.key]?.url) }
                         .clipShape(RoundedRectangle(cornerRadius: 24))
                         .contentShape(Rectangle())
                         .onTapGesture { lightbox = ShowcaseLightbox(photos: photos, index: entry.offset, urls: urls) }
-                    if !entry.element.caption.isEmpty { Text(entry.element.caption).font(textFont(16)).foregroundStyle(.white.opacity(0.6)) }
+                    if !entry.element.caption.isEmpty { Text(entry.element.caption).font(textFont(16)).foregroundStyle(ink.opacity(0.6)) }
                 }
             }
         }
@@ -647,7 +684,7 @@ private struct ShowcaseLightbox: Equatable {
     private func gridPhotos(_ photos: [ShowcaseMedia], urls: [String: ShowcaseURLPair]) -> some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: device.wide ? 4 : 3), spacing: 12) {
             ForEach(Array(photos.enumerated()), id: \.element.id) { entry in
-                Color.black.opacity(0.3).aspectRatio(1, contentMode: .fit)
+                scrim.opacity(0.3).aspectRatio(1, contentMode: .fit)
                     .overlay { SocialImageView(url: urls[entry.element.key]?.thumb) }
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .contentShape(Rectangle())
@@ -660,8 +697,8 @@ private struct ShowcaseLightbox: Equatable {
         VStack(alignment: .leading, spacing: 8) { inner() }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .background(RoundedRectangle(cornerRadius: 24).fill(Color.black.opacity(0.25)))
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(highlighted ? accent : Color.white.opacity(0.1), lineWidth: highlighted ? 2 : 1))
+            .background(RoundedRectangle(cornerRadius: 24).fill(scrim.opacity(0.25)))
+            .overlay(RoundedRectangle(cornerRadius: 24).stroke(highlighted ? accent : ink.opacity(0.1), lineWidth: highlighted ? 2 : 1))
     }
 
     @ViewBuilder private func points(_ items: [ShowcasePoint], style: String) -> some View {
@@ -673,8 +710,8 @@ private struct ShowcaseLightbox: Equatable {
                         Text("\(entry.offset + 1)").font(.system(size: 20, weight: .semibold)).foregroundStyle(surface)
                             .frame(width: 48, height: 48).background(Circle().fill(accent))
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(entry.element.title).font(textFont(22)).foregroundStyle(.white)
-                            if !entry.element.text.isEmpty { Text(entry.element.text).font(textFont(17)).foregroundStyle(.white.opacity(0.7)) }
+                            Text(entry.element.title).font(textFont(22)).foregroundStyle(ink)
+                            if !entry.element.text.isEmpty { Text(entry.element.text).font(textFont(17)).foregroundStyle(ink.opacity(0.7)) }
                         }
                         .padding(.top, 8)
                     }
@@ -690,8 +727,8 @@ private struct ShowcaseLightbox: Equatable {
                     tile {
                         Image(systemName: "checkmark").font(.system(size: 20, weight: .semibold)).foregroundStyle(accent)
                             .frame(width: 44, height: 44).background(RoundedRectangle(cornerRadius: 14).fill(accent.opacity(0.14)))
-                        Text(entry.element.title).font(textFont(21)).foregroundStyle(.white).padding(.top, 8)
-                        if !entry.element.text.isEmpty { Text(entry.element.text).font(textFont(16)).foregroundStyle(.white.opacity(0.65)) }
+                        Text(entry.element.title).font(textFont(21)).foregroundStyle(ink).padding(.top, 8)
+                        if !entry.element.text.isEmpty { Text(entry.element.text).font(textFont(16)).foregroundStyle(ink.opacity(0.65)) }
                     }
                 }
             }
@@ -702,8 +739,8 @@ private struct ShowcaseLightbox: Equatable {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "checkmark").font(.system(size: 20, weight: .semibold)).foregroundStyle(accent).padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
-                Text(point.title).font(textFont(19)).foregroundStyle(.white)
-                if !point.text.isEmpty { Text(point.text).font(textFont(16)).foregroundStyle(.white.opacity(0.65)) }
+                Text(point.title).font(textFont(19)).foregroundStyle(ink)
+                if !point.text.isEmpty { Text(point.text).font(textFont(16)).foregroundStyle(ink.opacity(0.65)) }
             }
             Spacer(minLength: 0)
         }
@@ -713,15 +750,15 @@ private struct ShowcaseLightbox: Equatable {
         VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element.id) { entry in
                 HStack(alignment: .top, spacing: 24) {
-                    Text(entry.element.title).font(textFont(18)).foregroundStyle(.white.opacity(0.65)).frame(maxWidth: .infinity, alignment: .leading)
-                    Text(entry.element.text).font(textFont(18)).foregroundStyle(.white).frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1)
+                    Text(entry.element.title).font(textFont(18)).foregroundStyle(ink.opacity(0.65)).frame(maxWidth: .infinity, alignment: .leading)
+                    Text(entry.element.text).font(textFont(18)).foregroundStyle(ink).frame(maxWidth: .infinity, alignment: .leading).layoutPriority(1)
                 }
                 .padding(.horizontal, 24).padding(.vertical, 16)
-                .background(Color.black.opacity(entry.offset % 2 == 0 ? 0.25 : 0.1))
+                .background(scrim.opacity(entry.offset % 2 == 0 ? 0.25 : 0.1))
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 24))
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.1)))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(ink.opacity(0.1)))
     }
 
     private func faq(_ rows: [ShowcaseRow]) -> some View {
@@ -731,7 +768,7 @@ private struct ShowcaseLightbox: Equatable {
                 VStack(alignment: .leading, spacing: 0) {
                     Button { openQuestion = open ? "" : row.id } label: {
                         HStack {
-                            Text(row.title).font(textFont(20)).foregroundStyle(.white).frame(maxWidth: .infinity, alignment: .leading)
+                            Text(row.title).font(textFont(20)).foregroundStyle(ink).frame(maxWidth: .infinity, alignment: .leading)
                             Image(systemName: "chevron.right").font(.system(size: 18, weight: .semibold)).foregroundStyle(accent).rotationEffect(.degrees(open ? 90 : 0))
                         }
                         .padding(.horizontal, 24).padding(.vertical, 16)
@@ -739,11 +776,11 @@ private struct ShowcaseLightbox: Equatable {
                     }
                     .buttonStyle(.plain)
                     if open && !row.text.isEmpty {
-                        Text(row.text).font(textFont(17)).foregroundStyle(.white.opacity(0.75)).padding(.horizontal, 24).padding(.bottom, 20)
+                        Text(row.text).font(textFont(17)).foregroundStyle(ink.opacity(0.75)).padding(.horizontal, 24).padding(.bottom, 20)
                     }
                 }
-                .background(RoundedRectangle(cornerRadius: 18).fill(Color.black.opacity(0.25)))
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.1)))
+                .background(RoundedRectangle(cornerRadius: 18).fill(scrim.opacity(0.25)))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(ink.opacity(0.1)))
             }
         }
     }
@@ -753,25 +790,25 @@ private struct ShowcaseLightbox: Equatable {
             ForEach(list) { entry in
                 Button { if !entry.photos.isEmpty { lightbox = ShowcaseLightbox(photos: entry.photos, index: 0, urls: urls) } } label: {
                     VStack(alignment: .leading, spacing: 0) {
-                        Color.black.opacity(0.3).aspectRatio(4.0 / 3.0, contentMode: .fit)
+                        scrim.opacity(0.3).aspectRatio(4.0 / 3.0, contentMode: .fit)
                             .overlay { SocialImageView(url: entry.photos.first.flatMap { urls[$0.key]?.thumb }) }
                             .overlay(alignment: .bottomTrailing) {
                                 if entry.photos.count > 1 {
-                                    Label("\(entry.photos.count)", systemImage: "photo.on.rectangle").font(.system(size: 13)).foregroundStyle(.white)
-                                        .padding(.horizontal, 10).padding(.vertical, 4).background(Capsule().fill(Color.black.opacity(0.6))).padding(12)
+                                    Label("\(entry.photos.count)", systemImage: "photo.on.rectangle").font(.system(size: 13)).foregroundStyle(ink)
+                                        .padding(.horizontal, 10).padding(.vertical, 4).background(Capsule().fill(scrim.opacity(0.6))).padding(12)
                                 }
                             }
                             .clipped()
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(entry.title).font(textFont(20)).foregroundStyle(.white).lineLimit(2, reservesSpace: true)
+                            Text(entry.title).font(textFont(20)).foregroundStyle(ink).lineLimit(2, reservesSpace: true)
                             let place: String = [entry.location, String((entry.date ?? "").prefix(4))].filter { !$0.isEmpty }.joined(separator: " · ")
-                            if !place.isEmpty { Label(place, systemImage: "mappin.and.ellipse").font(textFont(14)).foregroundStyle(.white.opacity(0.55)) }
+                            if !place.isEmpty { Label(place, systemImage: "mappin.and.ellipse").font(textFont(14)).foregroundStyle(ink.opacity(0.55)) }
                         }
                         .padding(20)
                     }
-                    .background(Color.black.opacity(0.25))
+                    .background(scrim.opacity(0.25))
                     .clipShape(RoundedRectangle(cornerRadius: 24))
-                    .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.1)))
+                    .overlay(RoundedRectangle(cornerRadius: 24).stroke(ink.opacity(0.1)))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -816,22 +853,22 @@ private struct ShowcaseLightbox: Equatable {
     private func variantTile(_ variant: ShowcaseProductVariant, product: ShowcaseProduct, urls: [String: ShowcaseURLPair]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if let image = variant.image {
-                Color.black.opacity(0.3).aspectRatio(16.0 / 9.0, contentMode: .fit)
+                scrim.opacity(0.3).aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .overlay { SocialImageView(url: urls[image.key]?.thumb) }
                     .clipped()
             }
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top) {
-                    Text(variant.name).font(textFont(22)).foregroundStyle(.white)
+                    Text(variant.name).font(textFont(22)).foregroundStyle(ink)
                     Spacer()
                     if variant.recommended {
                         Label("Polecany", systemImage: "star.fill").font(.system(size: 13)).foregroundStyle(surface)
                             .padding(.horizontal, 10).padding(.vertical, 4).background(Capsule().fill(accent))
                     }
                 }
-                if !variant.shortDescription.isEmpty { Text(variant.shortDescription).font(textFont(16)).foregroundStyle(.white.opacity(0.7)) }
+                if !variant.shortDescription.isEmpty { Text(variant.shortDescription).font(textFont(16)).foregroundStyle(ink.opacity(0.7)) }
                 ForEach(Array(variant.benefits.enumerated()), id: \.offset) { entry in
-                    Label(entry.element, systemImage: "checkmark").font(textFont(16)).foregroundStyle(.white)
+                    Label(entry.element, systemImage: "checkmark").font(textFont(16)).foregroundStyle(ink)
                 }
                 if showPrices || offerable(product) {
                     HStack(alignment: .bottom, spacing: 8) {
@@ -848,22 +885,22 @@ private struct ShowcaseLightbox: Equatable {
             }
             .padding(24)
         }
-        .background(Color.black.opacity(0.25))
+        .background(scrim.opacity(0.25))
         .clipShape(RoundedRectangle(cornerRadius: 24))
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(variant.recommended ? accent : Color.white.opacity(0.1), lineWidth: variant.recommended ? 2 : 1))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(variant.recommended ? accent : ink.opacity(0.1), lineWidth: variant.recommended ? 2 : 1))
     }
 
     private func packageTile(_ item: ShowcaseProductPackage, product: ShowcaseProduct, urls: [String: ShowcaseURLPair]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if let image = item.image {
-                Color.black.opacity(0.3).aspectRatio(16.0 / 9.0, contentMode: .fit)
+                scrim.opacity(0.3).aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .overlay { SocialImageView(url: urls[image.key]?.thumb) }
                     .clipped()
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text(item.name).font(textFont(22)).foregroundStyle(.white)
-                if !item.description.isEmpty { Text(item.description).font(textFont(16)).foregroundStyle(.white.opacity(0.7)) }
-                if !item.scope.isEmpty { Text("W pakiecie: \(item.scope)").font(textFont(15)).foregroundStyle(.white.opacity(0.6)) }
+                Text(item.name).font(textFont(22)).foregroundStyle(ink)
+                if !item.description.isEmpty { Text(item.description).font(textFont(16)).foregroundStyle(ink.opacity(0.7)) }
+                if !item.scope.isEmpty { Text("W pakiecie: \(item.scope)").font(textFont(15)).foregroundStyle(ink.opacity(0.6)) }
                 if !item.bonus.isEmpty { Text("Gratis: \(item.bonus)").font(textFont(15)).foregroundStyle(accent) }
                 if showPrices || offerable(product) {
                     HStack(alignment: .bottom, spacing: 8) {
@@ -880,9 +917,9 @@ private struct ShowcaseLightbox: Equatable {
             }
             .padding(24)
         }
-        .background(Color.black.opacity(0.25))
+        .background(scrim.opacity(0.25))
         .clipShape(RoundedRectangle(cornerRadius: 24))
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(item.highlighted ? accent : Color.white.opacity(0.1), lineWidth: item.highlighted ? 2 : 1))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(item.highlighted ? accent : ink.opacity(0.1), lineWidth: item.highlighted ? 2 : 1))
     }
 
     private func preparation(_ product: ShowcaseProduct) -> some View {
@@ -897,10 +934,10 @@ private struct ShowcaseLightbox: Equatable {
                 tile {
                     Text("Montaż i ustalenia").font(textFont(20)).foregroundStyle(accent)
                     if let hours = product.setupHours {
-                        Label("Montaż: ok. \(ShowcaseShared.hours(hours)) h przed wydarzeniem", systemImage: "clock").font(textFont(18)).foregroundStyle(.white)
+                        Label("Montaż: ok. \(ShowcaseShared.hours(hours)) h przed wydarzeniem", systemImage: "clock").font(textFont(18)).foregroundStyle(ink)
                     }
                     if let hours = product.teardownHours {
-                        Label("Demontaż: ok. \(ShowcaseShared.hours(hours)) h", systemImage: "clock").font(textFont(18)).foregroundStyle(.white)
+                        Label("Demontaż: ok. \(ShowcaseShared.hours(hours)) h", systemImage: "clock").font(textFont(18)).foregroundStyle(ink)
                     }
                     ForEach(Array(product.preparation.enumerated()), id: \.offset) { entry in
                         let days: String = entry.element.leadDays.map { " — \(Int($0)) dni przed" } ?? ""
@@ -933,7 +970,7 @@ private struct ShowcaseLightbox: Equatable {
         HStack(spacing: 12) {
             Image(systemName: value.error ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .font(.system(size: 18)).foregroundStyle(value.error ? Color.red : accent)
-            Text(value.text).font(textFont(16)).foregroundStyle(.white).lineLimit(3)
+            Text(value.text).font(textFont(16)).foregroundStyle(ink).lineLimit(3)
             if value.openOffer && !offerOpen {
                 Button { offerOpen = true; toast = nil } label: {
                     Text("Pokaż ofertę").font(.system(size: 15, weight: .medium)).foregroundStyle(surface)
@@ -945,8 +982,8 @@ private struct ShowcaseLightbox: Equatable {
         .padding(.horizontal, 18).padding(.vertical, 10)
         .background(RoundedRectangle(cornerRadius: 16).fill(surface))
         .overlay(RoundedRectangle(cornerRadius: 16).fill(value.error ? Color.red.opacity(0.22) : Color.clear).allowsHitTesting(false))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.12)))
-        .shadow(color: .black.opacity(0.4), radius: 18)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(ink.opacity(0.12)))
+        .shadow(color: scrim.opacity(0.4), radius: 18)
         .padding(.horizontal, 40).padding(.bottom, 24)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }

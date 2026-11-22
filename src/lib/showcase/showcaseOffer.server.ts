@@ -1,20 +1,25 @@
 import 'server-only';
 import type { NativeContext } from '@/lib/native/auth';
 import { offerEmailSetup, sendOfferEmail } from '@/lib/native/offerActions';
-import { activeVariants, initialDraft, productPackages } from '@/lib/native/offerItems';
+import { configureModularView, modularSnapshotOf } from '@/lib/native/modularConfigurator';
+import { activeVariants, initialDraft, modularText, productPackages } from '@/lib/native/offerItems';
 import { offerPdf } from '@/lib/native/offers';
 import { WIZARD_PRODUCT_SELECT, evaluateItems, pricingOf, type Evaluated } from '@/lib/native/offerWizard';
 import { resolveAudienceConfiguration, type OfferAudience } from '@/lib/CRM/Offers/audiencePricing';
 import { formatEventAssumptionItems, normalizeEventAssumptionItems } from '@/lib/CRM/Offers/eventAssumptions';
 import { validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
+import type { ProductConfigurationSnapshot } from '@/lib/CRM/Offers/modularProduct';
 import { fail, isObject, isUuid, text, type Row } from '@/lib/social/socialCommon.server';
 import { inquiryTitleLabel, systemLabel } from '@/lib/ui/systemLabels';
 import {
   SHOWCASE_OFFER_LIMITS, isShowcaseOfferEmail, normalizeShowcaseOfferDraft, showcaseOfferProblem, showcaseOfferScope,
   type ShowcaseOfferApproval, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferDraft,
-  type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferLine, type ShowcaseOfferPerson, type ShowcaseOfferPreview,
+  type ShowcaseConfigNode, type ShowcaseConfigView, type ShowcaseOfferConfiguration,
+  type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferLine, type ShowcaseOfferLocation, type ShowcaseOfferPerson,
+  type ShowcaseOfferPreview,
   type ShowcaseOfferPreviewLine, type ShowcaseOfferResult, type ShowcaseOfferSetup, type ShowcaseOfferStatus,
 } from './showcaseShared';
+import { showcaseProductThumbs } from './showcase.server';
 
 /*
  * Strefa sprzedawcy → „Prezentacje” → „Oferta ze spotkania” (CRM, Mac, iPad i telefon — `/bridge/native/v1/showcase`).
@@ -25,11 +30,14 @@ import {
  * klienta i zapytanie zapisuje funkcja bazy `sales_showcase_offer_request` (migracja 20261122120000), ofertę i pozycje —
  * token pracownika (RLS ofert zapytania). Rabat powyżej progu (`sales_offer_guardrails`) — prośba o akceptację jak w CRM;
  * wysyłka dopiero po akceptacji. PDF tworzy `/bridge/offers/generate-pdf` (klient woła go bezpośrednio, z postępem).
+ * Miejsce: podpowiedzi z bazy lokalizacji (`locationId` trafia do zapytania — migracja 20261122160000) albo wpisany tekst.
+ * Produkty z konfiguratorem (scena, ekran LED): konfigurator na tablecie i telefonie (`op=offerConfigure`, te same funkcje co
+ * kreator ofert — `modularConfigurator.ts`); przy wycenie serwer pobiera aktualny sprzęt i stawki z magazynu.
  */
 
 const MIGRATION = 'Oferta ze spotkania nie jest jeszcze włączona na serwerze — potrzebna migracja 20261122120000_sales_showcase_offer.sql.';
 const DENIED = 'Ofertę ze spotkania tworzy osoba z podglądem prezentacji, która prowadzi zapytania (uprawnienie do zapytań).';
-const CONFIGURABLE = 'Produkt z konfiguratorem (scena, ekran LED) — dodasz go w edytorze oferty po jej utworzeniu.';
+const CONFIGURABLE = 'Produkt ma konfigurator (scena, ekran LED) — usuń pozycję i dodaj ją przez „Skonfiguruj”.';
 const TABLE_GUESTS = 10;
 
 type DbError = { message?: string; code?: string } | null | undefined;
@@ -123,6 +131,26 @@ export async function showcaseOfferSetup(ctx: NativeContext): Promise<ShowcaseOf
 // MARK: Klient
 
 /** Wyszukiwanie klienta (organizacje bez podwykonawców i osoby) w zakresie pracownika (RLS). */
+/** Podpowiedzi miejsca z bazy lokalizacji (nazwa, miasto, adres); bez wpisanego tekstu — pierwsze alfabetycznie. */
+export async function showcaseOfferLocations(ctx: NativeContext, params: URLSearchParams): Promise<{ locations: ShowcaseOfferLocation[] }> {
+  await requireOffer(ctx);
+  const term = searchTerm(params.get('q'));
+  let query = ctx.supabase.from('locations').select('id, name, city, address, formatted_address').order('name').limit(12);
+  if (term.length >= 2) {
+    const pattern = `%${term}%`;
+    query = query.or(`name.ilike.${pattern},city.ilike.${pattern},address.ilike.${pattern},formatted_address.ilike.${pattern}`);
+  }
+  const { data, error } = await query;
+  if (error) return { locations: [] };
+  return {
+    locations: ((data || []) as Row[]).filter((row) => isUuid(row.id) && text(row.name).trim()).map((row) => {
+      const name = text(row.name).trim();
+      const city = text(row.city).trim();
+      return { id: String(row.id), name, city, address: text(row.address).trim() || text(row.formatted_address).trim(), label: [name, city].filter(Boolean).join(', ') };
+    }),
+  };
+}
+
 export async function showcaseOfferClients(ctx: NativeContext, params: URLSearchParams): Promise<{ clients: ShowcaseOfferClientHit[] }> {
   await requireOffer(ctx);
   const term = searchTerm(params.get('q'));
@@ -240,6 +268,8 @@ export async function showcaseOfferClientContext(ctx: NativeContext, params: URL
  * cena z katalogu, przelicznik ilości wariantu, dodatki produktu albo pakietu. Nazwa i opis jak `addOfferItem`.
  */
 function lineDraft(product: Row, line: ShowcaseOfferLine): Row | string {
+  if (product.configuration_schema) return configuredDraft(product, line);
+  if (line.kind === 'configured') return 'Ten produkt nie ma już konfiguratora — usuń pozycję i dodaj ją ponownie.';
   const base = initialDraft(product, undefined).draft as Row;
   const variants = activeVariants(product);
   const packages = productPackages(product);
@@ -299,6 +329,28 @@ function lineDraft(product: Row, line: ShowcaseOfferLine): Row | string {
   return { productId: String(product.id), name: name.slice(0, 300), description: description.slice(0, 4000), draft: base };
 }
 
+/**
+ * Pozycja z konfiguratora: szkic jak w kreatorze ofert (konfiguracja modułowa, cena z kalkulatora, jednostka „zestaw”),
+ * nazwa i zakres z konfiguracji (`modularTitle`, `modularScope`).
+ */
+function configuredDraft(product: Row, line: ShowcaseOfferLine): Row | string {
+  if (line.kind !== 'configured' || !line.modular) return CONFIGURABLE;
+  let modular: ProductConfigurationSnapshot;
+  try {
+    modular = modularSnapshotOf(line.modular);
+  } catch {
+    return 'Konfiguracja tej pozycji jest nieprawidłowa — otwórz ją i skonfiguruj ponownie.';
+  }
+  const described = modularText(modular);
+  const base = initialDraft(product, undefined).draft as Row;
+  return {
+    productId: String(product.id),
+    name: (described.name || text(product.name) || 'Produkt').slice(0, 300),
+    description: described.description.slice(0, 4000),
+    draft: { ...base, variantId: null, packageId: '', addons: [], modular, modularManual: false, quantity: line.quantity, days: line.days, discountPercent: 0 },
+  };
+}
+
 type Evaluation = {
   draft: ShowcaseOfferDraft;
   audience: OfferAudience;
@@ -309,7 +361,8 @@ type Evaluation = {
   problem: string | null;
 };
 
-async function evaluateDraft(ctx: NativeContext, draft: ShowcaseOfferDraft): Promise<Evaluation> {
+/** `thumbs` — miniatury zdjęć produktów do pozycji (podgląd na ekranie; przy tworzeniu oferty niepotrzebne). */
+async function evaluateDraft(ctx: NativeContext, draft: ShowcaseOfferDraft, thumbs = false): Promise<Evaluation> {
   const ids = Array.from(new Set(draft.lines.map((line) => line.productId)));
   const products = new Map<string, Row>();
   if (ids.length) {
@@ -317,12 +370,27 @@ async function evaluateDraft(ctx: NativeContext, draft: ShowcaseOfferDraft): Pro
     if (error) fail('Nie udało się pobrać produktów z katalogu.', 400);
     for (const row of (data || []) as Row[]) products.set(String(row.id), row);
   }
+  const thumbnails = thumbs && products.size
+    ? await showcaseProductThumbs(ctx, Array.from(products.values())).catch(() => new Map<string, string>())
+    : new Map<string, string>();
+  // Konfiguracje z konfiguratora: aktualny sprzęt i stawki z magazynu (cena nie zależy od kopii z urządzenia).
+  const configured = new Map<string, Record<string, unknown> | string>();
+  for (const line of draft.lines) {
+    if (line.kind !== 'configured' || !line.modular || !products.get(line.productId)?.configuration_schema) continue;
+    try {
+      const fresh = await configureModularView(ctx, { snapshot: line.modular, refresh: true, view: false });
+      configured.set(line.key, fresh.snapshot as unknown as Record<string, unknown>);
+    } catch (error) {
+      configured.set(line.key, error instanceof Error && error.message ? error.message : 'Nie udało się przeliczyć konfiguracji.');
+    }
+  }
   const audience: OfferAudience = { guest_count: draft.event.guestCount, guests_per_table: TABLE_GUESTS, table_count: null };
   const prepared = draft.lines.map((line) => {
     const product = products.get(line.productId);
     if (!product || product.is_active === false) return { line, error: 'Produkt nie jest już dostępny w katalogu.', body: null as Row | null };
-    if (product.configuration_schema) return { line, error: CONFIGURABLE, body: null as Row | null };
-    const body = lineDraft(product, line);
+    const fresh = configured.get(line.key);
+    if (typeof fresh === 'string') return { line, error: fresh, body: null as Row | null };
+    const body = lineDraft(product, fresh ? { ...line, modular: fresh } : line);
     return typeof body === 'string' ? { line, error: body, body: null as Row | null } : { line, error: null as string | null, body };
   });
   const bodies = prepared.filter((entry) => entry.body).map((entry, index) => ({ ...entry.body, key: `line-${index}` }));
@@ -339,6 +407,7 @@ async function evaluateDraft(ctx: NativeContext, draft: ShowcaseOfferDraft): Pro
     subtotal: item ? cents(item.subtotal) : 0,
     quantityFromAudience: item ? item.unit === 'osoba' || item.unit === 'stół' : false,
     error: error || item?.error || null,
+    thumbnailUrl: thumbnails.get(line.productId) || null,
   }));
   const items = pairs.filter((entry) => entry.item && !entry.error && !entry.item.error).map((entry) => entry.item!) as Evaluated[];
   const listNet = items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
@@ -366,7 +435,93 @@ const previewOf = (evaluation: Evaluation): ShowcaseOfferPreview => ({
 /** Podgląd: pozycje z cenami z katalogu, rabat, VAT i problem blokujący utworzenie. */
 export async function showcaseOfferPreview(ctx: NativeContext, body: Row): Promise<ShowcaseOfferPreview> {
   await requireOffer(ctx);
-  return previewOf(await evaluateDraft(ctx, normalizeShowcaseOfferDraft(body.draft)));
+  return previewOf(await evaluateDraft(ctx, normalizeShowcaseOfferDraft(body.draft), true));
+}
+
+// MARK: Konfigurator (scena, ekran LED)
+
+/** Węzeł drzewa wyboru bez stawki części (zostaje ilość). */
+function clientNode(node: Row | null | undefined): ShowcaseConfigNode | null {
+  if (!node) return null;
+  return {
+    id: text(node.id),
+    path: text(node.path),
+    name: text(node.name),
+    detail: text(node.detail).split(' · ')[0],
+    groups: ((node.groups || []) as Row[]).map((group) => ({
+      key: text(group.key),
+      kind: group.kind,
+      label: text(group.label),
+      placeholder: text(group.placeholder),
+      options: ((group.options || []) as Row[]).map((option) => ({ id: text(option.id), label: text(option.label) })),
+      selected: text(group.selected),
+      enabled: group.enabled === true,
+      children: ((group.children || []) as Row[]).map(clientNode).filter((child): child is ShowcaseConfigNode => Boolean(child)),
+    })),
+  };
+}
+
+/** Widok konfiguratora dla pokazu (klient widzi ekran razem ze sprzedawcą): bez stawek części, stanu magazynu i nazw angielskich. */
+function clientView(view: Row): ShowcaseConfigView {
+  const led = view.led as Row | null;
+  return {
+    profile: text(view.profile),
+    heading: text(view.heading),
+    title: text(view.title),
+    scope: Array.isArray(view.scope) ? (view.scope as unknown[]).map(text) : [],
+    error: view.error ? text(view.error) : null,
+    loadError: view.loadError ? text(view.loadError) : null,
+    lines: ((view.lines || []) as Row[]).map((line) => ({ key: text(line.key), name: text(line.name), quantity: text(line.quantity) })),
+    calculatorTotal: typeof view.calculatorTotal === 'number' ? view.calculatorTotal : null,
+    totalText: text(view.totalText),
+    note: view.note ? text(view.note) : null,
+    roots: ((view.roots || []) as Row[]).map((root) => ({
+      id: text(root.id),
+      title: text(root.title),
+      optional: root.optional === true,
+      optionalLabel: text(root.optionalLabel),
+      enabled: root.enabled === true,
+      quantityEditable: root.quantityEditable === true,
+      quantity: typeof root.quantity === 'number' ? root.quantity : null,
+      tree: clientNode(root.tree as Row | null),
+    })),
+    stage: (view.stage as ShowcaseConfigView['stage']) || null,
+    led: led ? {
+      hasSections: led.hasSections === true,
+      canAdd: led.canAdd === true,
+      sections: (led.sections || []) as NonNullable<ShowcaseConfigView['led']>['sections'],
+      totals: led.totals ? text(led.totals) : null,
+      notices: (led.notices || []) as NonNullable<ShowcaseConfigView['led']>['notices'],
+    } : null,
+    legacyStage: (view.legacyStage as ShowcaseConfigView['legacyStage']) || null,
+    components: (view.components as ShowcaseConfigView['components']) || null,
+    area: typeof view.area === 'number' ? view.area : null,
+    areaEditable: view.areaEditable === true,
+  };
+}
+
+/**
+ * Konfigurator produktu w ofercie ze spotkania: `productId` (nowa konfiguracja z karty produktu) albo `snapshot` (pozycja
+ * z koszyka), `edits` — zmiany w kolejności wprowadzenia, `refresh` — ponowne pobranie sprzętu, `quantity` — liczba zestawów.
+ */
+export async function showcaseOfferConfigure(ctx: NativeContext, body: Row): Promise<ShowcaseOfferConfiguration> {
+  await requireOffer(ctx);
+  if (!isObject(body.snapshot)) {
+    if (!isUuid(body.productId)) fail('Wybierz produkt.');
+    const { data } = await ctx.supabase.from('offer_products').select('is_active, configuration_schema').eq('id', body.productId).maybeSingle();
+    const product = (data || null) as Row | null;
+    if (!product || product.is_active === false) fail('Produkt nie jest już dostępny w katalogu.', 404);
+    if (!product.configuration_schema) fail('Ten produkt nie ma konfiguratora.');
+  }
+  const quantity = Number(body.quantity);
+  const result = await relay(() => configureModularView(ctx, {
+    productId: isObject(body.snapshot) ? undefined : body.productId,
+    snapshot: isObject(body.snapshot) ? body.snapshot : undefined,
+    edits: Array.isArray(body.edits) ? body.edits : [],
+    refresh: body.refresh === true,
+    quantity: Number.isFinite(quantity) && quantity >= 1 ? quantity : 1,
+  }));
+  return { snapshot: result.snapshot as unknown as Record<string, unknown>, view: clientView((result.view || {}) as Row) };
 }
 
 // MARK: Utworzenie
@@ -455,7 +610,10 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
         email: draft.client.email,
         phone: draft.client.phone,
       },
-      event: { name: draft.event.name, date: draft.event.date, location: draft.event.location, guestCount: draft.event.guestCount },
+      event: {
+        name: draft.event.name, date: draft.event.date, location: draft.event.location, locationId: draft.event.locationId,
+        guestCount: draft.event.guestCount,
+      },
       inquiryId: draft.inquiryId,
       note: draft.note,
       scope: showcaseOfferScope(draft.lines),

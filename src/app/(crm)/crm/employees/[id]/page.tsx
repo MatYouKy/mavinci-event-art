@@ -39,25 +39,12 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import PrivateTasksBoardTab from '@/components/crm/employee/tabs/PrivateTasksBoardTab';
 import EmployeeTimelineTab from '@/components/crm/employee/tabs/EmployeeTimelineTab';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
-import { AddDocumentModal } from '@/components/crm/employee/modal/AddDocumentModal';
 import EmployeeEventsTab from '@/components/crm/employee/tabs/EmployeeEventsTab';
 import { EmployeeDocumentsTab } from '@/components/crm/employee/tabs/EmployeeDocumentsTab';
 import { PersonnelContractsPanel } from '@/components/crm/personnel/PersonnelContractsPanel';
 import EmployeeOverviewTab from '@/components/crm/employee/tabs/EmployeeOverviewTab';
 import { useDialog } from '@/contexts/DialogContext';
 import { IEmployee } from '../../employees/type';
-
-interface Document {
-  id: string;
-  name: string;
-  document_type: string;
-  file_url: string;
-  file_size: number | null;
-  description: string | null;
-  expiry_date: string | null;
-  is_active: boolean;
-  uploaded_at: string;
-}
 
 interface Task {
   id: string;
@@ -89,7 +76,6 @@ export default function EmployeeDetailPage() {
   const employeeId = params.id as string;
 
   const [employee, setEmployee] = useState<IEmployee | null>(null);
-  const [documents, setDocuments] = useState<Document[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<EventAssignment[]>([]);
   const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
@@ -101,7 +87,6 @@ export default function EmployeeDetailPage() {
   });
   const [isEditing, setIsEditing] = useState(false);
   const [editedData, setEditedData] = useState<Partial<IEmployee>>({});
-  const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [showAvatarPositionEditor, setShowAvatarPositionEditor] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -134,7 +119,6 @@ export default function EmployeeDetailPage() {
       if (!isActiveEmployee) return;
 
       await Promise.all([
-        fetchDocuments(),
         fetchTasks(),
         fetchEvents(),
         fetchEmailAccounts(),
@@ -198,11 +182,6 @@ export default function EmployeeDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchDocuments = async () => {
-    // Table employee_documents doesn't exist yet - skip for now
-    setDocuments([]);
   };
 
   const fetchTasks = async () => {
@@ -476,11 +455,6 @@ export default function EmployeeDetailPage() {
       console.error('Error saving image:', err);
       throw err;
     }
-  };
-
-  const handleDeleteDocument = async (docId: string) => {
-    // Table employee_documents doesn't exist yet
-    alert('Funkcja dokumentów nie jest jeszcze dostępna');
   };
 
   const handleSaveAvatarPosition = async (metadata: IImageMetadata) => {
@@ -795,13 +769,8 @@ export default function EmployeeDetailPage() {
         />
       )}
 
-      {activeTab === 'documents' && (
-        <EmployeeDocumentsTab
-          documents={documents}
-          onAddDocument={() => setShowAddDocumentModal(true)}
-          onDeleteDocument={handleDeleteDocument}
-        />
-      )}
+      {/* Dokumenty pracownika — Dysk → Pracownicy → pracownik → Dokumenty (ten sam folder w Finderze, na Macu i w telefonie). */}
+      {activeTab === 'documents' && <EmployeeDocumentsTab employeeId={employeeId} />}
 
       {activeTab === 'tasks' && (
         <PrivateTasksBoardTab
@@ -822,14 +791,6 @@ export default function EmployeeDetailPage() {
         <EmployeeTimelineTab employeeId={employeeId} canEdit={canEdit} initialDate={profileSearchParams.get('date')} />
       )}
 
-      {showAddDocumentModal && (
-        <AddDocumentModal
-          isOpen={showAddDocumentModal}
-          onClose={() => setShowAddDocumentModal(false)}
-          employeeId={employeeId}
-          onAdded={fetchDocuments}
-        />
-      )}
 
       <AvatarEditorModal
         open={showAvatarModal}

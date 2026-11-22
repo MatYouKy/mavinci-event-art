@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing, borderRadius, typography } from '../../../theme';
+import { colors, spacing, borderRadius, typography, tone } from '../../../theme';
 import { openInCrmWeb } from '../../../navigation/navigationRef';
 import {
   COMMISSION_ENTRY_KIND_LABELS,
@@ -43,19 +43,19 @@ export type EventSummaryState = {
   loading: boolean;
 };
 
-const ERROR_TEXT = '#ff9999';
-const WARNING_TEXT = '#fbbf24';
+const ERROR_TEXT = tone('#ff9999');
+const WARNING_TEXT = tone('#fbbf24');
 
 export const SETTLEMENT_STATUS_COLORS: Record<SettlementStatus, string> = {
   draft: colors.primary.gold,
-  submitted: '#60a5fa',
-  approved: '#4ade80',
+  submitted: tone('#60a5fa'),
+  approved: tone('#4ade80'),
 };
 
 export const COMMISSION_STATUS_COLORS: Record<CommissionStatus, string> = {
   planned: colors.text.secondary,
   approved: colors.primary.gold,
-  paid: '#4ade80',
+  paid: tone('#4ade80'),
   cancelled: colors.text.tertiary,
 };
 
@@ -544,7 +544,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.primary.gold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,

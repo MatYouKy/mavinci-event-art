@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing, borderRadius, typography } from '../../theme';
+import { appPalette, colors, spacing, borderRadius, typography, tone } from '../../theme';
 import {
   EVENT_STEP_DEFAULT_HOUR,
   EVENT_STEP_KIND_LABELS,
@@ -175,7 +175,7 @@ export function StepDateField({
             mode={picker}
             is24Hour
             locale="pl-PL"
-            themeVariant="dark"
+            themeVariant={appPalette().scheme}
             display={Platform.OS === 'ios' ? (picker === 'date' ? 'inline' : 'spinner') : 'default'}
             onChange={onPickerChange}
           />
@@ -635,7 +635,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: colors.primary.gold, fontWeight: typography.fontWeights.semibold },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.md },
   switchLabel: { color: colors.text.primary },
-  error: { color: '#ff9999', marginTop: spacing.md },
+  error: { color: tone('#ff9999'), marginTop: spacing.md },
   primaryBtn: {
     marginTop: spacing.md,
     padding: 14,

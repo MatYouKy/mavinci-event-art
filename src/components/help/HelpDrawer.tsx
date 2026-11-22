@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, HelpCircle, Search, X } from 'lucide-react';
 import { helpChapter, searchHelp, type HelpAudience, type HelpChapter, type HelpManual } from '@/lib/help/helpTypes';
 import { SELLER_HELP } from '@/lib/help/sellerHelp';
 import { MANAGER_HELP } from '@/lib/help/managerHelp';
+import { PRESENTATIONS_HELP } from '@/lib/help/presentationsHelp';
 
 /**
  * Pomoc pod znakiem „?”: panel z boku ekranu z rozdziałem dla bieżącego ekranu.
@@ -13,7 +14,7 @@ import { MANAGER_HELP } from '@/lib/help/managerHelp';
  */
 
 export const HELP_OPEN_EVENT = 'mavinci-help-open';
-export const HELP_MANUALS: Record<HelpAudience, HelpManual> = { seller: SELLER_HELP, manager: MANAGER_HELP };
+export const HELP_MANUALS: Record<HelpAudience, HelpManual> = { seller: SELLER_HELP, manager: MANAGER_HELP, presentations: PRESENTATIONS_HELP };
 
 export function openHelp(audience: HelpAudience, chapter?: string) {
   window.dispatchEvent(new CustomEvent(HELP_OPEN_EVENT, { detail: { audience, chapter } }));

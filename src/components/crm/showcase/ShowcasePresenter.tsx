@@ -157,13 +157,24 @@ export default function ShowcasePresenter({ brand, sections, items, urls, loadIt
   /** Układ ekranu: w ramce — wybrany iPad; na pełnym ekranie — według szerokości (13″ od 1300 pt, mniejsze jak 11″). */
   const layout: ShowcaseDevice = full ? (viewport.width >= 1300 ? 'ipad13' : 'ipad11') : device;
 
-  const headingFamily = brand.headingFont ? `${brand.headingFont.url ? "'ShowcaseHeading', " : ''}${brand.headingFont.family}, system-ui, sans-serif` : 'system-ui, sans-serif';
   const bodyFamily = brand.bodyFont ? `${brand.bodyFont.url ? "'ShowcaseBody', " : ''}${brand.bodyFont.family}, system-ui, sans-serif` : 'system-ui, sans-serif';
+  // Nagłówki fontem marki z księgi znaku: wielkie litery, bez pogrubienia (pogrubiony font marki ucina fragmenty liter), a cyfry
+  // fontem tekstu — w foncie nagłówków „0” wygląda jak „O” (`unicode-range` bez cyfr, cyfry biorą kolejny font z listy).
+  const headingFamily = brand.headingFont ? `'ShowcaseHeading', ${bodyFamily}` : 'system-ui, sans-serif';
+  const headingSource = brand.headingFont?.url
+    ? `url('${brand.headingFont.url.replace(/'/g, '%27')}')`
+    : brand.headingFont ? `local('${brand.headingFont.family.replace(/['\\]/g, '')}')` : '';
   const fontFaces = [
-    brand.headingFont?.url ? `@font-face{font-family:'ShowcaseHeading';src:url('${brand.headingFont.url.replace(/'/g, '%27')}');font-display:swap}` : '',
+    headingSource ? `@font-face{font-family:'ShowcaseHeading';src:${headingSource};font-weight:100 900;font-display:swap;unicode-range:U+0000-002F,U+003A-10FFFF}` : '',
     brand.bodyFont?.url ? `@font-face{font-family:'ShowcaseBody';src:url('${brand.bodyFont.url.replace(/'/g, '%27')}');font-display:swap}` : '',
+    `[data-showcase-stage] [style*="ShowcaseHeading"]{text-transform:uppercase;font-weight:400!important;font-synthesis:none;letter-spacing:.02em}`,
+    // Nagłówki, przyciski i plakietki CRM w pokazie (arkusz oferty, nawigacja kart) — ten sam font bez cyfr.
+    headingSource ? `[data-showcase-stage]{--font-brand-heading:${headingFamily}}` : '',
   ].join('');
-  const theme = { accent: brand.accent, surface: brand.surface, heading: headingFamily };
+  // Tło pokazu w kolorach motywu CRM pracownika (Granat, Burgund, Ciemny, Jasny) — jak w aplikacji na Macu i na tablecie;
+  // bez motywu (poza CRM) — kolor z księgi znaku. Akcent z księgi znaku.
+  const surface = `var(--brand-burgundy-800, ${brand.surface})`;
+  const theme = { accent: brand.accent, surface, heading: headingFamily };
 
   const go = (next: Screen, direction: Motion = 0) => { setMotion(direction); setScreen(next); };
   const back = () => {
@@ -219,7 +230,7 @@ export default function ShowcasePresenter({ brand, sections, items, urls, loadIt
   const stage = (
     <>
       {/* Pasek górny */}
-      <div className="absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-3 px-6" style={{ background: screen.kind === 'item' ? brand.surface : `linear-gradient(${brand.surface}, ${brand.surface}e6 70%, transparent)` }}>
+      <div className="absolute inset-x-0 top-0 z-20 flex h-16 items-center gap-3 px-6" style={{ background: screen.kind === 'item' ? surface : `linear-gradient(${surface}, color-mix(in srgb, ${surface} 90%, transparent) 70%, transparent)` }}>
         {screen.kind !== 'home' ? (
           <button type="button" onClick={back} className="flex h-11 shrink-0 items-center gap-1 rounded-full bg-black/30 pl-3 pr-4 text-[16px]" style={{ color: brand.accent }}>
             <ChevronLeft className="h-5 w-5" />Wróć
@@ -239,12 +250,12 @@ export default function ShowcasePresenter({ brand, sections, items, urls, loadIt
         {canOffer && (
           <button type="button" onClick={() => { setOfferOpen(true); setNotice((value) => (value?.openOffer ? null : value)); }} title="Oferta dla klienta ze spotkania"
             className="flex h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 text-[15px]"
-            style={offer.draft.lines.length ? { borderColor: brand.accent, background: brand.accent, color: brand.surface } : { borderColor: `${brand.accent}66`, color: brand.accent }}>
+            style={offer.draft.lines.length ? { borderColor: brand.accent, background: brand.accent, color: surface } : { borderColor: `${brand.accent}66`, color: brand.accent }}>
             <ClipboardList className="h-4 w-4" />Oferta{offer.draft.lines.length ? ` · ${offer.draft.lines.length}` : ''}
           </button>
         )}
         <button type="button" onClick={() => setShowPrices((value) => !value)} aria-pressed={showPrices}
-          className="flex h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 text-[15px]" style={{ borderColor: `${brand.accent}66`, color: showPrices ? brand.surface : brand.accent, background: showPrices ? brand.accent : 'transparent' }}>
+          className="flex h-11 shrink-0 items-center gap-1.5 rounded-full border px-4 text-[15px]" style={{ borderColor: `${brand.accent}66`, color: showPrices ? surface : brand.accent, background: showPrices ? brand.accent : 'transparent' }}>
           {showPrices ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}{showPrices ? 'Ceny widoczne' : 'Ceny'}
         </button>
         {full && fullscreenSupported && (
@@ -293,12 +304,12 @@ export default function ShowcasePresenter({ brand, sections, items, urls, loadIt
         // Przy otwartym arkuszu oferty — u góry (dół zajmuje podsumowanie i „Utwórz ofertę”).
         <div className={`pointer-events-none absolute inset-x-0 z-50 flex justify-center px-6 ${offerOpen ? 'top-20' : 'bottom-6'}`} role="status" aria-live="polite">
           <div className={`pointer-events-auto flex max-w-[760px] items-center gap-4 rounded-2xl px-5 py-3 text-[16px] shadow-2xl ring-1 ring-white/10 ${notice.tone === 'error' ? 'bg-red-900/95' : ''}`}
-            style={notice.tone === 'error' ? undefined : { background: brand.surface }}>
+            style={notice.tone === 'error' ? undefined : { background: surface }}>
             {notice.tone === 'error' ? <AlertTriangle className="h-5 w-5 shrink-0 text-red-200" /> : <CheckCircle2 className="h-5 w-5 shrink-0" style={{ color: brand.accent }} />}
             <span className="min-w-0 flex-1">{notice.text}</span>
             {notice.openOffer && !offerOpen && (
               <button type="button" onClick={() => { setOfferOpen(true); setNotice(null); }} className="h-10 shrink-0 rounded-full px-4 text-[15px] font-medium"
-                style={{ background: brand.accent, color: brand.surface }}>Pokaż ofertę</button>
+                style={{ background: brand.accent, color: surface }}>Pokaż ofertę</button>
             )}
           </div>
         </div>
@@ -310,7 +321,7 @@ export default function ShowcasePresenter({ brand, sections, items, urls, loadIt
     <div ref={overlay} className={`fixed inset-0 z-[60] flex flex-col ${full ? 'bg-black' : 'bg-black/85 backdrop-blur-sm'}`} data-app-overlay="true">
       <style>{`${fontFaces}${SHOWCASE_MOTION_CSS}`}</style>
       {full ? (
-        <div className="relative min-h-0 w-full flex-1 overflow-hidden" style={{ background: brand.surface, color: TEXT, fontFamily: bodyFamily }}>{stage}</div>
+        <div className="relative min-h-0 w-full flex-1 overflow-hidden" data-showcase-stage="" style={{ background: surface, color: TEXT, fontFamily: bodyFamily }}>{stage}</div>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm text-[#e5e4e2]">
@@ -329,7 +340,7 @@ export default function ShowcasePresenter({ brand, sections, items, urls, loadIt
             <div style={{ width: (size.width + 28) * scale, height: (size.height + 28) * scale }}>
               <div style={{ width: size.width + 28, height: size.height + 28, transform: `scale(${scale})`, transformOrigin: 'top left' }}
                 className="rounded-[44px] bg-[#0a0a0c] p-[14px] shadow-2xl ring-1 ring-white/10">
-                <div className="relative h-full w-full overflow-hidden rounded-[30px]" style={{ background: brand.surface, color: TEXT, fontFamily: bodyFamily }}>{stage}</div>
+                <div className="relative h-full w-full overflow-hidden rounded-[30px]" data-showcase-stage="" style={{ background: surface, color: TEXT, fontFamily: bodyFamily }}>{stage}</div>
               </div>
             </div>
           </div>
@@ -888,7 +899,8 @@ function LightboxView({ lightbox, accent, onChange }: { lightbox: Lightbox; acce
   if (!photo) return null;
   const url = lightbox.urls[showcaseMediaKey(photo)]?.url || '';
   return (
-    <div className="absolute inset-0 z-30 flex flex-col bg-black">
+    // Przeglądarka zdjęć zawsze czarna — także w jasnym motywie CRM (bez odwracania kolorów), jak na Macu i na tablecie.
+    <div className="absolute inset-0 z-30 flex flex-col bg-black" data-theme-preserve="">
       <div className="flex h-16 items-center gap-3 px-6 text-[15px] text-white/70">
         <span className="flex-1">{many ? `${lightbox.index + 1} / ${lightbox.photos.length}` : ''}</span>
         <button type="button" onClick={() => onChange(null)} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10" aria-label="Zamknij galerię"><X className="h-6 w-6" /></button>

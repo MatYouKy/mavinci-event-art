@@ -26,11 +26,15 @@ const PAIRS = [
   ['src/lib/seller/readiness.ts', 'mobile/src/lib/sellerReadiness.ts'],
   ['src/lib/help/helpTypes.ts', 'mobile/src/lib/helpTypes.ts'],
   ['src/lib/help/managerHelp.ts', 'mobile/src/lib/managerHelp.ts'],
+  ['src/lib/help/presentationsHelp.ts', 'mobile/src/lib/presentationsHelp.ts'],
   ['src/lib/events/equipment/equipmentChecklist.ts', 'mobile/src/lib/equipmentChecklist.ts'],
   ['src/lib/CRM/meetings/meetingStatus.ts', 'mobile/src/lib/meetingStatus.ts'],
   ['src/lib/social/socialShared.ts', 'mobile/src/lib/socialShared.ts'],
   ['src/lib/portfolio/portfolioShared.ts', 'mobile/src/lib/portfolioShared.ts'],
   ['src/lib/showcase/showcaseShared.ts', 'mobile/src/lib/showcaseShared.ts'],
+  ['src/lib/materials/materialsShared.ts', 'mobile/src/lib/materialsShared.ts'],
+  ['src/lib/CRM/theme/crmThemePalette.ts', 'mobile/src/theme/crmThemePalette.ts'],
+  ['src/lib/drive/driveShared.ts', 'mobile/src/lib/driveShared.ts'],
 ];
 
 let failed = false;

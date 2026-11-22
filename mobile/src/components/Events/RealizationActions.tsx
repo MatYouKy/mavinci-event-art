@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { useForegroundEffect } from '../../hooks/useForegroundEffect';
-import { colors } from '../../theme';
+import { colors, tone } from '../../theme';
 import { OPERATIONAL_LABELS } from '../../lib/operationalStages';
 export default function RealizationActions({
   eventId,
@@ -99,7 +99,7 @@ export default function RealizationActions({
   );
   if (!data?.is_manager)
     return error ? (
-      <Text accessibilityRole="alert" style={{ color: '#ff9999', padding: 16 }}>
+      <Text accessibilityRole="alert" style={{ color: tone('#ff9999'), padding: 16 }}>
         {error}
       </Text>
     ) : null;
@@ -132,7 +132,7 @@ export default function RealizationActions({
         </Text>
       )}
       {!!error && !open && (
-        <Text accessibilityRole="alert" style={{ color: '#ff9999', marginTop: 8 }}>
+        <Text accessibilityRole="alert" style={{ color: tone('#ff9999'), marginTop: 8 }}>
           {error}
         </Text>
       )}
@@ -189,7 +189,7 @@ export default function RealizationActions({
               {notes.length}/5000
             </Text>
             {!!error && (
-              <Text accessibilityRole="alert" style={{ color: '#ff9999', marginTop: 10 }}>
+              <Text accessibilityRole="alert" style={{ color: tone('#ff9999'), marginTop: 10 }}>
                 {error}
               </Text>
             )}

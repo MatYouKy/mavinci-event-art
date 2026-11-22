@@ -1,13 +1,15 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
 import { httpStatus } from '@/lib/social/socialCommon.server';
+import { PRESENTATIONS_HELP } from '@/lib/help/presentationsHelp';
 import { SHOWCASE_LIMITS } from '@/lib/showcase/showcaseShared';
 import {
-  showcaseCreateItem, showcaseDeleteItem, showcaseDeleteSection, showcaseDuplicateItem, showcaseEvents, showcaseHome, showcaseImport,
-  showcaseItem, showcasePhotos, showcaseProducts, showcaseRealizations, showcaseReorderItems, showcaseReorderSections, showcaseSaveItem,
+  showcaseAssist, showcaseCreateItem, showcaseDeleteItem, showcaseDeleteSection, showcaseDuplicateItem, showcaseEvents, showcaseHome, showcaseImport,
+  showcaseItem, showcasePhotoBase, showcasePhotos, showcaseProductDetail, showcaseProducts, showcaseRealizations, showcaseReorderItems, showcaseReorderSections, showcaseSaveItem,
   showcaseSaveSection, showcaseUpload,
 } from '@/lib/showcase/showcase.server';
 import {
-  showcaseOfferApproval, showcaseOfferClientContext, showcaseOfferClients, showcaseOfferCreate, showcaseOfferEmail, showcaseOfferEmailSend,
+  showcaseOfferApproval, showcaseOfferClientContext, showcaseOfferClients, showcaseOfferConfigure, showcaseOfferCreate, showcaseOfferEmail, showcaseOfferEmailSend,
+  showcaseOfferLocations,
   showcaseOfferPdf, showcaseOfferPreview, showcaseOfferSetup, showcaseOfferStatus,
 } from '@/lib/showcase/showcaseOffer.server';
 
@@ -19,21 +21,27 @@ export const maxDuration = 300;
  * Strefa sprzedawcy → „Prezentacje” — jedno API dla CRM (`x-mavinci-client: web`), aplikacji na Maca i (etap 2) iPada.
  * Token pracownika (Bearer), RLS i funkcje bazy (`src/lib/showcase/showcase.server.ts`). Podgląd: `presentations_view` albo
  * dostęp do ofert; przygotowanie: `presentations_manage` albo `offers_manage`.
- * GET op=home | item&id | products&q | realizations&q | events&q |
- *   photos&source=product&product | photos&source=site&realization | photos&source=event&event | photos&source=material&q |
- *   photos&source=social&q.
- * POST ?op=upload&item=<karta> | &section=<dział> [&caption] — bajty zdjęcia (JPEG / PNG / WebP do 40 MB) → `{photo, urls}`.
+ * GET op=home | item&id | products&q | realizations&q | events&q | photoBase (baza zdjęć: dokąd trafia zdjęcie z dysku, albumy) |
+ *   photos&source=product&product | photos&source=site&realization | photos&source=material&q&album&offset |
+ *   photos&source=social&q | photos&source=event&event (starsze wersje aplikacji).
+ * POST ?op=upload&item=<karta> | &section=<dział> [&caption] [&base=1&name=<plik>] — bajty zdjęcia (JPEG / PNG / WebP do 40 MB)
+ *   → `{photo, urls, stored: materials | presentation, existing, file}` (z `base=1` — do Materiałów → Zdjęcia, karta: odnośnik).
  * POST JSON op=saveSection {id?, version?, title, subtitle, icon, isActive, cover?} | deleteSection {id, withItems} |
  *   reorderSections {ids[]} | reorderItems {sectionId, ids[]} (karta z innego działu przechodzi do tego działu) |
  *   createItem {sectionId, title?, productId?} („Utwórz z produktu” — treść z katalogu) |
  *   saveItem {id, version, title, tagline, isActive, productIds[], content} | duplicateItem {id} | deleteItem {id} |
  *   import {itemId | sectionId, source: product | site | material | event | social, productId+path | realizationId+path | fileId,
- *   caption?} → `{photo, urls}`.
+ *   caption?, reference?} → `{photo, urls}` (`material` + `reference: true` — odnośnik do Materiałów zamiast kopii).
  * Oferta ze spotkania (`src/lib/showcase/showcaseOffer.server.ts`, migracja 20261122120000):
  * GET op=offerSetup | offerClients&q | offerClient&organization|contact (osoby firmy, otwarte zapytania) | offerStatus&id |
- *   offerPdf&id (podpisany adres PDF) | offerEmail&id (okno wysyłki).
+ *   offerPdf&id (podpisany adres PDF) | offerEmail&id (okno wysyłki) | offerLocations&q (podpowiedzi miejsca z bazy lokalizacji) |
+ *   offerProduct&id (produkt katalogu z wariantami i pakietami — „Dodaj pozycję” w arkuszu oferty).
+ * GET op=help — instrukcja „?” (`src/lib/help/presentationsHelp.ts`) dla aplikacji na Maca.
+ * POST JSON op=assist {title, tagline, productIds[], content, brief, fields[]} — propozycje asystenta AI (bez zapisu);
+ *   createItem {…, example: true} — karta z przykładu z instrukcji (ukryta).
  * POST JSON op=offerPreview {draft} | offerCreate {draft} (błąd po zapisaniu zapytania niesie `inquiryId`) |
- *   offerApproval {id, note?} | offerEmailSend {id, to, subject, text, accountId, recipientName}.
+ *   offerApproval {id, note?} | offerEmailSend {id, to, subject, text, accountId, recipientName} |
+ *   offerConfigure {productId | snapshot, edits[], refresh?, quantity?} — konfigurator sceny i ekranu LED (bez stawek części).
  * PDF oferty: `/bridge/offers/generate-pdf` (ten sam token, postęp w NDJSON).
  */
 
@@ -62,6 +70,8 @@ export async function GET(request: Request) {
         return nativeJson(await showcaseEvents(ctx, params));
       case 'photos':
         return nativeJson(await showcasePhotos(ctx, params));
+      case 'photoBase':
+        return nativeJson(await showcasePhotoBase(ctx));
       case 'offerSetup':
         return nativeJson(await showcaseOfferSetup(ctx));
       case 'offerClients':
@@ -74,6 +84,12 @@ export async function GET(request: Request) {
         return nativeJson(await showcaseOfferPdf(ctx, params.get('id') || ''));
       case 'offerEmail':
         return nativeJson(await showcaseOfferEmail(ctx, params.get('id') || ''));
+      case 'offerLocations':
+        return nativeJson(await showcaseOfferLocations(ctx, params));
+      case 'offerProduct':
+        return nativeJson(await showcaseProductDetail(ctx, params.get('id') || ''));
+      case 'help':
+        return nativeJson({ manual: { title: PRESENTATIONS_HELP.title, chapters: PRESENTATIONS_HELP.chapters } });
       default:
         return failure('Nieznana operacja.');
     }
@@ -121,8 +137,12 @@ export async function POST(request: Request) {
         return nativeJson(await showcaseDeleteItem(ctx, body));
       case 'import':
         return nativeJson(await showcaseImport(ctx, body));
+      case 'assist':
+        return nativeJson(await showcaseAssist(ctx, body));
       case 'offerPreview':
         return nativeJson(await showcaseOfferPreview(ctx, body));
+      case 'offerConfigure':
+        return nativeJson(await showcaseOfferConfigure(ctx, body));
       case 'offerCreate':
         return nativeJson(await showcaseOfferCreate(ctx, body));
       case 'offerApproval':

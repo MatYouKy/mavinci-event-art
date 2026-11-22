@@ -2,7 +2,7 @@ import React from 'react';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import EmployeeAvatar from '../../EmployeeAvatar';
-import { colors } from '../../../theme';
+import { colors, tone } from '../../../theme';
 import type { EquipmentChecklistPerson } from '../../../lib/equipmentChecklist';
 import { formatEventStepDate } from '../../../lib/eventSteps';
 
@@ -78,7 +78,7 @@ export function EquipmentPersonStamp({ label, actor, color }: { label: string; a
   );
 }
 
-const GREEN_TEXT = '#86efac';
+const GREEN_TEXT = tone('#86efac');
 
 const styles = StyleSheet.create({
   badge: {

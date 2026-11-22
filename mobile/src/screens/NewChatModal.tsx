@@ -349,7 +349,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.bold as any,
+    fontWeight: '400',
     color: colors.text.primary,
   },
   createBtn: {

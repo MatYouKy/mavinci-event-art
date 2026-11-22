@@ -679,7 +679,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text.primary,
   },
   colleagueBadge: {
@@ -799,7 +799,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '400',
     color: colors.text.primary,
   },
 

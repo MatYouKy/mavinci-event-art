@@ -8,7 +8,7 @@ import { canView } from '../../lib/permissions';
 import { useForegroundEffect } from '../../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../../lib/refreshQueue';
 import { navigateToEvent, openInCrmWeb } from '../../navigation/navigationRef';
-import { colors, spacing, borderRadius, typography } from '../../theme';
+import { colors, spacing, borderRadius, typography, tone } from '../../theme';
 import { MyEventStep } from '../../lib/eventSteps';
 import { eventStepDetailLink } from '../../lib/eventStepLinks';
 import EventStepsHelpModal from './EventStepsHelpModal';
@@ -208,11 +208,11 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.semibold,
+    fontWeight: '400',
     color: colors.text.primary,
   },
   summary: { color: colors.text.secondary, fontSize: typography.fontSizes.xs, marginTop: 4 },
-  alert: { color: '#ff9999', fontWeight: typography.fontWeights.semibold },
+  alert: { color: tone('#ff9999'), fontWeight: typography.fontWeights.semibold },
   link: { color: colors.primary.gold, paddingVertical: 10 },
-  error: { color: '#ff9999', marginTop: spacing.sm },
+  error: { color: tone('#ff9999'), marginTop: spacing.sm },
 });

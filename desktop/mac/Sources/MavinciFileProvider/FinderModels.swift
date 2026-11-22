@@ -105,7 +105,174 @@ struct FinderServerError: Error {
     let item: FinderFileDTO?
 }
 
-// MARK: Identyfikatory elementów: Mavinci → Eventy → rok → wydarzenie → foldery i pliki
+// MARK: Dane z `/bridge/native/v1/materials` (Finder: `src/lib/materials/materials.server.ts`, sekcja „Finder”)
+
+/// Marka z dostępem do Materiałów; `manage` — dodawanie, zmiany i kosz.
+struct MaterialCompanyDTO: Codable, Equatable {
+    let id: String
+    let name: String
+    let manage: Bool?
+}
+
+struct MaterialFolderDTO: Codable {
+    let id: String
+    let companyId: String
+    let parentId: String?
+    let name: String
+    /// Folder domyślny marki (Zdjęcia, Wideo…) — nie da się go przenieść ani usunąć.
+    let systemKey: String?
+    let createdAt: String?
+    let updatedAt: String?
+    let metaVersion: Int?
+}
+
+struct MaterialFileDTO: Codable {
+    let id: String
+    let companyId: String
+    let folderId: String?
+    let name: String
+    let mime: String?
+    let size: Double?
+    let sha256: String?
+    let contentVersion: Int?
+    let metaVersion: Int?
+    let createdAt: String?
+    let updatedAt: String?
+}
+
+struct MaterialSyncReply: Decodable {
+    let cursor: String
+    let companies: [MaterialCompanyDTO]
+    let folders: [MaterialFolderDTO]
+    let files: [MaterialFileDTO]
+}
+
+struct MaterialChangesReply: Decodable {
+    struct Deleted: Decodable {
+        let kind: String
+        let id: String
+        let companyId: String?
+    }
+    let cursor: String
+    let reset: Bool?
+    let companies: [MaterialCompanyDTO]?
+    let folders: [MaterialFolderDTO]?
+    let files: [MaterialFileDTO]?
+    let deleted: [Deleted]?
+}
+
+struct MaterialFolderReply: Decodable { let item: MaterialFolderDTO }
+struct MaterialFileReply: Decodable { let item: MaterialFileDTO }
+/// Odpowiedź `completeUpload` / `copyFromEvent` (pełny plik z CRM — Finder czyta z niego tylko swoje pola).
+struct MaterialUploadedReply: Decodable { let file: MaterialFileDTO }
+struct MaterialDownloadReply: Decodable {
+    let url: String
+    let item: MaterialFileDTO
+}
+
+/// Wpis kosza Materiałów usunięty przez zalogowanego pracownika.
+struct MaterialTrashDTO: Codable {
+    let id: String
+    let kind: String
+    let itemId: String
+    let companyId: String
+    let parentId: String?
+    let name: String
+    let size: Double?
+    let mime: String?
+    let batch: String
+    let deletedAt: String?
+}
+struct MaterialTrashReply: Decodable { let items: [MaterialTrashDTO] }
+
+/// Krok 1 wysyłki (`prepareUpload`): wpis pliku i podpisane adresy treści i miniatury.
+struct MaterialPreparedUpload: Decodable {
+    let fileId: String
+    let name: String
+    let path: String
+    let uploadUrl: String
+    let thumbPath: String?
+    let thumbUploadUrl: String?
+}
+
+/// Odmowa serwera Materiałów (`{error, code, file?}`): 409 `conflict` (z aktualnym plikiem) / `exists`, 403 `forbidden`…
+struct MaterialServerError: Error {
+    let status: Int
+    let code: String?
+    let message: String
+    let file: MaterialFileDTO?
+}
+
+// MARK: Dane z `/bridge/native/v1/drive` (Dysk: Oferty, Kalkulacje, Umowy, Magazyn, księga znaku — `src/lib/drive/drive.server.ts`)
+
+/// Dział Dysku z uprawnieniami pracownika (`canUpload` — dodawanie plików do sprzętu w Magazynie).
+struct DriveSectionDTO: Codable {
+    let key: String
+    let label: String
+    let available: Bool
+    let canUpload: Bool
+}
+
+/// Folder Dysku: dział (`offers`), rok (`offers:2026`), miesiąc (`offers:2026-11`), kategoria (`warehouse:cat:<id>`),
+/// „Bez kategorii” (`warehouse:none`), sprzęt (`warehouse:item:<id>`).
+struct DriveFolderDTO: Codable {
+    let id: String
+    let parentId: String?
+    let name: String
+    let kind: String
+}
+
+/// Plik Dysku (`offer:<id>`, `equipment-file:<id>`, `brand-logo:<id>`…); `version` zmienia się razem z treścią.
+struct DriveFileDTO: Codable {
+    let id: String
+    let parentId: String
+    let name: String
+    let size: Double?
+    let updatedAt: String?
+    let version: String
+}
+
+struct DriveBrandColorDTO: Codable, Equatable {
+    let label: String
+    let hex: String
+    let role: String
+}
+
+/// Księga znaku marki: folder „Z księgi znaku” w folderze Materiałów `materialFolderId` („Logotypy i księga znaku”).
+struct DriveBrandDTO: Codable {
+    let companyId: String
+    let companyName: String
+    let materialFolderId: String
+    let colors: [DriveBrandColorDTO]
+}
+
+struct DriveSyncReply: Decodable {
+    let cursor: String
+    let sections: [DriveSectionDTO]
+    let folders: [DriveFolderDTO]
+    let files: [DriveFileDTO]
+    /// Brak w odpowiedzi serwera sprzed księgi znaku w Finderze.
+    let brands: [DriveBrandDTO]?
+}
+
+struct DriveDownloadReply: Decodable {
+    let url: String
+    let name: String
+}
+
+/// Krok 1 wysyłki pliku do sprzętu: bucket, ścieżka i podpisany adres treści.
+struct DriveUploadReply: Decodable {
+    let bucket: String
+    let path: String
+    let signedUrl: String
+    let target: String
+}
+
+struct DriveUploadedReply: Decodable { let file: DriveFileDTO }
+
+// MARK: Identyfikatory elementów
+// Mavinci → Eventy → rok → wydarzenie → foldery i pliki; Mavinci → Materiały → marka → foldery i pliki;
+// Mavinci → Oferty / Kalkulacje / Umowy / Magazyn (`drive:<węzeł Dysku>`, pliki `dfile:<plik Dysku>`).
 
 enum FinderID {
     static let events = NSFileProviderItemIdentifier(rawValue: "events")
@@ -113,11 +280,37 @@ enum FinderID {
     static func event(_ id: String) -> NSFileProviderItemIdentifier { NSFileProviderItemIdentifier(rawValue: "event:" + id) }
     static func folder(_ id: String) -> NSFileProviderItemIdentifier { NSFileProviderItemIdentifier(rawValue: "folder:" + id) }
     static func file(_ id: String) -> NSFileProviderItemIdentifier { NSFileProviderItemIdentifier(rawValue: "file:" + id) }
+    static let materials = NSFileProviderItemIdentifier(rawValue: "materials")
+    static func brand(_ id: String) -> NSFileProviderItemIdentifier { NSFileProviderItemIdentifier(rawValue: "mbrand:" + id) }
+    static func materialFolder(_ id: String) -> NSFileProviderItemIdentifier { NSFileProviderItemIdentifier(rawValue: "mfolder:" + id) }
+    static func materialFile(_ id: String) -> NSFileProviderItemIdentifier { NSFileProviderItemIdentifier(rawValue: "mfile:" + id) }
+    /// Folder Dysku — identyfikator węzła z serwera (`offers:2026-11`, `warehouse:item:<id>`, `brand:<firma>`).
+    static func drive(_ node: String) -> NSFileProviderItemIdentifier { NSFileProviderItemIdentifier(rawValue: "drive:" + node) }
+    /// Plik Dysku — identyfikator pliku z serwera (`offer:<id>`…) albo `brand-colors:<firma>` („Kolory marki.txt”).
+    static func driveFile(_ id: String) -> NSFileProviderItemIdentifier { NSFileProviderItemIdentifier(rawValue: "dfile:" + id) }
 
     enum Kind {
         case root, workingSet, trash, events
         case year(String), event(String), folder(String), file(String)
+        case materials, brand(String), materialFolder(String), materialFile(String)
+        case drive(String), driveFile(String)
         case unknown
+
+        /// Element Materiałów (obsługuje `MaterialsCatalog`).
+        var isMaterials: Bool {
+            switch self {
+            case .materials, .brand, .materialFolder, .materialFile: return true
+            default: return false
+            }
+        }
+
+        /// Element Dysku (obsługuje `DriveCatalog`).
+        var isDrive: Bool {
+            switch self {
+            case .drive, .driveFile: return true
+            default: return false
+            }
+        }
     }
 
     static func parse(_ identifier: NSFileProviderItemIdentifier) -> Kind {
@@ -126,6 +319,7 @@ enum FinderID {
         if identifier == .trashContainer { return .trash }
         let raw = identifier.rawValue
         if raw == "events" { return .events }
+        if raw == "materials" { return .materials }
         guard let colon = raw.firstIndex(of: ":") else { return .unknown }
         let value = String(raw[raw.index(after: colon)...])
         guard !value.isEmpty else { return .unknown }
@@ -134,6 +328,11 @@ enum FinderID {
         case "event": return .event(value)
         case "folder": return .folder(value)
         case "file": return .file(value)
+        case "mbrand": return .brand(value)
+        case "mfolder": return .materialFolder(value)
+        case "mfile": return .materialFile(value)
+        case "drive": return .drive(value)
+        case "dfile": return .driveFile(value)
         default: return .unknown
         }
     }
@@ -257,30 +456,37 @@ final class FinderItem: NSObject, NSFileProviderItem {
         case trashed
     }
 
+    /// `allowed` — uprawnienia ustalone przez katalog (Materiały: zależnie od zakresu marki); bez niego — według `role`.
+    /// `metaTag` — dodatek do wersji metadanych (zmiana uprawnień musi dotrzeć do Findera także bez zmiany nazwy).
     init(identifier: NSFileProviderItemIdentifier, parent: NSFileProviderItemIdentifier, filename: String, folder: Bool,
-         role: Role? = nil, size: Int64? = nil, created: Date? = nil, modified: Date? = nil, contentVersion: String = "1") {
+         role: Role? = nil, allowed: NSFileProviderItemCapabilities? = nil, metaTag: String = "",
+         size: Int64? = nil, created: Date? = nil, modified: Date? = nil, contentVersion: String = "1") {
         itemIdentifier = identifier
         parentItemIdentifier = parent
         self.filename = filename
         let ext = (filename as NSString).pathExtension
         contentType = folder ? .folder : (ext.isEmpty ? .data : (UTType(filenameExtension: ext) ?? .data))
-        switch role ?? (folder ? .folder : .file) {
-        case .structure:
-            capabilities = [.allowsReading, .allowsContentEnumerating]
-        case .event:
-            capabilities = [.allowsReading, .allowsContentEnumerating, .allowsAddingSubItems]
-        case .folder:
-            capabilities = [.allowsReading, .allowsContentEnumerating, .allowsAddingSubItems, .allowsRenaming, .allowsReparenting,
-                            .allowsTrashing, .allowsDeleting]
-        case .file:
-            capabilities = [.allowsReading, .allowsWriting, .allowsRenaming, .allowsReparenting, .allowsTrashing, .allowsDeleting]
-        case .trashed:
-            capabilities = folder ? [.allowsReading, .allowsContentEnumerating, .allowsReparenting, .allowsDeleting]
-                                  : [.allowsReading, .allowsReparenting, .allowsDeleting]
+        if let allowed {
+            capabilities = allowed
+        } else {
+            switch role ?? (folder ? .folder : .file) {
+            case .structure:
+                capabilities = [.allowsReading, .allowsContentEnumerating]
+            case .event:
+                capabilities = [.allowsReading, .allowsContentEnumerating, .allowsAddingSubItems]
+            case .folder:
+                capabilities = [.allowsReading, .allowsContentEnumerating, .allowsAddingSubItems, .allowsRenaming, .allowsReparenting,
+                                .allowsTrashing, .allowsDeleting]
+            case .file:
+                capabilities = [.allowsReading, .allowsWriting, .allowsRenaming, .allowsReparenting, .allowsTrashing, .allowsDeleting]
+            case .trashed:
+                capabilities = folder ? [.allowsReading, .allowsContentEnumerating, .allowsReparenting, .allowsDeleting]
+                                      : [.allowsReading, .allowsReparenting, .allowsDeleting]
+            }
         }
         // Zmiana nazwy lub folderu musi zmienić wersję metadanych, inaczej Finder zostawi starą nazwę.
-        itemVersion = NSFileProviderItemVersion(contentVersion: Data(contentVersion.utf8),
-                                                metadataVersion: Data("\(parent.rawValue)|\(filename)".utf8))
+        let meta = metaTag.isEmpty ? "\(parent.rawValue)|\(filename)" : "\(parent.rawValue)|\(filename)|\(metaTag)"
+        itemVersion = NSFileProviderItemVersion(contentVersion: Data(contentVersion.utf8), metadataVersion: Data(meta.utf8))
         documentSize = size.map { NSNumber(value: $0) }
         creationDate = created
         contentModificationDate = modified
@@ -289,4 +495,5 @@ final class FinderItem: NSObject, NSFileProviderItem {
 
     static let root = FinderItem(identifier: .rootContainer, parent: .rootContainer, filename: FinderShared.domainName, folder: true, role: .structure)
     static let eventsRoot = FinderItem(identifier: FinderID.events, parent: .rootContainer, filename: "Eventy", folder: true, role: .structure)
+    static let materialsRoot = FinderItem(identifier: FinderID.materials, parent: .rootContainer, filename: "Materiały", folder: true, role: .structure)
 }

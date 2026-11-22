@@ -255,8 +255,13 @@ body.brand-theme--crm .crm-search-field .crm-search-input:focus-visible {
   color: #fff;
 }
 
+/*
+ * Font nagłówków z księgi znaku ma jeden krój (regularny). Pogrubienie (font-semibold/bold w klasach) przeglądarka
+ * dorabia sztucznie i ucina części liter — `font-synthesis: none` zostawia krój regularny; nagłówki są wersalikami.
+ */
 .brand-theme :where(h1, h2, h3, h4, th, [role='columnheader'], .brand-heading, [data-brand-heading='true']) {
   font-family: var(--font-brand-heading);
+  font-synthesis: none;
   font-weight: 400;
   letter-spacing: 0.055em;
   text-transform: uppercase;
@@ -266,6 +271,7 @@ body.brand-theme--crm .crm-search-field .crm-search-input:focus-visible {
 .brand-theme :where(nav, aside, [role='navigation'], [data-brand-navigation='true'])
   :where(a, button, [role='menuitem'], [data-navigation-label='true']) {
   font-family: var(--font-brand-heading);
+  font-synthesis: none;
   font-weight: 400;
   letter-spacing: 0.065em;
   text-transform: uppercase;
@@ -292,6 +298,7 @@ body.brand-theme--crm .crm-search-field .crm-search-input:focus-visible {
   [class~='rounded-full'][class~='text-[11px]']
 ) {
   font-family: var(--font-brand-heading);
+  font-synthesis: none;
   font-weight: 400;
   letter-spacing: 0.055em;
   text-transform: uppercase;
@@ -313,6 +320,7 @@ body.brand-theme--crm .crm-search-field .crm-search-input:focus-visible {
 .brand-theme :where([data-brand-breadcrumb='true'], nav[aria-label='breadcrumb'])
   :where(a, span, [role='link']) {
   font-family: var(--font-brand-heading);
+  font-synthesis: none;
   font-weight: 400;
   letter-spacing: 0.065em;
   text-transform: uppercase;
@@ -320,6 +328,7 @@ body.brand-theme--crm .crm-search-field .crm-search-input:focus-visible {
 
 .brand-theme :where([data-brand-number='true'], .brand-number) {
   font-family: var(--font-brand-heading);
+  font-synthesis: none;
   font-weight: 400;
   font-variant-numeric: lining-nums tabular-nums;
   letter-spacing: 0.035em;

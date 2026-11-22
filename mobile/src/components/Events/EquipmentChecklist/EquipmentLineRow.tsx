@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, borderRadius } from '../../../theme';
+import { colors, borderRadius, tone } from '../../../theme';
 import {
   EQUIPMENT_KIND_LABELS,
   EQUIPMENT_RETURN_PHOTO_LIMIT,
@@ -48,16 +48,16 @@ export const TONE_BACKGROUND: Record<EquipmentLineTone, string> = {
 const TONE_ICON: Record<EquipmentLineTone, { name: string; color: string }> = {
   unchecked: { name: 'circle', color: colors.text.tertiary },
   ok: { name: 'check-circle', color: colors.status.success },
-  shortage: { name: 'alert-octagon', color: '#f87171' },
-  missing: { name: 'alert-octagon', color: '#f87171' },
-  damaged: { name: 'tool', color: '#f87171' },
+  shortage: { name: 'alert-octagon', color: tone('#f87171') },
+  missing: { name: 'alert-octagon', color: tone('#f87171') },
+  damaged: { name: 'tool', color: tone('#f87171') },
   pending: { name: 'clock', color: colors.status.warning },
   skipped: { name: 'minus-circle', color: colors.text.tertiary },
 };
 
-const RED_TEXT = '#fca5a5';
-const AMBER_TEXT = '#fcd34d';
-const GREEN_TEXT = '#86efac';
+const RED_TEXT = tone('#fca5a5');
+const AMBER_TEXT = tone('#fcd34d');
+const GREEN_TEXT = tone('#86efac');
 
 function Stepper({
   label,
@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '400',
     color: colors.text.primary,
   },
   nameDone: { textDecorationLine: 'line-through', color: colors.text.tertiary },
@@ -564,7 +564,7 @@ const styles = StyleSheet.create({
   missing: { fontSize: 14, fontWeight: '600', color: colors.text.secondary },
   hint: { fontSize: 12, color: colors.text.secondary, lineHeight: 17 },
   inputLabel: { color: colors.text.secondary, fontSize: 12, fontWeight: '600', marginTop: 4 },
-  required: { color: '#f87171' },
+  required: { color: tone('#f87171') },
   input: {
     minHeight: 64,
     maxHeight: 160,
@@ -602,7 +602,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary.gold + '1f',
   },
   photoAddText: { fontSize: 11, color: colors.primary.gold, fontWeight: '600' },
-  error: { color: '#ff9999', fontSize: 13, lineHeight: 18 },
+  error: { color: tone('#ff9999'), fontSize: 13, lineHeight: 18 },
   editorActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end', marginTop: 4 },
   primaryBtn: {
     minHeight: 48,

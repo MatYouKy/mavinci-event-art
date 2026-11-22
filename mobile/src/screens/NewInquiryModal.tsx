@@ -17,7 +17,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
 
-import { colors, spacing, typography } from '../theme';
+import { appPalette, colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import SpecialDayNotice from '../components/SpecialDayNotice';
@@ -435,7 +435,7 @@ export default function NewInquiryModal({
                           setEventDate(toISODate(selectedDate));
                         }
                       }}
-                      themeVariant="dark"
+                      themeVariant={appPalette().scheme}
                     />
                     <TouchableOpacity
                       style={styles.pickerDoneButton}
@@ -724,7 +724,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text.primary,
   },
   saveBtn: {

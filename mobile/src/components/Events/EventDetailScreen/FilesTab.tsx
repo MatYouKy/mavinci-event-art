@@ -446,7 +446,7 @@ const styles = StyleSheet.create({
     flex:1,
     fontSize:14,
     color:colors.text.primary,
-    fontWeight:'600',
+    fontWeight: '400',
     marginRight:12,
   },
 

@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.huge,
-    fontWeight: typography.fontWeights.bold,
+    fontWeight: '400',
     color: colors.primary.gold,
     marginBottom: spacing.sm,
   },

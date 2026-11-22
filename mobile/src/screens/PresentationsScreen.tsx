@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { colors, spacing, borderRadius, typography, shade } from '../theme';
 import { showcaseHome } from '../lib/showcaseApi';
 import type { ShowcaseHome, ShowcaseItemSummary } from '../lib/showcaseShared';
 
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
   list: { padding: spacing.md, paddingTop: spacing.xs, gap: spacing.md },
   subtitle: { color: colors.text.secondary, fontSize: typography.fontSizes.sm, marginBottom: spacing.sm },
   card: { borderRadius: borderRadius.lg, overflow: 'hidden', backgroundColor: colors.background.tertiary, borderWidth: 1, borderColor: colors.border.default },
-  thumb: { width: '100%', aspectRatio: 16 / 10, backgroundColor: 'rgba(0,0,0,0.3)' },
+  thumb: { width: '100%', aspectRatio: 16 / 10, backgroundColor: shade(0.3) },
   thumbEmpty: { alignItems: 'center', justifyContent: 'center' },
   cardBody: { padding: spacing.md, gap: 4 },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },

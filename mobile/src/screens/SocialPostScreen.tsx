@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Dimensions, Image, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput,
+  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { appPalette, colors, spacing, borderRadius, typography } from '../theme';
 import ReorderableList from '../components/ReorderableList';
+import { useContentWidth } from '../hooks/useTabletLayout';
 import {
   SOCIAL_CHANNEL_LABELS, SOCIAL_FORMAT_INFO, SOCIAL_GRAPHIC_STYLES, SOCIAL_GRAPHIC_STYLE_HINTS, SOCIAL_GRAPHIC_STYLE_LIST, SOCIAL_KICKER_SUGGESTIONS,
   SOCIAL_LIMITS, SOCIAL_POST_ACTION_LABELS, SOCIAL_POST_ACTION_SUCCESS, SOCIAL_SLIDE_FORMATS,
@@ -47,9 +48,9 @@ function defaultScheduleDate(value: string | null) {
   return date;
 }
 
-const width = Dimensions.get('window').width;
-
 export default function SocialPostScreen() {
+  // Szerokość treści (na tablecie w poziomie — obok paska bocznego) dla siatki i podglądu slajdów.
+  const width = useContentWidth();
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const postId: string = route.params?.postId;
@@ -804,7 +805,7 @@ export default function SocialPostScreen() {
             <Text style={styles.title}>{detail.post.status === 'scheduled' ? 'Zmień termin publikacji' : 'Zaplanuj publikację'}</Text>
             <Text style={styles.muted}>W tym terminie serwer opublikuje post: {detail.post.channels.map((channel) => SOCIAL_CHANNEL_LABELS[channel]).join(', ')}.</Text>
             {Platform.OS === 'ios' ? (
-              <DateTimePicker value={scheduleDate} mode="datetime" display="spinner" locale="pl-PL" minuteInterval={5} themeVariant="dark"
+              <DateTimePicker value={scheduleDate} mode="datetime" display="spinner" locale="pl-PL" minuteInterval={5} themeVariant={appPalette().scheme}
                 minimumDate={new Date(Date.now() + 60_000)} onChange={(_event, selected) => { if (selected) setScheduleDate(selected); }} />
             ) : (
               <TouchableOpacity style={styles.input} onPress={() => setSchedulePicker('date')}><Text style={styles.body}>{socialDateLabel(scheduleDate.toISOString())}</Text></TouchableOpacity>

@@ -208,6 +208,14 @@ eas build --platform ios --profile production
 
 **Uwaga:** Do buildów produkcyjnych potrzebujesz konta [Expo Application Services (EAS)](https://expo.dev/eas).
 
+### Mavinci w aplikacji Pliki (iPhone, iPad)
+
+Aplikacja na iOS zawiera rozszerzenie File Provider **MavinciFiles** (`com.mavinci.crm.Files`): po zalogowaniu „Mavinci” pojawia się w aplikacji Pliki (Przeglądaj → Lokalizacje, obok iCloud Drive) — Eventy, Materiały i Dysk z uprawnieniami konta jak w CRM. To ten sam kod Swift co „Mavinci” w Finderze na Macu (`desktop/mac/Sources/MavinciFileProvider`), kopiowany przy `expo prebuild` przez plugin `plugins/withMavinciFiles.js`; moduł `modules/mavinci-files` zapisuje osobną sesję rozszerzenia (grupa aplikacji `group.com.mavinci.crm`) i rejestruje lokalizację (`src/lib/filesProvider.ts`, Ustawienia → „Aplikacja Pliki”).
+
+- Rozszerzenie dochodzi tylko z nowym buildem (`yarn deploy`) — aktualizacja OTA go nie doda; w starszej wersji aplikacji kod JS nic nie robi. Wymaga iOS 16.
+- Pierwszy build po dodaniu rozszerzenia uruchom interaktywnie i zaloguj się do konta Apple, gdy EAS zapyta — EAS zarejestruje identyfikator `com.mavinci.crm.Files`, grupę aplikacji i profile dla aplikacji i rozszerzenia.
+- EAS buduje z repozytorium — źródła rozszerzenia z `desktop/mac/Sources` muszą być w commicie. Expo Go nie zawiera rozszerzenia.
+
 ## 🎯 Następne kroki
 
 1. **Zaimplementuj pełne ekrany**:

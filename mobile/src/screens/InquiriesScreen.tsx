@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     flex: 1,
     fontSize: typography.fontSizes.md,
-    fontWeight: '600',
+    fontWeight: '400',
     color: colors.text.primary,
   },
   overdueBadge: {
@@ -542,7 +542,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text.primary,
     marginTop: spacing.md,
   },

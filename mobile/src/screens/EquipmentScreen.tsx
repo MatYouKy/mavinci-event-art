@@ -475,7 +475,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '400',
     color: colors.text.primary,
     flex: 1,
   },

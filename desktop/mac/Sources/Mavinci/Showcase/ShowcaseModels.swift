@@ -68,14 +68,15 @@ enum ShowcaseDevice: String, CaseIterable, Identifiable {
 // MARK: Treść karty
 
 enum ShowcaseMediaSource: String, Codable, Hashable {
-    case upload, product, site
+    case upload, product, site, material
     init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
         self = ShowcaseMediaSource(rawValue: raw) ?? .upload
     }
 }
 
-/// Zdjęcie: `upload` — wersje WebP w prezentacjach, `product` — zdjęcie produktu z katalogu, `site` — zdjęcie realizacji ze strony.
+/// Zdjęcie: `upload` — wersje WebP w prezentacjach, `product` — zdjęcie produktu z katalogu, `site` — zdjęcie realizacji ze strony,
+/// `material` — zdjęcie z bazy zdjęć (Materiały): odnośnik do pliku i wspólna wersja WebP do pokazu (bez kopii w karcie).
 struct ShowcaseMedia: Codable, Hashable, Identifiable {
     var id: String
     var source: ShowcaseMediaSource
@@ -422,11 +423,12 @@ struct ShowcaseDetail: Codable, Hashable {
     var urls: [String: ShowcaseURLPair]
 }
 
-/// Zdjęcie do wyboru: `media` — gotowe zdjęcie (produkt, realizacja), bez — plik do skopiowania (Materiały, wydarzenie, social media).
+/// Zdjęcie do wyboru: `media` — gotowe zdjęcie (produkt, realizacja), bez — plik z bazy zdjęć (odnośnik) albo social media (kopia).
 struct ShowcasePickPhoto: Codable, Hashable, Identifiable {
     var id: String
     var name: String
     var thumbnailUrl: String?
+    var url: String?
     var width: Double?
     var height: Double?
     var media: ShowcaseMedia?
@@ -436,11 +438,42 @@ struct ShowcasePhotosReply: Codable {
     var source: String
     var photos: [ShowcasePickPhoto]
     var problem: String?
+    var hasMore: Bool?
 }
 
 struct ShowcasePhotoReply: Codable, Hashable {
     var photo: ShowcaseMedia
     var urls: [String: ShowcaseURLPair]
+}
+
+/// Zdjęcie z dysku: `stored == "materials"` — zapisane w bazie zdjęć (Materiały → Zdjęcia), `existing` — ten plik już tam był.
+struct ShowcaseUploadReply: Codable {
+    struct StoredFile: Codable, Hashable { var id: String; var name: String; var folderName: String; var companyName: String }
+    var photo: ShowcaseMedia
+    var urls: [String: ShowcaseURLPair]
+    var stored: String?
+    var existing: Bool?
+    var file: StoredFile?
+    var reply: ShowcasePhotoReply { ShowcasePhotoReply(photo: photo, urls: urls) }
+}
+
+/// Album bazy zdjęć (Materiały → Albumy) w oknie wyboru.
+struct ShowcaseAlbumOption: Codable, Hashable, Identifiable {
+    var id: String
+    var companyId: String
+    var companyName: String
+    var name: String
+    var count: Int
+    var thumbnailUrl: String?
+}
+
+/// Dokąd trafiają zdjęcia z dysku (Materiały → marka → Zdjęcia) i albumy bazy zdjęć.
+struct ShowcasePhotoBaseReply: Codable {
+    struct Base: Codable, Hashable { var companyId: String; var companyName: String; var folderId: String?; var folderName: String }
+    var base: Base?
+    var albums: [ShowcaseAlbumOption]
+    var canView: Bool
+    var problem: String?
 }
 
 struct ShowcaseProductOption: Codable, Hashable, Identifiable {
@@ -467,29 +500,28 @@ struct ShowcaseEventOption: Codable, Hashable, Identifiable {
     var date: String?
 }
 
+/// Źródła w oknie wyboru zdjęć: baza zdjęć (Materiały i albumy), produkty, realizacje, biblioteka social media.
 enum ShowcasePhotoSource: String, CaseIterable, Identifiable {
-    case product, site, material, event, social
+    case material, product, site, social
     var id: String { rawValue }
     var label: String {
         switch self {
+        case .material: return "Baza zdjęć"
         case .product: return "Produkty"
         case .site: return "Realizacje"
-        case .material: return "Materiały"
-        case .event: return "Pliki wydarzenia"
         case .social: return "Social media"
         }
     }
     var symbol: String {
         switch self {
+        case .material: return "photo.stack"
         case .product: return "shippingbox"
         case .site: return "rosette"
-        case .material: return "photo.on.rectangle"
-        case .event: return "folder"
         case .social: return "sparkles"
         }
     }
-    /// Źródło z wyborem „właściciela” zdjęć (produkt, realizacja, wydarzenie).
-    var needsOwner: Bool { self == .product || self == .site || self == .event }
+    /// Źródło z listą „właścicieli” zdjęć (produkt, realizacja) — najpierw lista z miniaturami, potem zdjęcia.
+    var needsOwner: Bool { self == .product || self == .site }
 }
 
 /// Lista kontrolna karty.

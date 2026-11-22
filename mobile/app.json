@@ -64,7 +64,8 @@
           "granularPermissions": []
         }
       ],
-      "expo-video"
+      "expo-video",
+      "./plugins/withMavinciFiles"
     ],
     "ios": {
       "supportsTablet": true,

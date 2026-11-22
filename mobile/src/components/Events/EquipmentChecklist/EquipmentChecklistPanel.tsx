@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { colors, spacing } from '../../../theme';
+import { colors, spacing, tone } from '../../../theme';
 import { supabase } from '../../../lib/supabase';
 import { useForegroundEffect } from '../../../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../../../lib/refreshQueue';
@@ -68,9 +68,9 @@ type Props = {
 
 type LoadState = { eventId: string; load: EquipmentChecklistLoad };
 
-const RED_TEXT = '#fca5a5';
-const AMBER_TEXT = '#fcd34d';
-const GREEN_TEXT = '#86efac';
+const RED_TEXT = tone('#fca5a5');
+const AMBER_TEXT = tone('#fcd34d');
+const GREEN_TEXT = tone('#86efac');
 
 /** Nazwy etapów jak w CRM (wspólne EQUIPMENT_STAGE_TABS: Wydanie / Po wydarzeniu / Zwrot). */
 const STAGE_TAB_LABEL = Object.fromEntries(EQUIPMENT_STAGE_TABS.map((tab) => [tab.key, tab.label])) as Record<
@@ -1186,7 +1186,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.primary.gold,
   },
   headerHint: { fontSize: 13, lineHeight: 18, color: colors.text.secondary },
@@ -1228,7 +1228,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.primary.gold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,

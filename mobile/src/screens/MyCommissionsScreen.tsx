@@ -2,7 +2,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { colors, spacing, borderRadius, typography, tone } from '../theme';
 import { useAuth } from '../contexts/AuthContext';
 import { canView } from '../lib/permissions';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
@@ -28,7 +28,7 @@ import { COMMISSION_STATUS_COLORS, formatSettlementDate } from '../components/Ev
 
 type LoadStatus = 'loading' | 'ready' | 'missing' | 'denied' | 'error';
 
-const ERROR_TEXT = '#ff9999';
+const ERROR_TEXT = tone('#ff9999');
 
 const TOTAL_TILES: { key: keyof MyCommissions['totals']; label: string }[] = [
   { key: 'forecast', label: 'Prognoza' },
@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.primary.gold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,

@@ -48,6 +48,7 @@ enum ShowcaseListMode: Identifiable, Hashable {
     @State private var rowTarget: String?
     @State private var photoTarget: String?
     @State private var productTarget: String?
+    @State private var assistantOpen = false
 
     private var detail: ShowcaseDetail? { store.details[id] }
 
@@ -136,6 +137,14 @@ enum ShowcaseListMode: Identifiable, Hashable {
         .sheet(item: $listPicker) { mode in
             listSheet(mode, draft).environmentObject(state).environment(\.crmTheme, theme)
         }
+        .sheet(isPresented: $assistantOpen) {
+            ShowcaseAssistantSheet(store: store, draft: draft) { suggestion, fields in
+                mutate { $0.apply(suggestion, fields: fields) }
+                assistantOpen = false
+                state.succeed("Wstawiono propozycje asystenta (\(fields.count)) — sprawdź tekst i zapisz kartę")
+            }
+            .environmentObject(state).environment(\.crmTheme, theme)
+        }
         .confirmationDialog("Usunąć kartę?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Usuń kartę", role: .destructive) { Task { await store.deleteItem(id) } }
             Button("Wróć", role: .cancel) {}
@@ -179,6 +188,8 @@ enum ShowcaseListMode: Identifiable, Hashable {
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(highlight == "title" ? theme.accent : Color.clear, lineWidth: 2))
             Toggle(draft.isActive ? "Widoczna na spotkaniach" : "Ukryta (szkic)", isOn: field(\.isActive, true)).toggleStyle(.switch)
             Text(saved).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Button { assistantOpen = true } label: { Label("Asystent AI", systemImage: "wand.and.stars") }
+                .help("Propozycje treści z danych produktów karty")
             Button { preview(detail, draft) } label: { Label("Podgląd na iPadzie", systemImage: "ipad.landscape") }
             Button { Task { await store.saveItem(id) } } label: { Label("Zapisz", systemImage: "square.and.arrow.down") }
                 .buttonStyle(.borderedProminent).keyboardShortcut("s", modifiers: .command).disabled(!dirty)
@@ -466,7 +477,7 @@ enum ShowcaseListMode: Identifiable, Hashable {
                 }
             }
         )
-        let badge: String? = photo.source == .product ? "Katalog" : (photo.source == .site ? "Realizacja" : nil)
+        let badge: String? = photo.source == .product ? "Katalog" : (photo.source == .site ? "Realizacja" : (photo.source == .material ? "Baza zdjęć" : nil))
         return VStack(spacing: 4) {
             Color.clear.aspectRatio(4.0 / 3.0, contentMode: .fit)
                 .overlay { SocialImageView(url: store.url(photo.key)?.thumb) }

@@ -12,7 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing } from '../theme';
+import { colors, spacing, tone } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
@@ -43,7 +43,7 @@ function TimeTrackingContent() {
     if (!thread) return null;
     return <TouchableOpacity onPress={() => discussionNavigation.setParams({ discussionEntryId: entryId, discussionRequestId: Date.now() })}
       style={{ alignSelf: 'flex-start', backgroundColor: thread.resolved ? '#22c55e15' : '#f59e0b20', borderRadius: 6, padding: 7, marginTop: 6 }}>
-      <Text style={{ color: thread.resolved ? '#7bd99c' : '#fcd34d', fontSize: 12 }}>{thread.resolved ? 'Wyjaśnione' : 'Do wyjaśnienia'} · {thread.messages.length} wiadomości</Text>
+      <Text style={{ color: thread.resolved ? tone('#7bd99c') : tone('#fcd34d'), fontSize: 12 }}>{thread.resolved ? 'Wyjaśnione' : 'Do wyjaśnienia'} · {thread.messages.length} wiadomości</Text>
     </TouchableOpacity>;
   };
   const { employee } = useAuth();
@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     fontSize: 14,
     color: colors.text.primary,
-    fontWeight: '600',
+    fontWeight: '400',
   },
   activeTaskDesc: {
     fontSize: 12,
@@ -588,7 +588,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text.primary,
   },
   input: {
@@ -638,7 +638,7 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text.secondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -694,7 +694,7 @@ const styles = StyleSheet.create({
   entriesSectionTitle: {
     fontFamily: 'MBFAtom',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text.secondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -723,7 +723,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '400',
     color: colors.text.primary,
   },
   entryMeta: {

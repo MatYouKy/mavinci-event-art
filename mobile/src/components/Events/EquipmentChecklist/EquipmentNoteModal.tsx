@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { colors, borderRadius, spacing } from '../../../theme';
+import { colors, borderRadius, spacing, tone } from '../../../theme';
 
 /*
  * Okno z notatką / powodem do czynności checklisty sprzętu (potwierdzenie etapu, prośba, zgoda, odmowa, cofnięcie).
@@ -140,12 +140,12 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: colors.text.primary,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '400',
     marginBottom: 8,
   },
   description: { color: colors.text.secondary, fontSize: 13, lineHeight: 19, marginBottom: 12 },
   label: { color: colors.text.secondary, fontSize: 13, fontWeight: '600', marginBottom: 6 },
-  required: { color: '#f87171' },
+  required: { color: tone('#f87171') },
   input: {
     minHeight: 96,
     maxHeight: 220,
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlignVertical: 'top',
   },
-  error: { color: '#ff9999', fontSize: 13, lineHeight: 18, marginTop: 8 },
+  error: { color: tone('#ff9999'), fontSize: 13, lineHeight: 18, marginTop: 8 },
   actions: { flexDirection: 'row', gap: 10, justifyContent: 'flex-end', marginTop: 16 },
   cancel: {
     minHeight: 48,

@@ -150,7 +150,7 @@ export function TeamTab({ employees, currentEmployeeId }: Props) {
 
 const styles = StyleSheet.create({
   container: { padding: spacing.md },
-  heading: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 16, fontWeight: '700', color: colors.text.primary },
+  heading: { fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: 16, fontWeight: '400', color: colors.text.primary },
   description: { marginTop: 4, fontSize: 12, lineHeight: 18, color: colors.text.tertiary },
   list: { marginTop: spacing.md, gap: 8 },
   employeeRow: {

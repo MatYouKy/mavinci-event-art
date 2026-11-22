@@ -1042,7 +1042,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     flex: 1,
     fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.bold,
+    fontWeight: '400',
     color: colors.text.primary,
   },
   tabsContainer: {
@@ -1089,7 +1089,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.semibold,
+    fontWeight: '400',
     color: colors.text.primary,
     marginBottom: spacing.md,
   },
@@ -1347,7 +1347,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.bold,
+    fontWeight: '400',
     color: colors.text.primary,
   },
   modalBody: {

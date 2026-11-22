@@ -10,7 +10,7 @@ import { useIsFocused } from '@react-navigation/native';
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { supabase } from '../../lib/supabase';
-import { colors } from '../../theme';
+import { colors, tone } from '../../theme';
 import { OPERATIONAL_LABELS } from '../../lib/operationalStages';
 import { eventStepRealizationLink } from '../../lib/eventStepLinks';
 import { openInCrmWeb } from '../../navigation/navigationRef';
@@ -129,7 +129,7 @@ export default function RealizationWorkspace({
       )}
       <RealizationActions eventId={data.id} onChanged={() => void refresh()} />
       {!!error && (
-        <Text accessibilityRole="alert" style={{ color: '#ff9999', marginVertical: 10 }}>
+        <Text accessibilityRole="alert" style={{ color: tone('#ff9999'), marginVertical: 10 }}>
           {error}
         </Text>
       )}

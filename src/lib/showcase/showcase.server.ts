@@ -7,14 +7,20 @@ import { portfolioContentFromSite } from '@/lib/portfolio/portfolioShared';
 import {
   brandbookPublicUrl, employeeNames, fail, isObject, isOwnPublicStorageUrl, isUuid, sniffImageType, text, uuidOrNull, type Row,
 } from '@/lib/social/socialCommon.server';
+import {
+  materialAccess, materialCompanies, materialFileRow, materialSystemFolder, materialsAlbum, materialsAlbums, materialsStoreBytes,
+} from '@/lib/materials/materials.server';
+import { cleanMaterialName } from '@/lib/materials/materialsShared';
+import { showcaseAiSuggest } from './showcaseAi.server';
 import { processShowcasePhoto } from './showcasePhotos.server';
 import {
-  SHOWCASE_LIMITS, defaultShowcaseContent, emptyShowcaseBlock, isShowcaseIcon, isShowcaseMediaPath, normalizeShowcaseContent,
+  SHOWCASE_AI_FIELDS, SHOWCASE_EXAMPLE, SHOWCASE_LIMITS, defaultShowcaseContent, emptyShowcaseBlock, isShowcaseIcon, isShowcaseMediaPath,
+  normalizeShowcaseContent, showcaseExampleContent, type ShowcaseAiField,
   normalizeShowcaseMedia, normalizeShowcaseProductIds, showcaseContentMedia, showcaseContentProductIds, showcaseContentRealizationIds,
-  showcaseLine, showcaseMediaKey, showcaseProblemCount, showcaseText,
-  type ShowcaseAccess, type ShowcaseBlock, type ShowcaseBrand, type ShowcaseContent, type ShowcaseHome, type ShowcaseItemDetail,
-  type ShowcaseItemSummary, type ShowcaseMedia, type ShowcasePickPhoto, type ShowcasePoint, type ShowcaseProductView,
-  type ShowcaseRealizationView, type ShowcaseSectionView, type ShowcaseUrls,
+  showcaseLine, showcaseMaterialPaths, showcaseMediaKey, showcaseProblemCount, showcaseText,
+  type ShowcaseAccess, type ShowcaseAlbumOption, type ShowcaseBlock, type ShowcaseBrand, type ShowcaseContent, type ShowcaseHome,
+  type ShowcaseItemDetail, type ShowcaseItemSummary, type ShowcaseMedia, type ShowcasePhotoBase, type ShowcasePickPhoto,
+  type ShowcasePoint, type ShowcaseProductView, type ShowcaseRealizationView, type ShowcaseSectionView, type ShowcaseUrls,
 } from './showcaseShared';
 
 /*
@@ -22,6 +28,8 @@ import {
  * (`/bridge/native/v1/showcase`). Token pracownika — RLS i funkcje bazy z migracji 20261122100000 (`sales_showcase_*`).
  * Dostęp: podgląd — `presentations_view` albo dostęp do ofert; przygotowanie — `presentations_manage` albo `offers_manage`.
  * Produkty katalogu i realizacje ze strony czytane na bieżąco; zdjęcia własne — WebP w prywatnym buckecie `sales-showcase`.
+ * Główna baza zdjęć to Materiały (marka → Zdjęcia, albumy): zdjęcie z dysku trafia do Materiałów (bez duplikatu tego samego
+ * pliku), a karta trzyma odnośnik — do pokazu jedną wspólną wersję WebP na wersję treści pliku (migracja 20261122140000).
  */
 
 const BUCKET = 'sales-showcase';
@@ -128,7 +136,7 @@ async function signPaths(ctx: NativeContext, bucket: string, paths: string[], tt
 /** Adresy zdjęć (klucz `showcaseMediaKey`): własne i produktów — podpisane na godzinę, ze strony — publiczne. */
 async function mediaUrls(ctx: NativeContext, media: Array<ShowcaseMedia | null | undefined>): Promise<ShowcaseUrls> {
   const list = media.filter((item): item is ShowcaseMedia => Boolean(item));
-  const uploads = list.filter((item) => item.source === 'upload');
+  const uploads = list.filter((item) => item.source === 'upload' || item.source === 'material');
   const products = list.filter((item) => item.source === 'product');
   const [own, catalog] = await Promise.all([
     signPaths(ctx, BUCKET, uploads.flatMap((item) => [item.path, item.thumb || ''])),
@@ -138,7 +146,7 @@ async function mediaUrls(ctx: NativeContext, media: Array<ShowcaseMedia | null |
   for (const item of list) {
     const key = showcaseMediaKey(item);
     if (urls[key]) continue;
-    if (item.source === 'upload') {
+    if (item.source === 'upload' || item.source === 'material') {
       const url = own.get(item.path) || null;
       urls[key] = { url, thumb: (item.thumb && own.get(item.thumb)) || url };
     } else if (item.source === 'product') {
@@ -149,6 +157,19 @@ async function mediaUrls(ctx: NativeContext, media: Array<ShowcaseMedia | null |
     }
   }
   return urls;
+}
+
+/** Miniatury zdjęć produktów katalogu (`offer_image_path`) po identyfikatorze produktu — pozycje „Oferty ze spotkania”. */
+export async function showcaseProductThumbs(ctx: NativeContext, rows: Row[]): Promise<Map<string, string>> {
+  const images = rows.map((row) => productMedia(row.offer_image_path, row.offer_image_alt || row.name));
+  const urls = await mediaUrls(ctx, images);
+  const thumbs = new Map<string, string>();
+  rows.forEach((row, index) => {
+    const media = images[index];
+    const thumb = media ? urls[showcaseMediaKey(media)]?.thumb : null;
+    if (thumb) thumbs.set(String(row.id), thumb);
+  });
+  return thumbs;
 }
 
 // Marka -----------------------------------------------------------------------------------------------------------------------
@@ -421,9 +442,39 @@ async function detail(ctx: NativeContext, row: Row): Promise<ShowcaseItemDetail>
   };
 }
 
+/** Produkt katalogu na bieżąco (warianty, pakiety, ceny) — „Dodaj pozycję” w ofercie ze spotkania. */
+export async function showcaseProductDetail(ctx: NativeContext, id: string) {
+  await requireView(ctx);
+  const [product] = await catalogProducts(ctx, [id]);
+  if (!product) fail('Nie znaleziono produktu w katalogu.', 404);
+  return { product, urls: await mediaUrls(ctx, productMediaList([product])) };
+}
+
 export async function showcaseItem(ctx: NativeContext, id: string) {
   await requireView(ctx);
   return detail(ctx, await itemRow(ctx, id));
+}
+
+// Asystent AI -------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Propozycje treści karty z danych produktów katalogu (bieżący szkic z edytora: tytuł, hasło, wstęp, produkty) i opisu od
+ * sprzedawcy. Nic się nie zapisuje — edytor wstawia wybrane propozycje do szkicu.
+ */
+export async function showcaseAssist(ctx: NativeContext, body: Row) {
+  await requireManage(ctx);
+  const fields = (Array.isArray(body.fields) ? body.fields : []).filter((field: unknown): field is ShowcaseAiField =>
+    (SHOWCASE_AI_FIELDS as readonly string[]).includes(String(field)));
+  const content = normalizeShowcaseContent(body.content);
+  const products = await catalogProducts(ctx, showcaseContentProductIds(normalizeShowcaseProductIds(body.productIds), content));
+  return showcaseAiSuggest({
+    title: showcaseLine(body.title, SHOWCASE_LIMITS.title),
+    tagline: showcaseLine(body.tagline, SHOWCASE_LIMITS.tagline),
+    lead: content.lead,
+    brief: showcaseText(body.brief, 2000),
+    products,
+    fields: Array.from(new Set(fields)),
+  });
 }
 
 // Zapis: działy ---------------------------------------------------------------------------------------------------------------
@@ -530,7 +581,10 @@ function contentFromProduct(product: ShowcaseProductView): ShowcaseContent {
   });
 }
 
-/** Nowa karta w dziale — pusta (szkielet pokazu) albo z produktu katalogu („Utwórz z produktu”). */
+/**
+ * Nowa karta w dziale — pusta (szkielet pokazu), z produktu katalogu („Utwórz z produktu”) albo z przykładu z instrukcji
+ * („Utwórz kartę z przykładu” — ukryta do czasu uzupełnienia zdjęć).
+ */
 export async function showcaseCreateItem(ctx: NativeContext, body: Row) {
   await requireManage(ctx);
   const section = await sectionRow(ctx, body.sectionId);
@@ -538,7 +592,13 @@ export async function showcaseCreateItem(ctx: NativeContext, body: Row) {
   let title = showcaseLine(body.title, SHOWCASE_LIMITS.title);
   let content = defaultShowcaseContent();
   let productIds: string[] = [];
-  if (productId) {
+  let tagline = '';
+  const example = body.example === true;
+  if (example) {
+    content = showcaseExampleContent();
+    title = showcaseLine(SHOWCASE_EXAMPLE.title, SHOWCASE_LIMITS.title);
+    tagline = showcaseLine(SHOWCASE_EXAMPLE.tagline, SHOWCASE_LIMITS.tagline);
+  } else if (productId) {
     const [product] = await catalogProducts(ctx, [productId]);
     if (!product) fail('Nie znaleziono produktu w katalogu.', 404);
     content = contentFromProduct(product);
@@ -548,11 +608,11 @@ export async function showcaseCreateItem(ctx: NativeContext, body: Row) {
   const { data, error } = await ctx.supabase.from('sales_showcase_items').insert({
     section_id: section.id,
     title: title || 'Nowa karta',
-    tagline: '',
+    tagline,
     product_ids: productIds,
     content,
     sort_order: await nextItemOrder(ctx, String(section.id)),
-    is_active: body.isActive !== false,
+    is_active: example ? false : body.isActive !== false,
   }).select(ITEM_FIELDS).single();
   check(error, 'Nie udało się utworzyć karty.');
   return detail(ctx, data as Row);
@@ -609,9 +669,9 @@ export async function showcaseDeleteItem(ctx: NativeContext, body: Row) {
   return { deleted: String(row.id) };
 }
 
-/** Usuwa z magazynu własne zdjęcia, których nie używa już żadna karta ani okładka działu. */
+/** Usuwa z magazynu własne zdjęcia i wersje zdjęć z Materiałów, których nie używa już żadna karta ani okładka działu. */
 async function removeUnused(ctx: NativeContext, media: Array<ShowcaseMedia | null | undefined>) {
-  const candidates = Array.from(new Set(media.filter((item): item is ShowcaseMedia => item?.source === 'upload')
+  const candidates = Array.from(new Set(media.filter((item): item is ShowcaseMedia => item?.source === 'upload' || item?.source === 'material')
     .flatMap((item) => [item.path, item.thumb || '']).filter(Boolean)));
   if (!candidates.length) return;
   const [items, sections] = await Promise.all([
@@ -621,7 +681,7 @@ async function removeUnused(ctx: NativeContext, media: Array<ShowcaseMedia | nul
   if (items.error || sections.error) return;
   const used = new Set<string>();
   const mark = (item: ShowcaseMedia | null) => {
-    if (item?.source !== 'upload') return;
+    if (item?.source !== 'upload' && item?.source !== 'material') return;
     used.add(item.path);
     if (item.thumb) used.add(item.thumb);
   };
@@ -668,11 +728,115 @@ async function storePhoto(ctx: NativeContext, target: Target, bytes: Buffer, cap
   return { photo, urls: await mediaUrls(ctx, [photo]) };
 }
 
-/** Zdjęcie z dysku / Findera (`POST ?op=upload&item=<karta>` albo `&section=<dział>`). */
+// Baza zdjęć (Materiały) ------------------------------------------------------------------------------------------------------
+
+const MATERIAL_DISPLAY_SIDE = 2560;
+
+/** Gdzie trafiają zdjęcia z dysku: pierwsza marka z prawem zmian w Materiałach (domyślna najpierw) → folder „Zdjęcia”. */
+async function photoBase(ctx: NativeContext): Promise<ShowcasePhotoBase> {
+  const companies = await materialCompanies(ctx).catch(() => []);
+  const company = companies.find((item) => item.access.manage);
+  if (!company) return null;
+  const folder = await materialSystemFolder(ctx, company.id, 'photos');
+  return { companyId: company.id, companyName: company.name, folderId: folder?.id || null, folderName: folder?.name || company.name };
+}
+
+const alreadyStored = (error: { message?: string; statusCode?: string | number } | null) =>
+  Boolean(error && (String(error.statusCode || '') === '409' || /already exists|duplicate/i.test(error.message || '')));
+
+/**
+ * Zdjęcie z Materiałów w prezentacji: jedna wersja WebP (2560 px + miniatura) na wersję treści pliku, wspólna dla wszystkich
+ * kart i okładek. Gotowa wersja nie powstaje drugi raz. `bytes` — treść pliku, gdy serwer już ją ma (zdjęcie z dysku).
+ */
+async function materialRendition(ctx: NativeContext, file: Row, caption: string, bytes?: Buffer): Promise<ShowcaseMedia> {
+  if (file.status !== 'ready') fail('Plik w Materiałach jest jeszcze wysyłany. Spróbuj za chwilę.', 409);
+  if (!IMAGE_TYPES.includes(text(file.mime_type).toLowerCase())) fail('W prezentacji można użyć zdjęć JPEG, PNG i WebP z Materiałów.', 415);
+  const version = Math.max(1, Number(file.content_version) || 1);
+  const { path, thumb } = showcaseMaterialPaths(String(file.id), version);
+  const { data: listed } = await ctx.supabase.storage.from(BUCKET).list(`materials/${String(file.id).toLowerCase()}`, { limit: 100 });
+  const names = new Set(((listed || []) as Array<{ name?: string }>).map((item) => item.name || ''));
+  let width: number | null = null;
+  let height: number | null = null;
+  if (names.has(path.split('/').pop()!) && names.has(thumb.split('/').pop()!)) {
+    const W = Number(file.width) || 0;
+    const H = Number(file.height) || 0;
+    if (W > 0 && H > 0) {
+      const scale = Math.min(1, MATERIAL_DISPLAY_SIDE / Math.max(W, H));
+      width = Math.max(1, Math.round(W * scale));
+      height = Math.max(1, Math.round(H * scale));
+    }
+  } else {
+    const source = bytes ?? await download(ctx, 'materials', String(file.storage_path), file.size_bytes);
+    const type = sniffImageType(source);
+    if (!type) fail('Ten plik nie jest zdjęciem JPEG, PNG ani WebP.', 415);
+    const processed = await processShowcasePhoto(source, type);
+    const put = async (target: string, data: Buffer) => {
+      const { error } = await ctx.supabase.storage.from(BUCKET).upload(target, data, { contentType: 'image/webp', cacheControl: '31536000', upsert: false });
+      if (error && !alreadyStored(error as { message?: string; statusCode?: string })) {
+        console.error('[showcase] material rendition', error.message);
+        const denied = /row-level security|unauthorized|403/i.test(error.message || '');
+        fail(denied ? MANAGE_MESSAGE : 'Nie udało się przygotować zdjęcia do prezentacji.', denied ? 403 : 502);
+      }
+    };
+    await Promise.all([put(path, processed.display), put(thumb, processed.thumb)]);
+    width = processed.width;
+    height = processed.height;
+  }
+  return {
+    id: stableId(`material:${path}`), source: 'material', path, thumb, width, height,
+    caption: showcaseLine(caption, SHOWCASE_LIMITS.caption),
+  };
+}
+
+const baseName = (name: unknown) => text(name).replace(/\.[A-Za-z0-9]{2,5}$/, '');
+
+/** Okno wyboru zdjęć: gdzie trafiają zdjęcia z dysku i albumy bazy zdjęć (Materiały → Albumy). */
+export async function showcasePhotoBase(ctx: NativeContext) {
+  await requireManage(ctx);
+  const access = await materialAccess(ctx, null);
+  if (!access.view) {
+    return { base: null as ShowcasePhotoBase, albums: [] as ShowcaseAlbumOption[], canView: false,
+      problem: 'Baza zdjęć to Materiały — potrzebne uprawnienie „Materiały — podgląd” (wgrywanie: „Materiały — zarządzanie”).' };
+  }
+  const [base, albumReply, companies] = await Promise.all([
+    photoBase(ctx),
+    materialsAlbums(ctx, new URLSearchParams()).catch(() => ({ albums: [] as Array<Record<string, any>> })),
+    ctx.supabase.from('my_companies').select('id, name'),
+  ]);
+  const companyName = new Map(((companies.data || []) as Row[]).map((row) => [String(row.id), text(row.name)]));
+  const albums: ShowcaseAlbumOption[] = (albumReply.albums || []).map((album: Record<string, any>) => ({
+    id: String(album.id), companyId: String(album.companyId), companyName: companyName.get(String(album.companyId)) || '',
+    name: text(album.name) || 'Album', count: Number(album.count) || 0, thumbnailUrl: album.coverUrl || null,
+  }));
+  return { base, albums, canView: true, problem: '' };
+}
+
+/**
+ * Zdjęcie z dysku / Findera (`POST ?op=upload&item=<karta>` albo `&section=<dział>`). Z `&base=1` (CRM, Mac, aplikacja od u124)
+ * zdjęcie trafia do bazy zdjęć — Materiały → marka → Zdjęcia (ten sam plik drugi raz się nie zapisze) — a karta dostaje
+ * odnośnik; bez prawa zmian w Materiałach — jak dotąd, do prezentacji. `&name=` — nazwa pliku w Materiałach.
+ */
 export async function showcaseUpload(ctx: NativeContext, params: URLSearchParams, bytes: Buffer) {
   await requireManage(ctx);
+  if (params.get('base') === '1') {
+    if (bytes.length > SHOWCASE_LIMITS.uploadBytes) fail('Zdjęcie może mieć najwyżej 40 MB.', 413);
+    const base = await photoBase(ctx);
+    if (base) {
+      const type = sniffImageType(bytes);
+      if (!type) fail('Ten plik nie jest zdjęciem JPEG, PNG ani WebP.', 415);
+      const extension = type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg';
+      const fallbackName = `zdjecie-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${extension}`;
+      const name = cleanMaterialName(params.get('name')) || fallbackName;
+      const { row, existing } = await materialsStoreBytes(ctx, { companyId: base.companyId, folderId: base.folderId, name, mime: type, bytes });
+      const photo = await materialRendition(ctx, row, text(params.get('caption')) || baseName(row.name), bytes);
+      return {
+        photo, urls: await mediaUrls(ctx, [photo]), stored: 'materials' as const, existing,
+        file: { id: String(row.id), name: text(row.name), folderName: base.folderName, companyName: base.companyName },
+      };
+    }
+  }
   const target = await resolveTarget(ctx, { itemId: params.get('item') || undefined, sectionId: params.get('section') || undefined });
-  return storePhoto(ctx, target, bytes, text(params.get('caption')));
+  return { ...(await storePhoto(ctx, target, bytes, text(params.get('caption')))), stored: 'presentation' as const, existing: false, file: null };
 }
 
 async function download(ctx: NativeContext, bucket: string, path: string, size: unknown) {
@@ -688,7 +852,6 @@ async function download(ctx: NativeContext, bucket: string, path: string, size: 
  */
 export async function showcaseImport(ctx: NativeContext, body: Row) {
   await requireManage(ctx);
-  const target = await resolveTarget(ctx, { itemId: body.itemId, sectionId: body.sectionId });
   const caption = text(body.caption);
   if (body.source === 'product') {
     const [product] = await catalogProducts(ctx, [text(body.productId)]);
@@ -708,6 +871,12 @@ export async function showcaseImport(ctx: NativeContext, body: Row) {
   }
   const fileId = uuidOrNull(body.fileId);
   if (!fileId) fail('Wybierz zdjęcie.', 400);
+  if (body.source === 'material' && body.reference === true) {
+    // Baza zdjęć: odnośnik do pliku Materiałów (wspólna wersja WebP do pokazu), bez kopii w karcie.
+    const file = await materialFileRow(ctx, fileId);
+    const photo = await materialRendition(ctx, file, caption || baseName(file.name));
+    return { photo, urls: await mediaUrls(ctx, [photo]) };
+  }
   let bytes: Buffer;
   if (body.source === 'event') {
     const { data: file, error } = await ctx.supabase.from('event_files').select('file_path, mime_type, file_size').eq('id', fileId).maybeSingle();
@@ -727,6 +896,8 @@ export async function showcaseImport(ctx: NativeContext, body: Row) {
   } else {
     fail('Nieznane źródło zdjęcia.', 400);
   }
+  // Kopia (social media, starsze wersje aplikacji: Materiały bez odnośnika, pliki wydarzenia) — do karty albo działu.
+  const target = await resolveTarget(ctx, { itemId: body.itemId, sectionId: body.sectionId });
   return storePhoto(ctx, target, bytes, caption);
 }
 
@@ -786,8 +957,11 @@ export async function showcaseEvents(ctx: NativeContext, params: URLSearchParams
   return { events: ((data || []) as Row[]).map((row) => ({ id: String(row.id), name: text(row.name) || 'Wydarzenie', date: text(row.event_date) || null })) };
 }
 
-/** Zdjęcia do wyboru: produkt (zdjęcie główne, warianty, pakiety), realizacja, Materiały, pliki wydarzenia, social media. */
-export async function showcasePhotos(ctx: NativeContext, params: URLSearchParams): Promise<{ source: string; photos: ShowcasePickPhoto[]; problem?: string }> {
+/**
+ * Zdjęcia do wyboru: produkt (zdjęcie główne, warianty, pakiety), realizacja, baza zdjęć (Materiały, `album`), social media.
+ * Pliki wydarzenia (`event`) — tylko dla starszych wersji aplikacji (okno wyboru już ich nie pokazuje).
+ */
+export async function showcasePhotos(ctx: NativeContext, params: URLSearchParams): Promise<{ source: string; photos: ShowcasePickPhoto[]; problem?: string; hasMore?: boolean }> {
   await requireManage(ctx);
   const source = text(params.get('source'));
   const search = q(params.get('q'));
@@ -795,7 +969,7 @@ export async function showcasePhotos(ctx: NativeContext, params: URLSearchParams
     const urls = await mediaUrls(ctx, media);
     return media.map((item) => ({
       id: item.id, name: item.caption || 'Zdjęcie', thumbnailUrl: urls[showcaseMediaKey(item)]?.thumb || null,
-      width: item.width, height: item.height, media: item,
+      url: urls[showcaseMediaKey(item)]?.url || null, width: item.width, height: item.height, media: item,
     }));
   };
   if (source === 'product') {
@@ -826,19 +1000,35 @@ export async function showcasePhotos(ctx: NativeContext, params: URLSearchParams
     };
   }
   if (source === 'material') {
+    // Baza zdjęć: wszystkie zdjęcia Materiałów (najnowsze najpierw, stronami po 120) albo album (w kolejności albumu).
+    const albumId = uuidOrNull(params.get('album'));
+    if (albumId) {
+      const reply = await materialsAlbum(ctx, albumId).catch(() => null);
+      if (!reply) return { source, photos: [], problem: 'Nie znaleziono albumu albo nie masz do niego dostępu.' };
+      const needle = search.toLocaleLowerCase('pl');
+      return {
+        source,
+        photos: reply.files.filter((file) => IMAGE_TYPES.includes(file.mime.toLowerCase()) && (!needle || file.name.toLocaleLowerCase('pl').includes(needle)))
+          .map((file) => ({ id: file.id, name: file.name, thumbnailUrl: file.thumbnailUrl, url: null, width: file.width, height: file.height, media: null })),
+      };
+    }
+    const offset = Math.min(10_000, Math.max(0, Math.round(Number(params.get('offset')) || 0)));
     let query = ctx.supabase.from('material_files').select('id, name, storage_path, thumbnail_path, width, height')
-      .eq('status', 'ready').in('mime_type', IMAGE_TYPES).order('updated_at', { ascending: false }).limit(150);
+      .eq('status', 'ready').in('mime_type', IMAGE_TYPES).order('updated_at', { ascending: false }).range(offset, offset + 120);
     if (search) query = query.ilike('name', `%${search}%`);
     const { data, error } = await query;
     if (error) return { source, photos: [], problem: 'Materiały nie są dostępne albo nie masz do nich dostępu.' };
-    const rows = (data || []) as Row[];
+    const rows = ((data || []) as Row[]).slice(0, 120);
     const urls = await signPaths(ctx, 'materials', rows.map((row) => text(row.thumbnail_path) || text(row.storage_path)));
+    const empty = !rows.length && !offset && !(await materialAccess(ctx, null)).view;
     return {
       source,
+      hasMore: ((data || []) as Row[]).length > 120,
       photos: rows.map((row) => ({
         id: String(row.id), name: text(row.name) || 'Zdjęcie', thumbnailUrl: urls.get(text(row.thumbnail_path) || text(row.storage_path)) || null,
-        width: num(row.width), height: num(row.height), media: null,
+        url: null, width: num(row.width), height: num(row.height), media: null,
       })),
+      ...(empty ? { problem: 'Baza zdjęć to Materiały — potrzebne uprawnienie „Materiały — podgląd”.' } : {}),
     };
   }
   if (source === 'social') {

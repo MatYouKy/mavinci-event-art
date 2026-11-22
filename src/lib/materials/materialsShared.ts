@@ -131,6 +131,15 @@ export function numberedMaterialName(name: string, n: number): string {
   return `${base.slice(0, Math.max(1, room)).trimEnd()}${suffix}${ext ? `.${name.slice(-ext.length)}` : ''}`;
 }
 
+/** Albumy (Materiały → Albumy): odnośniki do plików marki, bez kopiowania. */
+export const MATERIAL_ALBUM_LIMITS = { name: 120, description: 1000, batch: 500 } as const;
+
+/** Nazwa albumu jak w bazie: jedna linia, bez znaków sterujących, do 120 znaków; `null`, gdy nic nie zostaje. */
+export function cleanMaterialAlbumName(value: unknown): string | null {
+  const name = String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MATERIAL_ALBUM_LIMITS.name).trim();
+  return name || null;
+}
+
 /** Tagi jak w bazie: przycięte, do 40 znaków, bez powtórzeń (bez względu na wielkość liter), najwięcej 30. */
 export function cleanMaterialTags(value: unknown): string[] {
   const list = Array.isArray(value) ? value : String(value ?? '').split(',');

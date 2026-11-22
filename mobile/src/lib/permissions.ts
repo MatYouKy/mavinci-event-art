@@ -91,6 +91,18 @@ export const SOCIAL_MEDIA_PERMISSIONS = ['marketing_social_view', 'marketing_soc
 export const PORTFOLIO_PERMISSIONS = ['website_edit', 'page_manage'];
 /** Strefa sprzedawcy → Prezentacje — jak w CRM: podgląd z dostępem do ofert albo „Prezentacje — podgląd”, przygotowanie — „Prezentacje — przygotowanie”. */
 export const PRESENTATIONS_PERMISSIONS = ['presentations_view', 'presentations_manage', 'offers_view', 'offers_create', 'offers_manage'];
+/** Materiały (baza plików firmy) — jak w CRM: „Materiały — podgląd” albo „Materiały — zarządzanie”; zakres marek sprawdza serwer. */
+export const MATERIALS_PERMISSIONS = ['materials_view', 'materials_manage'];
+/**
+ * Dysk — jak pozycja „Dysk” w nawigacji CRM: dostęp do któregokolwiek działu (Eventy, Materiały, Oferty, Kalkulacje, Umowy,
+ * Magazyn, Pracownicy); które działy widać — decyduje serwer (`/bridge/native/v1/drive?op=root`).
+ */
+export const DRIVE_PERMISSIONS = [
+  ...MATERIALS_PERMISSIONS, 'events_view', 'events_view_planning', 'events_view_operational', 'events_manage', 'events_create', 'calendar_view',
+  'offers_view', 'offers_create', 'offers_manage', 'contracts_view', 'contracts_manage', 'contracts_create', 'equipment_view', 'equipment_manage',
+  'equipment_create', 'inquiries_view', 'inquiries_manage', 'inquiries_view_pool', 'inquiries_view_own', 'inquiries_manage_own', 'inquiries_view_team',
+  'inquiries_manage_team', 'inquiries_view_all', 'inquiries_manage_all', 'employees_view', 'employees_manage', 'personnel_view', 'personnel_manage',
+];
 
 export const MENU_ITEMS: MenuItem[] = [
   { icon: 'home', label: 'Dashboard', screen: 'Dashboard' },
@@ -100,6 +112,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { icon: 'inbox', label: 'Wiadomości', screen: 'Inbox', module: 'messages' },
   { icon: 'book-open', label: 'Kontakty', screen: 'Clients', module: 'contacts' },
   { icon: 'star', label: 'Wydarzenia', screen: 'Events', module: 'events' },
+  { icon: 'hard-drive', label: 'Dysk', screen: 'Drive', anyPermissions: DRIVE_PERMISSIONS },
   { icon: 'check-square', label: 'Zadania', screen: 'Tasks', module: 'tasks' },
   { icon: 'phone-call', label: 'Zapytania', screen: 'Inquiries', module: 'inquiries' },
   { icon: 'tablet', label: 'Prezentacje', screen: 'Presentations', anyPermissions: PRESENTATIONS_PERMISSIONS },

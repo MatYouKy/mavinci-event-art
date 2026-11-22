@@ -3,9 +3,10 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { createPortal } from 'react-dom';
 import {
-  CalendarDays, ChevronDown, ChevronRight, Download, Eye, FolderInput, FolderOpen, FolderPlus, Home, LayoutGrid, List, Loader2,
-  Pencil, RefreshCw, Search, Trash2, Upload, UploadCloud, X,
+  CalendarDays, ChevronDown, ChevronRight, Download, Eye, FolderInput, FolderOpen, FolderPlus, Home, LayoutGrid, Library, List, Loader2,
+  Pencil, Plus, RefreshCw, Search, Trash2, Upload, UploadCloud, X,
 } from 'lucide-react';
 import OverlayPortal from '@/components/UI/OverlayPortal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -16,9 +17,11 @@ import {
   MATERIALS_MAX_BATCH, MATERIAL_KIND_LABELS, formatMaterialBytes, materialKind, type MaterialKind,
 } from '@/lib/materials/materialsShared';
 import {
-  downloadMaterial, materialsGet, materialsPost, uploadMaterial, type EventFileHit, type MaterialBatchResult, type MaterialFile,
-  type MaterialFolder, type MaterialItemRef, type MaterialsHome, type MaterialsListing, type MaterialsSearch, type UploadTarget,
+  downloadMaterial, materialsGet, materialsPost, uploadMaterial, type EventFileHit, type MaterialAlbum, type MaterialBatchResult,
+  type MaterialFile, type MaterialFolder, type MaterialItemRef, type MaterialsHome, type MaterialsListing, type MaterialsSearch,
+  type UploadTarget,
 } from './materialsApi';
+import { MaterialsAlbumView, MaterialsAlbumsSidebar } from './MaterialsAlbums';
 import {
   ITEM_DRAG_TYPE, MaterialThumb, cardClass, dateLabel, dateTimeLabel, errorMessage, folderIcon, ghostButton, inputClass, isFileDrag,
   primaryButton, secondaryButton,
@@ -28,11 +31,13 @@ import MaterialsDetails from './MaterialsDetails';
 import MaterialsFolderPicker from './MaterialsFolderPicker';
 import MaterialsPreview, { type PreviewItem } from './MaterialsPreview';
 import MaterialsTrash from './MaterialsTrash';
+import DriveBrandStrip from '../drive/DriveBrandStrip';
 
 /*
  * Materiały — baza plików firmy w CRM (pełna szerokość): drzewo folderów marki, siatka / lista z miniaturami, podgląd zdjęć,
  * PDF-ów i wideo, przeciąganie plików i całych folderów z dysku, przenoszenie przeciąganiem, panel pliku (opis, tagi, wersje),
  * kosz na 30 dni i wyszukiwanie w Materiałach albo w plikach wydarzeń (z zapisem pliku wydarzenia w Materiałach).
+ * Albumy (główna baza zdjęć): pliki przeciągnięte na album w pasku bocznym albo „Dodaj do albumu” — odnośniki, bez kopii.
  * Dane przez `/bridge/native/v1/materials` (to samo API dla Findera, Maca i telefonu w kolejnych etapach). Modal ładowania
  * przy akcjach, okno postępu przy wysyłce, snackbar po sukcesie lub błędzie.
  */
@@ -113,7 +118,12 @@ async function droppedFiles(entries: Array<FileSystemEntry | null>, plain: File[
   return { files, truncated };
 }
 
-export default function MaterialsWorkspace() {
+/**
+ * Materiały. Na stronie Dysku (`embedded`) bez własnego nagłówka strony, a drzewo folderów i albumów trafia do drzewa Dysku
+ * (`sidebarPortal`, pod pozycją „Materiały”) — jedno drzewo jak w Finderze.
+ */
+export default function MaterialsWorkspace({ embedded = false, sidebarPortal = null }: { embedded?: boolean; sidebarPortal?: HTMLElement | null } = {}) {
+  const Shell = embedded ? 'div' : 'main';
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
@@ -143,6 +153,9 @@ export default function MaterialsWorkspace() {
   const [picker, setPicker] = useState<{ title: string; confirm: string; exclude: string[]; initial: string | null; pick: (id: string | null) => void } | null>(null);
   const [uploads, setUploads] = useState<{ rows: UploadRow[]; running: boolean } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [albums, setAlbums] = useState<MaterialAlbum[]>([]);
+  const [albumId, setAlbumId] = useState<string | null>(null);
+  const [albumMenu, setAlbumMenu] = useState(false);
   const uploadAbort = useRef<AbortController | null>(null);
   const reloadTimer = useRef<number | null>(null);
   const listRequest = useRef(0);
@@ -223,6 +236,19 @@ export default function MaterialsWorkspace() {
 
   useEffect(() => { void loadHome(); }, [loadHome]);
   useEffect(() => { void loadList(); }, [loadList]);
+
+  // Albumy marki (bez migracji albumów — po prostu pusta lista).
+  const loadAlbums = useCallback(async () => {
+    if (!homeCompanyId) return;
+    try {
+      const data = await materialsGet<{ albums: MaterialAlbum[] }>('albums', { company: homeCompanyId });
+      setAlbums(data.albums);
+    } catch {
+      setAlbums([]);
+    }
+  }, [homeCompanyId]);
+  useEffect(() => { setAlbumId(null); void loadAlbums(); }, [loadAlbums]);
+  useEffect(() => { if (!selection.size) setAlbumMenu(false); }, [selection]);
 
   const loadMore = async () => {
     if (!listing || !home) return;
@@ -322,6 +348,7 @@ export default function MaterialsWorkspace() {
 
   const openFolder = useCallback((id: string | null) => {
     setMode('browse');
+    setAlbumId(null);
     setQuery('');
     if (id !== folderId) setListing(null);
     setFolderId(id);
@@ -477,6 +504,35 @@ export default function MaterialsWorkspace() {
     setSelection(new Set());
     setDetailsId(null);
     refresh();
+  };
+
+  // MARK: Albumy
+
+  const createAlbum = (fileIds: string[]) => {
+    if (!home) return;
+    setNameDialog({
+      title: fileIds.length ? `Nowy album z zaznaczonych (${fileIds.length})` : 'Nowy album', label: 'Nazwa albumu', initial: '', confirm: 'Utwórz album',
+      submit: async (name) => {
+        const result = await run('Tworzę album', () => materialsPost<{ album: MaterialAlbum; added: number }>('createAlbum', {
+          companyId: home.company.id, name, fileIds,
+        }));
+        if (!result) return false;
+        showSnackbar(result.added ? `Utworzono album „${result.album.name}” (${result.added}) — pliki zostały na swoich miejscach` : `Utworzono album „${result.album.name}”`, 'success');
+        void loadAlbums();
+        return true;
+      },
+    });
+  };
+
+  const addToAlbum = async (album: MaterialAlbum, fileIds: string[]) => {
+    setAlbumMenu(false);
+    if (!fileIds.length) return;
+    const result = await run('Dodaję do albumu', () => materialsPost<{ added: number; skipped: number }>('albumAdd', { id: album.id, fileIds }));
+    if (!result) return;
+    showSnackbar(result.added
+      ? `Dodano do albumu „${album.name}”: ${result.added}${result.skipped ? ` (pominięto: ${result.skipped})` : ''} — bez kopiowania plików`
+      : `Album „${album.name}” ma już te pliki.`, result.added ? 'success' : 'info');
+    void loadAlbums();
   };
 
   // MARK: Wysyłka
@@ -675,7 +731,7 @@ export default function MaterialsWorkspace() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (preview || nameDialog || picker || uploads || mode !== 'browse' || searchActive) return;
+      if (preview || nameDialog || picker || uploads || mode !== 'browse' || searchActive || albumId) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.closest('input, textarea, select, [contenteditable="true"]'))) return;
       if ((event.key === 'Delete' || event.key === 'Backspace') && canManage && selection.size) {
@@ -704,24 +760,26 @@ export default function MaterialsWorkspace() {
 
   if (homeError && !home) {
     return (
-      <main className="min-h-screen bg-[#0f1119] p-4 text-[#e5e4e2] md:p-6">
+      <Shell className={embedded ? 'text-[#e5e4e2]' : 'min-h-screen bg-[#0f1119] p-4 text-[#e5e4e2] md:p-6'}>
         <div className={`${cardClass} p-8 text-center`}>
           <p className="text-[#e5e4e2]/80">{homeError}</p>
           <button type="button" className={`${secondaryButton} mt-4`} onClick={() => void loadHome()}><RefreshCw className="h-4 w-4" />Spróbuj ponownie</button>
         </div>
-      </main>
+      </Shell>
     );
   }
 
   if (!home) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#0f1119] text-[#e5e4e2]/60">
+      <Shell className={embedded ? 'flex items-center justify-center py-24 text-[#e5e4e2]/60' : 'flex min-h-screen items-center justify-center bg-[#0f1119] text-[#e5e4e2]/60'}>
         <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#d3bb73]" />Ładowanie Materiałów…
-      </main>
+      </Shell>
     );
   }
 
   const path = pathOf(folders, folderId);
+  const currentFolder = folderId ? folders.find((folder) => folder.id === folderId) || null : null;
+  const brandFolder = currentFolder?.systemKey === 'brand';
   const selectedList = selectedRefs();
   const selectedFile = selectedList.length === 1 && selectedList[0].kind === 'file'
     ? files.find((f) => f.id === selectedList[0].id) || null
@@ -876,12 +934,19 @@ export default function MaterialsWorkspace() {
   const browseContent = (
     <div {...dropProps(folderId, 'main')} className={`relative min-h-[60vh] rounded-xl ${dropTarget === 'main' ? 'ring-2 ring-[#d3bb73]/60' : ''}`}
       onClick={(event) => { if (event.target === event.currentTarget) { setSelection(new Set()); setDetailsId(null); } }}>
+      {brandFolder && (
+        <div className="mb-4">
+          <DriveBrandStrip companyId={home.company.id} notify={notify} onPreview={(items, index) => setPreview({ items, index })} />
+        </div>
+      )}
       {listLoading && !listing ? (
         <div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-[#d3bb73]" /></div>
       ) : emptyFolder ? (
         <div className="flex flex-col items-center justify-center gap-3 py-24 text-center text-sm text-[#e5e4e2]/50">
           <UploadCloud className="h-10 w-10 text-[#d3bb73]/50" />
-          <p>{canManage ? 'Ten folder jest pusty. Przeciągnij tu pliki albo całe foldery z dysku.' : 'Ten folder jest pusty.'}</p>
+          <p>{brandFolder
+            ? (canManage ? 'Brak własnych plików w tym folderze — powyżej logotypy, fonty i kolory z księgi znaku. Własne pliki przeciągnij tutaj.' : 'Brak własnych plików w tym folderze — powyżej logotypy, fonty i kolory z księgi znaku.')
+            : (canManage ? 'Ten folder jest pusty. Przeciągnij tu pliki albo całe foldery z dysku.' : 'Ten folder jest pusty.')}</p>
         </div>
       ) : view === 'grid' ? (
         <div className="space-y-4" onClick={(event) => { if (event.target === event.currentTarget) { setSelection(new Set()); setDetailsId(null); } }}>
@@ -992,15 +1057,38 @@ export default function MaterialsWorkspace() {
     </div>
   );
 
+  const sidebarContent = (
+    <>
+            <button type="button" {...dropProps(null, 'tree:root')} onClick={() => openFolder(null)}
+              className={`mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${
+                dropTarget === 'tree:root' ? 'bg-[#d3bb73]/20' : mode === 'browse' && !searchActive && !folderId ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-[#e5e4e2]/80 hover:bg-[#e5e4e2]/5'
+              }`}>
+              <Home className="h-4 w-4" /><span className="truncate">{home.company.name}</span>
+            </button>
+            {renderTree(null, 0)}
+            <MaterialsAlbumsSidebar albums={albums} activeId={mode === 'browse' && !searchActive ? albumId : null} canManage={canManage} run={run} notify={notify}
+              onOpen={(album) => { setMode('browse'); setQuery(''); setSelection(new Set()); setDetailsId(null); setAlbumId(album.id); }}
+              onChanged={() => void loadAlbums()}
+              onCreate={() => createAlbum([])} />
+    </>
+  );
+
   return (
-    <main className="flex min-h-screen flex-col bg-[#0f1119] p-4 text-[#e5e4e2] md:p-6">
+    <Shell className={embedded ? 'flex min-w-0 flex-col text-[#e5e4e2]' : 'flex min-h-screen flex-col bg-[#0f1119] p-4 text-[#e5e4e2] md:p-6'}>
       <header className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <h1 className="text-2xl font-light md:text-3xl">Materiały</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[#e5e4e2]/50">
-            Logotypy, zdjęcia, wideo, prezentacje i dokumenty marki w jednym miejscu. Wyszukiwanie obejmuje też pliki wydarzeń.
-          </p>
-        </div>
+        {embedded ? (
+          <div>
+            <h2 className="text-lg font-light">Materiały</h2>
+            <p className="text-xs text-[#e5e4e2]/50">Logotypy i księga znaku, zdjęcia, wideo, prezentacje i dokumenty marki. Wyszukiwanie obejmuje też pliki wydarzeń.</p>
+          </div>
+        ) : (
+          <div>
+            <h1 className="text-2xl font-light md:text-3xl">Materiały</h1>
+            <p className="mt-1 max-w-3xl text-sm text-[#e5e4e2]/50">
+              Logotypy, zdjęcia, wideo, prezentacje i dokumenty marki w jednym miejscu. Wyszukiwanie obejmuje też pliki wydarzeń.
+            </p>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           {home.companies.length > 1 && (
             <select value={home.company.id} onChange={(event) => switchCompany(event.target.value)} aria-label="Marka"
@@ -1020,10 +1108,10 @@ export default function MaterialsWorkspace() {
           </div>
           {canManage && (
             <>
-              <button type="button" className={secondaryButton} onClick={createFolder} disabled={mode !== 'browse' || searchActive}>
+              <button type="button" className={secondaryButton} onClick={createFolder} disabled={mode !== 'browse' || searchActive || !!albumId}>
                 <FolderPlus className="h-4 w-4" />Nowy folder
               </button>
-              <label className={`${primaryButton} cursor-pointer ${mode !== 'browse' || searchActive ? 'pointer-events-none opacity-40' : ''}`}>
+              <label className={`${primaryButton} cursor-pointer ${mode !== 'browse' || searchActive || albumId ? 'pointer-events-none opacity-40' : ''}`}>
                 <Upload className="h-4 w-4" />Wgraj pliki
                 <input type="file" multiple className="hidden"
                   onChange={(event) => {
@@ -1042,17 +1130,13 @@ export default function MaterialsWorkspace() {
       </header>
 
       <div className="flex min-h-0 flex-1 gap-4">
-        <aside className="hidden w-64 shrink-0 lg:block">
-          <div className={`${cardClass} sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto p-2`}>
-            <button type="button" {...dropProps(null, 'tree:root')} onClick={() => openFolder(null)}
-              className={`mb-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${
-                dropTarget === 'tree:root' ? 'bg-[#d3bb73]/20' : mode === 'browse' && !searchActive && !folderId ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-[#e5e4e2]/80 hover:bg-[#e5e4e2]/5'
-              }`}>
-              <Home className="h-4 w-4" /><span className="truncate">{home.company.name}</span>
-            </button>
-            {renderTree(null, 0)}
-          </div>
-        </aside>
+        {embedded
+          ? (sidebarPortal ? createPortal(sidebarContent, sidebarPortal) : null)
+          : (
+            <aside className="hidden w-64 shrink-0 lg:block">
+              <div className={`${cardClass} sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto p-2`}>{sidebarContent}</div>
+            </aside>
+          )}
 
         <section className="min-w-0 flex-1 space-y-3">
           {mode === 'trash' ? (
@@ -1065,7 +1149,23 @@ export default function MaterialsWorkspace() {
                 onChanged={refresh}
                 onPreview={(items, index) => setPreview({ items, index })} />
             </>
-          ) : searchActive ? searchContent : (
+          ) : searchActive ? searchContent : albumId ? (
+            <MaterialsAlbumView key={albumId} albumId={albumId} access={access} run={run} notify={notify}
+              onBack={() => setAlbumId(null)}
+              onChanged={() => void loadAlbums()}
+              onDeleted={() => { setAlbumId(null); void loadAlbums(); }}
+              onPreview={(list, index) => setPreview({
+                items: list.map((f) => ({ source: 'material', id: f.id, name: f.name, kind: f.kind, mime: f.mime, size: f.size, thumbnailUrl: f.thumbnailUrl })),
+                index: Math.max(0, index),
+              })}
+              onShowInFolder={(file) => {
+                setAlbumId(null);
+                if (file.companyId !== home.company.id) switchCompany(file.companyId);
+                openFolder(file.folderId);
+                setSelection(new Set([fileKey(file.id)]));
+                setDetailsId(file.id);
+              }} />
+          ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="min-w-0 flex-1">{breadcrumb}</div>
@@ -1103,6 +1203,28 @@ export default function MaterialsWorkspace() {
                   {canManage && selectedList.length === 1 && (selectedFolder || selectedFile) && (
                     <button type="button" className={ghostButton} onClick={() => renameItem(selectedList[0])}><Pencil className="h-4 w-4" />Zmień nazwę</button>
                   )}
+                  {canManage && selectedList.some((ref) => ref.kind === 'file') && (
+                    <span className="relative">
+                      <button type="button" className={ghostButton} onClick={() => setAlbumMenu((value) => !value)} aria-expanded={albumMenu}>
+                        <Library className="h-4 w-4" />Dodaj do albumu
+                      </button>
+                      {albumMenu && (
+                        <span className="absolute right-0 top-full z-30 mt-1 block max-h-72 w-64 overflow-y-auto rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] p-1 shadow-2xl">
+                          {albums.map((album) => (
+                            <button key={album.id} type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-[#d3bb73]/10"
+                              onClick={() => void addToAlbum(album, selectedList.filter((ref) => ref.kind === 'file').map((ref) => ref.id))}>
+                              <Library className="h-4 w-4 shrink-0 text-[#d3bb73]/70" /><span className="min-w-0 flex-1 truncate">{album.name}</span>
+                              <span className="text-[11px] text-[#e5e4e2]/40">{album.count}</span>
+                            </button>
+                          ))}
+                          <button type="button" className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                            onClick={() => { setAlbumMenu(false); createAlbum(selectedList.filter((ref) => ref.kind === 'file').map((ref) => ref.id)); }}>
+                            <Plus className="h-4 w-4" />Nowy album z zaznaczonych
+                          </button>
+                        </span>
+                      )}
+                    </span>
+                  )}
                   {canManage && !selectedList.some((ref) => ref.kind === 'folder' && childFolders.find((f) => f.id === ref.id)?.systemKey) && (
                     <>
                       <button type="button" className={ghostButton} onClick={() => moveItems(selectedList)}><FolderInput className="h-4 w-4" />Przenieś</button>
@@ -1117,7 +1239,7 @@ export default function MaterialsWorkspace() {
           )}
         </section>
 
-        {mode === 'browse' && !searchActive && detailsFile && (
+        {mode === 'browse' && !searchActive && !albumId && detailsFile && (
           <div className="sticky top-4 hidden max-h-[calc(100vh-2rem)] w-[360px] shrink-0 overflow-hidden rounded-xl xl:block">
             <MaterialsDetails file={detailsFile} canManage={canManage} notify={notify}
               onClose={() => setDetailsId(null)}
@@ -1147,7 +1269,7 @@ export default function MaterialsWorkspace() {
           onCancel={() => uploadAbort.current?.abort()}
           onClose={() => setUploads(null)} />
       )}
-    </main>
+    </Shell>
   );
 }
 

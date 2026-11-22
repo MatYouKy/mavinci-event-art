@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background.primary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background.primary, padding: spacing.lg, gap: spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, paddingBottom: spacing.sm },
-  brand: { color: colors.text.primary, fontSize: typography.fontSizes.lg, fontFamily: typography.fontFamilies.heading },
+  brand: { color: colors.text.primary, fontSize: typography.fontSizes.lg, fontFamily: typography.fontFamilies.heading, textTransform: 'uppercase' },
   muted: { color: colors.text.tertiary, fontSize: typography.fontSizes.xs },
   primary: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.primary.gold, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: borderRadius.md },
   primaryText: { color: colors.background.primary, fontWeight: typography.fontWeights.semibold, fontSize: typography.fontSizes.sm },

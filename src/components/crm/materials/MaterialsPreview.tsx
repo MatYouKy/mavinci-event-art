@@ -8,14 +8,17 @@ import OverlayPortal from '@/components/UI/OverlayPortal';
 import { MATERIAL_KIND_LABELS, formatMaterialBytes, materialPreviewable, type MaterialKind } from '@/lib/materials/materialsShared';
 import { downloadMaterial, materialsGet, type MaterialUrl } from './materialsApi';
 import { MaterialThumb, errorMessage, ghostButton, secondaryButton } from './materialsUi';
+import type { DriveDownload } from '@/lib/drive/driveShared';
+import { downloadDriveFile, driveGet } from '../drive/driveApi';
 
 /*
  * Podgląd pliku na całym ekranie: zdjęcie, PDF, wideo, dźwięk (podpisany adres z serwera, 1 h). Strzałki — poprzedni /
  * następny plik w bieżącym widoku, Esc — zamknięcie. Pliki bez podglądu w przeglądarce: miniatura i „Pobierz”.
+ * `drive` — pliki Dysku (Oferty, Kalkulacje, Umowy, Magazyn, księga znaku; `/bridge/native/v1/drive`).
  */
 
 export type PreviewItem = {
-  source: 'material' | 'event' | 'trash';
+  source: 'material' | 'event' | 'trash' | 'drive';
   id: string;
   name: string;
   kind: MaterialKind;
@@ -46,7 +49,9 @@ export default function MaterialsPreview({ items, index, onIndex, onClose, onErr
     setFailed('');
     if (!source || !id || !previewable) return;
     setLoading(true);
-    materialsGet<MaterialUrl>('url', { kind: source, id, mode: 'preview' })
+    (source === 'drive'
+      ? driveGet<DriveDownload>('download', { id, mode: 'preview' })
+      : materialsGet<MaterialUrl>('url', { kind: source, id, mode: 'preview' }))
       .then((result) => { if (!cancelled) setUrl(result.url); })
       .catch((error) => { if (!cancelled) setFailed(errorMessage(error, 'Nie udało się otworzyć podglądu.')); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -72,7 +77,8 @@ export default function MaterialsPreview({ items, index, onIndex, onClose, onErr
 
   const download = async () => {
     try {
-      await downloadMaterial(item.source, item.id);
+      if (item.source === 'drive') await downloadDriveFile(item.id);
+      else await downloadMaterial(item.source, item.id);
     } catch (error) {
       onError(errorMessage(error, 'Nie udało się pobrać pliku.'));
     }
@@ -85,7 +91,7 @@ export default function MaterialsPreview({ items, index, onIndex, onClose, onErr
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{item.name}</p>
             <p className="truncate text-xs text-[#e5e4e2]/50">
-              {[MATERIAL_KIND_LABELS[item.kind], formatMaterialBytes(item.size), item.subtitle, items.length > 1 ? `${index + 1} z ${items.length}` : '']
+              {[MATERIAL_KIND_LABELS[item.kind] || 'Plik', item.size ? formatMaterialBytes(item.size) : '', item.subtitle, items.length > 1 ? `${index + 1} z ${items.length}` : '']
                 .filter(Boolean).join(' · ')}
             </p>
           </div>

@@ -80,13 +80,20 @@ export const allNavigation: NavigationItemDTO[] = [
     permissions: ['events_view'],
   },
   {
-    // Materiały — baza plików firmy (logotypy, zdjęcia, wideo, prezentacje, dokumenty marek). „manage” obejmuje „view”.
+    // Dysk — chmura firmy jak w Finderze: Eventy, Materiały (baza plików marek), Oferty, Kalkulacje, Umowy, Magazyn i Pracownicy.
+    // Widać go z dostępem do któregokolwiek działu (które działy — decyduje `/bridge/native/v1/drive?op=root`).
     key: 'materials',
-    name: 'Materiały',
+    name: 'Dysk',
     href: '/crm/materials',
     iconKey: 'materials',
     module: 'materials',
-    permissions: ['materials_view'],
+    anyPermissions: [
+      'materials_view', 'materials_manage', 'events_view', 'events_view_planning', 'events_view_operational', 'events_manage', 'events_create',
+      'calendar_view', 'offers_view', 'offers_create', 'offers_manage', 'contracts_view', 'contracts_manage', 'contracts_create',
+      'equipment_view', 'equipment_manage', 'equipment_create', 'inquiries_view', 'inquiries_manage', 'inquiries_view_pool', 'inquiries_view_own',
+      'inquiries_manage_own', 'inquiries_view_team', 'inquiries_manage_team', 'inquiries_view_all', 'inquiries_manage_all',
+      'employees_view', 'employees_manage', 'personnel_view', 'personnel_manage',
+    ],
   },
   {
     key: 'mavinci-live',

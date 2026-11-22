@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import * as Notifications from 'expo-notifications';
@@ -6,8 +6,8 @@ import { Provider } from 'react-redux';
 import { ActivityIndicator, View } from 'react-native';
 
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
-import RootNavigator from './src/navigation/RootNavigator';
 import { store } from './src/store/store';
+import { appPalette, loadAppTheme, syncAppTheme } from './src/theme/appTheme';
 
 import {
   registerForPushNotifications,
@@ -44,9 +44,25 @@ export function consumeNotificationTarget() {
   return target;
 }
 
+/**
+ * Ekrany wczytują się dopiero po ustawieniu motywu (`loadAppTheme`) — ich style powstają przy pierwszym wczytaniu,
+ * więc od razu mają kolory motywu CRM pracownika.
+ */
+let rootNavigator: React.ComponentType | null = null;
+function loadRootNavigator(): React.ComponentType {
+  if (!rootNavigator) rootNavigator = require('./src/navigation/RootNavigator').default as React.ComponentType;
+  return rootNavigator;
+}
+
 function AppContent() {
   const { employee } = useAuth();
   const employeeId = employee?.id;
+  const RootNavigator = loadRootNavigator();
+
+  // Motyw jak w CRM i na Macu (`employees.crm_theme`): inny niż na urządzeniu — zapis i ponowne uruchomienie.
+  useEffect(() => {
+    if (employee) void syncAppTheme(employee.crm_theme);
+  }, [employee]);
 
   useOtaUpdates();
   useRealtimePushNotifications(employeeId);
@@ -120,6 +136,7 @@ function AppContent() {
 }
 
 export default function App() {
+  const [themeReady, setThemeReady] = useState(false);
   const [fontsLoaded, fontError] = useFonts({
     MBFAtom: require('./src/assets/fonts/mbf-atom-v5.ttf'),
   });
@@ -128,10 +145,18 @@ export default function App() {
     if (fontError) console.warn('[Fonts] Nie udało się załadować MBF Atom:', fontError);
   }, [fontError]);
 
-  if (!fontsLoaded && !fontError) {
+  useEffect(() => {
+    let active = true;
+    void loadAppTheme().finally(() => { if (active) setThemeReady(true); });
+    return () => { active = false; };
+  }, []);
+
+  const statusBar = appPalette().scheme === 'light' ? 'dark' : 'light';
+
+  if (!themeReady || (!fontsLoaded && !fontError)) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background.primary }}>
-        <StatusBar style="light" />
+        <StatusBar style={statusBar} />
         <ActivityIndicator size="large" color={colors.primary.gold} />
       </View>
     );
@@ -140,7 +165,7 @@ export default function App() {
   return (
     <Provider store={store}>
       <AuthProvider>
-        <StatusBar style="light" />
+        <StatusBar style={statusBar} />
         <AppContent />
       </AuthProvider>
     </Provider>

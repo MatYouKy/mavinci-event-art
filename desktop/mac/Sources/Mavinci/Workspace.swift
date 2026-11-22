@@ -70,6 +70,10 @@ import Network
     let portfolio = PortfolioStore()
     /// Prezentacje (`/crm/presentations`, Strefa sprzedawcy) — działy i karty na spotkania z klientami; kopia na dysku.
     let showcase = ShowcaseStore()
+    /// Materiały (dział Dysku) — baza plików firmy: foldery marek, wysyłka z Findera, kosz; kopia drzewa i miniatur na dysku.
+    let materials = MaterialsStore()
+    /// Dysk (`/crm/materials`) — Eventy, Materiały, Oferty, Kalkulacje, Umowy i Magazyn jak w Finderze; kopia folderów na dysku.
+    let drive = DriveStore()
     /// Finanse (`/crm/invoices`) — Centrum finansów, terminy i monity, zamknięcia miesięcy; kopia na dysku.
     let finance = FinanceStore()
     /// Motyw okna (`employees.crm_theme`); do pierwszego odczytu profilu — ostatni motyw zapisany na tym Macu.
@@ -154,6 +158,8 @@ import Network
         social.workspace = self
         portfolio.workspace = self
         showcase.workspace = self
+        materials.workspace = self
+        drive.workspace = self
         finance.workspace = self
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
@@ -192,6 +198,8 @@ import Network
             social.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             portfolio.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             showcase.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            materials.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            drive.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
@@ -235,6 +243,8 @@ import Network
             social.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             portfolio.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             showcase.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            materials.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            drive.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
@@ -442,7 +452,7 @@ import Network
         for nav in windowNavigations where nav !== activeNavigation { nav.window?.close() }
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); chat.reset(); appleCalendar.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); social.reset(); portfolio.reset(); showcase.reset(); finance.reset()
+        native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); chat.reset(); appleCalendar.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); social.reset(); portfolio.reset(); showcase.reset(); materials.reset(); drive.reset(); finance.reset()
         navigation = []; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
         scheduleRows = nil; scheduleFailed = false
         if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }

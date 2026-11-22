@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type DragEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle, EyeOff, FolderOpen, Images, Package, Pencil, Plus, Presentation, RefreshCw, Search, Tablet, Trash2, Upload, X } from 'lucide-react';
 import { Modal } from '@/components/UI/Modal';
+import { HelpButton, HelpDrawerHost } from '@/components/help/HelpDrawer';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -12,12 +13,12 @@ import {
   type ShowcaseHome, type ShowcaseIcon, type ShowcaseItemDetail, type ShowcaseItemSummary, type ShowcaseMedia, type ShowcaseSectionView, type ShowcaseUrls,
 } from '@/lib/showcase/showcaseShared';
 import { cardClass, dangerButton, inputClass, primaryButton, secondaryButton } from '../social/socialUi';
-import { errorMessage, showcaseGet, showcasePost, showcaseUploadPhoto } from './showcaseApi';
+import { errorMessage, showcaseGet, showcasePost, showcaseUploadPhoto, showcaseUploadSummary } from './showcaseApi';
 import ShowcaseItemEditor from './ShowcaseItemEditor';
 import ShowcaseListPicker from './ShowcaseListPicker';
 import ShowcasePhotoPicker from './ShowcasePhotoPicker';
 import ShowcasePresenter from './ShowcasePresenter';
-import { SectionIcon, Toggle, imageFiles, useDragList } from './showcaseUi';
+import { SectionIcon, Toggle, hasFiles, imageFiles, useDragList } from './showcaseUi';
 
 /*
  * Strefa sprzedawcy → „Prezentacje” w CRM (pełna szerokość): działy (kolejność przeciąganiem, edycja, okładka), karty działu
@@ -29,6 +30,8 @@ import { SectionIcon, Toggle, imageFiles, useDragList } from './showcaseUi';
 type SectionDraft = { id: string | null; version: number; title: string; subtitle: string; icon: ShowcaseIcon; isActive: boolean; cover: ShowcaseMedia | null };
 type PresenterState = { start: { sectionId?: string | null; itemId?: string | null }; draft: ShowcaseItemDetail | null };
 const ITEM_DRAG = 'application/x-mavinci-showcase-item';
+/** Liczby w pasku działów (font marki w nawigacji): cyfry fontem systemowym — w foncie nagłówków „0” wygląda jak „O”. */
+const DIGITS: CSSProperties = { fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' };
 
 export default function ShowcaseWorkspace() {
   const router = useRouter();
@@ -44,6 +47,9 @@ export default function ShowcaseWorkspace() {
   const [dirty, setDirty] = useState(false);
   const [sectionDraft, setSectionDraft] = useState<SectionDraft | null>(null);
   const [coverPicker, setCoverPicker] = useState(false);
+  /** Okładka nowego działu z dysku — wgrywa się po utworzeniu działu (podgląd z pliku). */
+  const [pendingCover, setPendingCover] = useState<{ file: File; preview: string } | null>(null);
+  const [coverOver, setCoverOver] = useState(false);
   const [extraUrls, setExtraUrls] = useState<ShowcaseUrls>({});
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -152,14 +158,41 @@ export default function ShowcaseWorkspace() {
       isActive: sectionDraft.isActive, cover: sectionDraft.cover,
     }), sectionDraft.id ? 'Zapisano dział' : 'Utworzono dział — dodaj okładkę i karty');
     if (!result) return;
-    await load(true);
     if (!sectionDraft.id) {
-      setSectionId(result.section.id);
-      replaceUrl(result.section.id, null);
-      setSectionDraft({ ...sectionDraft, id: result.section.id, version: result.section.version });
+      let created = result.section;
+      const pending = pendingCover;
+      if (pending) {
+        // Okładka wybrana z dysku przed utworzeniem działu — teraz do bazy zdjęć i na kafelek działu.
+        const saved = await run('Wgrywam okładkę', async () => {
+          const upload = await showcaseUploadPhoto({ sectionId: created.id }, pending.file);
+          const reply = await showcasePost<{ section: ShowcaseSectionView }>('saveSection', {
+            id: created.id, version: created.version, title: created.title, subtitle: created.subtitle, icon: created.icon,
+            isActive: created.isActive, cover: upload.photo,
+          });
+          return { upload, section: reply.section };
+        });
+        if (saved) {
+          created = saved.section;
+          setExtraUrls((current) => ({ ...current, ...saved.upload.urls }));
+          showSnackbar(showcaseUploadSummary([saved.upload], 'okładka zapisana'), 'success');
+        }
+        URL.revokeObjectURL(pending.preview);
+        setPendingCover(null);
+      }
+      await load(true);
+      setSectionId(created.id);
+      replaceUrl(created.id, null);
+      setSectionDraft({ ...sectionDraft, id: created.id, version: created.version, cover: created.cover });
     } else {
+      await load(true);
       setSectionDraft(null);
     }
+  };
+
+  const closeSectionDraft = () => {
+    if (pendingCover) URL.revokeObjectURL(pendingCover.preview);
+    setPendingCover(null);
+    setSectionDraft(null);
   };
 
   const deleteSection = async () => {
@@ -179,12 +212,35 @@ export default function ShowcaseWorkspace() {
     await load(true);
   };
 
-  const uploadCover = async (files: FileList | null) => {
-    if (!sectionDraft?.id) return;
-    const { images } = imageFiles(files);
-    if (!images[0]) { showSnackbar('Wybierz zdjęcie JPEG, PNG albo WebP.', 'warning'); return; }
+  /** Okładka z dysku albo przeciągnięta z Findera: istniejący dział — od razu do bazy zdjęć; nowy — po utworzeniu działu. */
+  const uploadCover = async (files: FileList | File[] | null) => {
+    if (!sectionDraft) return;
+    const { images, heic } = imageFiles(files);
+    if (!images[0]) { showSnackbar(heic ? 'Zdjęcia HEIC: zapisz je jako JPEG albo dodaj z aplikacji na Maca.' : 'Wybierz zdjęcie JPEG, PNG albo WebP.', 'warning'); return; }
+    if (images[0].size > SHOWCASE_LIMITS.uploadBytes) { showSnackbar('Zdjęcie może mieć najwyżej 40 MB.', 'warning'); return; }
+    if (!sectionDraft.id) {
+      if (pendingCover) URL.revokeObjectURL(pendingCover.preview);
+      setPendingCover({ file: images[0], preview: URL.createObjectURL(images[0]) });
+      setSectionDraft({ ...sectionDraft, cover: null });
+      return;
+    }
     const result = await run('Wgrywam okładkę', () => showcaseUploadPhoto({ sectionId: sectionDraft.id! }, images[0]));
-    if (result) { setExtraUrls((current) => ({ ...current, ...result.urls })); setSectionDraft({ ...sectionDraft, cover: result.photo }); }
+    if (result) {
+      setExtraUrls((current) => ({ ...current, ...result.urls }));
+      setSectionDraft({ ...sectionDraft, cover: result.photo });
+      showSnackbar(showcaseUploadSummary([result], 'zapisz dział'), 'success');
+    }
+  };
+
+  const coverDrop = {
+    onDragOver: (event: DragEvent<HTMLElement>) => { if (hasFiles(event)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setCoverOver(true); } },
+    onDragLeave: () => setCoverOver(false),
+    onDrop: (event: DragEvent<HTMLElement>) => {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      setCoverOver(false);
+      void uploadCover(event.dataTransfer.files);
+    },
   };
 
   // Karty ---------------------------------------------------------------------------------------------------------------------
@@ -241,13 +297,15 @@ export default function ShowcaseWorkspace() {
 
   const loadItem = useCallback((id: string) => showcaseGet<ShowcaseItemDetail>('item', { id }), []);
 
-  const create = async (body: { title?: string; productId?: string }) => {
+  const create = async (body: { title?: string; productId?: string; example?: boolean }) => {
     if (!selected) { showSnackbar('Najpierw utwórz dział.', 'warning'); return; }
     if (!(await confirmLeave())) return;
     setCreating(false);
     setProductPicker(false);
-    const result = await run(body.productId ? 'Tworzę kartę z produktu' : 'Tworzę kartę', () => showcasePost<ShowcaseItemDetail>('createItem', { sectionId: selected.id, ...body }),
-      body.productId ? 'Utworzono kartę z danymi produktu — dodaj zdjęcia i pytania klientów' : 'Utworzono kartę');
+    const result = await run(body.example ? 'Tworzę kartę z przykładu' : body.productId ? 'Tworzę kartę z produktu' : 'Tworzę kartę',
+      () => showcasePost<ShowcaseItemDetail>('createItem', { sectionId: selected.id, ...body }),
+      body.example ? 'Utworzono kartę z przykładu (ukryta) — dodaj zdjęcia z bazy i produkt, potem pokaż ją na spotkaniach'
+        : body.productId ? 'Utworzono kartę z danymi produktu — dodaj zdjęcia i pytania klientów' : 'Utworzono kartę');
     setNewTitle('');
     if (!result) return;
     await load(true);
@@ -269,7 +327,7 @@ export default function ShowcaseWorkspace() {
     <main className="min-w-0 text-[#e5e4e2]">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="mr-auto min-w-[240px] flex-1">
-          <h1 className="text-2xl font-light">Prezentacje</h1>
+          <h1 className="flex items-center gap-1 text-2xl font-light">Prezentacje <HelpButton audience="presentations" chapter="karta" /></h1>
           <p className="text-sm text-[#e5e4e2]/50">Strefa sprzedawcy — materiały na spotkania z klientami: jak to wygląda, korzyści, galeria, przygotowanie.</p>
         </div>
         <button type="button" className={secondaryButton} disabled={!home} onClick={() => setPresenter({ start: { sectionId: null, itemId: null }, draft: null })}>
@@ -295,11 +353,11 @@ export default function ShowcaseWorkspace() {
                   <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-[#d3bb73] ${section.isActive ? '' : 'opacity-60'}`}><SectionIcon icon={section.icon} className="h-4 w-4" /></span>
                   <span className={`min-w-0 flex-1 ${railOnly}`}>
                     <span className="block truncate text-sm">{section.title}</span>
-                    <span className="block text-[11px] text-[#e5e4e2]/40">{count} {count === 1 ? 'karta' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'karty' : 'kart'}{section.isActive ? '' : ' · ukryty'}</span>
+                    <span className="block text-[11px] text-[#e5e4e2]/40"><span style={DIGITS}>{count}</span> {count === 1 ? 'karta' : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 12 || count % 100 > 14) ? 'karty' : 'kart'}{section.isActive ? '' : ' · ukryty'}</span>
                   </span>
                   {!section.isActive && <EyeOff className={`h-3.5 w-3.5 shrink-0 text-[#e5e4e2]/40 ${railOnly}`} />}
                 </button>
-                {rail && <span className="pointer-events-none absolute right-0.5 top-0.5 hidden min-w-[16px] rounded-full bg-[#0f1119] px-1 text-center text-[10px] leading-4 text-[#e5e4e2]/60 lg:block">{count}</span>}
+                {rail && <span className="pointer-events-none absolute right-0.5 top-0.5 hidden min-w-[16px] rounded-full bg-[#0f1119] px-1 text-center text-[10px] leading-4 text-[#e5e4e2]/60 lg:block" style={DIGITS}>{count}</span>}
                 {manage && (
                   <button type="button" onClick={() => editSection(section)} aria-label={`Edytuj dział ${section.title}`}
                     className={`rounded-lg p-1.5 text-[#e5e4e2]/40 opacity-0 hover:bg-[#d3bb73]/10 hover:text-[#d3bb73] group-hover:opacity-100 ${railOnly}`}><Pencil className="h-3.5 w-3.5" /></button>
@@ -403,7 +461,7 @@ export default function ShowcaseWorkspace() {
       )}
 
       {sectionDraft && (
-        <Modal open onClose={() => setSectionDraft(null)} title={sectionDraft.id ? 'Dział prezentacji' : 'Nowy dział'} scrollBody>
+        <Modal open onClose={closeSectionDraft} title={sectionDraft.id ? 'Dział prezentacji' : 'Nowy dział'} scrollBody>
           <div className="space-y-4">
             <label className="block space-y-1">
               <span className="text-xs text-[#e5e4e2]/60">Nazwa</span>
@@ -428,44 +486,61 @@ export default function ShowcaseWorkspace() {
             </div>
             <div className="space-y-2">
               <span className="text-xs text-[#e5e4e2]/60">Okładka (zdjęcie na kafelku działu)</span>
-              {sectionDraft.id ? (
-                <div className="flex items-center gap-3">
-                  <div className="relative h-24 w-40 shrink-0 overflow-hidden rounded-lg bg-[#0f1119]">
-                    {sectionDraft.cover && urls[showcaseMediaKey(sectionDraft.cover)]?.thumb
-                      ? <img src={urls[showcaseMediaKey(sectionDraft.cover)]?.thumb || ''} alt="" className="h-full w-full object-cover" />
-                      : <Images className="m-auto mt-8 h-6 w-6 text-[#d3bb73]/30" />}
-                    {sectionDraft.cover && (
-                      <button type="button" aria-label="Usuń okładkę" onClick={() => setSectionDraft({ ...sectionDraft, cover: null })}
-                        className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white"><X className="h-3.5 w-3.5" /></button>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className={`${secondaryButton} cursor-pointer`}><Upload className="h-4 w-4" />Z dysku
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { void uploadCover(event.target.files); event.target.value = ''; }} />
-                    </label>
-                    <button type="button" className={secondaryButton} onClick={() => setCoverPicker(true)}><FolderOpen className="h-4 w-4" />Wybierz…</button>
-                  </div>
+              <div className="flex items-center gap-3">
+                {(() => {
+                  const coverThumb = pendingCover?.preview || (sectionDraft.cover ? urls[showcaseMediaKey(sectionDraft.cover)]?.thumb : null);
+                  return (
+                    <div {...coverDrop} title="Przeciągnij zdjęcie z dysku albo wybierz z bazy zdjęć"
+                      className={`relative flex h-28 w-48 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-dashed bg-[#0f1119] ${coverOver ? 'border-[#d3bb73] ring-2 ring-[#d3bb73]/50' : 'border-[#d3bb73]/25'}`}>
+                      {coverThumb ? <img src={coverThumb} alt="" className="h-full w-full object-cover" />
+                        : <span className="flex flex-col items-center gap-1 px-2 text-center text-[11px] text-[#e5e4e2]/45"><Images className="h-6 w-6 text-[#d3bb73]/40" />Przeciągnij tu zdjęcie</span>}
+                      {(sectionDraft.cover || pendingCover) && (
+                        <button type="button" aria-label="Usuń okładkę"
+                          onClick={() => { if (pendingCover) URL.revokeObjectURL(pendingCover.preview); setPendingCover(null); setSectionDraft({ ...sectionDraft, cover: null }); }}
+                          className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white"><X className="h-3.5 w-3.5" /></button>
+                      )}
+                    </div>
+                  );
+                })()}
+                <div className="flex flex-col gap-2">
+                  <label className={`${secondaryButton} cursor-pointer`}><Upload className="h-4 w-4" />Z dysku
+                    <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { void uploadCover(event.target.files); event.target.value = ''; }} />
+                  </label>
+                  <button type="button" className={secondaryButton} onClick={() => setCoverPicker(true)}><FolderOpen className="h-4 w-4" />Z bazy zdjęć…</button>
+                  {pendingCover && <span className="max-w-[180px] text-[11px] text-[#e5e4e2]/45">Okładka zapisze się w bazie zdjęć po utworzeniu działu.</span>}
                 </div>
-              ) : <p className="text-xs text-[#e5e4e2]/40">Okładkę dodasz po utworzeniu działu.</p>}
+              </div>
             </div>
             <Toggle checked={sectionDraft.isActive} onChange={(isActive) => setSectionDraft({ ...sectionDraft, isActive })}
               label={sectionDraft.isActive ? 'Widoczny na spotkaniach' : 'Ukryty (przygotowanie)'} />
             <div className="flex flex-wrap justify-end gap-2 border-t border-[#d3bb73]/10 pt-3">
               {sectionDraft.id && <button type="button" className={`${dangerButton} mr-auto`} onClick={() => void deleteSection()}><Trash2 className="h-4 w-4" />Usuń dział</button>}
-              <button type="button" className={secondaryButton} onClick={() => setSectionDraft(null)}>Zamknij</button>
+              <button type="button" className={secondaryButton} onClick={closeSectionDraft}>Zamknij</button>
               <button type="button" className={primaryButton} disabled={!sectionDraft.title.trim()} onClick={() => void saveSection()}>{sectionDraft.id ? 'Zapisz' : 'Utwórz dział'}</button>
             </div>
           </div>
         </Modal>
       )}
-      {coverPicker && sectionDraft?.id && (
-        <ShowcasePhotoPicker target={{ sectionId: sectionDraft.id }} products={[]} single title="Okładka działu" onClose={() => setCoverPicker(false)}
+      {coverPicker && sectionDraft && (
+        <ShowcasePhotoPicker target={sectionDraft.id ? { sectionId: sectionDraft.id } : {}} products={[]} single title="Okładka działu" onClose={() => setCoverPicker(false)}
           onPick={(results) => {
             const first = results[0];
-            if (first) { setExtraUrls((current) => ({ ...current, ...first.urls })); setSectionDraft((current) => (current ? { ...current, cover: first.photo } : current)); }
+            if (first) {
+              setExtraUrls((current) => ({ ...current, ...first.urls }));
+              if (pendingCover) URL.revokeObjectURL(pendingCover.preview);
+              setPendingCover(null);
+              setSectionDraft((current) => (current ? { ...current, cover: first.photo } : current));
+            }
             setCoverPicker(false);
           }} />
       )}
+
+      <HelpDrawerHost audience="presentations" defaultChapter="start"
+        footer={manage && selected ? (
+          <button type="button" className={primaryButton} onClick={() => void create({ example: true })}>
+            <Plus className="h-4 w-4" />Utwórz kartę z przykładu w „{selected.title}”
+          </button>
+        ) : null} />
 
       {presenter && home && (
         <ShowcasePresenter brand={home.brand} sections={home.sections} items={home.items} urls={urls}

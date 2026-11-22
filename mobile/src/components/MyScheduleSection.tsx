@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, gap: 2 },
   title: {
     fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.semibold, color: colors.text.primary,
+    fontWeight: '400', color: colors.text.primary,
   },
   subtitle: { fontSize: typography.fontSizes.xs, color: colors.text.secondary },
   toggle: { flexDirection: 'row', padding: 2, borderRadius: borderRadius.md, backgroundColor: colors.background.tertiary },

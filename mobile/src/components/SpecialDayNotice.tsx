@@ -1,14 +1,14 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing } from '../theme';
+import { colors, spacing, tone } from '../theme';
 import { usePublicHolidays } from '../hooks/usePublicHolidays';
 import { specialDaysInRange } from '../lib/publicHolidays';
 
 const TONE = {
-  danger: { border: colors.status.error, text: '#fecaca', icon: 'x-octagon' as const },
-  warning: { border: colors.status.warning, text: '#fde68a', icon: 'alert-triangle' as const },
-  info: { border: colors.status.info, text: '#bfdbfe', icon: 'info' as const },
+  danger: { border: colors.status.error, text: tone('#fecaca'), icon: 'x-octagon' as const },
+  warning: { border: colors.status.warning, text: tone('#fde68a'), icon: 'alert-triangle' as const },
+  info: { border: colors.status.info, text: tone('#bfdbfe'), icon: 'info' as const },
 };
 
 /** Jak w CRM (src/components/crm/SpecialDayNotice.tsx): święto, niedziela, długi weekend, dzień „pomost”, Sylwester. */

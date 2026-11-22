@@ -1368,7 +1368,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '400',
     color: colors.text.primary,
   },
   headerMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },

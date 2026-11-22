@@ -1,8 +1,10 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
 import {
-  MaterialsError, materialsCancelUpload, materialsCompleteUpload, materialsCopyFromEvent, materialsCreateFolder, materialsDeleteForever,
-  materialsFile, materialsHome, materialsList, materialsMove, materialsPrepareUpload, materialsPurge, materialsRemove, materialsRename,
-  materialsRestore, materialsSearch, materialsTrash, materialsUpdateFile, materialsUrl,
+  MaterialsError, materialsAlbum, materialsAlbumAdd, materialsAlbumRemove, materialsAlbumReorder, materialsAlbums, materialsAlbumsReorder,
+  materialsCreateAlbum, materialsDeleteAlbum, materialsUpdateAlbum, materialsCancelUpload, materialsChanges, materialsCompleteUpload, materialsCopyFromEvent, materialsCreateFolder,
+  materialsDeleteForever, materialsDownload, materialsFile, materialsFinderRemove, materialsFinderTrash, materialsFinderUpdate,
+  materialsHome, materialsList, materialsMove, materialsPrepareUpload, materialsPurge, materialsRemove, materialsRename, materialsRestore,
+  materialsSearch, materialsSync, materialsSyncItem, materialsTrash, materialsUpdateFile, materialsUrl,
 } from '@/lib/materials/materials.server';
 
 export const runtime = 'nodejs';
@@ -10,15 +12,21 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 /*
- * Materiały — baza plików firmy. Jedno API dla CRM (`x-mavinci-client: web`), a w kolejnych etapach Findera, aplikacji na
+ * Materiały — baza plików firmy. Jedno API dla CRM (`x-mavinci-client: web`), Findera (Mavinci → Materiały), aplikacji na
  * Maca i telefonu. Token pracownika (Bearer), RLS i funkcje bazy jak w przeglądarce (`src/lib/materials/materials.server.ts`).
  * GET op=home&company | list&company&folder&sort=name|date|size|type&offset&limit | search&q&scope=materials|events&company |
  *   file&id | url&kind=material|version|trash|event&id&mode=preview|download | trash&company.
+ *   Finder: sync | changes&since | item&kind=folder|file&id | download&id | finderTrash.
+ *   Albumy (migracja 20261122140000): albums&company? | album&id.
  * POST JSON op=createFolder {companyId, parentId, name} | rename {kind, id, name} | move {companyId, items[{kind, id, name}],
  *   targetFolderId} | updateFile {id, description, tags} | prepareUpload {companyId, folderId, name, size, mime, sha256,
  *   thumbnail, rename} albo {replaceId, baseContentVersion, …} | completeUpload {fileId, path, thumbPath, width, height,
  *   duration, sha256, baseContentVersion} | cancelUpload {fileId, path, thumbPath} | remove {items[{kind, id, name}]} |
- *   restore {ids} | deleteForever {ids} albo {companyId, all: true} | purge | copyFromEvent {eventFileId, companyId, folderId}.
+ *   restore {ids | itemIds} | deleteForever {ids | itemIds} albo {companyId, all: true} | purge |
+ *   copyFromEvent {eventFileId, companyId, folderId}. Finder: update {kind, id, name?, companyId?, parentId?} |
+ *   finderRemove {kind, id}. Albumy: createAlbum {companyId, name, description?, fileIds?} | updateAlbum {id, name?,
+ *   description?, coverFileId?} | deleteAlbum {id} | albumAdd {id, fileIds[]} | albumRemove {id, fileIds[]} |
+ *   albumReorder {id, fileIds[]} | albumsReorder {companyId, ids[]} — album to odnośniki, pliki zostają na miejscu.
  * Treść plików nie przechodzi przez serwer — wysyłka i pobieranie przez podpisane adresy magazynu.
  */
 
@@ -49,6 +57,20 @@ export async function GET(request: Request) {
         return nativeJson(await materialsUrl(ctx, params));
       case 'trash':
         return nativeJson(await materialsTrash(ctx, params));
+      case 'sync':
+        return nativeJson(await materialsSync(ctx));
+      case 'changes':
+        return nativeJson(await materialsChanges(ctx, params.get('since')));
+      case 'item':
+        return nativeJson(await materialsSyncItem(ctx, params.get('kind') || 'file', params.get('id') || ''));
+      case 'download':
+        return nativeJson(await materialsDownload(ctx, params.get('id') || ''));
+      case 'finderTrash':
+        return nativeJson(await materialsFinderTrash(ctx));
+      case 'albums':
+        return nativeJson(await materialsAlbums(ctx, params));
+      case 'album':
+        return nativeJson(await materialsAlbum(ctx, params.get('id') || ''));
       default:
         return nativeJson({ error: 'Nieznana operacja.' }, 400);
     }
@@ -92,6 +114,24 @@ export async function POST(request: Request) {
         return nativeJson(await materialsPurge(ctx));
       case 'copyFromEvent':
         return nativeJson(await materialsCopyFromEvent(ctx, body));
+      case 'update':
+        return nativeJson(await materialsFinderUpdate(ctx, body));
+      case 'finderRemove':
+        return nativeJson(await materialsFinderRemove(ctx, body));
+      case 'createAlbum':
+        return nativeJson(await materialsCreateAlbum(ctx, body));
+      case 'updateAlbum':
+        return nativeJson(await materialsUpdateAlbum(ctx, body));
+      case 'deleteAlbum':
+        return nativeJson(await materialsDeleteAlbum(ctx, body));
+      case 'albumAdd':
+        return nativeJson(await materialsAlbumAdd(ctx, body));
+      case 'albumRemove':
+        return nativeJson(await materialsAlbumRemove(ctx, body));
+      case 'albumReorder':
+        return nativeJson(await materialsAlbumReorder(ctx, body));
+      case 'albumsReorder':
+        return nativeJson(await materialsAlbumsReorder(ctx, body));
       default:
         return nativeJson({ error: 'Nieznana operacja.' }, 400);
     }

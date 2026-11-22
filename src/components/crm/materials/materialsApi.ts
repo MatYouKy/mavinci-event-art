@@ -1,6 +1,8 @@
 import { supabase } from '@/lib/supabase/browser';
 import type { MaterialAccess, MaterialKind, MaterialSystemFolder } from '@/lib/materials/materialsShared';
 
+export type { MaterialAccess };
+
 /*
  * Klient API Materiałów w CRM — to samo API co (w kolejnych etapach) Finder, Mac i telefon (`/bridge/native/v1/materials`,
  * token sesji pracownika, `x-mavinci-client: web`). Pliki idą z przeglądarki prosto do prywatnego bucketu `materials`
@@ -48,6 +50,11 @@ export type MaterialTrashItem = {
 };
 export type MaterialUrl = { url: string; name: string; mime: string; size: number; kind: MaterialKind };
 export type MaterialItemRef = { kind: 'file' | 'folder'; id: string; name: string };
+/** Album (Materiały → Albumy): odnośniki do plików marki, bez kopii; `coverUrl` — miniatura okładki. */
+export type MaterialAlbum = {
+  id: string; companyId: string; name: string; description: string; coverFileId: string | null; sortOrder: number; count: number;
+  coverUrl: string | null; createdAt: string | null; updatedAt: string | null;
+};
 export type MaterialBatchResult = { moved?: number; removed?: number; failed: Array<{ id: string; name: string; error: string }> };
 
 const ENDPOINT = '/bridge/native/v1/materials';

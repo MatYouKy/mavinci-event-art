@@ -15,7 +15,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { useForegroundEffect } from '../../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../../lib/refreshQueue';
-import { colors, spacing, borderRadius, typography } from '../../theme';
+import { colors, spacing, borderRadius, typography, tone } from '../../theme';
 import {
   EVENT_STEP_KIND_LABELS,
   EVENT_STEP_ROLE_LABELS,
@@ -53,14 +53,14 @@ import { AddEventStepModal, EventStepActionModal, EventStepActionRequest, NewEve
 /** Kolory tonów statusu z eventStepTone w palecie aplikacji (jaśniejsze odcienie dla czytelności na ciemnym tle). */
 export const EVENT_STEP_TONE_COLORS: Record<EventStepTone, string> = {
   neutral: colors.text.secondary,
-  progress: '#60a5fa',
-  success: '#4ade80',
-  danger: '#f87171',
+  progress: tone('#60a5fa'),
+  success: tone('#4ade80'),
+  danger: tone('#f87171'),
   muted: colors.text.tertiary,
-  warning: '#fbbf24',
+  warning: tone('#fbbf24'),
 };
 
-const ERROR_TEXT = '#ff9999';
+const ERROR_TEXT = tone('#ff9999');
 
 /** Brak dostępu (42501) albo brak funkcji przed wdrożeniem migracji — panel się nie pokazuje. */
 export function isEventStepsUnavailable(error: { code?: string } | null | undefined): boolean {

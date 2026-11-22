@@ -624,17 +624,9 @@ import AppKit
     }
 
     // MARK: Dokumenty
+    /// Dysk → Pracownicy → pracownik → Dokumenty (`EmployeeDocumentsView`) — ten sam folder w CRM, w Finderze i w telefonie.
     private var documentsTab: some View {
-        card("Dokumenty") {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Spacer()
-                    Button { } label: { Label("Dodaj dokument", systemImage: "plus") }
-                        .disabled(true).help("Funkcja dokumentów nie jest jeszcze dostępna (także w CRM)")
-                }
-                emptyState("Brak dokumentów", symbol: "doc")
-            }
-        }
+        EmployeeDocumentsView(drive: state.drive, employeeID: employeeID)
     }
 
     // MARK: Oś czasu

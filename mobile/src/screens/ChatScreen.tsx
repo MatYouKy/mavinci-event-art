@@ -27,7 +27,7 @@ import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, spacing, typography } from '../theme';
+import { colors, spacing, typography, tone } from '../theme';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
@@ -1630,7 +1630,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.bold as any,
+    fontWeight: '400',
     color: colors.text.primary,
   },
   headerSubtitle: {
@@ -2054,7 +2054,7 @@ const styles = StyleSheet.create({
   },
   removeReactionText: {
     fontSize: 12,
-    color: '#f87171',
+    color: tone('#f87171'),
   },
   previewOverlay: {
     flex:1,
@@ -2100,7 +2100,7 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
     fontSize:15,
-    fontWeight:'600',
+    fontWeight: '400',
     color:colors.text.primary,
   },
   

@@ -7,9 +7,23 @@ import Foundation
 // podpisanych zespołem Mavinci). Token Supabase odświeżają oba procesy — zawsze pod wspólną blokadą pliku i z ponownym
 // odczytem sesji po jej uzyskaniu, bo odświeżenie unieważnia poprzedni token odświeżania.
 // Plik kompiluje się do aplikacji (SwiftPM) i do rozszerzenia (`scripts/build-app.sh`) — tylko Foundation.
+//
+// iPhone i iPad: ten sam plik (z całym `MavinciFileProvider`) buduje rozszerzenie „Mavinci” w aplikacji Pliki (`mobile/plugins/
+// withMavinciFiles.js`); grupa `group.com.mavinci.crm`. Tam rozszerzenie ma własną sesję (aplikacja odświeża swoją sama —
+// `src/lib/native/deviceSession.server.ts`), zapisywaną przez moduł `mobile/modules/mavinci-files`; unieważniona sesja znika
+// z kontenera, a aplikacja przy najbliższym otwarciu tworzy nową.
 
 enum FinderShared {
+    #if os(iOS)
+    static let appGroup = "group.com.mavinci.crm"
+    /// Nagłówki zapytań rozszerzenia (serwer rozróżnia klienta w kluczach synchronizacji).
+    static let client = "phone"
+    static let userAgent = "MavinciPhone/1.0 (Pliki)"
+    #else
     static let appGroup = "5DC8P5M489.pl.mavinci"
+    static let client = "mac"
+    static let userAgent = "MavinciDesktop/0.1 (Finder)"
+    #endif
     static let domainIdentifier = "pl.mavinci.files"
     static let domainName = "Mavinci"
     static let extensionName = "MavinciFileProvider.appex"
@@ -94,6 +108,18 @@ enum FinderShared {
         remove("session.json")
     }
 
+    // MARK: Dysk — zmiana z aplikacji
+
+    /// Plik dodany w aplikacji (np. do sprzętu w Magazynie) — rozszerzenie wczyta Dysk od nowa przy najbliższym sprawdzeniu zmian
+    /// (bez tego kopia Dysku w Finderze odświeża się co 10 minut).
+    static func markDriveChanged() {
+        write("drive-changed.txt", Data(String(Date().timeIntervalSince1970).utf8))
+    }
+    static func driveChangedAt() -> Date? {
+        guard let data = read("drive-changed.txt"), let value = Double(String(decoding: data, as: UTF8.self)) else { return nil }
+        return Date(timeIntervalSince1970: value)
+    }
+
     /// Identyfikator konta dla lokalnej kopii rozszerzenia (zmiana konta = nowa kopia).
     static func owner() -> String? {
         guard let c = connection(), let s = session() else { return nil }
@@ -133,7 +159,16 @@ enum FinderShared {
         defer { lock.release() }
         guard let current = session() else { throw Failure.signedOut }
         if current.expiry > Date().timeIntervalSince1970 + 90 { return current.access_token }
-        let data = try await refresh(connection, refreshToken: current.refresh_token)
+        let data: Data
+        do {
+            data = try await refresh(connection, refreshToken: current.refresh_token)
+        } catch Failure.signedOut {
+            #if os(iOS)
+            // Sesja rozszerzenia unieważniona (np. wylogowanie na innym urządzeniu) — aplikacja utworzy nową przy otwarciu.
+            remove("session.json")
+            #endif
+            throw Failure.signedOut
+        }
         guard let renewed = try? JSONDecoder().decode(SessionFields.self, from: data), renewed.user.id == current.user.id else { throw Failure.server }
         storeSession(data)
         return renewed.access_token
@@ -148,7 +183,7 @@ enum FinderShared {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("MavinciDesktop/0.1 (Finder)", forHTTPHeaderField: "User-Agent")
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         if !connection.native { request.setValue(connection.publicKey, forHTTPHeaderField: "apikey") }
         request.httpBody = try JSONSerialization.data(withJSONObject: ["refresh_token": refreshToken])
         let data: Data

@@ -4,7 +4,9 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { colors, spacing, borderRadius, typography, appPalette, glow, ink, shade } from '../theme';
+import BrandHeading from '../components/BrandHeading';
+import { crmThemeShowcaseAccent } from '../theme/crmThemePalette';
 import { showcaseBrand, showcaseItem, showcaseSiblings, type ShowcasePage } from '../lib/showcaseApi';
 import { useShowcaseOffer, type ShowcaseOfferChoice } from '../lib/showcaseOffer';
 import {
@@ -17,7 +19,8 @@ import {
  * nawigacja po blokach, zdjęcia (pełny ekran z przewijaniem w bok i powiększaniem dwoma palcami), korzyści, warianty i pakiety
  * z katalogu (ceny ukryte — przełącznik w nagłówku), przygotowanie, specyfikacja, pytania klientów i realizacje. Kolory z księgi
  * znaku. Przesunięcie palcem w bok — sąsiednia karta działu (kolejność jak na liście), na końcu karty — poprzednia / następna.
- * „Do oferty” przy wariantach, pakietach i w nagłówku karty + „Oferta” w nagłówku — oferta ze spotkania (`ShowcaseOfferScreen`).
+ * „Do oferty” przy wariantach, pakietach i w nagłówku karty + „Oferta” w nagłówku — oferta ze spotkania (`ShowcaseOfferScreen`);
+ * scena i ekran LED — „Skonfiguruj” (konfigurator na ekranie oferty).
  */
 
 type Viewer = { photos: ShowcaseMedia[]; index: number; urls: ShowcaseUrls } | null;
@@ -26,6 +29,8 @@ type PageNav = { pages: ShowcasePage[]; index: number; onStep: (direction: 1 | -
 type OfferActions = {
   has: (product: ShowcaseProductView, choice: ShowcaseOfferChoice) => boolean;
   add: (product: ShowcaseProductView, choice: ShowcaseOfferChoice, item: { id: string; title: string }) => void;
+  /** Scena albo ekran LED — konfigurator na ekranie oferty. */
+  configure: (product: ShowcaseProductView, item: { id: string; title: string }) => void;
 } | null;
 type Toast = { text: string; error: boolean; openOffer: boolean };
 
@@ -43,8 +48,9 @@ export default function PresentationScreen() {
   const indexRef = useRef(index);
   indexRef.current = index;
   const brand = showcaseBrand();
-  const accent = brand?.accent || colors.primary.gold;
-  const surface = brand?.surface || '#1c1f33';
+  // Pokaz w kolorach motywu CRM na tym urządzeniu (jak w CRM i na Macu), akcent z księgi znaku (w jasnym motywie — motywu).
+  const accent = crmThemeShowcaseAccent(appPalette(), brand?.accent);
+  const surface = colors.background.elevated;
   const offer = useShowcaseOffer();
   const [toast, setToast] = useState<Toast | null>(null);
   const count = offer.draft.lines.length;
@@ -83,8 +89,10 @@ export default function PresentationScreen() {
       if (result === 'added') setToast({ text: `Dodano do oferty: ${label}`, error: false, openOffer: true });
       else if (result === 'exists') setToast({ text: `„${label}” jest już w ofercie.`, error: false, openOffer: true });
       else if (result === 'full') setToast({ text: 'Oferta ze spotkania może mieć najwyżej 30 pozycji.', error: true, openOffer: false });
-      else setToast({ text: `„${label}” dodasz w edytorze oferty po jej utworzeniu.`, error: true, openOffer: false });
+      else if (product.configurable) navigation.navigate('ShowcaseOffer', { configure: { productId: product.id, name: product.name, itemId: item.id, itemTitle: item.title } });
+      else setToast({ text: `„${label}” jest wycofany z katalogu.`, error: true, openOffer: false });
     },
+    configure: (product, item) => navigation.navigate('ShowcaseOffer', { configure: { productId: product.id, name: product.name, itemId: item.id, itemTitle: item.title } }),
   } : null;
 
   // Tytuł w nagłówku idzie za kartą widoczną po przesunięciu.
@@ -166,8 +174,9 @@ function CardPage({ id, showPrices, nav, offer }: { id: string; showPrices: bool
   const scroller = useRef<ScrollView>(null);
   const offsets = useRef<Record<string, number>>({});
   const brand = showcaseBrand();
-  const accent = brand?.accent || colors.primary.gold;
-  const surface = brand?.surface || '#1c1f33';
+  // Pokaz w kolorach motywu CRM na tym urządzeniu (jak w CRM i na Macu), akcent z księgi znaku (w jasnym motywie — motywu).
+  const accent = crmThemeShowcaseAccent(appPalette(), brand?.accent);
+  const surface = colors.background.elevated;
   const wide = width >= 700;
   /** Szerokość kolumny siatki (treść bez marginesów, odstęp 16 albo 8 punktów). */
   const column = (count: number, gap: number = spacing.md) => Math.floor((width - spacing.lg * 2 - gap * (count - 1)) / count);
@@ -201,6 +210,9 @@ function CardPage({ id, showPrices, nav, offer }: { id: string; showPrices: bool
   const offerable = (product: ShowcaseProductView) => Boolean(offer && product.isActive && !product.configurable);
   const heroProducts = item.productIds.map((productId) => products.find((product) => product.id === productId))
     .filter((product): product is ShowcaseProductView => Boolean(product && offerable(product)));
+  // Scena, ekran LED — „Skonfiguruj” (konfigurator na ekranie oferty).
+  const configurable = item.productIds.map((productId) => products.find((product) => product.id === productId))
+    .filter((product): product is ShowcaseProductView => Boolean(offer && product && product.isActive && product.configurable));
 
   const points = (list: ShowcasePoint[], style: string) => {
     if (style === 'steps') {
@@ -229,7 +241,7 @@ function CardPage({ id, showPrices, nav, offer }: { id: string; showPrices: bool
       <View style={styles.grid}>
         {list.map((point, index) => (
           <View key={index} style={[styles.tile, { width: column(wide ? 3 : 1) }]}>
-            <View style={[styles.tileIcon, { backgroundColor: 'rgba(255,255,255,0.06)' }]}><Feather name="check" size={18} color={accent} /></View>
+            <View style={[styles.tileIcon, { backgroundColor: glow(0.06) }]}><Feather name="check" size={18} color={accent} /></View>
             <Text style={styles.pointTitle}>{point.title}</Text>
             {point.text ? <Text style={styles.pointText}>{point.text}</Text> : null}
           </View>
@@ -336,7 +348,7 @@ function CardPage({ id, showPrices, nav, offer }: { id: string; showPrices: bool
         return (
           <View style={styles.specs}>
             {block.rows.map((row, index) => (
-              <View key={row.id} style={[styles.specRow, { backgroundColor: index % 2 ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.25)' }]}>
+              <View key={row.id} style={[styles.specRow, { backgroundColor: index % 2 ? shade(0.1) : shade(0.25) }]}>
                 <Text style={[styles.pointText, styles.flex]}>{row.title}</Text>
                 <Text style={[styles.pointTitle, styles.flex2]}>{row.text}</Text>
               </View>
@@ -391,7 +403,7 @@ function CardPage({ id, showPrices, nav, offer }: { id: string; showPrices: bool
           {heroUrl ? <Image source={{ uri: heroUrl }} style={[styles.hero, { aspectRatio: wide ? 16 / 9 : 4 / 3 }]} /> : <View style={[styles.hero, { aspectRatio: 16 / 9 }]} />}
         </TouchableOpacity>
         <View style={styles.intro}>
-          <Text style={styles.title}>{item.title}</Text>
+          <BrandHeading style={styles.title}>{item.title}</BrandHeading>
           {item.tagline ? <Text style={[styles.tagline, { color: accent }]}>{item.tagline}</Text> : null}
           {item.content.lead ? <Text style={styles.lead}>{item.content.lead}</Text> : null}
           {showPrices && linked.length ? (
@@ -403,11 +415,15 @@ function CardPage({ id, showPrices, nav, offer }: { id: string; showPrices: bool
               ))}
             </View>
           ) : null}
-          {offer && heroProducts.length ? (
+          {offer && (heroProducts.length || configurable.length) ? (
             <View style={styles.priceChips}>
               {heroProducts.map((product) => (
                 <OfferButton key={product.id} accent={accent} added={offer.has(product, null)} label={heroProducts.length > 1 ? `Do oferty: ${product.name}` : 'Do oferty'}
                   onPress={() => offer.add(product, null, itemRef)} />
+              ))}
+              {configurable.map((product) => (
+                <OfferButton key={`configure:${product.id}`} accent={accent} added={false} label={`Skonfiguruj: ${product.name}`}
+                  onPress={() => offer.configure(product, itemRef)} />
               ))}
             </View>
           ) : null}
@@ -426,7 +442,7 @@ function CardPage({ id, showPrices, nav, offer }: { id: string; showPrices: bool
         ) : <View />}
         {blocks.map((block) => (
           <View key={block.id} style={styles.block} onLayout={(event) => { offsets.current[block.id] = event.nativeEvent.layout.y; }}>
-            <Text style={styles.blockTitle}>{block.title}</Text>
+            <BrandHeading style={styles.blockTitle}>{block.title}</BrandHeading>
             {block.kind !== 'text' && block.text ? <Text style={styles.blockIntro}>{block.text}</Text> : null}
             <View style={styles.blockBody}>{blockContent(block)}</View>
           </View>
@@ -507,21 +523,21 @@ const styles = StyleSheet.create({
   flexGap: { gap: spacing.md },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   content: { paddingBottom: spacing.xxl },
-  hero: { width: '100%', backgroundColor: 'rgba(0,0,0,0.35)' },
+  hero: { width: '100%', backgroundColor: shade(0.35) },
   intro: { padding: spacing.lg, gap: spacing.sm },
   title: { color: colors.text.primary, fontSize: 30, fontFamily: typography.fontFamilies.heading },
   tagline: { fontSize: typography.fontSizes.lg },
-  lead: { color: 'rgba(229,228,226,0.85)', fontSize: typography.fontSizes.md, lineHeight: 24 },
+  lead: { color: ink(0.85), fontSize: typography.fontSizes.md, lineHeight: 24 },
   priceChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  priceChip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: borderRadius.full, backgroundColor: 'rgba(0,0,0,0.4)', overflow: 'hidden' },
+  priceChip: { paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: borderRadius.full, backgroundColor: shade(0.4), overflow: 'hidden' },
   priceToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 5, borderRadius: borderRadius.full, borderWidth: 1 },
   headerButtons: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   offerRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: spacing.xs },
   offerButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.md, borderRadius: borderRadius.full, borderWidth: 1 },
-  offerButtonAdded: { backgroundColor: 'rgba(255,255,255,0.08)' },
+  offerButtonAdded: { backgroundColor: glow(0.08) },
   toast: {
     position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    padding: spacing.md, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
+    padding: spacing.md, borderRadius: borderRadius.lg, borderWidth: 1, borderColor: glow(0.12),
   },
   toastButton: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md, borderRadius: borderRadius.full },
   navBar: { paddingVertical: spacing.sm },
@@ -529,36 +545,36 @@ const styles = StyleSheet.create({
   navChip: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: borderRadius.full, borderWidth: 1 },
   block: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl },
   blockTitle: { color: colors.text.primary, fontSize: 24, fontFamily: typography.fontFamilies.heading },
-  blockIntro: { color: 'rgba(229,228,226,0.7)', fontSize: typography.fontSizes.md, marginTop: spacing.xs },
+  blockIntro: { color: ink(0.7), fontSize: typography.fontSizes.md, marginTop: spacing.xs },
   blockBody: { marginTop: spacing.md, gap: spacing.md },
   largePhotoBox: { gap: spacing.xs },
-  largePhoto: { width: '100%', aspectRatio: 16 / 10, borderRadius: borderRadius.xl, backgroundColor: 'rgba(0,0,0,0.3)' },
-  caption: { color: 'rgba(229,228,226,0.6)', fontSize: typography.fontSizes.sm },
+  largePhoto: { width: '100%', aspectRatio: 16 / 10, borderRadius: borderRadius.xl, backgroundColor: shade(0.3) },
+  caption: { color: ink(0.6), fontSize: typography.fontSizes.sm },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  gridPhoto: { width: '100%', aspectRatio: 1, borderRadius: borderRadius.lg, backgroundColor: 'rgba(0,0,0,0.3)' },
+  gridPhoto: { width: '100%', aspectRatio: 1, borderRadius: borderRadius.lg, backgroundColor: shade(0.3) },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  tile: { padding: spacing.md, borderRadius: borderRadius.xl, backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', gap: 6 },
+  tile: { padding: spacing.md, borderRadius: borderRadius.xl, backgroundColor: shade(0.25), borderWidth: 1, borderColor: glow(0.08), gap: 6 },
   tileIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   tileHeading: { fontSize: typography.fontSizes.lg, marginBottom: spacing.xs },
   pointTitle: { color: colors.text.primary, fontSize: typography.fontSizes.md },
-  pointText: { color: 'rgba(229,228,226,0.7)', fontSize: typography.fontSizes.sm, lineHeight: 20 },
+  pointText: { color: ink(0.7), fontSize: typography.fontSizes.sm, lineHeight: 20 },
   step: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start' },
   stepNumber: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   stepNumberText: { fontWeight: typography.fontWeights.semibold, fontSize: typography.fontSizes.md },
   check: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
   checkIcon: { marginTop: 2 },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  offer: { borderRadius: borderRadius.xl, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  offerImage: { width: '100%', aspectRatio: 16 / 9, backgroundColor: 'rgba(0,0,0,0.3)' },
+  offer: { borderRadius: borderRadius.xl, overflow: 'hidden', backgroundColor: shade(0.25), borderWidth: 1, borderColor: glow(0.08) },
+  offerImage: { width: '100%', aspectRatio: 16 / 9, backgroundColor: shade(0.3) },
   offerBody: { padding: spacing.md, gap: 6 },
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: borderRadius.full, overflow: 'hidden', fontSize: typography.fontSizes.xs },
   price: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.semibold, marginTop: 4 },
   specs: { borderRadius: borderRadius.xl, overflow: 'hidden' },
   specRow: { flexDirection: 'row', gap: spacing.md, paddingHorizontal: spacing.md, paddingVertical: 12 },
-  faq: { borderRadius: borderRadius.lg, backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  faq: { borderRadius: borderRadius.lg, backgroundColor: shade(0.25), borderWidth: 1, borderColor: glow(0.08) },
   faqHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md },
   faqText: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
-  paragraph: { color: 'rgba(229,228,226,0.85)', fontSize: typography.fontSizes.md, lineHeight: 24 },
+  paragraph: { color: ink(0.85), fontSize: typography.fontSizes.md, lineHeight: 24 },
   muted: { color: colors.text.tertiary, fontSize: typography.fontSizes.xs },
   empty: { color: colors.text.tertiary, textAlign: 'center', padding: spacing.xl },
   neighbours: { paddingHorizontal: spacing.lg, paddingTop: spacing.xxl, gap: spacing.md },
@@ -567,10 +583,10 @@ const styles = StyleSheet.create({
   neighbourColumn: { gap: spacing.md },
   neighbour: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 88, padding: spacing.md, borderRadius: borderRadius.xl,
-    backgroundColor: 'rgba(0,0,0,0.25)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: shade(0.25), borderWidth: 1, borderColor: glow(0.08),
   },
   neighbourNext: { flexDirection: 'row-reverse' },
-  neighbourThumb: { width: 96, height: 60, borderRadius: borderRadius.lg, backgroundColor: 'rgba(0,0,0,0.3)' },
+  neighbourThumb: { width: 96, height: 60, borderRadius: borderRadius.lg, backgroundColor: shade(0.3) },
   neighbourEmpty: { alignItems: 'center', justifyContent: 'center' },
   alignEnd: { alignItems: 'flex-end' },
   textRight: { textAlign: 'right' },

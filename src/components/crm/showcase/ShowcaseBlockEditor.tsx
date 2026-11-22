@@ -116,7 +116,7 @@ export default function ShowcaseBlockEditor({
                   <button type="button" onClick={() => set({ photos: block.photos.filter((entry) => entry.id !== photo.id) })} aria-label="Usuń zdjęcie"
                     className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
                   {photo.source !== 'upload' && (
-                    <span className="absolute left-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white/80">{photo.source === 'product' ? 'Katalog' : 'Realizacja'}</span>
+                    <span className="absolute left-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white/80">{photo.source === 'product' ? 'Katalog' : photo.source === 'material' ? 'Baza zdjęć' : 'Realizacja'}</span>
                   )}
                   <input value={photo.caption} maxLength={SHOWCASE_LIMITS.caption} placeholder="Podpis (opcjonalnie)"
                     onChange={(event) => set({ photos: block.photos.map((entry) => (entry.id === photo.id ? { ...entry, caption: event.target.value } : entry)) })}

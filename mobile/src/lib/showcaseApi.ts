@@ -1,7 +1,9 @@
 import { supabase } from './supabase';
 import type {
-  ShowcaseBrand, ShowcaseHome, ShowcaseItemDetail, ShowcaseOfferApproval, ShowcaseOfferClientContext, ShowcaseOfferClientHit, ShowcaseOfferDraft,
-  ShowcaseOfferEmailSetup, ShowcaseOfferPreview, ShowcaseOfferResult, ShowcaseOfferSetup, ShowcaseOfferStatus,
+  ShowcaseBrand, ShowcaseConfigEdit, ShowcaseHome, ShowcaseItemDetail, ShowcaseOfferApproval, ShowcaseOfferClientContext, ShowcaseOfferClientHit,
+  ShowcaseOfferConfiguration, ShowcaseOfferDraft,
+  ShowcaseOfferEmailSetup, ShowcaseOfferLocation, ShowcaseOfferPreview, ShowcaseOfferResult, ShowcaseOfferSetup, ShowcaseOfferStatus,
+  ShowcaseProductView, ShowcaseUrls,
 } from './showcaseShared';
 
 /*
@@ -85,9 +87,19 @@ export const showcaseItem = (id: string) => get<ShowcaseItemDetail>('item', { id
 
 export const showcaseOfferSetup = () => get<ShowcaseOfferSetup>('offerSetup');
 export const showcaseOfferClients = (q: string) => get<{ clients: ShowcaseOfferClientHit[] }>('offerClients', { q });
+/** Podpowiedzi miejsca z bazy lokalizacji CRM („Nazwa, miasto”); bez trafienia — miejsce wpisane ręcznie. */
+export const showcaseOfferLocations = (q: string) => get<{ locations: ShowcaseOfferLocation[] }>('offerLocations', { q: q.trim() });
+/** Produkty katalogu do „Dodaj pozycję” (aktywne, z miniaturą). */
+export type ShowcaseProductOption = { id: string; name: string; category: string; priceNet: number | null; unit: string; thumbnailUrl: string | null };
+export const showcaseProducts = (q: string) => get<{ products: ShowcaseProductOption[] }>('products', { q: q.trim() });
+/** Produkt katalogu na bieżąco (warianty, pakiety, zdjęcia) — wybór wariantu albo pakietu do oferty. */
+export const showcaseOfferProduct = (id: string) => get<{ product: ShowcaseProductView; urls: ShowcaseUrls }>('offerProduct', { id });
 export const showcaseOfferClient = (target: { organization?: string | null; contact?: string | null }) =>
   get<ShowcaseOfferClientContext>('offerClient', target.organization ? { organization: target.organization } : { contact: target.contact || '' });
 export const showcaseOfferPreview = (draft: ShowcaseOfferDraft) => post<ShowcaseOfferPreview>('offerPreview', { draft });
+/** Konfigurator sceny i ekranu LED w ofercie ze spotkania: nowa konfiguracja (`productId`) albo zmiany zapisanej (`snapshot`). */
+export const showcaseOfferConfigure = (body: { productId?: string; snapshot?: Record<string, unknown>; edits?: ShowcaseConfigEdit[]; refresh?: boolean; quantity?: number }) =>
+  post<ShowcaseOfferConfiguration>('offerConfigure', body);
 export const showcaseOfferCreate = (draft: ShowcaseOfferDraft) => post<ShowcaseOfferResult>('offerCreate', { draft });
 export const showcaseOfferStatus = (id: string) => get<ShowcaseOfferStatus>('offerStatus', { id });
 export const showcaseOfferApproval = (id: string, note: string) => post<ShowcaseOfferApproval>('offerApproval', { id, note });

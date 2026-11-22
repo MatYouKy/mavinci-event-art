@@ -64,9 +64,11 @@ export type ShowcaseDevice = (typeof SHOWCASE_DEVICES)[number]['key'];
 /**
  * Zdjęcie w prezentacji. `upload` — wersje WebP w prywatnym buckecie `sales-showcase` (`path` — duża do 2560 px, `thumb` —
  * miniatura 640 px); `product` — zdjęcie produktu z katalogu (`offer-product-pages`, bez kopii); `site` — zdjęcie realizacji
- * ze strony (publiczny adres naszego Storage).
+ * ze strony (publiczny adres naszego Storage); `material` — zdjęcie z Materiałów (główna baza zdjęć): odnośnik do pliku,
+ * a do pokazu jedna wspólna wersja WebP na wersję treści pliku (`materials/<plik>/v<wersja>.webp` + `-t.webp` w
+ * `sales-showcase`) — ten sam plik w wielu kartach nie tworzy kopii.
  */
-export type ShowcaseMediaSource = 'upload' | 'product' | 'site';
+export type ShowcaseMediaSource = 'upload' | 'product' | 'site' | 'material';
 export type ShowcaseMedia = {
   id: string;
   source: ShowcaseMediaSource;
@@ -225,7 +227,10 @@ export type ShowcaseProductView = {
   name: string;
   category: string;
   isActive: boolean;
-  /** Produkt z konfiguratorem (scena, ekran LED) — wycena po konfiguracji w edytorze oferty, nie z pokazu. */
+  /**
+   * Produkt z konfiguratorem (scena, ekran LED) — do oferty ze spotkania przez konfigurator (aplikacja na tablecie i telefonie,
+   * `showcaseOfferConfiguredLine`); w CRM i na Macu — w edytorze oferty po jej utworzeniu.
+   */
   configurable: boolean;
   shortDescription: string;
   description: string;
@@ -275,16 +280,31 @@ export type ShowcaseItemDetail = {
   urls: ShowcaseUrls;
 };
 
-/** Zdjęcie do wyboru (pickery: produkty, realizacje, Materiały, pliki wydarzenia, biblioteka social media). */
+/** Zdjęcie do wyboru (okno wyboru: baza zdjęć — Materiały i albumy, produkty, realizacje, biblioteka social media). */
 export type ShowcasePickPhoto = {
-  /** `material` / `event` / `social` — identyfikator pliku; `product` / `site` — gotowe zdjęcie (bez kopiowania). */
+  /** `material` / `social` — identyfikator pliku; `product` / `site` — gotowe zdjęcie (bez kopiowania). */
   id: string;
   name: string;
   thumbnailUrl: string | null;
+  /** Pełne zdjęcie (podgląd w oknie wyboru), gdy serwer je zna. */
+  url?: string | null;
   width: number | null;
   height: number | null;
   media: ShowcaseMedia | null;
 };
+
+/** Album bazy zdjęć (Materiały → Albumy) w oknie wyboru zdjęć. */
+export type ShowcaseAlbumOption = {
+  id: string;
+  companyId: string;
+  companyName: string;
+  name: string;
+  count: number;
+  thumbnailUrl: string | null;
+};
+
+/** Gdzie trafiają zdjęcia z dysku (baza zdjęć: Materiały → marka → Zdjęcia). `null` — brak uprawnień do Materiałów. */
+export type ShowcasePhotoBase = { companyId: string; companyName: string; folderId: string | null; folderName: string } | null;
 
 // Normalizacja -----------------------------------------------------------------------------------------------------------
 
@@ -328,6 +348,7 @@ const keepId = (value: unknown, used: Set<string>) => {
 };
 
 const UPLOAD_PATH = /^(items|sections)\/[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}\/[A-Za-z0-9._-]{1,100}$/;
+const MATERIAL_PATH = /^materials\/([\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12})\/v\d{1,9}(?:-t)?\.webp$/;
 const PRODUCT_PATH = /^[A-Za-z0-9][A-Za-z0-9/_.() -]{0,299}$/;
 const SITE_URL = /^https:\/\/[^\s"'<>\\]+\/storage\/v1\/object\/public\/[^\s"'<>\\]+$/;
 const dimension = (value: unknown) => {
@@ -339,13 +360,14 @@ const dimension = (value: unknown) => {
 export function isShowcaseMediaPath(source: ShowcaseMediaSource, path: string): boolean {
   if (!path || path.length > SHOWCASE_LIMITS.mediaPath || path.includes('..')) return false;
   if (source === 'upload') return UPLOAD_PATH.test(path);
+  if (source === 'material') return MATERIAL_PATH.test(path);
   if (source === 'product') return PRODUCT_PATH.test(path) && !path.startsWith('/') && !/^[a-z]+:/i.test(path);
   return SITE_URL.test(path);
 }
 
 export function normalizeShowcaseMedia(raw: unknown, used: Set<string> = new Set()): ShowcaseMedia | null {
   const value = object(raw);
-  const source = value.source === 'upload' || value.source === 'product' || value.source === 'site' ? value.source : null;
+  const source = value.source === 'upload' || value.source === 'product' || value.source === 'site' || value.source === 'material' ? value.source : null;
   const path = typeof value.path === 'string' ? value.path.trim() : '';
   if (!source || !isShowcaseMediaPath(source, path)) return null;
   const thumbRaw = typeof value.thumb === 'string' ? value.thumb.trim() : '';
@@ -360,6 +382,18 @@ export function normalizeShowcaseMedia(raw: unknown, used: Set<string> = new Set
     caption: showcaseLine(value.caption, SHOWCASE_LIMITS.caption),
   };
 }
+
+/** Plik Materiałów, z którego pochodzi zdjęcie (`material`), albo `null`. */
+export function showcaseMaterialFileId(media: Pick<ShowcaseMedia, 'source' | 'path'> | null | undefined): string | null {
+  if (!media || media.source !== 'material') return null;
+  return MATERIAL_PATH.exec(media.path)?.[1] || null;
+}
+
+/** Ścieżki wersji WebP zdjęcia z Materiałów (wspólne dla wszystkich kart): pełna i miniatura. */
+export const showcaseMaterialPaths = (fileId: string, contentVersion: number) => ({
+  path: `materials/${fileId.toLowerCase()}/v${Math.max(1, Math.round(contentVersion))}.webp`,
+  thumb: `materials/${fileId.toLowerCase()}/v${Math.max(1, Math.round(contentVersion))}-t.webp`,
+});
 
 /** Stały klucz zdjęcia (adres w `urls`, nazwa w kopii na dysku) — źródło i ścieżka, nie losowy identyfikator. */
 export const showcaseMediaKey = (media: Pick<ShowcaseMedia, 'source' | 'path'>) => `${media.source}:${media.path}`;
@@ -566,11 +600,13 @@ export const SHOWCASE_OFFER_LIMITS = {
   search: 80,
   /** Ważność oferty (dni) — jak nowa oferta zapytania w CRM. */
   validDays: 14,
+  /** Największa konfiguracja produktu (scena, ekran LED) w szkicu — znaki JSON. */
+  configuration: 300_000,
 } as const;
 
-/** Wybór z pokazu: produkt (domyślny wybór jak w CRM), wariant albo pakiet. */
-export type ShowcaseOfferKind = 'product' | 'variant' | 'package';
-const SHOWCASE_OFFER_KINDS: readonly ShowcaseOfferKind[] = ['product', 'variant', 'package'];
+/** Wybór z pokazu: produkt (domyślny wybór jak w CRM), wariant, pakiet albo produkt z konfiguratora (scena, ekran LED). */
+export type ShowcaseOfferKind = 'product' | 'variant' | 'package' | 'configured';
+const SHOWCASE_OFFER_KINDS: readonly ShowcaseOfferKind[] = ['product', 'variant', 'package', 'configured'];
 
 export type ShowcaseOfferLine = {
   /** `produkt:rodzaj:opcja` — ta sama pozycja nie dodaje się dwa razy. */
@@ -588,6 +624,11 @@ export type ShowcaseOfferLine = {
   /** Karta pokazu, z której dodano pozycję. */
   itemId: string | null;
   itemTitle: string;
+  /**
+   * Konfiguracja produktu z konfiguratora (`configured`; scena, ekran LED) — jak w kreatorze ofert (`op=modular`). Serwer
+   * przy wycenie pobiera aktualny sprzęt i stawki z magazynu, więc cena zawsze jest bieżąca.
+   */
+  modular: Record<string, unknown> | null;
 };
 
 export type ShowcaseOfferClient = {
@@ -605,7 +646,11 @@ export type ShowcaseOfferClient = {
   phone: string;
 };
 
-export type ShowcaseOfferEvent = { name: string; date: string; location: string; guestCount: number | null };
+/** `locationId` — miejsce wybrane z bazy lokalizacji (CRM → Lokalizacje); `null` — wpisane ręcznie. */
+export type ShowcaseOfferEvent = { name: string; date: string; location: string; locationId: string | null; guestCount: number | null };
+
+/** Podpowiedź miejsca z bazy lokalizacji. `label` — „Nazwa, miasto” (jak w zapytaniach CRM). */
+export type ShowcaseOfferLocation = { id: string; name: string; city: string; address: string; label: string };
 
 export type ShowcaseOfferDraft = {
   /** Identyfikator przyszłej oferty — ponowne „Utwórz ofertę” po zerwanym połączeniu nie tworzy drugiej. */
@@ -666,6 +711,8 @@ export type ShowcaseOfferPreviewLine = {
   /** Ilość z liczby osób albo stołów (bez ręcznej zmiany). */
   quantityFromAudience: boolean;
   error: string | null;
+  /** Miniatura zdjęcia produktu z katalogu (podpisany adres na godzinę). */
+  thumbnailUrl: string | null;
 };
 export type ShowcaseOfferPreview = {
   lines: ShowcaseOfferPreviewLine[];
@@ -731,7 +778,7 @@ export function emptyShowcaseOfferDraft(): ShowcaseOfferDraft {
     client: emptyShowcaseOfferClient(),
     inquiryId: null,
     inquiryTitle: '',
-    event: { name: '', date: '', location: '', guestCount: null },
+    event: { name: '', date: '', location: '', locationId: null, guestCount: null },
     note: '',
     updatedAt: '',
   };
@@ -755,6 +802,17 @@ export function showcaseOfferPrice(value: unknown): number | null {
   return Number.isFinite(number) && number > 0 && number <= 99999999 ? Math.round(number * 100) / 100 : null;
 }
 
+/** Konfiguracja z konfiguratora (profil, katalog, wybór) w limicie rozmiaru; pełne sprawdzenie robi serwer. */
+function showcaseOfferModular(value: unknown): Record<string, unknown> | null {
+  const raw = object(value);
+  if (typeof raw.profile !== 'string' || !Object.keys(object(raw.catalog)).length || !Object.keys(object(raw.selection)).length) return null;
+  try {
+    return JSON.stringify(raw).length <= SHOWCASE_OFFER_LIMITS.configuration ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
 export function normalizeShowcaseOfferLine(raw: unknown): ShowcaseOfferLine | null {
   const value = object(raw);
   if (!isShowcaseUuid(value.productId)) return null;
@@ -763,6 +821,8 @@ export function normalizeShowcaseOfferLine(raw: unknown): ShowcaseOfferLine | nu
   const option = showcaseLine(value.optionId, 80);
   const optionId = kind === 'product' ? null : kind === 'variant' ? (isShowcaseUuid(option) ? option.toLowerCase() : null) : option || null;
   if (kind !== 'product' && !optionId) return null;
+  const modular = kind === 'configured' ? showcaseOfferModular(value.modular) : null;
+  if (kind === 'configured' && !modular) return null;
   const priceOnRequest = kind === 'package' && value.priceOnRequest === true;
   return {
     key: showcaseOfferLineKey(productId, kind, optionId),
@@ -776,6 +836,7 @@ export function normalizeShowcaseOfferLine(raw: unknown): ShowcaseOfferLine | nu
     agreedPrice: priceOnRequest ? showcaseOfferPrice(value.agreedPrice) : null,
     itemId: isShowcaseUuid(value.itemId) ? value.itemId.toLowerCase() : null,
     itemTitle: showcaseLine(value.itemTitle, SHOWCASE_LIMITS.title),
+    modular,
   };
 }
 
@@ -816,6 +877,7 @@ export function normalizeShowcaseOfferDraft(raw: unknown): ShowcaseOfferDraft {
       name: showcaseLine(event.name, 160),
       date: DATE_VALUE.test(date) ? date : '',
       location: showcaseLine(event.location, 500),
+      locationId: isShowcaseUuid(event.locationId) && showcaseLine(event.location, 500) ? event.locationId.toLowerCase() : null,
       guestCount: Number.isInteger(guests) && guests >= 1 && guests <= 100000 ? guests : null,
     },
     note: showcaseText(value.note, SHOWCASE_OFFER_LIMITS.note),
@@ -825,8 +887,8 @@ export function normalizeShowcaseOfferDraft(raw: unknown): ShowcaseOfferDraft {
 
 /**
  * Pozycja z produktu karty. Bez wskazania wariantu lub pakietu — wybór domyślny jak przy dodawaniu produktu w CRM: pierwszy
- * pakiet, inaczej polecany (pierwszy) wariant, inaczej sam produkt. Produkt z konfiguratorem albo wycofany z katalogu nie trafia
- * do oferty z pokazu.
+ * pakiet, inaczej polecany (pierwszy) wariant, inaczej sam produkt. Produkt wycofany z katalogu nie trafia do oferty z pokazu,
+ * produkt z konfiguratorem — tylko przez konfigurator (`showcaseOfferConfiguredLine`).
  */
 export function showcaseOfferLineFor(
   product: ShowcaseProductView,
@@ -857,6 +919,92 @@ export function showcaseOfferLineFor(
     itemTitle: item?.title || '',
   });
 }
+
+/**
+ * Pozycja z konfiguratora (scena, ekran LED): konfiguracja z serwera (`op=offerConfigure`), nazwa — tytuł konfiguracji
+ * („Ekran LED 4 × 2 m”). Każda konfiguracja to osobna pozycja (dwa różne ekrany w jednej ofercie).
+ */
+export function showcaseOfferConfiguredLine(
+  product: { id: string; name: string },
+  modular: Record<string, unknown>,
+  title: string,
+  item: { id: string; title: string } | null,
+  optionId: string = showcaseOfferDraftId(),
+): ShowcaseOfferLine | null {
+  return normalizeShowcaseOfferLine({
+    productId: product.id,
+    kind: 'configured',
+    optionId,
+    label: title || product.name,
+    quantity: 1,
+    days: 1,
+    modular,
+    itemId: item?.id || null,
+    itemTitle: item?.title || '',
+  });
+}
+
+// Konfigurator w ofercie ze spotkania — widok z serwera (`modularConfigurator.ts`; pokaz bez stawek części i stanu magazynu).
+
+export type ShowcaseConfigOption = { id: string; label: string };
+export type ShowcaseConfigGroup = {
+  key: string;
+  /** `choice` — wybierz jeden wariant, `optional` — dodatek do włączenia, `automatic` — dobrany do wysokości, `required` — zależność. */
+  kind: 'automatic' | 'choice' | 'optional' | 'required';
+  label: string;
+  placeholder: string;
+  options: ShowcaseConfigOption[];
+  selected: string;
+  enabled: boolean;
+  children: ShowcaseConfigNode[];
+};
+export type ShowcaseConfigNode = { id: string; path: string; name: string; detail: string; groups: ShowcaseConfigGroup[] };
+export type ShowcaseConfigRoot = {
+  id: string;
+  title: string;
+  optional: boolean;
+  optionalLabel: string;
+  enabled: boolean;
+  quantityEditable: boolean;
+  quantity: number | null;
+  tree: ShowcaseConfigNode | null;
+};
+export type ShowcaseConfigNotice = { key: string; group: string; message: string; warning: boolean; recommendation?: { id: string; name: string } };
+export type ShowcaseConfigPreset = { width: number; depth: number; label: string };
+export type ShowcaseConfigView = {
+  /** `warehouse_stage` | `stage` | `led` | `sound` | `microphones`. */
+  profile: string;
+  heading: string;
+  title: string;
+  scope: string[];
+  error: string | null;
+  loadError: string | null;
+  /** Składniki zestawu (bez stawek). */
+  lines: Array<{ key: string; name: string; quantity: string }>;
+  calculatorTotal: number | null;
+  totalText: string;
+  note: string | null;
+  roots: ShowcaseConfigRoot[];
+  stage: null | {
+    width: number | null; depth: number | null; height: number | null; skirt: string; showSkirt: boolean; presets: ShowcaseConfigPreset[];
+    heightOptions: Array<{ height: number; label: string }>; heightMessage: string | null; summary: string;
+  };
+  led: null | {
+    hasSections: boolean; canAdd: boolean;
+    sections: Array<{ id: string; name: string; columns: number | null; rows: number | null; summary: string }>;
+    totals: string | null; notices: ShowcaseConfigNotice[];
+  };
+  legacyStage: null | {
+    width: number | null; depth: number | null; height: number | null; skirt: string; carpet: boolean; stairs: number | null;
+    presets: ShowcaseConfigPreset[]; heights: number[]; heightMissing: boolean; accessories: Array<{ id: string; name: string; quantity: number | null }>;
+  };
+  components: null | Array<{ id: string; name: string; editable: boolean; quantity: number | null; text: string }>;
+  area: number | null;
+  areaEditable: boolean;
+};
+/** Zmiana w konfiguratorze (jak kontrolki w CRM): `size`, `height`, `choice`, `enabled`, `rootEnabled`, `sectionSet`… */
+export type ShowcaseConfigEdit = { op: string; [field: string]: unknown };
+export type ShowcaseOfferConfiguration = { snapshot: Record<string, unknown>; view: ShowcaseConfigView };
 
 export type ShowcaseOfferAddResult = { draft: ShowcaseOfferDraft; result: 'added' | 'exists' | 'full' };
 
@@ -909,3 +1057,118 @@ export function formatShowcasePercent(value: number): string {
 export function formatShowcaseAmount(value: number): string {
   return `${new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number.isFinite(value) ? value : 0)} zł`;
 }
+
+// Instrukcja „?” — przykładowa karta -------------------------------------------------------------------------------------------
+// „Utwórz kartę z przykładu” (CRM, Mac): karta ukryta do czasu uzupełnienia, z treścią pokazującą, jak pisać treściwie —
+// krótko, językiem korzyści klienta, z konkretami (wymiary, czasy, warunki). Zdjęcia dodaje sprzedawca z bazy zdjęć.
+
+export type ShowcaseExampleBlock = { kind: ShowcaseBlockKind; style?: string; title?: string; text?: string; rows?: Array<{ title: string; text: string }> };
+export type ShowcaseExample = { title: string; tagline: string; lead: string; blocks: ShowcaseExampleBlock[] };
+
+export const SHOWCASE_EXAMPLE: ShowcaseExample = {
+  title: 'Ciężki dym — pierwszy taniec w chmurach',
+  tagline: 'Gęsta, nisko ścieląca się chmura, która nie unosi się i nie uruchamia czujek',
+  lead: 'Para tańczy na chmurze, a goście robią najlepsze zdjęcia wieczoru. Efekt trwa 3–4 minuty, jest bezpieczny i nie zostawia śladów na parkiecie ani sukni.',
+  blocks: [
+    { kind: 'photos', style: 'large', text: 'Dodaj 2–3 duże zdjęcia z realizacji: para w chmurze, ujęcie z góry, goście z telefonami.' },
+    {
+      kind: 'points', style: 'benefits', rows: [
+        { title: 'Zdjęcia, które goście udostępniają', text: 'Chmura do kolan daje efekt „tańca w niebie” — najczęściej publikowany moment wesela.' },
+        { title: 'Bezpieczny dla sali i czujek', text: 'Suchy lód, bez dymu z wytwornicy — nie uruchamia czujek, nie zostawia wilgoci na parkiecie.' },
+        { title: 'Gotowe w 15 minut', text: 'Technik przygotowuje urządzenie przed pierwszym tańcem, bez przerywania przyjęcia.' },
+      ],
+    },
+    { kind: 'catalog', style: 'variants', title: 'Warianty' },
+    {
+      kind: 'points', style: 'steps', rows: [
+        { title: 'Ustalamy moment', text: 'Z DJ-em lub zespołem wybieramy utwór i sygnał startu.' },
+        { title: 'Przygotowujemy urządzenie', text: '15 minut przed tańcem, przy krawędzi parkietu — gniazdko 230 V w promieniu 10 m.' },
+        { title: 'Efekt na sygnał', text: 'Chmura narasta w 30 sekund i utrzymuje się przez cały utwór.' },
+      ],
+    },
+    {
+      kind: 'specs', rows: [
+        { title: 'Czas efektu', text: '3–4 minuty (jeden utwór)' },
+        { title: 'Wysokość chmury', text: 'do 40 cm nad parkietem' },
+        { title: 'Zasilanie', text: '230 V, gniazdko w promieniu 10 m' },
+        { title: 'Przygotowanie', text: '15 minut przed efektem' },
+      ],
+    },
+    {
+      kind: 'faq', rows: [
+        { title: 'Czy dym uruchomi czujki?', text: 'Nie — to para z suchego lodu, nie dym z wytwornicy. Dla pewności uzgadniamy to z obiektem.' },
+        { title: 'Czy parkiet będzie śliski?', text: 'Nie. Chmura opada i znika po kilku minutach, nie zostawia wilgoci.' },
+        { title: 'Czy da się to zrobić na zewnątrz?', text: 'Przy bezwietrznej pogodzie tak — wiatr rozwiewa chmurę, dlatego zalecamy salę lub namiot.' },
+      ],
+    },
+    { kind: 'photos', style: 'grid', text: 'Galeria 6–12 zdjęć z różnych sal — klient zobaczy, jak efekt wygląda w podobnym miejscu.' },
+  ],
+};
+
+/** Treść karty z przykładu (bloki w kolejności pokazu; bloki zdjęć i katalogu — do uzupełnienia). */
+export function showcaseExampleContent(example: ShowcaseExample = SHOWCASE_EXAMPLE): ShowcaseContent {
+  return normalizeShowcaseContent({
+    lead: example.lead,
+    hero: null,
+    blocks: example.blocks.map((block) => ({
+      ...emptyShowcaseBlock(block.kind, block.style),
+      ...(block.title ? { title: block.title } : {}),
+      text: block.text || '',
+      rows: (block.rows || []).map((row) => ({ id: showcaseId(), title: row.title, text: row.text })),
+    })),
+  });
+}
+
+// Asystent AI treści karty ----------------------------------------------------------------------------------------------------
+
+export const SHOWCASE_AI_FIELDS = ['tagline', 'lead', 'benefits', 'steps', 'specs', 'faq'] as const;
+export type ShowcaseAiField = (typeof SHOWCASE_AI_FIELDS)[number];
+export const SHOWCASE_AI_LABELS: Record<ShowcaseAiField, string> = {
+  tagline: 'Hasło',
+  lead: 'Wstęp',
+  benefits: 'Korzyści',
+  steps: 'Jak przygotowujemy',
+  specs: 'Specyfikacja',
+  faq: 'Pytania klientów',
+};
+
+/** Propozycje asystenta (tylko wybrane pola). */
+export type ShowcaseAiSuggestion = {
+  tagline?: string;
+  lead?: string;
+  benefits?: ShowcasePoint[];
+  steps?: ShowcasePoint[];
+  specs?: ShowcasePoint[];
+  faq?: ShowcasePoint[];
+  model: string;
+};
+
+/**
+ * Wstawienie propozycji asystenta do treści karty: hasło i wstęp zastępują obecne, wiersze trafiają do pierwszego bloku
+ * danego rodzaju (pusty — wypełniony, z treścią — zastąpiony), brakujący blok powstaje na końcu karty.
+ */
+export function applyShowcaseAiSuggestion(
+  input: { tagline: string; content: ShowcaseContent },
+  suggestion: ShowcaseAiSuggestion,
+  fields: ShowcaseAiField[],
+): { tagline: string; content: ShowcaseContent } {
+  let tagline = input.tagline;
+  const content: ShowcaseContent = { ...input.content, blocks: [...input.content.blocks] };
+  if (fields.includes('tagline') && suggestion.tagline) tagline = showcaseLine(suggestion.tagline, SHOWCASE_LIMITS.tagline);
+  if (fields.includes('lead') && suggestion.lead) content.lead = showcaseText(suggestion.lead, SHOWCASE_LIMITS.lead);
+  const place = (kind: ShowcaseBlockKind, style: string, rows: ShowcasePoint[] | undefined) => {
+    if (!rows?.length) return;
+    const clean = rows.map((row) => ({ id: showcaseId(), title: showcaseLine(row.title, SHOWCASE_LIMITS.rowTitle), text: showcaseText(row.text, SHOWCASE_LIMITS.rowText) }))
+      .filter((row) => row.title || row.text).slice(0, SHOWCASE_LIMITS.rows);
+    if (!clean.length) return;
+    const index = content.blocks.findIndex((block) => block.kind === kind && (kind !== 'points' || block.style === style));
+    if (index >= 0) content.blocks[index] = { ...content.blocks[index], rows: clean };
+    else if (content.blocks.length < SHOWCASE_LIMITS.blocks) content.blocks.push({ ...emptyShowcaseBlock(kind, style), rows: clean });
+  };
+  if (fields.includes('benefits')) place('points', 'benefits', suggestion.benefits);
+  if (fields.includes('steps')) place('points', 'steps', suggestion.steps);
+  if (fields.includes('specs')) place('specs', '', suggestion.specs);
+  if (fields.includes('faq')) place('faq', '', suggestion.faq);
+  return { tagline, content };
+}
+

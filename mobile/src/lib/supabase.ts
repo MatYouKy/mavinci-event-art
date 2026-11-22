@@ -32,6 +32,8 @@ export interface Employee {
   avatar_metadata?: any;
   team_page_metadata?: any;
   show_on_website?: boolean;
+  /** Motyw CRM (Burgund, Granat, Ciemny, Jasny) — ten sam w przeglądarce, na Macu i w telefonie. */
+  crm_theme?: string | null;
   created_at?: string;
   updated_at?: string;
 }

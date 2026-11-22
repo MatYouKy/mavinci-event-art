@@ -46,7 +46,18 @@ struct ShowcaseOfferEvent: Codable, Hashable {
     /// `YYYY-MM-DD` albo `YYYY-MM-DDTHH:MM` (puste — bez terminu).
     var date = ""
     var location = ""
+    /// Miejsce z bazy lokalizacji (CRM → Lokalizacje); `nil` — wpisane ręcznie.
+    var locationId: String?
     var guestCount: Int?
+}
+
+/// Podpowiedź miejsca z bazy lokalizacji („Nazwa, miasto” — jak w zapytaniach CRM).
+struct ShowcaseOfferLocation: Decodable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var city: String
+    var address: String
+    var label: String
 }
 
 struct ShowcaseOfferDraft: Codable, Equatable {
@@ -369,6 +380,23 @@ enum ShowcaseOfferRules {
         draft = .empty()
     }
 
+    // MARK: Podpowiedzi i katalog („Dodaj pozycję”, miejsce z bazy lokalizacji)
+    func locations(_ text: String) async -> [ShowcaseOfferLocation] {
+        struct Reply: Decodable { let locations: [ShowcaseOfferLocation] }
+        var params = ["op": "offerLocations"]
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { params["q"] = trimmed }
+        guard let data = try? await get(params), let reply = try? JSONDecoder().decode(Reply.self, from: data) else { return [] }
+        return reply.locations
+    }
+
+    /// Produkt katalogu na bieżąco (warianty, pakiety) z adresami zdjęć.
+    func product(_ id: String) async throws -> (ShowcaseProduct, [String: ShowcaseURLPair]) {
+        struct Reply: Decodable { let product: ShowcaseProduct; let urls: [String: ShowcaseURLPair] }
+        let reply = try JSONDecoder().decode(Reply.self, from: try await get(["op": "offerProduct", "id": id]))
+        return (reply.product, reply.urls)
+    }
+
     // MARK: Koszyk
     func add(_ product: ShowcaseProduct, kind: String, option: String?, item: (id: String, title: String)?) -> AddResult {
         guard let line = ShowcaseOfferRules.line(for: product, kind: kind, option: option, item: item) else { return .unavailable(product.name) }
@@ -548,6 +576,9 @@ struct ShowcaseOfferAddButton: View {
     @State private var agreedText: [String: String] = [:]
     @State private var guestsText = ""
     @State private var dropTarget: String?
+    @State private var addingLine = false
+    @State private var locationHits: [ShowcaseOfferLocation] = []
+    @FocusState private var locationFocused: Bool
 
     private var draft: ShowcaseOfferDraft { offer.draft }
     private var client: ShowcaseOfferClient { offer.draft.client }
@@ -844,7 +875,7 @@ struct ShowcaseOfferAddButton: View {
                         }
                         Spacer(minLength: 0)
                     }
-                    TextField("Miejsce (np. hotel, miasto)", text: binding(\.event.location)).textFieldStyle(.roundedBorder)
+                    locationField
                 }
                 HStack(spacing: 8) {
                     Text("Liczba osób")
@@ -899,12 +930,65 @@ struct ShowcaseOfferAddButton: View {
         })
     }
 
+    // MARK: Miejsce — podpowiedzi z bazy lokalizacji albo własny tekst
+    private var locationField: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "mappin.and.ellipse").foregroundStyle(.secondary)
+                TextField("Miejsce (np. Hotel Omega, Olsztyn)", text: Binding(get: { offer.draft.event.location }, set: { value in
+                    update { $0.event.location = value; $0.event.locationId = nil }
+                }))
+                .textFieldStyle(.roundedBorder)
+                .focused($locationFocused)
+                if draft.event.locationId != nil { Image(systemName: "checkmark.seal.fill").foregroundStyle(accent).help("Z bazy lokalizacji") }
+            }
+            if locationFocused && draft.event.locationId == nil {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(locationHits.prefix(6)) { hit in
+                        Button {
+                            update { $0.event.location = hit.label; $0.event.locationId = hit.id }
+                            locationFocused = false
+                        } label: {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(hit.label).lineLimit(1)
+                                if !hit.address.isEmpty { Text(hit.address).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8).padding(.vertical, 5).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    let typed = draft.event.location.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !typed.isEmpty && !locationHits.contains(where: { $0.label.compare(typed, options: [.caseInsensitive], locale: Locale(identifier: "pl_PL")) == .orderedSame }) {
+                        Button {
+                            update { $0.event.location = typed; $0.event.locationId = nil }
+                            locationFocused = false
+                        } label: {
+                            Label("Użyj wpisanego: „\(typed)”", systemImage: "plus").foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8).padding(.vertical, 5).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
+            }
+            Text(draft.event.locationId != nil ? "Z bazy lokalizacji — zapytanie i oferta będą powiązane z obiektem."
+                 : (draft.event.location.isEmpty ? "Zacznij pisać — podpowiemy obiekty z bazy lokalizacji." : "Własne miejsce — zapisze się jako tekst."))
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .task(id: "\(locationFocused)|\(draft.event.location)") {
+            guard locationFocused, draft.event.locationId == nil else { return }
+            try? await Task.sleep(for: .milliseconds(250))
+            if Task.isCancelled { return }
+            locationHits = await offer.locations(draft.event.location)
+        }
+    }
+
     // MARK: Pozycje
     private var linesSection: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
                 if draft.lines.isEmpty {
-                    Text("Dodaj warianty i pakiety przyciskiem „Do oferty” na kartach pokazu — trafią tutaj.").font(.callout).foregroundStyle(.secondary)
+                    Text("Dodaj pozycję z katalogu („Dodaj pozycję”) albo przyciskiem „Do oferty” przy wariancie i pakiecie na kartach pokazu.").font(.callout).foregroundStyle(.secondary)
                 }
                 ForEach(draft.lines) { line in lineRow(line) }
             }
@@ -915,6 +999,20 @@ struct ShowcaseOfferAddButton: View {
                 Label("Pozycje (\(draft.lines.count))", systemImage: "list.bullet.rectangle")
                 Spacer()
                 if previewing { ProgressView().controlSize(.small) }
+                Button { addingLine = true } label: { Label("Dodaj pozycję", systemImage: "plus") }
+                    .controlSize(.small).disabled(draft.lines.count >= ShowcaseOfferRules.lines)
+            }
+        }
+        .sheet(isPresented: $addingLine) {
+            ShowcaseOfferAddLineSheet(offer: offer, accent: accent) { product, kind, option in
+                switch offer.add(product, kind: kind, option: option, item: nil) {
+                case .added(let label): notify("Dodano do oferty: \(label)", false); return true
+                case .exists(let label): notify("\(label) jest już w ofercie.", false); return false
+                case .full: notify("Oferta ma już \(ShowcaseOfferRules.lines) pozycji.", true); return false
+                case .unavailable(let name):
+                    notify(product.configurable == true ? "\(name): produkt z konfiguratorem — dodasz go w edytorze oferty po jej utworzeniu." : "\(name) jest wycofany z katalogu.", true)
+                    return false
+                }
             }
         }
     }
@@ -1317,3 +1415,131 @@ struct ShowcaseFlowRow: Layout {
         }
     }
 }
+
+// MARK: „Dodaj pozycję” — produkt z katalogu, potem wariant, pakiet albo sam produkt (jak „Do oferty” w pokazie)
+
+@MainActor struct ShowcaseOfferAddLineSheet: View {
+    @ObservedObject var offer: ShowcaseOfferStore
+    let accent: Color
+    /// Dodanie pozycji — `true` zamyka okno.
+    let onAdd: (ShowcaseProduct, String, String?) -> Bool
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var options: [ShowcaseProductOption] = []
+    @State private var product: ShowcaseProduct?
+    @State private var urls: [String: ShowcaseURLPair] = [:]
+    @State private var loading = false
+    @State private var problem: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                if product != nil { Button { product = nil } label: { Label("Katalog", systemImage: "chevron.left") } }
+                Text(product?.name ?? "Dodaj pozycję z katalogu").font(.title3.weight(.semibold)).lineLimit(1)
+                Spacer()
+                Button("Zamknij") { dismiss() }.keyboardShortcut(.cancelAction)
+            }
+            if let product {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if product.configurable == true {
+                            Text("Produkt z konfiguratorem — dodasz go w edytorze oferty po jej utworzeniu.").font(.callout).foregroundStyle(.orange)
+                        }
+                        if !product.packages.isEmpty { Text("PAKIETY").font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
+                        ForEach(product.packages) { pack in
+                            optionRow(title: pack.name, detail: pack.scope, thumb: pack.image, price: pack.priceOnRequest ? "wycena indywidualna" : ShowcaseShared.price(pack.priceNet)) {
+                                choose(product, "package", pack.id)
+                            }
+                        }
+                        if !product.variants.isEmpty { Text("WARIANTY").font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
+                        ForEach(product.variants) { variant in
+                            optionRow(title: variant.name + (variant.recommended ? " · polecany" : ""), detail: variant.shortDescription, thumb: variant.image, price: ShowcaseShared.price(variant.priceNet)) {
+                                choose(product, "variant", variant.id)
+                            }
+                        }
+                    }
+                }
+            } else {
+                TextField("Szukaj produktu w katalogu", text: $query).textFieldStyle(.roundedBorder)
+                List(options) { option in
+                    Button { Task { await open(option.id) } } label: {
+                        HStack(spacing: 10) {
+                            Color.clear.frame(width: 64, height: 44)
+                                .overlay { if let thumb = option.thumbnailUrl { SocialImageView(url: thumb) } else { Image(systemName: "shippingbox").foregroundStyle(accent.opacity(0.5)) } }
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(option.name).lineLimit(1)
+                                Text([option.category, option.priceNet.map { ShowcaseShared.price($0) + (option.unit.isEmpty ? "" : " / \(option.unit)") } ?? ""].filter { !$0.isEmpty }.joined(separator: " · "))
+                                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            if loading { ProgressView().controlSize(.small) } else if let problem { Text(problem).font(.callout).foregroundStyle(.secondary) }
+        }
+        .padding(20)
+        .frame(width: 620, height: 560)
+        .task(id: product == nil ? query : "-") { await search() }
+    }
+
+    private func optionRow(title: String, detail: String, thumb: ShowcaseMedia?, price: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Color.clear.frame(width: 64, height: 44)
+                    .overlay { SocialImageView(url: thumb.flatMap { urls[$0.key]?.thumb }) }
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).lineLimit(1)
+                    if !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                }
+                Spacer()
+                Text(price).foregroundStyle(accent)
+            }
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(product?.configurable == true)
+    }
+
+    private func search() async {
+        guard product == nil, let showcase = offer.showcase else { return }
+        if !query.isEmpty { try? await Task.sleep(for: .milliseconds(250)) }
+        if Task.isCancelled { return }
+        loading = true
+        defer { loading = false }
+        do {
+            options = try await showcase.products(query: query)
+            problem = options.isEmpty ? "Brak produktów pasujących do wyszukiwania." : nil
+        } catch {
+            if !Task.isCancelled { options = []; problem = showcase.failureText(error, "Nie udało się pobrać katalogu.") }
+        }
+    }
+
+    private func open(_ id: String) async {
+        loading = true
+        defer { loading = false }
+        do {
+            let (view, map) = try await offer.product(id)
+            // Bez wariantów i pakietów — od razu sam produkt.
+            if view.variants.isEmpty && view.packages.isEmpty {
+                if onAdd(view, "product", nil) { dismiss() }
+                return
+            }
+            urls = map
+            product = view
+        } catch {
+            problem = offer.showcase?.failureText(error, "Nie udało się pobrać produktu.") ?? "Nie udało się pobrać produktu."
+        }
+    }
+
+    private func choose(_ product: ShowcaseProduct, _ kind: String, _ option: String) {
+        if onAdd(product, kind, option) { dismiss() }
+    }
+}
+

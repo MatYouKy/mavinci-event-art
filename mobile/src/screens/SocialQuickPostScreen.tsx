@@ -6,7 +6,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { colors, spacing, borderRadius, typography } from '../theme';
+import { appPalette, colors, spacing, borderRadius, typography } from '../theme';
 import { SOCIAL_LIMITS, socialDateLabel, type SocialChannel, type SocialFormat } from '../lib/socialShared';
 import {
   pickSocialPhoto, socialErrorMessage, socialGet, socialPost, uploadSocialPhoto, type PickedPhoto, type SocialAssetItem,
@@ -174,7 +174,7 @@ export default function SocialQuickPostScreen() {
               is24Hour
               locale="pl-PL"
               minuteInterval={5}
-              themeVariant="dark"
+              themeVariant={appPalette().scheme}
               onChange={(changeEvent, selected) => {
                 if (Platform.OS === 'android') setPicker(picker === 'date' && changeEvent.type !== 'dismissed' ? 'time' : null);
                 if (changeEvent.type === 'dismissed' || !selected) return;

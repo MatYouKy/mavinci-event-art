@@ -5,7 +5,8 @@
  * Kopia 1:1: src/lib/help/helpTypes.ts ↔ mobile/src/lib/helpTypes.ts (scripts/ci/check-shared-copies.mjs).
  */
 
-export type HelpAudience = 'seller' | 'manager';
+/** `seller` — portal sprzedawcy, `manager` — opiekun sprzedawców, `presentations` — Strefa sprzedawcy → Prezentacje. */
+export type HelpAudience = 'seller' | 'manager' | 'presentations';
 
 export type HelpChapter = {
   id: string;

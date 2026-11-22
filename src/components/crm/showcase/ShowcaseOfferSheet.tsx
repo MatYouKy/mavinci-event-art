@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
-  AlertTriangle, BadgePercent, Building2, CheckCircle2, ClipboardList, ExternalLink, FileText, GripVertical, Loader2, Mail, Minus, Plus,
-  RotateCcw, Search, Send, Trash2, User, X,
+  AlertTriangle, BadgePercent, Building2, CheckCircle2, ChevronLeft, ClipboardList, ExternalLink, FileText, GripVertical, Loader2, Mail, MapPin,
+  Minus, Package, Plus, RotateCcw, Search, Send, Trash2, User, X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import {
@@ -12,9 +12,10 @@ import {
   showcaseOfferProblem,
   type ShowcaseOfferAddResult, type ShowcaseOfferApproval, type ShowcaseOfferClient, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit,
   type ShowcaseOfferDraft, type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferKind, type ShowcaseOfferLine,
-  type ShowcaseOfferPreview, type ShowcaseOfferResult, type ShowcaseOfferSetup, type ShowcaseOfferStatus, type ShowcaseProductView,
+  type ShowcaseOfferLocation, type ShowcaseOfferPreview, type ShowcaseOfferResult, type ShowcaseOfferSetup, type ShowcaseOfferStatus,
+  type ShowcaseProductView, type ShowcaseUrls,
 } from '@/lib/showcase/showcaseShared';
-import { errorMessage, showcaseGet, showcaseOfferGeneratePdf, showcasePost } from './showcaseApi';
+import { errorMessage, showcaseGet, showcaseOfferGeneratePdf, showcasePost, type ShowcaseProductOption } from './showcaseApi';
 import { useDragList } from './showcaseUi';
 
 /*
@@ -22,7 +23,8 @@ import { useDragList } from './showcaseUi';
  * dodaje warianty i pakiety („Do oferty”), wybiera klienta (z CRM albo nowego) i otwarte zapytanie albo nowe, ustawia rabat
  * i od razu tworzy ofertę z PDF. Potem: PDF na ekranie, wysyłka e-mailem, prośba o akceptację rabatu powyżej progu, oferta
  * w CRM. Szkic zostaje w przeglądarce (osobno dla każdego pracownika); ceny i rabat liczy serwer jak kreator ofert.
- * Ten sam przepływ na Macu (natywny pokaz) i w aplikacji na iPadzie.
+ * Ten sam przepływ na Macu (natywny pokaz) i w aplikacji na iPadzie. Pozycje także z katalogu („Dodaj pozycję”), miejsce —
+ * z podpowiedzi bazy lokalizacji albo wpisane ręcznie.
  */
 
 type Theme = { accent: string; surface: string; heading: string };
@@ -34,6 +36,8 @@ type Tone = 'info' | 'error';
 const STORAGE = 'mavinci.showcase.offer';
 const DISCOUNT_PRESETS = [0, 5, 10, 15];
 const TEXT = '#e5e4e2';
+/** Cyfry zwykłym fontem — w foncie nagłówków marki „0” wygląda jak „O”. */
+const DIGITS: CSSProperties = { fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif' };
 
 export type ShowcaseOfferState = {
   setup: ShowcaseOfferSetup | null;
@@ -120,7 +124,7 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
   );
 }
 
-function Section({ title, icon, children, aside }: { title: string; icon: ReactNode; children: ReactNode; aside?: ReactNode }) {
+function Section({ title, icon, children, aside }: { title: ReactNode; icon: ReactNode; children: ReactNode; aside?: ReactNode }) {
   return (
     <section className="space-y-4 border-b border-white/10 px-6 py-6">
       <div className="flex items-center gap-2">
@@ -180,6 +184,7 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
   const [emailForm, setEmailForm] = useState({ to: '', subject: '', text: '', accountId: '' });
   const [sent, setSent] = useState(false);
   const [customDiscount, setCustomDiscount] = useState('');
+  const [addingLine, setAddingLine] = useState(false);
   const emailBox = useRef<HTMLDivElement>(null);
 
   // Formularz wysyłki pod przyciskami — przewinięcie do niego po otwarciu.
@@ -645,7 +650,10 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
                     <div className="col-span-2"><Field label="Nazwa wydarzenia"><input value={draft.event.name} onChange={(event) => update((current) => ({ ...current, event: { ...current.event, name: event.target.value } }))} placeholder="np. Gala firmowa 2027" className={inputClass} /></Field></div>
                     <Field label="Termin"><input type="date" value={datePart} onChange={(event) => setDate(event.target.value, timePart)} className={inputClass} /></Field>
                     <Field label="Godzina (opcjonalnie)"><input type="time" value={timePart} disabled={!datePart} onChange={(event) => setDate(datePart, event.target.value)} className={inputClass} /></Field>
-                    <div className="col-span-2"><Field label="Miejsce"><input value={draft.event.location} onChange={(event) => update((current) => ({ ...current, event: { ...current.event, location: event.target.value } }))} placeholder="np. Hotel, miasto" className={inputClass} /></Field></div>
+                    <div className="col-span-2">
+                      <LocationField value={draft.event.location} locationId={draft.event.locationId} theme={theme}
+                        onChange={(location, locationId) => update((current) => ({ ...current, event: { ...current.event, location, locationId } }))} />
+                    </div>
                   </div>
                 )}
                 <Field label="Liczba osób" hint="Ceny „na osobę” i „na stół” liczą się z tej liczby.">
@@ -657,10 +665,18 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
                 </Field>
               </Section>
 
-              <Section title={`Pozycje (${draft.lines.length})`} icon={<ClipboardList className="h-5 w-5" />}
-                aside={previewing ? <Loader2 className="h-5 w-5 animate-spin" style={accent} /> : null}>
+              <Section title={<>Pozycje <span style={DIGITS}>({draft.lines.length})</span></>} icon={<ClipboardList className="h-5 w-5" />}
+                aside={(
+                  <span className="flex items-center gap-2">
+                    {previewing ? <Loader2 className="h-5 w-5 animate-spin" style={accent} /> : null}
+                    <button type="button" onClick={() => setAddingLine(true)} disabled={draft.lines.length >= SHOWCASE_OFFER_LIMITS.lines}
+                      className="flex h-11 items-center gap-1.5 rounded-full border px-4 text-[15px] disabled:opacity-40" style={{ borderColor: `${theme.accent}80`, color: theme.accent }}>
+                      <Plus className="h-4 w-4" />Dodaj pozycję
+                    </button>
+                  </span>
+                )}>
                 {!draft.lines.length && (
-                  <p className="rounded-2xl bg-black/20 p-5 text-[15px] text-[#e5e4e2]/60">Dodaj warianty i pakiety przyciskiem „Do oferty” na kartach pokazu — trafią tutaj.</p>
+                  <p className="rounded-2xl bg-black/20 p-5 text-[15px] text-[#e5e4e2]/60">Dodaj pozycję z katalogu („Dodaj pozycję”) albo przyciskiem „Do oferty” przy wariancie i pakiecie na kartach pokazu.</p>
                 )}
                 <div className="space-y-3">
                   {draft.lines.map((line) => {
@@ -763,7 +779,184 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
             </div>
           </div>
         )}
+        {addingLine && (
+          <AddLineDialog theme={theme} onClose={() => setAddingLine(false)}
+            onAdd={(product, choice) => {
+              const outcome = offer.add(product, choice, null);
+              if (outcome.result === 'added') onNotice(`Dodano do oferty: ${outcome.label}`);
+              else if (outcome.result === 'exists') onNotice(`${outcome.label} jest już w ofercie.`);
+              else if (outcome.result === 'full') onNotice(`Oferta ma już ${SHOWCASE_OFFER_LIMITS.lines} pozycji.`, 'error');
+              else onNotice(product.configurable ? `${product.name}: produkt z konfiguratorem — dodasz go w edytorze oferty po jej utworzeniu.` : `${product.name} jest wycofany z katalogu.`, 'error');
+              return outcome.result === 'added';
+            }} />
+        )}
       </aside>
+    </div>
+  );
+}
+
+/** Miejsce wydarzenia: podpowiedzi z bazy lokalizacji (CRM → Lokalizacje) albo własny tekst. */
+function LocationField({ value, locationId, theme, onChange }: {
+  value: string; locationId: string | null; theme: Theme; onChange: (location: string, locationId: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [hits, setHits] = useState<ShowcaseOfferLocation[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      try {
+        const data = await showcaseGet<{ locations: ShowcaseOfferLocation[] }>('offerLocations', { q: value.trim() });
+        if (active) setHits(data.locations);
+      } catch {
+        if (active) setHits([]);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }, 250);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [open, value]);
+  const typed = value.trim();
+  const exact = hits.some((hit) => hit.label.toLocaleLowerCase('pl') === typed.toLocaleLowerCase('pl'));
+  return (
+    <div className="relative">
+      <Field label="Miejsce" hint={locationId ? 'Z bazy lokalizacji — zapytanie i oferta będą powiązane z obiektem.' : typed ? 'Własne miejsce — zapisze się jako tekst.' : 'Zacznij pisać — podpowiemy obiekty z bazy lokalizacji.'}>
+        <span className="relative block">
+          <MapPin className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-[#e5e4e2]/40" />
+          <input value={value} role="combobox" aria-expanded={open} aria-autocomplete="list" autoComplete="off"
+            onFocus={() => setOpen(true)} onBlur={() => window.setTimeout(() => setOpen(false), 150)}
+            onChange={(event) => { onChange(event.target.value, null); setOpen(true); }}
+            onKeyDown={(event) => { if (event.key === 'Escape') setOpen(false); }}
+            placeholder="np. Hotel Omega, Olsztyn" className={`${inputClass} pl-11`} />
+          {locationId && <CheckCircle2 className="pointer-events-none absolute right-4 top-3.5 h-5 w-5" style={{ color: theme.accent }} />}
+        </span>
+      </Field>
+      {open && (hits.length > 0 || loading || (typed && !exact)) && (
+        <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-72 overflow-y-auto rounded-2xl p-1.5 shadow-2xl ring-1 ring-white/10" style={{ background: theme.surface }} role="listbox">
+          {loading && !hits.length && <div className="flex items-center gap-2 px-3 py-3 text-[14px] text-[#e5e4e2]/60"><Loader2 className="h-4 w-4 animate-spin" />Szukam w bazie lokalizacji…</div>}
+          {hits.map((hit) => (
+            <button key={hit.id} type="button" role="option" aria-selected={hit.id === locationId}
+              onMouseDown={(event) => event.preventDefault()} onClick={() => { onChange(hit.label, hit.id); setOpen(false); }}
+              className="flex min-h-[52px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-white/5">
+              <MapPin className="h-4 w-4 shrink-0" style={{ color: theme.accent }} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[16px]">{hit.label}</span>
+                {hit.address && <span className="block truncate text-[13px] text-[#e5e4e2]/50">{hit.address}</span>}
+              </span>
+            </button>
+          ))}
+          {typed && !exact && (
+            <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { onChange(typed, null); setOpen(false); }}
+              className="flex min-h-[48px] w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-[15px] text-[#e5e4e2]/75 hover:bg-white/5">
+              <Plus className="h-4 w-4 shrink-0" />Użyj wpisanego: „{typed}”
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** „Dodaj pozycję”: produkt z katalogu (wyszukiwanie), potem wariant, pakiet albo sam produkt — jak „Do oferty” na kartach. */
+function AddLineDialog({ theme, onClose, onAdd }: {
+  theme: Theme;
+  onClose: () => void;
+  onAdd: (product: ShowcaseProductView, choice: Choice) => boolean;
+}) {
+  const [query, setQuery] = useState('');
+  const [options, setOptions] = useState<ShowcaseProductOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [problem, setProblem] = useState('');
+  const [product, setProduct] = useState<{ view: ShowcaseProductView; urls: ShowcaseUrls } | null>(null);
+  useEffect(() => {
+    if (product) return;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      setLoading(true);
+      try {
+        const data = await showcaseGet<{ products: ShowcaseProductOption[] }>('products', { q: query.trim() });
+        if (active) { setOptions(data.products); setProblem(data.products.length ? '' : 'Brak produktów pasujących do wyszukiwania.'); }
+      } catch (cause) {
+        if (active) { setOptions([]); setProblem(errorMessage(cause, 'Nie udało się pobrać katalogu.')); }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }, query ? 250 : 0);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [query, product]);
+  const open = async (id: string) => {
+    setLoading(true);
+    try {
+      const data = await showcaseGet<{ product: ShowcaseProductView; urls: ShowcaseUrls }>('offerProduct', { id });
+      const view = data.product;
+      // Bez wariantów i pakietów — od razu sam produkt.
+      if (!view.variants.length && !view.packages.length) { if (onAdd(view, { kind: 'product' })) onClose(); return; }
+      setProduct({ view, urls: data.urls });
+    } catch (cause) {
+      setProblem(errorMessage(cause, 'Nie udało się pobrać produktu.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+  const thumb = (media: ShowcaseProductView['image']) => (media && product ? product.urls[`${media.source}:${media.path}`]?.thumb || null : null);
+  const choose = (choice: Choice) => { if (product && onAdd(product.view, choice)) onClose(); };
+  return (
+    <div className="absolute inset-0 z-20 flex flex-col bg-black/70" role="dialog" aria-modal="true" aria-label="Dodaj pozycję">
+      <div className="m-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl shadow-2xl ring-1 ring-white/10" style={{ background: theme.surface, color: TEXT }}>
+        <header className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
+          {product && <button type="button" onClick={() => setProduct(null)} aria-label="Wróć do katalogu" className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30"><ChevronLeft className="h-5 w-5" /></button>}
+          <h3 className="min-w-0 flex-1 truncate text-[19px]">{product ? product.view.name : 'Dodaj pozycję z katalogu'}</h3>
+          <button type="button" onClick={onClose} aria-label="Zamknij" className="flex h-11 w-11 items-center justify-center rounded-full bg-black/30"><X className="h-5 w-5" /></button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          {!product ? (
+            <div className="space-y-3">
+              <span className="relative block">
+                <Search className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-[#e5e4e2]/40" />
+                <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Szukaj produktu w katalogu" className={`${inputClass} pl-11`} />
+              </span>
+              {options.map((option) => (
+                <button key={option.id} type="button" onClick={() => void open(option.id)}
+                  className="flex min-h-[64px] w-full items-center gap-3 rounded-2xl bg-black/20 p-2.5 text-left ring-1 ring-white/10 hover:bg-black/30">
+                  {option.thumbnailUrl ? <img src={option.thumbnailUrl} alt="" className="h-12 w-16 shrink-0 rounded-lg object-cover" />
+                    : <span className="flex h-12 w-16 shrink-0 items-center justify-center rounded-lg bg-black/30"><Package className="h-5 w-5 opacity-50" /></span>}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[16px]">{option.name}</span>
+                    <span className="block truncate text-[13px] text-[#e5e4e2]/50">{[option.category, option.priceNet != null ? `${formatShowcaseAmount(option.priceNet)} netto${option.unit ? ` / ${option.unit}` : ''}` : ''].filter(Boolean).join(' · ')}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {product.view.configurable && <p className="rounded-2xl bg-black/25 p-4 text-[15px] text-amber-200">Produkt z konfiguratorem — dodasz go w edytorze oferty po jej utworzeniu.</p>}
+              {product.view.packages.length > 0 && <p className="text-[13px] uppercase tracking-wide text-[#e5e4e2]/50">Pakiety</p>}
+              {product.view.packages.map((pack) => (
+                <button key={pack.id} type="button" disabled={product.view.configurable} onClick={() => choose({ kind: 'package', optionId: pack.id })}
+                  className="flex min-h-[64px] w-full items-center gap-3 rounded-2xl bg-black/20 p-2.5 text-left ring-1 ring-white/10 hover:bg-black/30 disabled:opacity-40">
+                  {thumb(pack.image) ? <img src={thumb(pack.image) || ''} alt="" className="h-12 w-16 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-16 shrink-0 rounded-lg bg-black/30" />}
+                  <span className="min-w-0 flex-1"><span className="block truncate text-[16px]">{pack.name}</span>
+                    {pack.scope && <span className="block truncate text-[13px] text-[#e5e4e2]/50">{pack.scope}</span>}</span>
+                  <span className="shrink-0 text-[15px] tabular-nums" style={{ color: theme.accent }}>{pack.priceOnRequest ? 'wycena indywidualna' : pack.priceNet != null ? formatShowcaseAmount(pack.priceNet) : ''}</span>
+                </button>
+              ))}
+              {product.view.variants.length > 0 && <p className="text-[13px] uppercase tracking-wide text-[#e5e4e2]/50">Warianty</p>}
+              {product.view.variants.map((variant) => (
+                <button key={variant.id} type="button" disabled={product.view.configurable} onClick={() => choose({ kind: 'variant', optionId: variant.id })}
+                  className="flex min-h-[64px] w-full items-center gap-3 rounded-2xl bg-black/20 p-2.5 text-left ring-1 ring-white/10 hover:bg-black/30 disabled:opacity-40">
+                  {thumb(variant.image) ? <img src={thumb(variant.image) || ''} alt="" className="h-12 w-16 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-16 shrink-0 rounded-lg bg-black/30" />}
+                  <span className="min-w-0 flex-1"><span className="block truncate text-[16px]">{variant.name}{variant.recommended ? ' · polecany' : ''}</span>
+                    {variant.shortDescription && <span className="block truncate text-[13px] text-[#e5e4e2]/50">{variant.shortDescription}</span>}</span>
+                  <span className="shrink-0 text-[15px] tabular-nums" style={{ color: theme.accent }}>{variant.priceNet != null ? formatShowcaseAmount(variant.priceNet) : ''}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {(loading || problem) && <p className="mt-4 flex items-center gap-2 text-[14px] text-[#e5e4e2]/60">{loading ? <><Loader2 className="h-4 w-4 animate-spin" />Wczytuję…</> : problem}</p>}
+        </div>
+      </div>
     </div>
   );
 }
