@@ -495,6 +495,21 @@ final class FinderItem: NSObject, NSFileProviderItem {
         super.init()
     }
 
+    /// Ten sam element z rozmiarem faktycznie pobranej treści (wersje bez zmian) — dla systemu po pobraniu pliku. Plik pobrany
+    /// z rozmiarem innym niż w elemencie (albo bez rozmiaru) system zapisuje na dysku z długością z elementu, czyli np. pusty.
+    init(_ base: FinderItem, documentSize size: Int64) {
+        itemIdentifier = base.itemIdentifier
+        parentItemIdentifier = base.parentItemIdentifier
+        filename = base.filename
+        contentType = base.contentType
+        capabilities = base.capabilities
+        itemVersion = base.itemVersion
+        documentSize = NSNumber(value: size)
+        creationDate = base.creationDate
+        contentModificationDate = base.contentModificationDate
+        super.init()
+    }
+
     static let root = FinderItem(identifier: .rootContainer, parent: .rootContainer, filename: FinderShared.domainName, folder: true, role: .structure)
     static let eventsRoot = FinderItem(identifier: FinderID.events, parent: .rootContainer, filename: "Eventy", folder: true, role: .structure)
     static let materialsRoot = FinderItem(identifier: FinderID.materials, parent: .rootContainer, filename: "Materiały", folder: true, role: .structure)

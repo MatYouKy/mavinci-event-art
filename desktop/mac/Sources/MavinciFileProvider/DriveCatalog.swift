@@ -35,6 +35,14 @@ actor DriveCatalog {
         /// Elementy, które Finder już zna (identyfikator → wersja) — z nich liczy się różnica przy sprawdzaniu zmian.
         var reported: [String: String] = [:]
         var cursor: String?
+        /// Rozmiary plików, których serwer nie podaje (PDF-y z CRM, Finanse) — poznane przy pobraniu, dla tej samej wersji pliku.
+        /// Opcjonalne: kopia zapisana przez starszą wersję rozszerzenia nie ma tego pola.
+        var sizes: [String: KnownSize]?
+    }
+
+    struct KnownSize: Codable {
+        var version: String
+        var size: Int64
     }
 
     struct ChangeSet {
@@ -95,6 +103,8 @@ actor DriveCatalog {
         state.sections = reply.sections
         state.folders = Dictionary(reply.folders.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
         state.files = Dictionary(reply.files.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+        // Poznane rozmiary — tylko dla plików nadal bez rozmiaru z serwera i w tej samej wersji.
+        state.sizes = state.sizes?.filter { id, known in state.files[id].map { $0.size == nil && $0.version == known.version } ?? false }
         state.brands = Dictionary((reply.brands ?? []).map { ($0.companyId, $0) }, uniquingKeysWith: { _, last in last })
         state.syncedAt = Date()
         save()
@@ -210,6 +220,20 @@ actor DriveCatalog {
         if state.files[id] == nil { try await fullSync() }
         guard let file = state.files[id] else { throw NSFileProviderError(.noSuchItem) }
         return .remote(url, fileItem(file, names: names(in: file.parentId)))
+    }
+
+    /// Element dla systemu po pobraniu treści: rozmiar pliku bez rozmiaru z serwera zostaje zapamiętany (wersja treści dostaje
+    /// rozmiar — kolejne listy Findera podają już właściwą długość), a element zawsze ma rozmiar faktycznie pobranego pliku.
+    func delivered(file id: String, size: Int64) -> NSFileProviderItem? {
+        guard let file = state.files[id] else { return nil }
+        if file.size == nil, state.sizes?[id]?.version != file.version || state.sizes?[id]?.size != size {
+            var sizes = state.sizes ?? [:]
+            sizes[id] = KnownSize(version: file.version, size: size)
+            state.sizes = sizes
+            save()
+        }
+        let item = fileItem(file, names: names(in: file.parentId))
+        return item.documentSize?.int64Value == size ? item : FinderItem(item, documentSize: size)
     }
 
     // MARK: Zmiany (zbiór roboczy)
@@ -352,10 +376,15 @@ actor DriveCatalog {
                           metaTag: upload ? "u" : "v")
     }
 
+    /// Plik Dysku. Bez rozmiaru z serwera (PDF tworzony przy otwarciu) — rozmiar poznany przy pobraniu, a wersja treści zawiera
+    /// rozmiar (`?` — jeszcze nieznany): system zna długość pliku, zanim go pobierze, i nie zostawia na dysku pustego pliku.
     private func fileItem(_ file: DriveFileDTO, names: [String: String]) -> FinderItem {
-        FinderItem(identifier: FinderID.driveFile(file.id), parent: FinderID.drive(file.parentId),
-                   filename: names[file.id] ?? FinderName.safe(file.name), folder: false, allowed: [.allowsReading], metaTag: "v",
-                   size: file.size.map { Int64($0) }, modified: FinderDate.parse(file.updatedAt), contentVersion: Self.digest(file.version))
+        let known = state.sizes?[file.id].flatMap { $0.version == file.version ? $0.size : nil }
+        let size = file.size.map { Int64($0) } ?? known
+        let content = file.size != nil ? file.version : "\(file.version)|\(known.map { String($0) } ?? "?")"
+        return FinderItem(identifier: FinderID.driveFile(file.id), parent: FinderID.drive(file.parentId),
+                          filename: names[file.id] ?? FinderName.safe(file.name), folder: false, allowed: [.allowsReading], metaTag: "v",
+                          size: size, modified: FinderDate.parse(file.updatedAt), contentVersion: Self.digest(content))
     }
 
     private func brandItem(_ brand: DriveBrandDTO) -> FinderItem {

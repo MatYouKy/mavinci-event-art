@@ -76,8 +76,18 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 let local = try manager.temporaryDirectoryURL().appendingPathComponent(UUID().uuidString)
                 progress.completedUnitCount = 10
                 try await FinderAPI.download(remote, to: local)
+                // Element z rozmiarem pobranego pliku: z rozmiarem innym niż faktyczny (albo bez rozmiaru — PDF-y Dysku) system
+                // zapisuje plik z długością z elementu, czyli pusty albo ucięty („plik uszkodzony” w Acrobacie i Podglądzie).
+                var delivered = item
+                if let size = (try? FileManager.default.attributesOfItem(atPath: local.path)[.size] as? NSNumber)?.int64Value {
+                    if case .driveFile(let id) = FinderID.parse(itemIdentifier), let fresh = await DriveCatalog.shared.delivered(file: id, size: size) {
+                        delivered = fresh
+                    } else if let finder = item as? FinderItem, finder.documentSize?.int64Value != size {
+                        delivered = FinderItem(finder, documentSize: size)
+                    }
+                }
                 progress.completedUnitCount = 100
-                completionHandler(local, item, nil)
+                completionHandler(local, delivered, nil)
             } catch {
                 completionHandler(nil, nil, FinderAPI.mapped(error))
             }

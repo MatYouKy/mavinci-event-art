@@ -117,7 +117,7 @@ struct HealthDetailItem: Identifiable {
             return
         }
         do {
-            let details = try await rpc("get_crm_health_details").object
+            let details = try await Self.rpc(backend, "get_crm_health_details").object
             qualityDetails = (details["data_quality"]?.object ?? [:]).mapValues { $0.array.enumerated().map { HealthDetailItem($0.element, index: $0.offset) } }
             securityDetails = (details["security"]?.object ?? [:]).mapValues { $0.array.enumerated().map { HealthDetailItem($0.element, index: $0.offset) } }
             detailsAvailable = true

@@ -1510,3 +1510,12 @@ Panel „Przegląd” w karcie wydarzenia otwiera się domyślnie. Na stałe (na
   - Lista: termin i pozostały czas, ocena dopasowania, gwiazdka obserwowanych, „Mój”, „Zapytanie”, „Ukryty”, miejscowość, wartość.
   - Szczegóły: ocena, stan, zamawiający, lokalizacja, daty, pozostały czas, wartość, kody CPV, opis. Opiekun: „Przypisz do mnie” / „Zwolnij” (`assign_tender`), „Obserwuj”.
   - Zapytanie: „Utwórz zapytanie” (do terminu składania) albo „Otwórz zapytanie”. Status (zablokowany przy zapytaniu) i notatki, „Trafny” / „Nietrafny”, „Ukryj przetarg” / „Przywróć na listę”. Bez migracji.
+
+### Finder: pliki Dysku bez rozmiaru otwierały się jako puste (Mac) (22.11.2026)
+- **Objaw**: PDF-y z Dysku w Finderze (Finanse, Oferty, Kalkulacje, Umowy, umowy pracowników, zdjęcia i pliki Magazynu) otwierały się w Acrobacie i Podglądzie jako „uszkodzone”. Na dysku zostawał plik o długości 0 B, choć rozszerzenie pobierało całą treść.
+- **Przyczyna**: serwer nie podaje rozmiaru plików tworzonych w CRM (`size: null`). System zapisuje pobrany plik z długością z elementu, a bez rozmiaru — pusty.
+- **Poprawka** (`MavinciFileProvider`):
+  - Po pobraniu system dostaje element z rozmiarem faktycznie pobranego pliku (dotyczy też Materiałów i plików wydarzeń, gdy rozmiar w bazie się nie zgadza).
+  - Dysk zapamiętuje poznany rozmiar dla tej samej wersji pliku (`drive.json`, pole `sizes`), a wersja treści zawiera rozmiar (`?` — jeszcze nieznany). Kolejne listy Findera podają już właściwą długość.
+  - Pliki zapisane wcześniej jako puste dostają nową wersję treści, więc system pobiera je ponownie.
+- Bez zmian na serwerze i w aplikacji mobilnej.
