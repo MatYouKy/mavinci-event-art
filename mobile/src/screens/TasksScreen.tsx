@@ -17,6 +17,7 @@ import { openInCrmWeb } from '../navigation/navigationRef';
 import BrandHeading from '../components/BrandHeading';
 import { TaskBoardCard } from '../components/Tasks/TaskBoardCard';
 import { TaskEditorSheet, type TaskEditTarget } from '../components/Tasks/TaskEditorSheet';
+import { BoardGrip } from '../components/InquiryBoard';
 import { ActionMenu, type MenuItem } from '../components/Inquiries/WorkspaceSheets';
 import { DayField, NoticeScope, Segmented, Sheet, SheetActions, kit, useNotice } from '../components/Inquiries/InquiryKit';
 import type { TasksStackParamList } from '../navigation/TasksStackNavigator';
@@ -30,8 +31,9 @@ import {
  * Tablica zadań jak w Trello (te same dane, uprawnienia i zapisy co CRM i aplikacja na Maca — `lib/tasksBoard.ts`):
  *  - kolumny obok siebie: telefon — kolumna na prawie całą szerokość z widocznym brzegiem następnej i przyciąganiem do kolumny,
  *    tablet — kilka kolumn naraz,
- *  - przytrzymanie karty podnosi ją pod palcem: przeciąganie w dowolną stronę, przy krawędzi ekranu tablica sama się przewija,
- *    w docelowej kolumnie widać miejsce, w którym karta stanie (kolejność jak w CRM: priorytet, termin, kolejność na tablicy),
+ *  - uchwyt ≡ na karcie (jak w lejku zapytań — dotyk od razu podnosi kartę) albo przytrzymanie karty: karta pod palcem,
+ *    przeciąganie w dowolną stronę, przy krawędzi ekranu tablica sama się przewija, w docelowej kolumnie widać miejsce,
+ *    w którym karta stanie (kolejność jak w CRM: priorytet, termin, kolejność na tablicy),
  *  - „+ Dodaj kartę” na dole każdej kolumny — szybkie dodawanie kolejnych kart bez otwierania formularza,
  *  - „⋯” na karcie — szybkie czynności (przenieś, licznik czasu, priorytet, termin, edycja, usunięcie), dotknięcie — szczegóły,
  *  - pełny formularz („+” u góry albo w nagłówku kolumny) z załącznikami: zdjęcia, zrzuty ekranu, aparat, pliki, obraz ze schowka.
@@ -67,11 +69,17 @@ type CardActions = {
   lift: (task: BoardTask, event: GestureResponderEvent) => void;
   pressOut: () => void;
   menu: (task: BoardTask) => void;
+  /** Uchwyt ≡: początek, ruch i koniec przeciągania (gest prowadzi uchwyt, nie tablica). */
+  gripStart: (task: BoardTask, pageX: number, pageY: number) => void;
+  gripMove: (task: BoardTask, pageX: number, pageY: number) => void;
+  gripEnd: (task: BoardTask, cancelled: boolean) => void;
 };
 
 /** Karta w kolumnie (pamiętana — przy przeciąganiu odświeżają się tylko karty, których stan się zmienił). */
-const CardRow = memo(function CardRow({ task, me, timerActive, busy, slot, actions }: {
+const CardRow = memo(function CardRow({ task, me, timerActive, busy, movable, slot, actions }: {
   task: BoardTask; me: string | null; timerActive: boolean; busy: boolean;
+  /** Pracownik może przenosić karty na tej tablicy — karta ma uchwyt ≡. */
+  movable: boolean;
   /** `hidden` — karta podniesiona, jej miejsce w tej kolumnie; `collapsed` — karta podniesiona nad inną kolumną. */
   slot: 'normal' | 'hidden' | 'collapsed';
   actions: CardActions;
@@ -89,6 +97,15 @@ const CardRow = memo(function CardRow({ task, me, timerActive, busy, slot, actio
           onLongPress={(event) => actions.lift(task, event)}
           onPressOut={actions.pressOut}
           onMenu={() => actions.menu(task)}
+          grip={movable && !busy && !task.id.startsWith('tmp-') ? (
+            <BoardGrip
+              label={`Przenieś: ${task.titleLabel}`}
+              hint="Przeciągnij kartę do innej kolumny"
+              onGrant={(x, y) => actions.gripStart(task, x, y)}
+              onMove={(x, y) => actions.gripMove(task, x, y)}
+              onRelease={(cancelled) => actions.gripEnd(task, cancelled)}
+            />
+          ) : null}
         />
       </View>
     </View>
@@ -233,6 +250,8 @@ export default function TasksScreen() {
   const columnRefs = useRef(new Map<TaskColumnId, View>());
   const armedRef = useRef(false);
   const grantedRef = useRef(false);
+  /** Karta przeciągana za uchwyt ≡ — wtedy gest prowadzi uchwyt, a tablica go nie przejmuje. */
+  const gripTask = useRef<string | null>(null);
   const finger = useRef({ x: 0, y: 0 });
   const rootRect = useRef<Rect | null>(null);
   const viewportRect = useRef<Rect | null>(null);
@@ -311,6 +330,7 @@ export default function TasksScreen() {
     const current = dragRef.current;
     armedRef.current = false;
     grantedRef.current = false;
+    gripTask.current = null;
     dragRef.current = null;
     setDrag(null);
     setArmed(false);
@@ -321,13 +341,14 @@ export default function TasksScreen() {
     if (commit && current && current.target !== current.from) void dropTaskRef.current(current.task, current.target);
   };
 
-  const lift = (task: BoardTask, event: GestureResponderEvent) => {
-    if (!canMove || armedRef.current || busyIds.includes(task.id) || task.id.startsWith('tmp-')) return;
+  /** Podniesienie karty pod palcem (przytrzymanie albo uchwyt ≡). Zwraca `false`, gdy karty nie można teraz przenieść. */
+  const liftAt = (task: BoardTask, pageX: number, pageY: number) => {
+    if (!canMove || armedRef.current || busyIds.includes(task.id) || task.id.startsWith('tmp-')) return false;
     armedRef.current = true;
     grantedRef.current = false;
     setArmed(true);
     setComposer(null);
-    const start = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+    const start = { x: pageX, y: pageY };
     finger.current = start;
     void (async () => {
       const [card, root, viewport, ...rects] = await Promise.all([
@@ -349,6 +370,21 @@ export default function TasksScreen() {
       setDrag(value);
       positionGhost();
     })();
+    return true;
+  };
+
+  const lift = (task: BoardTask, event: GestureResponderEvent) => { liftAt(task, event.nativeEvent.pageX, event.nativeEvent.pageY); };
+
+  const gripStart = (task: BoardTask, pageX: number, pageY: number) => {
+    if (!liftAt(task, pageX, pageY)) return;
+    gripTask.current = task.id;
+    grantedRef.current = true;
+  };
+  const gripMove = (task: BoardTask, pageX: number, pageY: number) => {
+    if (gripTask.current === task.id) moveFinger(pageX, pageY);
+  };
+  const gripEnd = (task: BoardTask, cancelled: boolean) => {
+    if (gripTask.current === task.id) finishDrag(!cancelled);
   };
 
   const pressOut = () => {
@@ -364,8 +400,8 @@ export default function TasksScreen() {
   const responder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => false,
     onStartShouldSetPanResponderCapture: () => false,
-    onMoveShouldSetPanResponderCapture: () => armedRef.current,
-    onMoveShouldSetPanResponder: () => armedRef.current,
+    onMoveShouldSetPanResponderCapture: () => armedRef.current && !gripTask.current,
+    onMoveShouldSetPanResponder: () => armedRef.current && !gripTask.current,
     onPanResponderGrant: (event) => { grantedRef.current = true; moveRef.current(event.nativeEvent.pageX, event.nativeEvent.pageY); },
     onPanResponderMove: (event) => moveRef.current(event.nativeEvent.pageX, event.nativeEvent.pageY),
     onPanResponderRelease: () => finishRef.current(true),
@@ -526,14 +562,19 @@ export default function TasksScreen() {
   };
 
   // Stałe funkcje kart (karty są pamiętane), zawsze z bieżącym stanem ekranu.
-  const handlers = useRef({ open: openTask, lift, pressOut, menu: (task: BoardTask) => setMenuTask(task) });
-  handlers.current = { open: openTask, lift, pressOut, menu: (task: BoardTask) => { if (!armedRef.current) setMenuTask(task); } };
+  const handlers = useRef({ open: openTask, lift, pressOut, menu: (task: BoardTask) => setMenuTask(task), gripStart, gripMove, gripEnd });
+  handlers.current = {
+    open: openTask, lift, pressOut, menu: (task: BoardTask) => { if (!armedRef.current) setMenuTask(task); }, gripStart, gripMove, gripEnd,
+  };
   const actions = useMemo<CardActions>(() => ({
     register: (id, node) => { if (node) cardRefs.current.set(id, node); else cardRefs.current.delete(id); },
     open: (task) => handlers.current.open(task),
     lift: (task, event) => handlers.current.lift(task, event),
     pressOut: () => handlers.current.pressOut(),
     menu: (task) => handlers.current.menu(task),
+    gripStart: (task, x, y) => handlers.current.gripStart(task, x, y),
+    gripMove: (task, x, y) => handlers.current.gripMove(task, x, y),
+    gripEnd: (task, cancelled) => handlers.current.gripEnd(task, cancelled),
   }), []);
 
   const menuItems = (task: BoardTask): MenuItem[] => {
@@ -613,7 +654,7 @@ export default function TasksScreen() {
             return (
               <React.Fragment key={task.id}>
                 {index === placeholder ? holder : null}
-                <CardRow task={task} me={me} timerActive={timer?.taskId === task.id} busy={busyIds.includes(task.id)} slot={slot} actions={actions} />
+                <CardRow task={task} me={me} timerActive={timer?.taskId === task.id} busy={busyIds.includes(task.id)} movable={canMove} slot={slot} actions={actions} />
               </React.Fragment>
             );
           })}
@@ -752,7 +793,9 @@ export default function TasksScreen() {
               const current = drag ? drag.target === column.id : page === index;
               return <View key={column.id} style={[styles.dot, { backgroundColor: current ? colors.primary.gold : withAlpha(column.color, 0.45) }, current && styles.dotCurrent]} />;
             })}
-            <Text style={styles.hint}>{drag ? 'Przesuń do krawędzi ekranu, aby przejść do kolejnej kolumny' : 'Przytrzymaj kartę, aby ją przeciągnąć'}</Text>
+            <Text style={styles.hint}>
+              {drag ? 'Przesuń do krawędzi ekranu, aby przejść do kolejnej kolumny' : canMove ? 'Chwyć kartę za ≡, aby przenieść ją do innej kolumny' : ''}
+            </Text>
           </View>
         ) : null}
 

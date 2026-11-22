@@ -18,12 +18,16 @@ const SCROLL_STEP = 14;
 
 type Drag = { inquiry: FunnelInquiry; width: number; height: number; grabX: number; grabY: number };
 
-/** Uchwyt ≡ karty: dotyk od razu zaczyna przeciąganie (przewijanie listy działa poza uchwytem). */
-export function BoardGrip({ onGrant, onMove, onRelease, label }: {
+/**
+ * Uchwyt ≡ karty: dotyk od razu zaczyna przeciąganie (przewijanie listy działa poza uchwytem). Wspólny dla lejka zapytań
+ * i tablicy zadań (`TasksScreen`).
+ */
+export function BoardGrip({ onGrant, onMove, onRelease, label, hint = 'Przeciągnij kartę do innego etapu' }: {
   onGrant: (pageX: number, pageY: number) => void;
   onMove: (pageX: number, pageY: number) => void;
   onRelease: (cancelled: boolean) => void;
   label: string;
+  hint?: string;
 }) {
   const latest = useRef({ onGrant, onMove, onRelease });
   latest.current = { onGrant, onMove, onRelease };
@@ -38,7 +42,7 @@ export function BoardGrip({ onGrant, onMove, onRelease, label }: {
     onShouldBlockNativeResponder: () => true,
   }), []);
   return (
-    <View {...responder.panHandlers} style={styles.grip} accessibilityLabel={label} accessibilityHint="Przeciągnij kartę do innego etapu">
+    <View {...responder.panHandlers} style={styles.grip} accessibilityLabel={label} accessibilityHint={hint}>
       <Feather name="menu" size={16} color={colors.text.tertiary} />
     </View>
   );

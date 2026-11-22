@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, borderRadius, typography, glow, tone, withAlpha } from '../../theme';
@@ -8,7 +8,8 @@ import { taskDueBadge, taskPriority, type BoardTask, type TaskPerson } from '../
 /*
  * Karta zadania na tablicy — te same informacje co karta na Macu i w CRM (`TaskCard`): tytuł, początek opisu, priorytet, osoba
  * pracująca (licznik), termin (po terminie — czerwony, dziś/jutro — bursztynowy), komentarze, załączniki, przypisane osoby
- * (Ty na początku). Dotknięcie — szczegóły; przytrzymanie — podniesienie karty i przeciąganie (jak w Trello); „⋯” — szybkie czynności.
+ * (Ty na początku). Dotknięcie — szczegóły; uchwyt ≡ (jak w lejku zapytań) albo przytrzymanie karty — przeciąganie do innej
+ * kolumny (jak w Trello); „⋯” — szybkie czynności.
  */
 
 const avatarMetadata = (person: TaskPerson) =>
@@ -27,10 +28,12 @@ type Props = {
   onLongPress?: (event: GestureResponderEvent) => void;
   onPressOut?: () => void;
   onMenu?: () => void;
+  /** Uchwyt ≡ do przeciągania (tylko gdy wolno przenosić) — dotyk od razu podnosi kartę. */
+  grip?: ReactNode;
 };
 
 export const TaskBoardCard = forwardRef<View, Props>(function TaskBoardCard(
-  { task, me, timerActive, busy = false, lifted = false, onPress, onLongPress, onPressOut, onMenu },
+  { task, me, timerActive, busy = false, lifted = false, onPress, onLongPress, onPressOut, onMenu, grip },
   ref,
 ) {
   const priority = taskPriority(task.priority);
@@ -49,7 +52,7 @@ export const TaskBoardCard = forwardRef<View, Props>(function TaskBoardCard(
       style={({ pressed }) => [styles.card, timerActive && styles.cardTimer, pressed && !lifted && styles.cardPressed, lifted && styles.cardLifted]}
       accessibilityRole="button"
       accessibilityLabel={`Zadanie: ${task.titleLabel}`}
-      accessibilityHint="Dotknij, aby otworzyć. Przytrzymaj, aby przeciągnąć do innej kolumny."
+      accessibilityHint={grip ? 'Dotknij, aby otworzyć. Przeciągnij za uchwyt albo przytrzymaj, aby przenieść do innej kolumny.' : 'Dotknij, aby otworzyć.'}
     >
       <View style={styles.labelRow}>
         <View style={[styles.label, { backgroundColor: withAlpha(priority.color, 0.18) }]}>
@@ -63,6 +66,7 @@ export const TaskBoardCard = forwardRef<View, Props>(function TaskBoardCard(
             <Feather name="more-horizontal" size={18} color={colors.text.secondary} />
           </TouchableOpacity>
         ) : null}
+        {!lifted ? grip : null}
       </View>
 
       <Text style={styles.title} numberOfLines={3}>{task.titleLabel}</Text>
