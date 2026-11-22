@@ -29,6 +29,7 @@ import {
   eventStepActionLabel,
   eventStepActionNeedsForm,
   eventStepAvailableActions,
+  eventStepClosedLabel,
   eventStepDueLabel,
   eventStepErrorMessage,
   eventStepHistoryLabel,
@@ -36,6 +37,7 @@ import {
   eventStepOwnerLabel,
   eventStepPrimaryAction,
   eventStepQuantityLabel,
+  eventStepStageInScope,
   eventStepTone,
   formatEventStepDate,
   groupEventStepsByStage,
@@ -435,6 +437,10 @@ export default function EventStepsPanel({
   const [addError, setAddError] = useState('');
   const [showAllWaiting, setShowAllWaiting] = useState(false);
   const [stageOpen, setStageOpen] = useState<Record<string, boolean>>({});
+  // Zamknięte kroki (zrobione, pominięte) są zwinięte do jednej linii — rozwinięte pokazują pełny wiersz z cofnięciem.
+  const [closedOpen, setClosedOpen] = useState<Record<string, boolean>>({});
+  // Etapy sprzętu poza zakresem osoby (eventStepStageInScope) — tylko dla osób z prawem pomijania kroków.
+  const [showOthers, setShowOthers] = useState(false);
   const readVersion = useRef(0);
   const addLock = useRef(false);
   const channelSuffix = useRef(Math.random().toString(36).slice(2, 10)).current;
@@ -447,6 +453,8 @@ export default function EventStepsPanel({
     setUnavailable(false);
     setLoadError('');
     setStageOpen({});
+    setClosedOpen({});
+    setShowOthers(false);
     setShowAllWaiting(false);
   }, [eventId]);
 
@@ -563,14 +571,24 @@ export default function EventStepsPanel({
   }
   if (!snapshot.steps?.length) return null;
 
-  const progressValues = Object.values(snapshot.progress || {});
-  const total = progressValues.reduce((sum, item) => sum + (item?.total || 0), 0) || snapshot.steps.length;
-  const done = progressValues.reduce((sum, item) => sum + (item?.done || 0), 0);
+  // Etapy wydania i zwrotu sprzętu widzi magazyn, kierownik realizacji i kierowca (eventStepStageInScope); pozostali —
+  // tylko po rozwinięciu „Etapów innych osób” (z prawem pomijania). Postęp i „Czekamy na” liczą widoczne etapy.
+  const allGroups = groupEventStepsByStage(snapshot.steps);
+  const outOfScope = allGroups.filter((group) => !eventStepStageInScope(group.stage, snapshot.steps, snapshot));
+  const canShowOthers = Boolean(snapshot.can_override) && outOfScope.length > 0;
+  const groups = canShowOthers && showOthers ? allGroups : allGroups.filter((group) => !outOfScope.includes(group));
+  const visibleStages = new Set(groups.map((group) => group.stage));
+  if (!groups.length && !canShowOthers && !snapshot.can_add) return null;
+  const counted = groups.map((group) => {
+    const progress = snapshot.progress?.[group.stage];
+    return progress || { total: group.steps.length, done: group.steps.filter((step) => !isEventStepLive(step)).length };
+  });
+  const total = counted.reduce((sum, item) => sum + (item.total || 0), 0);
+  const done = counted.reduce((sum, item) => sum + (item.done || 0), 0);
   const ratio = total > 0 ? Math.min(1, done / total) : 0;
   const myRoles = (Object.keys(snapshot.my_roles || {}) as EventStepRole[]).filter((role) => snapshot.my_roles[role]);
-  const waiting = snapshot.waiting_for || [];
+  const waiting = (snapshot.waiting_for || []).filter((step) => visibleStages.has(step.stage));
   const visibleWaiting = showAllWaiting ? waiting : waiting.slice(0, WAITING_PREVIEW);
-  const groups = groupEventStepsByStage(snapshot.steps);
   const rowError = runner.rowError;
 
   return (
@@ -647,15 +665,19 @@ export default function EventStepsPanel({
         const progress = snapshot.progress?.[group.stage];
         const hasLive = group.steps.some(isEventStepLive);
         const open = stageOpen[group.stage] ?? hasLive;
+        const foreign = outOfScope.includes(group);
         return (
-          <View key={group.stage} style={styles.stage}>
+          <View key={group.stage} style={[styles.stage, foreign && styles.stageForeign]}>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityState={{ expanded: open }}
               onPress={() => setStageOpen((current) => ({ ...current, [group.stage]: !open }))}
               style={styles.stageHeader}
             >
-              <Text style={styles.stageTitle}>{group.label}</Text>
+              <Text style={styles.stageTitle}>
+                {group.label}
+                {foreign ? <Text style={styles.stageForeignText}> · inne osoby</Text> : null}
+              </Text>
               {!!progress && (
                 <Text style={[styles.stageProgress, progress.done >= progress.total && { color: EVENT_STEP_TONE_COLORS.success }]}>
                   {progress.done}/{progress.total}
@@ -664,19 +686,66 @@ export default function EventStepsPanel({
               <Feather name={open ? 'chevron-up' : 'chevron-down'} size={16} color={colors.text.secondary} />
             </TouchableOpacity>
             {open &&
-              group.steps.map((step) => (
-                <EventStepRow
-                  key={step.id}
-                  step={step}
-                  busyKey={runner.busyKey}
-                  error={rowError?.stepId === step.id ? rowError.message : null}
-                  onAction={runner.start}
-                  link={stepLink ? stepLink(step) : null}
-                />
-              ))}
+              group.steps.map((step) => {
+                const row = (
+                  <EventStepRow
+                    key={step.id}
+                    step={step}
+                    busyKey={runner.busyKey}
+                    error={rowError?.stepId === step.id ? rowError.message : null}
+                    onAction={runner.start}
+                    link={stepLink ? stepLink(step) : null}
+                  />
+                );
+                // Błąd czynności (np. cofnięcia) zostaje widoczny — wiersz z błędem nie zwija się.
+                if (isEventStepLive(step) || rowError?.stepId === step.id) return row;
+                const expanded = Boolean(closedOpen[step.id]);
+                const skipped = step.status === 'skipped';
+                return (
+                  <View key={step.id}>
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded }}
+                      accessibilityLabel={`${step.title}. ${eventStepClosedLabel(step)}`}
+                      onPress={() => setClosedOpen((current) => ({ ...current, [step.id]: !expanded }))}
+                      style={styles.closedRow}
+                    >
+                      <Feather
+                        name={skipped ? 'skip-forward' : 'check-circle'}
+                        size={15}
+                        color={skipped ? EVENT_STEP_TONE_COLORS.muted : EVENT_STEP_TONE_COLORS.success}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text numberOfLines={expanded ? undefined : 1} style={styles.closedTitle}>
+                          {step.title}
+                        </Text>
+                        <Text numberOfLines={1} style={styles.closedMeta}>
+                          {eventStepClosedLabel(step)}
+                        </Text>
+                      </View>
+                      <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={15} color={colors.text.tertiary} />
+                    </TouchableOpacity>
+                    {expanded && row}
+                  </View>
+                );
+              })}
           </View>
         );
       })}
+
+      {canShowOthers && (
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showOthers }}
+          onPress={() => setShowOthers((value) => !value)}
+          style={styles.othersBtn}
+        >
+          <Feather name={showOthers ? 'eye-off' : 'eye'} size={15} color={colors.text.secondary} />
+          <Text style={styles.othersText}>
+            {showOthers ? 'Ukryj etapy innych osób' : `Etapy innych osób: ${outOfScope.map((group) => group.label).join(', ')}`}
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {snapshot.can_add && (
         <TouchableOpacity
@@ -755,6 +824,23 @@ const styles = StyleSheet.create({
   stageHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 4 },
   stageTitle: { flex: 1, color: colors.text.primary, fontWeight: typography.fontWeights.semibold },
   stageProgress: { color: colors.text.secondary, fontSize: typography.fontSizes.xs },
+  stageForeign: { opacity: 0.85 },
+  stageForeignText: { color: colors.text.tertiary, fontSize: typography.fontSizes.xs, fontWeight: typography.fontWeights.regular },
+  closedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.background.tertiary,
+    opacity: 0.8,
+  },
+  closedTitle: { color: colors.text.secondary, fontSize: typography.fontSizes.sm },
+  closedMeta: { color: colors.text.tertiary, fontSize: 11, marginTop: 1 },
+  othersBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.md, paddingVertical: 8 },
+  othersText: { flex: 1, color: colors.text.secondary, fontSize: typography.fontSizes.sm },
   row: { marginTop: spacing.sm, padding: 12, borderRadius: borderRadius.md, gap: 4 },
   eventLabel: { color: colors.primary.gold, fontSize: typography.fontSizes.xs, marginBottom: 2 },
   chipRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },

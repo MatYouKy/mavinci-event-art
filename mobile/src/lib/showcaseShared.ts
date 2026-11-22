@@ -721,6 +721,10 @@ export const SHOWCASE_OFFER_LIMITS = {
   quantity: 9999,
   days: 30,
   note: 2000,
+  /** Cel eventu (jak `EVENT_GOAL_MAX_LENGTH` założeń oferty). */
+  goal: 2000,
+  /** Treść karty założeń (jak `EVENT_ASSUMPTION_VALUE_MAX_LENGTH`). */
+  assumptionValue: 250,
   search: 80,
   /** Ważność oferty (dni) — jak nowa oferta zapytania w CRM. */
   validDays: 14,
@@ -798,6 +802,12 @@ export const SHOWCASE_OFFER_DISCOUNT_DISPLAYS: ReadonlyArray<{ key: ShowcaseOffe
 export const isShowcaseOfferDiscountDisplay = (value: unknown): value is ShowcaseOfferDiscountDisplay =>
   value === 'lines' || value === 'total' || value === 'none';
 
+/**
+ * Karta założeń realizacji w szkicu (jak `EventAssumptionItem` oferty: kategoria, własny tytuł, treść, liczbowy znacznik w PDF).
+ * Kategorie i ich kolejność sprawdza serwer (`normalizeEventAssumptionItems`).
+ */
+export type ShowcaseOfferAssumption = { key: string; label: string; value: string; badge: string };
+
 export type ShowcaseOfferDraft = {
   /** Identyfikator przyszłej oferty — ponowne „Utwórz ofertę” po zerwanym połączeniu nie tworzy drugiej. */
   id: string;
@@ -811,6 +821,13 @@ export type ShowcaseOfferDraft = {
   inquiryId: string | null;
   inquiryTitle: string;
   event: ShowcaseOfferEvent;
+  /**
+   * Założenia realizacji — trzy karty, które trafią do oferty i PDF; pusta lista albo karty bez treści — założenia z zapytania
+   * (nowe zapytanie: liczba osób i miejsce).
+   */
+  assumptions: ShowcaseOfferAssumption[];
+  /** Cel eventu (oferta i PDF); pusty — cel z zapytania. */
+  goal: string;
   note: string;
   updatedAt: string;
 };
@@ -947,10 +964,48 @@ export function emptyShowcaseOfferDraft(discountDisplay: ShowcaseOfferDiscountDi
     inquiryId: null,
     inquiryTitle: '',
     event: { name: '', date: '', location: '', locationId: null, guestCount: null },
+    assumptions: [],
+    goal: '',
     note: '',
     updatedAt: '',
   };
 }
+
+/** Karty założeń ze szkicu (najwyżej trzy, w limitach) — kategorię sprawdza serwer. */
+export function normalizeShowcaseOfferAssumptions(raw: unknown): ShowcaseOfferAssumption[] {
+  const result: ShowcaseOfferAssumption[] = [];
+  for (const item of list(raw)) {
+    if (result.length >= 3) break;
+    const value = object(item);
+    const key = typeof value.key === 'string' ? value.key.trim() : '';
+    if (!/^[a-z_]{1,40}$/.test(key)) continue;
+    result.push({
+      key,
+      label: showcaseLine(value.label, 80),
+      value: showcaseText(value.value, SHOWCASE_OFFER_LIMITS.assumptionValue),
+      badge: showcaseLine(value.badge, 7).toLocaleUpperCase('pl-PL'),
+    });
+  }
+  return result;
+}
+
+/** Czy sprzedawca uzupełnił założenia (treść albo znacznik poza kartą liczby gości, którą wypełnia liczba osób). */
+export const showcaseOfferHasAssumptions = (assumptions: ShowcaseOfferAssumption[]) =>
+  assumptions.some((item) => item.key !== 'guest_count' && Boolean(item.value.trim() || item.badge.trim()));
+
+/**
+ * Propozycja AI założeń i celu (`op=offerAssumptionsAI`) — w kształcie „Zaproponuj z AI” ofert (`op=assumptionsAI`): karty
+ * z `badge_value`, cel (`null` — bez celu) i z czego AI skorzystało.
+ */
+export type ShowcaseOfferAssumptionsDraft = {
+  items: Array<{ key: string; label: string; value: string; badge_value?: string | null }>;
+  goal: string | null;
+  sources: string | null;
+};
+
+/** Karty z propozycji AI → karty szkicu (znacznik w polu `badge`). */
+export const showcaseOfferAssumptionsFromDraft = (items: ShowcaseOfferAssumptionsDraft['items']): ShowcaseOfferAssumption[] =>
+  normalizeShowcaseOfferAssumptions(items.map((item) => ({ key: item.key, label: item.label, value: item.value, badge: item.badge_value || '' })));
 
 const wholeIn = (value: unknown, min: number, max: number, fallback: number) => {
   const number = Number(value);
@@ -1053,6 +1108,8 @@ export function normalizeShowcaseOfferDraft(raw: unknown): ShowcaseOfferDraft {
       locationId: isShowcaseUuid(event.locationId) && showcaseLine(event.location, 500) ? event.locationId.toLowerCase() : null,
       guestCount: Number.isInteger(guests) && guests >= 1 && guests <= 100000 ? guests : null,
     },
+    assumptions: normalizeShowcaseOfferAssumptions(value.assumptions),
+    goal: showcaseText(value.goal, SHOWCASE_OFFER_LIMITS.goal),
     note: showcaseText(value.note, SHOWCASE_OFFER_LIMITS.note),
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt.slice(0, 40) : '',
   };

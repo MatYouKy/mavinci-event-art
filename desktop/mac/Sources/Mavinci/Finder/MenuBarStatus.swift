@@ -19,7 +19,13 @@ struct MenuBarStatusMenu: View {
         let info = Bundle.main.infoDictionary
         let short = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
-        return "Mavinci \(short) (\(build))"
+        // Kompilacja z podpisem deweloperskim (nie „Developer ID”) — „Mavinci” w Finderze może nie działać na innych Macach.
+        return "Mavinci \(short) (\(build))" + (FinderDomain.developerIDSigned ? "" : " · kompilacja deweloperska")
+    }
+
+    private var finderFailed: Bool {
+        if case .failed = finder { return true }
+        return false
     }
 
     private var who: String { workspace.employee?.displayName ?? "" }
@@ -38,6 +44,7 @@ struct MenuBarStatusMenu: View {
         case .disabled: return "Pliki w Finderze: wyłączone — kliknij „Włącz” w Finderze"
         case .missing: return "Pliki w Finderze: po zalogowaniu"
         case .unavailable: return "Pliki w Finderze: niedostępne w tej wersji"
+        case .failed: return "Pliki w Finderze: nie działają na tym Macu"
         case nil: return "Pliki w Finderze: „Mavinci” w pasku bocznym Findera"
         }
     }
@@ -58,6 +65,12 @@ struct MenuBarStatusMenu: View {
                 Task { await FinderDomain.reveal() }
             }
             .disabled(!FinderDomain.available || workspace.employee == nil)
+            if case .failed(let problem) = finder {
+                Button("Dlaczego nie ma „Mavinci” w Finderze?…") { explain(problem) }
+            }
+            if FinderDomain.available, workspace.employee != nil, finder == .missing || finderFailed {
+                Button("Spróbuj ponownie dodać „Mavinci” do Findera") { Task { await retryFinder() } }
+            }
             Button("Synchronizuj teraz") {
                 Task {
                     await workspace.refresh(force: true)
@@ -78,6 +91,24 @@ struct MenuBarStatusMenu: View {
         .task {
             finder = await FinderDomain.status()
             launchAtLogin = SMAppService.mainApp.status == .enabled
+        }
+    }
+
+    private func retryFinder() async {
+        await FinderDomain.retry()
+        finder = await FinderDomain.status()
+    }
+
+    /// Przyczyna nieudanej rejestracji „Mavinci” w Finderze — okno z „Spróbuj ponownie”.
+    private func explain(_ problem: String) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "„Mavinci” w Finderze nie działa na tym Macu"
+        alert.informativeText = problem
+        alert.addButton(withTitle: "Spróbuj ponownie")
+        alert.addButton(withTitle: "Zamknij")
+        if alert.runModal() == .alertFirstButtonReturn {
+            Task { await retryFinder() }
         }
     }
 

@@ -1,3 +1,6 @@
+// Założenia realizacji oferty (trzy karty z liczbowymi znacznikami w PDF) i cel eventu — wspólne dla CRM i aplikacji mobilnej.
+// Identyczna kopia: mobile/src/lib/eventAssumptions.ts (pilnuje scripts/ci/check-shared-copies.mjs). Bez importów.
+
 export type EventAssumptionKey =
   | 'guest_count'
   | 'event_hours'
@@ -23,6 +26,10 @@ export type EventAssumptionItem = {
 
 // Limit odpowiada czterem zwartym wierszom na karcie założeń w PDF.
 export const EVENT_ASSUMPTION_VALUE_MAX_LENGTH = 250;
+/** Cel eventu (`offers.event_goal`) — jak zapis założeń oferty w CRM i na Macu. */
+export const EVENT_GOAL_MAX_LENGTH = 2000;
+/** Wskazówki dla AI („Co chcesz osiągnąć?”) — limit `assist-inquiry`. */
+export const EVENT_ASSUMPTION_AI_INSTRUCTIONS_MAX_LENGTH = 2000;
 
 export type EventAssumptionOption = {
   key: EventAssumptionKey;
@@ -230,4 +237,52 @@ export function syncGuestCountAssumptions(items: EventAssumptionItem[], guestCou
   if (empty >= 0) return items.map((item, i) => i === empty ? guest : item);
   // Keep all three deliberately selected cards. The section shows the count separately.
   return items.length < 3 ? [...items, guest] : items;
+}
+
+/**
+ * Odpowiedź AI (`assist-inquiry`, `draft_offer_assumptions`) → trzy karty w kolejności wybranych kategorii i cel eventu — te same
+ * reguły co „Zaproponuj z AI” w ofercie (CRM, Mac). Błąd — komunikat po polsku.
+ */
+export function eventAssumptionsFromAi(
+  result: unknown,
+  requested: EventAssumptionItem[],
+  generateGoal: boolean,
+): { items: EventAssumptionItem[]; goal: string | null } | { error: string } {
+  const data = result && typeof result === 'object' ? (result as Record<string, unknown>) : {};
+  const candidates = (Array.isArray(data.assumptions) ? data.assumptions : []) as Array<Record<string, unknown> | null>;
+  if (candidates.length !== requested.length
+    || candidates.some((candidate, index) => String(candidate?.key || '') !== requested[index].key)) {
+    return { error: 'AI nie zachowało wybranych kategorii. Spróbuj ponownie.' };
+  }
+  const used = new Set<EventAssumptionKey>();
+  const items: EventAssumptionItem[] = [];
+  for (const candidate of candidates) {
+    const key = String(candidate?.key || '') as EventAssumptionKey;
+    const option = optionByKey.get(key);
+    if (!option || (key !== 'custom' && used.has(key))) continue;
+    if (key !== 'custom') used.add(key);
+    const value = String(candidate?.value || '').trim();
+    if (!value) continue;
+    items.push({
+      key,
+      label: key === 'custom' ? String(candidate?.label || option.label).trim().slice(0, 80) : option.label,
+      value: value.slice(0, EVENT_ASSUMPTION_VALUE_MAX_LENGTH),
+      badge_value: String(candidate?.badge_value || '').trim().slice(0, 7),
+    });
+  }
+  if (items.length !== 3) return { error: 'AI nie przygotowało trzech kompletnych założeń. Spróbuj ponownie.' };
+  const goal = String(data.event_goal || '').trim().slice(0, EVENT_GOAL_MAX_LENGTH);
+  if (generateGoal && !goal) return { error: 'AI nie przygotowało celu eventu. Spróbuj ponownie.' };
+  return { items, goal: generateGoal ? goal : null };
+}
+
+/** „Wykorzystano analizy: 2, wiadomości: 5. …” — z czego AI przygotowało propozycję (`source_context` odpowiedzi). */
+export function eventAssumptionsAiSources(result: unknown): string {
+  const data = result && typeof result === 'object' ? (result as Record<string, unknown>) : {};
+  const sources = data.source_context && typeof data.source_context === 'object' ? (data.source_context as Record<string, unknown>) : null;
+  if (!sources) return 'Propozycja na podstawie opisu, produktów i ustaleń oferty — bez powiązanego zapytania.';
+  return `Wykorzystano analizy: ${Number(sources.analysis_count) || 0}, wiadomości: ${Number(sources.correspondence_count) || 0}. ${
+    sources.approved_summary_current
+      ? 'Uwzględniono aktualne zatwierdzone podsumowanie.'
+      : 'Brak aktualnego zatwierdzonego podsumowania — propozycja wymaga sprawdzenia.'}`;
 }

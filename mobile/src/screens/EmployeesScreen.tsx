@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   RefreshControl,
   TextInput,
   Linking,
+  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../theme';
@@ -17,6 +18,25 @@ import { useAuth } from '../contexts/AuthContext';
 import { isAdmin, canManage } from '../lib/permissions';
 import PermissionGate from '../components/PermissionGate';
 import EmployeeAvatar from '../components/EmployeeAvatar';
+import ScheduleTimeline from '../components/Timeline/ScheduleTimeline';
+import { Segmented } from '../components/Inquiries/InquiryKit';
+import { navigateToEvent, navigateToInquiry, navigateToMeeting, navigateToTask } from '../navigation/navigationRef';
+import {
+  SCHEDULE_KIND_LABELS, SCHEDULE_LEGEND, SCREEN_VIEWS, fetchEmployeeSchedule, formatEntryTime, scheduleEventId, timelineRange,
+  useScreenTimeline, type ScheduleEntry, type TimelineRow,
+} from '../lib/scheduleTimeline';
+
+/** Pozycja planu → ekran aplikacji (event, spotkanie, zadanie, zapytanie) albo `null` — tylko opis. */
+function scheduleTarget(entry: ScheduleEntry): (() => void) | null {
+  const eventId = scheduleEventId(entry);
+  if (eventId) return () => navigateToEvent(eventId);
+  if (entry.kind === 'meeting' && entry.itemId) return () => navigateToMeeting(entry.itemId);
+  const inquiry = /^\/crm\/inquiries\/([0-9a-f-]{36})/i.exec(entry.url || '');
+  if (inquiry) return () => navigateToInquiry(inquiry[1]);
+  const task = /^\/crm\/tasks\/([0-9a-f-]{36})/i.exec(entry.url || '');
+  if (task) return () => navigateToTask(task[1]);
+  return null;
+}
 
 interface EmployeeListItem extends Employee {
   is_active?: boolean;
@@ -32,6 +52,14 @@ function EmployeesContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'active' | 'admin'>('all');
+  // Oś czasu zespołu (dzień / tydzień / miesiąc) — jak w CRM tylko dla administratora; plan z get_employee_schedule (baza liczy zakres).
+  const adminView = isAdmin(currentEmployee);
+  const timeline = useScreenTimeline('employees', 'week');
+  const showTimeline = adminView && timeline.view === 'timeline';
+  const [schedule, setSchedule] = useState<ScheduleEntry[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const scheduleVersion = useRef(0);
 
   const fetchEmployees = useCallback(async () => {
     const { data, error } = await supabase
@@ -87,6 +115,42 @@ function EmployeesContent() {
 
     setFiltered(result);
   }, [employees, search, selectedFilter]);
+
+  const range = timelineRange(timeline.zoom, timeline.anchor);
+  const rangeStart = range.start.getTime();
+  const rangeEnd = range.end.getTime();
+  const employeeIds = filtered.map((item) => item.id).slice(0, 200).join(',');
+  const loadSchedule = useCallback(async () => {
+    const version = ++scheduleVersion.current;
+    setScheduleLoading(true);
+    try {
+      const entries = await fetchEmployeeSchedule(employeeIds ? employeeIds.split(',') : [], new Date(rangeStart), new Date(rangeEnd));
+      if (version !== scheduleVersion.current) return;
+      setSchedule(entries);
+      setScheduleError(null);
+    } catch (error) {
+      if (version === scheduleVersion.current) setScheduleError(error instanceof Error ? error.message : 'Nie udało się wczytać planu zespołu.');
+    } finally {
+      if (version === scheduleVersion.current) setScheduleLoading(false);
+    }
+  }, [employeeIds, rangeStart, rangeEnd]);
+  useEffect(() => {
+    if (showTimeline) void loadSchedule();
+  }, [showTimeline, loadSchedule]);
+  const timelineRows = useMemo<TimelineRow[]>(() => filtered.slice(0, 200).map((item) => ({
+    id: item.id,
+    label: item.nickname || [item.name, item.surname].filter(Boolean).join(' '),
+    sublabel: item.occupation || null,
+    avatarUrl: item.avatar_url ?? null,
+    avatarMetadata: item.avatar_metadata ?? null,
+  })), [filtered]);
+  const openScheduleEntry = (entry: ScheduleEntry) => {
+    const open = scheduleTarget(entry);
+    const person = timelineRows.find((row) => row.id === entry.rowId)?.label;
+    const details = [SCHEDULE_KIND_LABELS[entry.kind], formatEntryTime(entry), person, entry.subtitle !== SCHEDULE_KIND_LABELS[entry.kind] ? entry.subtitle : null]
+      .filter(Boolean).join('\n');
+    Alert.alert(entry.title, details, open ? [{ text: 'Zamknij', style: 'cancel' }, { text: 'Otwórz', onPress: open }] : [{ text: 'OK' }]);
+  };
 
   const getAccessBadge = (emp: EmployeeListItem) => {
     if (emp.access_level === 'admin' || emp.role === 'admin') {
@@ -213,6 +277,11 @@ function EmployeesContent() {
 
   return (
     <View style={styles.container}>
+      {adminView ? (
+        <View style={styles.viewSwitch}>
+          <Segmented value={timeline.view} options={SCREEN_VIEWS} onChange={timeline.setView} />
+        </View>
+      ) : null}
       {/* Search */}
       <View style={styles.searchContainer}>
         <Feather name="search" size={18} color={colors.text.tertiary} />
@@ -253,7 +322,23 @@ function EmployeesContent() {
         </View>
       </View>
 
-      {/* List */}
+      {showTimeline ? (
+        <ScheduleTimeline
+          zoom={timeline.zoom}
+          onZoomChange={timeline.setZoom}
+          anchor={timeline.anchor}
+          onAnchorChange={timeline.setAnchor}
+          rows={timelineRows}
+          entries={schedule}
+          loading={scheduleLoading}
+          error={scheduleError}
+          legend={SCHEDULE_LEGEND}
+          onPressEntry={openScheduleEntry}
+          refreshing={refreshing}
+          onRefresh={() => { void loadAll(true); void loadSchedule(); }}
+          emptyText="Brak eventów, spotkań i nieobecności w tym okresie."
+        />
+      ) : (
       <FlatList
         data={filtered}
         renderItem={renderEmployee}
@@ -278,6 +363,7 @@ function EmployeesContent() {
           </View>
         }
       />
+      )}
     </View>
   );
 }
@@ -294,6 +380,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,
+  },
+  viewSwitch: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
   centered: {
     flex: 1,

@@ -112,7 +112,15 @@ export default function VehiclesTimelineView() {
             return { ...vehicle, timeline: [] };
           }
 
-          return { ...vehicle, timeline: timelineData || [] };
+          // Funkcja zwraca `timeline_id` i `timeline_type` — bez nich pozycje nie miały kluczy, ikony serwisu ani granic eventu.
+          return {
+            ...vehicle,
+            timeline: ((timelineData || []) as any[]).map((row) => ({
+              ...row,
+              id: row.timeline_id ?? row.id,
+              type: (row.timeline_type ?? row.type) === 'maintenance' ? 'maintenance' : 'event',
+            })) as VehicleTimelineEntry[],
+          };
         }),
       );
 

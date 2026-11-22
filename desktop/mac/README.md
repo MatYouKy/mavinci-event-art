@@ -93,6 +93,20 @@ Wynik: `build/Mavinci.dmg` z ostatniego `build-app.sh` (bez publikacji). Instala
 
 Przykład: `NOTES="Finanse w Dysku, czas pracy zespołu w telefonie." yarn dmg`.
 
+### Instalator dla innych Maców — certyfikat Developer ID
+
+Kompilacja z podpisem **„Apple Development”** (tak podpisane jest wydanie, gdy w pęku kluczy nie ma „Developer ID Application”) działa w pełni na Macu, na którym ją zbudowano. Na innych Macach macOS może nie uruchomić z niej rozszerzenia Findera — aplikacja działa, ale **„Mavinci” nie pojawia się w pasku bocznym Findera**. `yarn dmg` ostrzega przed publikacją takiego wydania i pyta o zgodę (`ALLOW_DEVELOPMENT_RELEASE=1` — bez pytania), a pasek menu aplikacji pokazuje przy wersji „kompilacja deweloperska”. Instalator dla zespołu:
+
+1. **Certyfikat** (raz; zakłada właściciel konta Apple Developer): Dostęp do pęku kluczy → Asystent certyfikatów → „Poproś o certyfikat w urzędzie certyfikacji…” → zapisz na dysku; developer.apple.com → Certificates, IDs & Profiles → Certificates → „+” → **Developer ID Application** → wgraj plik prośby → pobierz certyfikat i otwórz go dwuklikiem (pęk „Logowanie”). `security find-identity -v -p codesigning` pokazuje „Developer ID Application: … (5DC8P5M489)”.
+2. **Notaryzacja** (raz): `xcrun notarytool store-credentials mavinci-notary --apple-id <Apple ID> --team-id 5DC8P5M489` — hasło aplikacji z appleid.apple.com wpisujesz sam, w Terminalu.
+3. `yarn dmg` — skrypt sam wybierze „Developer ID Application”, podpisze rozszerzenie Findera, wyśle aplikację i instalator do notaryzacji Apple i opublikuje wydanie. Na innych Macach instalator otwiera się bez ostrzeżeń, a „Mavinci” pojawia się w Finderze po zalogowaniu w aplikacji.
+
+Gdy na którymś Macu „Mavinci” nie ma w Finderze: aplikacja powinna być w folderze **Aplikacje** (nie uruchomiona prosto z instalatora); po zalogowaniu aplikacja rejestruje „Mavinci” w Finderze, a gdy macOS nie zna jeszcze rozszerzenia — zgłasza je sama (`pluginkit -a`) i próbuje drugi raz. Nieudana rejestracja: pasek menu → „Dlaczego nie ma „Mavinci” w Finderze?…” (przyczyna: uruchomienie z instalatora, kompilacja deweloperska albo komunikat systemu) i „Spróbuj ponownie dodać „Mavinci” do Findera”. Rozszerzenie musi być włączone: Ustawienia systemowe → Ogólne → Rzeczy otwierane podczas logowania i rozszerzenia → Dostawcy plików; w Finderze: Ustawienia → Pasek boczny → „Mavinci”.
+
+### Pełny ekran przy uruchomieniu
+
+Pierwsze okno po uruchomieniu aplikacji przechodzi od razu na pełny ekran (osobne biurko macOS); kolejne okna i karty otwierają się normalnie, a okno odtworzone przez macOS na pełnym ekranie na nim zostaje. Wyłączenie: Ustawienia (⌘,) → Wygląd → „Otwieraj na pełnym ekranie”. Kod: `LaunchFullScreen.swift` (wywołanie przy podpięciu okna w `Workspace.attach`).
+
 **Serwer** (`src/app/bridge/native/v1/desktop/route.ts`, `src/lib/native/desktopRelease.ts`): `op=latest` (wydanie i czy jest nowsze od kompilacji aplikacji), `op=download&kind=zip|dmg` (strumień pliku). Tylko zalogowani pracownicy (token sesji) — albo `op=file` z podpisanym adresem (HMAC, ważny godzinę, tylko dla bieżącego wydania), który Dysk wydaje zalogowanemu pracownikowi. Katalog wydań można zmienić zmienną `DESKTOP_RELEASES_DIR`.
 
 **Dysk → Programy** (CRM, Mac, Finder — dział na poziomie Eventów, Materiałów i Pracowników, dla każdego pracownika; w aplikacji na telefon i tablet ukryty): plik `Mavinci <wersja> — macOS.dmg`, zawsze najnowsze wydanie z `yarn dmg`. W przeglądarce pobiera się zwykłym linkiem, na Macu dwuklik zapisuje instalator w „Pobranych”, w Finderze (Mavinci → Programy) plik otwiera się jak każdy inny. Nowe wydanie zmienia wersję pliku, więc Finder i Mac pobierają je od nowa.

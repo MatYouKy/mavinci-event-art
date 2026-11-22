@@ -66,8 +66,14 @@ extension View {
 
 struct AppearanceSettings: View {
     @EnvironmentObject private var state: Workspace
+    @AppStorage(LaunchFullScreen.key) private var openFullScreen = true
     var body: some View {
         Form {
+            Section("Okno") {
+                Toggle("Otwieraj na pełnym ekranie", isOn: $openFullScreen)
+                Text("Po uruchomieniu aplikacji pierwsze okno przechodzi od razu na pełny ekran. Wyjście: zielony przycisk okna albo ⌃⌘F.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Motyw") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
                     ForEach(CrmTheme.allCases) { theme in

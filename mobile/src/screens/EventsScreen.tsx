@@ -4,7 +4,7 @@ import { OPERATIONAL_LABELS, usesOperationalStages } from '../lib/operationalSta
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../lib/refreshQueue';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,8 @@ import {
   seesSalesColleagueEvents,
 } from '../lib/salesColleagueEvents';
 import { Segmented } from '../components/Inquiries/InquiryKit';
+import ScheduleTimeline from '../components/Timeline/ScheduleTimeline';
+import { HOUR, SCREEN_VIEWS, useScreenTimeline, type TimelineEntry } from '../lib/scheduleTimeline';
 
 export interface EventListItem {
   id: string;
@@ -376,6 +378,42 @@ export default function EventsScreen({ onEventPress }: Props) {
     setFiltered(result);
   }, [events, search, statusFilter, showPastEvents, operationalStates, operational, isWarehouseWorker, warehouseFilter, handoffs, employee?.id, scope, scopeAvailable]);
 
+  // Oś czasu (dzień / tydzień / miesiąc): te same eventy i filtry co lista (zakres, magazyn, wyszukiwanie, status), bez filtra
+  // „przeszłe” — przeszłe okresy widać po przewinięciu osi. Kolor jak plakietka statusu na liście.
+  const timeline = useScreenTimeline('events', 'month');
+  const timelineEntries = useMemo<(TimelineEntry & { event: EventListItem })[]>(() => {
+    const q = search.trim().toLowerCase();
+    return events
+      .filter((event) => {
+        if (scopeAvailable && scope === 'mine' && !(employee?.id && event.created_by === employee.id)) return false;
+        if (isWarehouseWorker && !matchesWarehouseFilter(warehouseFilter, event.status, handoffs[event.id], employee?.id)) return false;
+        if (q && !(
+          event.name.toLowerCase().includes(q)
+          || event.organization_name?.toLowerCase().includes(q)
+          || event.billing_organization_name?.toLowerCase().includes(q)
+          || event.location_name?.toLowerCase().includes(q)
+        )) return false;
+        return !statusFilter || displayStatus(event) === statusFilter;
+      })
+      .flatMap((event) => {
+        const start = getEventStartTimestamp(event);
+        if (!start) return [];
+        const finish = event.event_end_date ? new Date(event.event_end_date).getTime() : NaN;
+        const status = displayStatus(event);
+        return [{
+          id: event.id,
+          start,
+          end: Number.isFinite(finish) && finish > start ? finish : start + 4 * HOUR,
+          title: event.name,
+          subtitle: [event.organization_name, event.location_name].filter(Boolean).join(' · ') || null,
+          color: STATUS_COLORS[status] || event.category_color || '#6b7280',
+          dimmed: status === 'cancelled',
+          event,
+        }];
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, search, statusFilter, operationalStates, operational, isWarehouseWorker, warehouseFilter, handoffs, employee?.id, scope, scopeAvailable]);
+
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleDateString('pl-PL', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -513,6 +551,9 @@ export default function EventsScreen({ onEventPress }: Props) {
         )}
       </View>
 
+      <View style={styles.scopeRow}>
+        <Segmented value={timeline.view} options={SCREEN_VIEWS} onChange={timeline.setView} />
+      </View>
       {scopeAvailable && (
         <View style={styles.scopeRow}>
           <Segmented value={scope} options={SCOPE_OPTIONS} onChange={setScope} />
@@ -553,6 +594,21 @@ export default function EventsScreen({ onEventPress }: Props) {
           )}
         />
       </View>
+      {timeline.view === 'timeline' ? (
+        <ScheduleTimeline
+          zoom={timeline.zoom}
+          onZoomChange={timeline.setZoom}
+          anchor={timeline.anchor}
+          onAnchorChange={timeline.setAnchor}
+          entries={timelineEntries}
+          onPressEntry={(entry) => onEventPress(entry.event)}
+          refreshing={refreshing}
+          onRefresh={() => fetchEvents(true)}
+          error={loadError}
+          emptyText={scopeAvailable && scope === 'mine' ? 'Brak Twoich eventów w tym okresie — przełącz na „Wszystkie eventy”.' : 'Brak eventów w tym okresie.'}
+        />
+      ) : (
+      <>
       <View style={styles.pastEventsToggle}>
         <View style={styles.pastEventsToggleText}>
           <Feather
@@ -620,6 +676,8 @@ export default function EventsScreen({ onEventPress }: Props) {
           </View>
         }
       />
+      </>
+      )}
     </View>
   );
 }

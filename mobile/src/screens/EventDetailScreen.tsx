@@ -41,12 +41,13 @@ import {
 } from '@/components/Events/EventDetailScreen/DetailsTab';
 import { EventVehicleAssignment, FleetTab } from '@/components/Events/EventDetailScreen/FleetTab';
 import { TeamTab } from '@/components/Events/EventDetailScreen/TeamTab';
+import { TimelineTab } from '@/components/Events/EventDetailScreen/TimelineTab';
 import {
   WeddingCardData,
   WeddingCardTab,
 } from '@/components/Events/EventDetailScreen/WeddingCardTab';
 import { mergeEventTeam } from '../lib/eventTeam';
-import { isManagerOrAdmin } from '../lib/permissions';
+import { hasPermission, isAdmin, isManagerOrAdmin } from '../lib/permissions';
 import { fetchEventCommercialsAccess } from '../lib/eventCommercialsAccess';
 import {
   type EventAccessResult,
@@ -58,7 +59,7 @@ import {
   fetchEventOnsiteContacts,
   fetchEventSalesOverview,
 } from '../lib/eventDetailAccess';
-import type { EventSalesOverview } from '../lib/eventAccess';
+import { eventTabAllowed, type EventSalesOverview, type EventTabId } from '../lib/eventAccess';
 import { SalesColleagueEventView } from '@/components/Events/EventDetailScreen/SalesColleagueEventView';
 import { eventStepDetailLink } from '../lib/eventStepLinks';
 import type { EventStep } from '../lib/eventSteps';
@@ -68,8 +69,22 @@ import { fetchEventSettlement } from '../lib/eventSettlementApi';
 /*
  * Zakładki eventu: „Szczegóły” — same dane eventu (termin, miejsce, klient, kontakty, opis); „Kroki realizacji” — przygotowanie
  * i realizacja (kroki: zezwolenia, sprawdzenia, potwierdzenia; przejęcie i zakończenie realizacji; karta imprezy PDF).
+ * Zakres karty jak w CRM: zakładki z obszarów osoby (get_event_access) i zawężenia z ustawień pracownika (`event_tabs`
+ * pracownika albo jego poziomu dostępu; administrator i prowadzący event — bez zawężenia), mapowane na zakładki CRM:
+ * Agenda → agenda, Timeline → phases, Checklista → equipment, Zespół → team, Logistyka → logistics, Pliki → files.
  */
-type TabKey = 'warehouse' | 'details' | 'steps' | 'agenda' | 'wedding' | 'checklist' | 'team' | 'fleet' | 'files' | 'summary';
+type TabKey =
+  | 'warehouse'
+  | 'details'
+  | 'steps'
+  | 'agenda'
+  | 'wedding'
+  | 'timeline'
+  | 'checklist'
+  | 'team'
+  | 'fleet'
+  | 'files'
+  | 'summary';
 
 interface Props {
   eventId: string;
@@ -83,11 +98,23 @@ interface MyAssignment {
   id: string;
   status: string;
   role: string | null;
+  /** Uprawnienie „Zapraszanie członków” w tym evencie — zarządzanie zespołem jak w CRM. */
+  can_invite_members?: boolean;
+}
+
+/** Zakres karty: opiekun sprzedaży, prowadzenie eventu i zawężenie zakładek z ustawień pracownika (jak CRM). */
+interface CardScope {
+  eventId: string;
+  sells: boolean;
+  canManageEvent: boolean;
+  tabs: string[] | null;
 }
 
 function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }: Props) {
   const { employee, session } = useAuth();
   const canManageEvent = isManagerOrAdmin(employee);
+  // Bez RPC current_employee_can_manage_event (starsza baza) — administrator / events_manage, jak w CRM.
+  const fallbackManageEvent = isAdmin(employee) || hasPermission(employee, 'events_manage');
   const isWarehouseWorker = employee?.permissions?.includes('equipment_manage') === true;
   const [warehouseAccess, setWarehouseAccess] = useState<{ eventId: string; employeeId: string; allowed: boolean } | null>(null);
   const showWarehouseTab = isWarehouseWorker && warehouseAccess?.eventId === eventId
@@ -136,6 +163,9 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
   const [refreshing, setRefreshing] = useState(false);
   const [checklistPdfPath, setChecklistPdfPath] = useState<string | null>(null);
   const [myAssignment, setMyAssignment] = useState<MyAssignment | null>(null);
+  const [cardScope, setCardScope] = useState<CardScope | null>(null);
+  // Wszystkie auta eventu (do „Kto czym jedzie”); `fleetAssignments` — auta w zakresie osoby.
+  const [fleetTotal, setFleetTotal] = useState(0);
   const [respondingInvitation, setRespondingInvitation] = useState(false);
   const [showAcceptedFeedback, setShowAcceptedFeedback] = useState(false);
   const [canViewPrivateFiles, setCanViewPrivateFiles] = useState(false);
@@ -161,22 +191,49 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
 
     const { data: assignment } = await supabase
       .from('employee_assignments')
-      .select('id, status, role')
+      .select('id, status, role, can_invite_members')
       .eq('event_id', eventId)
       .eq('employee_id', employee.id)
       .maybeSingle();
 
     return assignment
-      ? { id: assignment.id, status: assignment.status, role: assignment.role }
+      ? {
+          id: assignment.id,
+          status: assignment.status,
+          role: assignment.role,
+          can_invite_members: (assignment as any).can_invite_members === true,
+        }
       : null;
   }, [employee?.id, eventId]);
+
+  /** Zakres karty (CRM `fetchEventByIdServer`): opiekun sprzedaży, `current_employee_can_manage_event`, zakładki pracownika. */
+  const fetchCardScope = useCallback(async (): Promise<CardScope> => {
+    const fallbackManage = fallbackManageEvent;
+    if (!employee?.id) return { eventId, sells: false, canManageEvent: fallbackManage, tabs: null };
+    const [sells, manage, settings] = await Promise.all([
+      supabase.rpc('current_employee_sells_event', { p_event_id: eventId }),
+      supabase.rpc('current_employee_can_manage_event', { p_event_id: eventId }),
+      supabase.from('employees').select('event_tabs, access_levels(event_tabs)').eq('id', employee.id).maybeSingle(),
+    ]);
+    const row = settings.error ? null : (settings.data as any);
+    const level = Array.isArray(row?.access_levels) ? row.access_levels[0] : row?.access_levels;
+    const own: unknown[] = Array.isArray(row?.event_tabs) ? row.event_tabs : [];
+    const source: unknown[] = own.length > 0 ? own : Array.isArray(level?.event_tabs) ? level.event_tabs : [];
+    const tabs = source.filter((tab): tab is string => typeof tab === 'string' && Boolean(tab.trim()));
+    return {
+      eventId,
+      sells: !sells.error && sells.data === true,
+      canManageEvent: !manage.error && typeof manage.data === 'boolean' ? manage.data : fallbackManage,
+      tabs: tabs.length > 0 ? tabs : null,
+    };
+  }, [employee?.id, eventId, fallbackManageEvent]);
 
   const respondToInvitation = async (newStatus: 'accepted' | 'rejected') => {
     if (!myAssignment || !event || !showEventInvitation(event.created_by, employee?.id, session?.user.id, myAssignment.status)) return;
     setRespondingInvitation(true);
     try {
       const current = await respondToAssignment(myAssignment.id, newStatus);
-      setMyAssignment(current);
+      setMyAssignment({ ...current, can_invite_members: myAssignment.can_invite_members });
       setShowAcceptedFeedback(current.status === 'accepted');
     } catch (error: any) {
       Alert.alert('Nie udało się zapisać', error.message || 'Spróbuj ponownie.');
@@ -685,7 +742,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
     [eventId],
   );
 
-  const fetchFleet = useCallback(async (): Promise<EventVehicleAssignment[]> => {
+  const fetchFleet = useCallback(async (): Promise<{ rows: EventVehicleAssignment[]; total: number }> => {
     const { data, error } = await supabase
       .from('event_vehicles')
       .select(
@@ -694,7 +751,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
         external_company_name, departure_location, departure_time, arrival_time,
         return_departure_time, return_arrival_time, notes,
         pickup_odometer, pickup_timestamp, return_odometer, return_timestamp,
-        return_notes, is_in_use,
+        return_notes, is_in_use, has_trailer, trailer_vehicle_id, is_trailer_external,
         vehicle:vehicles!event_vehicles_vehicle_id_fkey(
           id, name, brand, model, registration_number, current_mileage
         ),
@@ -706,7 +763,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
 
     if (error) {
       console.error('Error loading event fleet:', error);
-      return [];
+      return { rows: [], total: 0 };
     }
 
     const mapped = (data || [])
@@ -719,16 +776,19 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
         driver: Array.isArray(row.driver) ? row.driver[0] || null : row.driver,
       })) as EventVehicleAssignment[];
 
-    if (canManageEvent) return mapped;
+    const total = mapped.length;
+    if (canManageEvent) return { rows: mapped, total };
     if (isWarehouseWorker) {
       const permission = await supabase.rpc('can_receive_warehouse_event', { p_event_id: eventId });
-      if (!permission.error && permission.data === true) return mapped;
+      if (!permission.error && permission.data === true) return { rows: mapped, total };
     }
-    return mapped.filter((row) => row.driver_id === employee?.id);
+    return { rows: mapped.filter((row) => row.driver_id === employee?.id), total };
   }, [canManageEvent, isWarehouseWorker, employee?.id, eventId]);
 
   const refreshFleet = useCallback(async () => {
-    setFleetAssignments(await fetchFleet());
+    const fleet = await fetchFleet();
+    setFleetAssignments(fleet.rows);
+    setFleetTotal(fleet.total);
   }, [fetchFleet]);
 
   const loadAll = useCallback(
@@ -763,7 +823,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
           isEventAuthor;
         setCanViewPrivateFiles(canViewSubfolders);
 
-        const [ag, ch, fi, fleet, assignment] = await Promise.all([
+        const [ag, ch, fi, fleet, assignment, scope] = await Promise.all([
           eventUsesWeddingCard ? Promise.resolve(null) : fetchAgenda(),
           fetchChecklist(),
           // Po migracji obszarów pliki w folderach operacyjnych widzi cała ekipa, a dokumentację — tylko obszar
@@ -771,6 +831,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
           fetchFiles(canViewSubfolders || access.mode === 'ready'),
           fetchFleet(),
           fetchMyAssignment(),
+          fetchCardScope().catch((): CardScope | null => null),
         ]);
         if (ev) setEvent(ev);
         setOnsiteContacts(nextOnsite);
@@ -780,8 +841,10 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
         setLogistics(ch.logistics);
         setEventEquipment(ch.equipment);
         setFiles(fi);
-        setFleetAssignments(fleet);
+        setFleetAssignments(fleet.rows);
+        setFleetTotal(fleet.total);
         setMyAssignment(assignment);
+        setCardScope(scope);
       } catch (err) {
         console.error('Error loading event detail:', err);
         setLoadError('Nie udało się pobrać aktualnych danych eventu.');
@@ -805,6 +868,7 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
       fetchFiles,
       fetchFleet,
       fetchMyAssignment,
+      fetchCardScope,
     ],
   );
 
@@ -961,32 +1025,57 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
     [refreshWeddingCard, weddingCard?.id],
   );
 
+  // Zakres karty eventu (jak CRM `EventDetailPageClient`): kto prowadzi event, zawężenie zakładek z ustawień pracownika
+  // i widoczność zakładek aplikacji. Zarządzanie zespołem: administrator, events_manage, autor / opiekun sprzedaży albo
+  // osoba z uprawnieniem „Zapraszanie członków” w tym evencie (po akceptacji zaproszenia).
+  const scope = cardScope?.eventId === eventId ? cardScope : null;
+  const adminView = isAdmin(employee);
+  const creatorView =
+    Boolean(event?.created_by && (event.created_by === employee?.id || event.created_by === session?.user?.id)) ||
+    scope?.sells === true;
+  const canManageTeam =
+    adminView ||
+    hasPermission(employee, 'events_manage') ||
+    creatorView ||
+    (myAssignment?.status === 'accepted' && myAssignment.can_invite_members === true);
+  const employeeTabs = adminView || creatorView ? null : scope?.tabs ?? null;
+  const tabAccess = accessResult?.mode === 'ready' ? accessResult.access : null;
+  const crmTabAllowed = (tab: EventTabId) => {
+    if (tabAccess) return eventTabAllowed(tabAccess, tab, employeeTabs);
+    // Bez obszarów z bazy (starsza baza / chwilowy błąd) — tylko zawężenie z ustawień pracownika.
+    if (!employeeTabs) return true;
+    return employeeTabs.includes(tab) || (tab === 'phases' && employeeTabs.includes('timeline'));
+  };
+  const myVehicle = Boolean(employee?.id) && fleetAssignments.some((row) => row.driver_id === employee?.id);
+  const tabVisible: Record<TabKey, boolean> = {
+    details: true,
+    steps: true,
+    agenda: !isWeddingEvent && crmTabAllowed('agenda'),
+    wedding: isWeddingEvent && crmTabAllowed('agenda'),
+    timeline: crmTabAllowed('phases'),
+    checklist: showWarehouseTab || crmTabAllowed('equipment'),
+    warehouse: showWarehouseTab,
+    team: canManageTeam || crmTabAllowed('team'),
+    // Kierowca zawsze widzi swoje auto (przejęcie i zdanie); auta innych i „Kto czym jedzie” — z Logistyką w zakresie.
+    fleet:
+      showWarehouseTab ||
+      myVehicle ||
+      (crmTabAllowed('logistics') && (fleetAssignments.length > 0 || fleetTotal > 0)),
+    files:
+      (showWarehouseTab || canViewPrivateFiles || files.length > 0) && (showWarehouseTab || crmTabAllowed('files')),
+    summary: showSummaryTab,
+  };
+  const visibleTabsKey = (Object.keys(tabVisible) as TabKey[]).filter((key) => tabVisible[key]).join(',');
+
   useEffect(() => {
-    if (isWeddingEvent && activeTab === 'agenda') {
-      setActiveTab('wedding');
-    }
-    if (!isWeddingEvent && activeTab === 'wedding') {
-      setActiveTab('agenda');
-    }
-    if (!isLoading && activeTab === 'fleet' && !showWarehouseTab && fleetAssignments.length === 0) {
-      setActiveTab('details');
-    }
-    if (!isLoading && activeTab === 'files' && !showWarehouseTab && !canViewPrivateFiles && files.length === 0) {
-      setActiveTab('details');
-    }
-    if (!isLoading && activeTab === 'summary' && !showSummaryTab) {
-      setActiveTab('details');
-    }
-  }, [
-    activeTab,
-    showWarehouseTab,
-    showSummaryTab,
-    canViewPrivateFiles,
-    files.length,
-    fleetAssignments.length,
-    isLoading,
-    isWeddingEvent,
-  ]);
+    let next: TabKey = activeTab;
+    if (isWeddingEvent && next === 'agenda') next = 'wedding';
+    if (!isWeddingEvent && next === 'wedding') next = 'agenda';
+    // Zakładka spoza zakresu osoby (np. z powiadomienia) — wracamy do „Szczegółów”.
+    if (!isLoading && !tabVisible[next]) next = 'details';
+    if (next !== activeTab) setActiveTab(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, isLoading, isWeddingEvent, visibleTabsKey]);
 
   // Otwarcie zakładki „Podsumowanie” odświeża dane, gdy odczyt ma ponad 30 s (kwoty zmieniają faktury, koszty, ekipa).
   useEffect(() => {
@@ -1053,44 +1142,25 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
     );
   }
 
-  const tabs: { key: TabKey; label: string; icon: string; count?: number }[] = [
+  const allTabs: { key: TabKey; label: string; icon: string; count?: number }[] = [
     { key: 'details', label: 'Szczegóły', icon: 'info' },
     { key: 'steps', label: 'Kroki realizacji', icon: 'check-circle' },
-    ...(isWeddingEvent
-      ? ([
-          {
-            key: 'wedding',
-            label: 'Karta weselna',
-            icon: 'heart',
-            count: weddingCard?.schedule.length || 0,
-          },
-        ] as const)
-      : ([
-          { key: 'agenda', label: 'Agenda', icon: 'clock', count: agenda?.items.length || 0 },
-        ] as const)),
-    {
-      key: 'checklist',
-      label: 'Checklista',
-      icon: 'check-square',
-      count: checklist.length + logistics.length,
-    },
-    ...(showWarehouseTab ? [{ key: 'warehouse' as const, label: 'Magazyn', icon: 'package' }] : []),
+    { key: 'wedding', label: 'Karta weselna', icon: 'heart', count: weddingCard?.schedule.length || 0 },
+    { key: 'agenda', label: 'Agenda', icon: 'clock', count: agenda?.items.length || 0 },
+    { key: 'timeline', label: 'Timeline', icon: 'calendar' },
+    { key: 'checklist', label: 'Checklista', icon: 'check-square', count: checklist.length + logistics.length },
+    { key: 'warehouse', label: 'Magazyn', icon: 'package' },
     { key: 'team', label: 'Zespół', icon: 'users', count: event.employees.length },
-    ...(showWarehouseTab || fleetAssignments.length > 0
-      ? ([
-          {
-            key: 'fleet',
-            label: 'Flota',
-            icon: 'truck',
-            count: fleetAssignments.length,
-          },
-        ] as const)
-      : []),
-    ...(showWarehouseTab || canViewPrivateFiles || files.length > 0
-      ? ([{ key: 'files', label: 'Pliki', icon: 'file', count: files.length }] as const)
-      : []),
-    ...(showSummaryTab ? ([{ key: 'summary', label: 'Podsumowanie', icon: 'bar-chart-2' }] as const) : []),
+    {
+      key: 'fleet',
+      label: 'Logistyka',
+      icon: 'truck',
+      count: crmTabAllowed('logistics') ? Math.max(fleetTotal, fleetAssignments.length) : fleetAssignments.length,
+    },
+    { key: 'files', label: 'Pliki', icon: 'file', count: files.length },
+    { key: 'summary', label: 'Podsumowanie', icon: 'bar-chart-2' },
   ];
+  const tabs = allTabs.filter((tab) => tabVisible[tab.key]);
 
   // „Przejdź” przy kroku realizacji: zakładka, w której krok się zamyka (EVENT_STEP_TARGET_TAB, wspólne z CRM).
   // Zakładki aplikacji otwieramy tutaj, umowę i finanse — w CRM w przeglądarce (tylko w zakresie osoby).
@@ -1285,14 +1355,37 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
             refreshKey={stepsRefreshKey}
           />
         )}
+        {activeTab === 'timeline' && tabVisible.timeline && (
+          <TimelineTab
+            eventId={eventId}
+            currentEmployeeId={employee?.id ?? null}
+            canEdit={scope?.canManageEvent === true}
+            refreshKey={stepsRefreshKey}
+          />
+        )}
         {activeTab === 'team' && (
-          <TeamTab employees={event.employees} currentEmployeeId={employee?.id ?? null} />
+          <TeamTab
+            employees={event.employees}
+            currentEmployeeId={employee?.id ?? null}
+            eventId={eventId}
+            canManage={canManageTeam}
+            onChanged={() => {
+              // Zespół i kierownik zamykają kroki („Zespół kompletny”, „Kierownik wyznaczony”).
+              setStepsRefreshKey((key) => key + 1);
+              void refreshEventState();
+            }}
+          />
         )}
         {activeTab === 'fleet' && (
           <FleetTab
             assignments={fleetAssignments}
             currentEmployeeId={employee?.id ?? null}
             onChanged={refreshFleet}
+            eventId={eventId}
+            eventDate={event.event_date}
+            team={event.employees}
+            canAssignDrivers={scope?.canManageEvent === true}
+            refreshKey={stepsRefreshKey}
           />
         )}
         {activeTab === 'files' && <FilesTab files={files} />}

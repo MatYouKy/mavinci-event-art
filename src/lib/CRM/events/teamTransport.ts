@@ -3,7 +3,8 @@
  *
  * Kierowcę przypisuje logistyka (`event_vehicles.driver_id`); pozostali członkowie zespołu mają
  * `employee_assignments.transport_event_vehicle_id`. Miejsca auta z floty: `vehicles.number_of_seats` (z kierowcą).
- * Wspólne dla zakładki Zespół w CRM i aplikacji na Maca (przez `/bridge/native`).
+ * Wspólne dla zakładki Zespół w CRM, aplikacji na Maca (przez `/bridge/native`) i aplikacji mobilnej (Zespół, Logistyka).
+ * Identyczna kopia: mobile/src/lib/teamTransport.ts (pilnuje scripts/ci/check-shared-copies.mjs). Bez importów.
  */
 
 export type TeamTransportVehicle = {

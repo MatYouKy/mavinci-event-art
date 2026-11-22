@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,9 @@ import {
 } from '../lib/meetingStatus';
 import { cancelObsoleteMeetingAlerts } from '../services/meetingReminders';
 import SwipeableRow from '../components/SwipeableRow';
+import ScheduleTimeline from '../components/Timeline/ScheduleTimeline';
+import { Segmented } from '../components/Inquiries/InquiryKit';
+import { HOUR, SCREEN_VIEWS, addDays, startOfDay, useScreenTimeline, type TimelineEntry } from '../lib/scheduleTimeline';
 
 import * as Notifications from 'expo-notifications';
 
@@ -574,6 +577,31 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
 
   const isUpcoming = (dateStr: string) => new Date(dateStr).getTime() > Date.now();
 
+  // Lista albo oś czasu (dzień / tydzień / miesiąc) — te same spotkania (moje i z moim udziałem); wybór zapamiętany na urządzeniu.
+  const timeline = useScreenTimeline('meetings', 'week');
+  const timelineEntries = useMemo<(TimelineEntry & { meeting: Meeting })[]>(() => meetings.flatMap((meeting) => {
+    const begin = Date.parse(meeting.datetime_start || '');
+    if (!Number.isFinite(begin)) return [];
+    const finish = Date.parse(meeting.datetime_end || '');
+    const allDay = meeting.is_all_day === true;
+    const start = allDay ? startOfDay(begin).getTime() : begin;
+    const end = allDay
+      ? addDays(startOfDay(Number.isFinite(finish) && finish > begin ? finish - 1 : begin), 1).getTime()
+      : Number.isFinite(finish) && finish > begin ? finish : begin + HOUR;
+    const dimmed = meetingStatusOption(meeting.status).value === 'cancelled' || myMeetingResponse(meeting, employee?.id) === 'declined';
+    return [{
+      id: meeting.id,
+      start,
+      end,
+      allDay,
+      title: meeting.title || 'Spotkanie',
+      subtitle: meeting.location_text,
+      color: meeting.color || DEFAULT_MEETING_COLOR,
+      dimmed,
+      meeting,
+    }];
+  }), [meetings, employee?.id]);
+
   const upcomingMeetings = meetings.filter((m) => isUpcoming(m.datetime_start || ''));
   const pastMeetings = meetings.filter((m) => !isUpcoming(m.datetime_start || ''));
   const availableMeetingColors = MEETING_COLORS.some(
@@ -807,6 +835,23 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.viewSwitch}>
+        <Segmented value={timeline.view} options={SCREEN_VIEWS} onChange={timeline.setView} />
+      </View>
+
+      {timeline.view === 'timeline' ? (
+        <ScheduleTimeline
+          zoom={timeline.zoom}
+          onZoomChange={timeline.setZoom}
+          anchor={timeline.anchor}
+          onAnchorChange={timeline.setAnchor}
+          entries={timelineEntries}
+          onPressEntry={(entry) => setSelectedMeeting(entry.meeting)}
+          refreshing={refreshing}
+          onRefresh={() => fetchMeetings(true)}
+          emptyText="Brak spotkań w tym okresie."
+        />
+      ) : (
       <FlatList
         data={[...upcomingMeetings, ...pastMeetings]}
         keyExtractor={(item) => item.id}
@@ -832,6 +877,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
           ) : null
         }
       />
+      )}
 
       {/* New Meeting Modal */}
       <Modal
@@ -1602,6 +1648,11 @@ const styles = StyleSheet.create({
   list: {
     padding: spacing.md,
     paddingBottom: 100,
+  },
+
+  viewSwitch: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
 
   sectionTitle: {

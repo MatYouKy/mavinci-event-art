@@ -49,6 +49,19 @@ if ! grep -q "TeamIdentifier=$TEAM_ID" <<<"$SIGNATURE"; then
 fi
 DEVELOPER_ID=0
 if grep -q "Authority=Developer ID Application" <<<"$SIGNATURE"; then DEVELOPER_ID=1; fi
+# Kompilacja deweloperska („Apple Development”) działa w pełni na Macu, na którym ją zbudowano; na innych Macach macOS może nie
+# uruchomić rozszerzenia Findera („Mavinci” w pasku bocznym). Przed publikacją takiego wydania — pytanie (ALLOW_DEVELOPMENT_RELEASE=1
+# pomija pytanie, PUBLISH=0 — tylko pliki lokalnie).
+if [ "$DEVELOPER_ID" != 1 ]; then
+  echo ""
+  echo "⚠️  Podpis „Apple Development” (kompilacja deweloperska), nie „Developer ID Application”."
+  echo "   Na tym Macu wszystko działa, ale na innych Macach „Mavinci” może nie pojawić się w Finderze."
+  echo "   Wydanie dla zespołu: certyfikat Developer ID (desktop/mac/README.md → „Instalator dla innych Maców”)."
+  if [ "$PUBLISH" != "0" ] && [ -t 0 ] && [ "${ALLOW_DEVELOPMENT_RELEASE:-}" != "1" ]; then
+    read -r -p "   Opublikować mimo to? [t/N] " answer
+    case "$answer" in t|T|tak|Tak|TAK|y|Y) ;; *) echo "Przerwano — nic nie zostało opublikowane (pliki: PUBLISH=0 yarn dmg)."; exit 1;; esac
+  fi
+fi
 
 mkdir -p "$OUT"
 NOTARIZED=false

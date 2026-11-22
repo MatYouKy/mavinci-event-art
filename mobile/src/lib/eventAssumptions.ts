@@ -1,0 +1,288 @@
+// Założenia realizacji oferty (trzy karty z liczbowymi znacznikami w PDF) i cel eventu — wspólne dla CRM i aplikacji mobilnej.
+// Identyczna kopia: mobile/src/lib/eventAssumptions.ts (pilnuje scripts/ci/check-shared-copies.mjs). Bez importów.
+
+export type EventAssumptionKey =
+  | 'guest_count'
+  | 'event_hours'
+  | 'client_needs'
+  | 'event_format'
+  | 'agenda'
+  | 'venue'
+  | 'audience'
+  | 'engagement'
+  | 'brand_visibility'
+  | 'guest_experience'
+  | 'online_participants'
+  | 'technical_scope'
+  | 'special_requirements'
+  | 'custom';
+
+export type EventAssumptionItem = {
+  key: EventAssumptionKey;
+  label: string;
+  value: string;
+  badge_value?: string;
+};
+
+// Limit odpowiada czterem zwartym wierszom na karcie założeń w PDF.
+export const EVENT_ASSUMPTION_VALUE_MAX_LENGTH = 250;
+/** Cel eventu (`offers.event_goal`) — jak zapis założeń oferty w CRM i na Macu. */
+export const EVENT_GOAL_MAX_LENGTH = 2000;
+/** Wskazówki dla AI („Co chcesz osiągnąć?”) — limit `assist-inquiry`. */
+export const EVENT_ASSUMPTION_AI_INSTRUCTIONS_MAX_LENGTH = 2000;
+
+export type EventAssumptionOption = {
+  key: EventAssumptionKey;
+  label: string;
+  question: string;
+  placeholder: string;
+  multiline?: boolean;
+  defaultBadgeValue?: string;
+  defaultValue?: string;
+};
+
+export const EVENT_ASSUMPTION_OPTIONS: EventAssumptionOption[] = [
+  {
+    key: 'guest_count',
+    label: 'Liczba gości',
+    question: 'Ilu gości weźmie udział w wydarzeniu?',
+    placeholder: 'np. około 180 osób',
+  },
+  {
+    key: 'event_hours',
+    label: 'Godziny wydarzenia',
+    question: 'W jakich godzinach ma odbywać się wydarzenie i obsługa techniczna?',
+    placeholder: 'np. wydarzenie 18:00–02:00, montaż od 12:00',
+  },
+  {
+    key: 'client_needs',
+    label: 'Przebieg i potrzeby klienta',
+    question: 'Co ma się dziać i czego klient naprawdę potrzebuje?',
+    placeholder: 'Opisz przebieg, najważniejsze momenty, oczekiwany efekt i priorytety klienta…',
+    multiline: true,
+  },
+  {
+    key: 'event_format',
+    label: 'Format wydarzenia',
+    question: 'Jaka jest formuła wydarzenia?',
+    placeholder: 'np. gala, konferencja, integracja, wesele, hybryda',
+  },
+  {
+    key: 'agenda',
+    label: 'Agenda i kluczowe momenty',
+    question: 'Jakie punkty programu są najważniejsze dla realizacji?',
+    placeholder: 'np. otwarcie, prezentacje, panel, koncert, afterparty',
+    multiline: true,
+  },
+  {
+    key: 'venue',
+    label: 'Miejsce i warunki',
+    question: 'Gdzie odbywa się wydarzenie i jakie są warunki obiektu?',
+    placeholder: 'np. sala hotelowa, plener, dostęp od zaplecza, ograniczenia montażowe',
+    multiline: true,
+  },
+  {
+    key: 'audience',
+    label: 'Grupa odbiorców',
+    question: 'Kim są uczestnicy i jaki charakter ma mieć wydarzenie?',
+    placeholder: 'np. pracownicy, partnerzy biznesowi, zarząd, rodziny',
+    multiline: true,
+  },
+  {
+    key: 'engagement',
+    label: 'Zaangażowanie uczestników',
+    question: 'Jak wydarzenie ma angażować uczestników?',
+    placeholder: 'np. interaktywna formuła, aktywny prowadzący i udział publiczności',
+    defaultBadgeValue: '',
+    defaultValue: 'Interaktywna formuła angażująca uczestników przez cały czas wydarzenia.',
+    multiline: true,
+  },
+  {
+    key: 'brand_visibility',
+    label: 'Widoczność marki',
+    question: 'Jak marka klienta ma być obecna podczas wydarzenia?',
+    placeholder: 'np. spójny branding sceny, ekranów, materiałów i komunikacji',
+    defaultBadgeValue: '',
+    defaultValue: 'Spójna obecność marki we wszystkich najważniejszych punktach kontaktu z uczestnikiem.',
+    multiline: true,
+  },
+  {
+    key: 'guest_experience',
+    label: 'Doświadczenie uczestników',
+    question: 'Jakie doświadczenie mają zapamiętać uczestnicy?',
+    placeholder: 'np. płynny przebieg, efekt wow i komfort uczestników',
+    defaultBadgeValue: '',
+    defaultValue: 'Dopracowane doświadczenie uczestnika od pierwszego kontaktu do zakończenia wydarzenia.',
+    multiline: true,
+  },
+  {
+    key: 'online_participants',
+    label: 'Uczestnicy online',
+    question: 'Czy wydarzenie wymaga udziału online, streamingu lub nagrania?',
+    placeholder: 'np. nie / transmisja dla 300 osób na Teams',
+  },
+  {
+    key: 'technical_scope',
+    label: 'Zakres techniczny',
+    question: 'Jakiego zakresu obsługi technicznej oczekuje klient?',
+    placeholder: 'np. scena, dźwięk, światło, multimedia, realizacja wizji',
+    multiline: true,
+  },
+  {
+    key: 'special_requirements',
+    label: 'Wymagania szczególne',
+    question: 'Jakie ograniczenia, ryzyka lub wymagania trzeba uwzględnić?',
+    placeholder: 'np. cisza nocna, branding, dostępność, ochrona, wymagania artysty',
+    multiline: true,
+  },
+  {
+    key: 'custom',
+    label: 'Własne założenie',
+    question: 'Opisz własne założenie lub oczekiwany rezultat.',
+    placeholder: 'Wpisz treść widoczną pod własnym nagłówkiem…',
+    multiline: true,
+  },
+];
+
+export const DEFAULT_EVENT_ASSUMPTION_KEYS: EventAssumptionKey[] = [
+  'guest_count',
+  'event_hours',
+  'client_needs',
+];
+
+const optionByKey = new Map(EVENT_ASSUMPTION_OPTIONS.map((option) => [option.key, option]));
+
+export function getEventAssumptionOption(key: EventAssumptionKey) {
+  return optionByKey.get(key) || EVENT_ASSUMPTION_OPTIONS[0];
+}
+
+export function normalizeEventAssumptionItems(
+  rawValue: unknown,
+  legacyText = '',
+): EventAssumptionItem[] {
+  let parsed = rawValue;
+  if (typeof rawValue === 'string') {
+    try {
+      parsed = JSON.parse(rawValue);
+    } catch {
+      parsed = [];
+    }
+  }
+
+  const used = new Set<EventAssumptionKey>();
+  const normalized: EventAssumptionItem[] = [];
+
+  if (Array.isArray(parsed)) {
+    parsed.slice(0, 3).forEach((candidate) => {
+      if (!candidate || typeof candidate !== 'object') return;
+      const key = String((candidate as Record<string, unknown>).key || '') as EventAssumptionKey;
+      const option = optionByKey.get(key);
+      const isCustom = key === 'custom';
+      if (!option || (!isCustom && used.has(key))) return;
+      if (!isCustom) used.add(key);
+      const customLabel = String((candidate as Record<string, unknown>).label || '').trim();
+      normalized.push({
+        key,
+        label: isCustom ? customLabel.slice(0, 80) || option.label : option.label,
+        value: String((candidate as Record<string, unknown>).value || '').slice(0, EVENT_ASSUMPTION_VALUE_MAX_LENGTH),
+        badge_value: String((candidate as Record<string, unknown>).badge_value || '').trim().slice(0, 7),
+      });
+    });
+  }
+
+  DEFAULT_EVENT_ASSUMPTION_KEYS.forEach((key) => {
+    if (normalized.length >= 3 || used.has(key)) return;
+    const option = getEventAssumptionOption(key);
+    used.add(key);
+    normalized.push({
+      key,
+      label: option.label,
+      value: key === 'client_needs' ? legacyText : '',
+      badge_value: '',
+    });
+  });
+
+  for (const option of EVENT_ASSUMPTION_OPTIONS) {
+    if (normalized.length >= 3) break;
+    if (used.has(option.key)) continue;
+    used.add(option.key);
+    normalized.push({ key: option.key, label: option.label, value: '', badge_value: '' });
+  }
+
+  return normalized.slice(0, 3);
+}
+
+export function formatEventAssumptionItems(items: EventAssumptionItem[]) {
+  return items
+    .map((item) => ({
+      ...item,
+      label: item.label.trim() || getEventAssumptionOption(item.key).label,
+      value: item.value.trim(),
+    }))
+    .filter((item) => item.value)
+    .map((item) => `${item.label}: ${item.value}`)
+    .join('\n');
+}
+
+// The numeric offer field is authoritative; never infer pricing from free-form text.
+export function syncGuestCountAssumptions(items: EventAssumptionItem[], guestCount: number | null | undefined): EventAssumptionItem[] {
+  if (guestCount != null && (!Number.isInteger(guestCount) || guestCount < 1 || guestCount > 100000)) return items;
+  const index = items.findIndex(item => item.key === 'guest_count');
+  if (guestCount == null) {
+    return items.map(item => item.key === 'guest_count' ? { ...item, value: '', badge_value: '' } : item);
+  }
+  const guest: EventAssumptionItem = { key: 'guest_count', label: 'Liczba gości', value: `${guestCount} osób`, badge_value: String(guestCount) };
+  if (index >= 0) return items.map((item, i) => i === index ? guest : item);
+  const empty = items.findIndex(item => !item.value.trim() && !item.badge_value?.trim());
+  if (empty >= 0) return items.map((item, i) => i === empty ? guest : item);
+  // Keep all three deliberately selected cards. The section shows the count separately.
+  return items.length < 3 ? [...items, guest] : items;
+}
+
+/**
+ * Odpowiedź AI (`assist-inquiry`, `draft_offer_assumptions`) → trzy karty w kolejności wybranych kategorii i cel eventu — te same
+ * reguły co „Zaproponuj z AI” w ofercie (CRM, Mac). Błąd — komunikat po polsku.
+ */
+export function eventAssumptionsFromAi(
+  result: unknown,
+  requested: EventAssumptionItem[],
+  generateGoal: boolean,
+): { items: EventAssumptionItem[]; goal: string | null } | { error: string } {
+  const data = result && typeof result === 'object' ? (result as Record<string, unknown>) : {};
+  const candidates = (Array.isArray(data.assumptions) ? data.assumptions : []) as Array<Record<string, unknown> | null>;
+  if (candidates.length !== requested.length
+    || candidates.some((candidate, index) => String(candidate?.key || '') !== requested[index].key)) {
+    return { error: 'AI nie zachowało wybranych kategorii. Spróbuj ponownie.' };
+  }
+  const used = new Set<EventAssumptionKey>();
+  const items: EventAssumptionItem[] = [];
+  for (const candidate of candidates) {
+    const key = String(candidate?.key || '') as EventAssumptionKey;
+    const option = optionByKey.get(key);
+    if (!option || (key !== 'custom' && used.has(key))) continue;
+    if (key !== 'custom') used.add(key);
+    const value = String(candidate?.value || '').trim();
+    if (!value) continue;
+    items.push({
+      key,
+      label: key === 'custom' ? String(candidate?.label || option.label).trim().slice(0, 80) : option.label,
+      value: value.slice(0, EVENT_ASSUMPTION_VALUE_MAX_LENGTH),
+      badge_value: String(candidate?.badge_value || '').trim().slice(0, 7),
+    });
+  }
+  if (items.length !== 3) return { error: 'AI nie przygotowało trzech kompletnych założeń. Spróbuj ponownie.' };
+  const goal = String(data.event_goal || '').trim().slice(0, EVENT_GOAL_MAX_LENGTH);
+  if (generateGoal && !goal) return { error: 'AI nie przygotowało celu eventu. Spróbuj ponownie.' };
+  return { items, goal: generateGoal ? goal : null };
+}
+
+/** „Wykorzystano analizy: 2, wiadomości: 5. …” — z czego AI przygotowało propozycję (`source_context` odpowiedzi). */
+export function eventAssumptionsAiSources(result: unknown): string {
+  const data = result && typeof result === 'object' ? (result as Record<string, unknown>) : {};
+  const sources = data.source_context && typeof data.source_context === 'object' ? (data.source_context as Record<string, unknown>) : null;
+  if (!sources) return 'Propozycja na podstawie opisu, produktów i ustaleń oferty — bez powiązanego zapytania.';
+  return `Wykorzystano analizy: ${Number(sources.analysis_count) || 0}, wiadomości: ${Number(sources.correspondence_count) || 0}. ${
+    sources.approved_summary_current
+      ? 'Uwzględniono aktualne zatwierdzone podsumowanie.'
+      : 'Brak aktualnego zatwierdzonego podsumowania — propozycja wymaga sprawdzenia.'}`;
+}

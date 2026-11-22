@@ -8,8 +8,8 @@ import {
   showcaseResetLayout, showcaseSaveLayout, showcaseSaveSection, showcaseUpload,
 } from '@/lib/showcase/showcase.server';
 import {
-  showcaseOfferApproval, showcaseOfferClientContext, showcaseOfferClients, showcaseOfferConfigure, showcaseOfferCreate, showcaseOfferDiscountDisplay, showcaseOfferEmail,
-  showcaseOfferEmailSend, showcaseOfferLocations,
+  showcaseOfferApproval, showcaseOfferAssumptionOptions, showcaseOfferAssumptionsAI, showcaseOfferClientContext, showcaseOfferClients, showcaseOfferConfigure,
+  showcaseOfferCreate, showcaseOfferDiscountDisplay, showcaseOfferEmail, showcaseOfferEmailSend, showcaseOfferLocations,
   showcaseOfferPdf, showcaseOfferPreview, showcaseOfferSetup, showcaseOfferStatus,
 } from '@/lib/showcase/showcaseOffer.server';
 
@@ -37,14 +37,17 @@ export const maxDuration = 300;
  * Oferta ze spotkania (`src/lib/showcase/showcaseOffer.server.ts`, migracja 20261122120000):
  * GET op=offerSetup | offerClients&q | offerClient&organization|contact (osoby firmy, otwarte zapytania) | offerStatus&id |
  *   offerPdf&id (podpisany adres PDF) | offerEmail&id (okno wysyłki) | offerLocations&q (podpowiedzi miejsca z bazy lokalizacji) |
- *   offerProduct&id (produkt katalogu z wariantami i pakietami — „Dodaj pozycję” w arkuszu oferty).
+ *   offerProduct&id (produkt katalogu z wariantami i pakietami — „Dodaj pozycję” w arkuszu oferty) |
+ *   offerAssumptions (kategorie kart „Założenia i cel” — jak `op=assumptions` ofert na Macu).
  * GET op=help — instrukcja „?” (`src/lib/help/presentationsHelp.ts`) dla aplikacji na Maca.
  * POST JSON op=assist {title, tagline, productIds[], content, brief, fields[]} — propozycje asystenta AI (bez zapisu);
  *   createItem {…, example: true} — karta z przykładu z instrukcji (ukryta).
  * POST JSON op=offerPreview {draft} | offerCreate {draft} (błąd po zapisaniu zapytania niesie `inquiryId`) |
  *   offerApproval {id, note?} | offerEmailSend {id, to, subject, text, accountId, recipientName} |
  *   offerConfigure {productId | snapshot, edits[], refresh?, quantity?} — konfigurator sceny i ekranu LED (bez stawek części) |
- *   offerDiscountDisplay {discountDisplay: lines | total | none} — zapamiętany sposób pokazania rabatu klientowi w PDF.
+ *   offerDiscountDisplay {discountDisplay: lines | total | none} — zapamiętany sposób pokazania rabatu klientowi w PDF |
+ *   offerAssumptionsAI {draft, instructions?, generateGoal?} — „Zaproponuj z AI” trzech kart założeń i celu eventu (bez zapisu,
+ *   `{items, goal, sources}` jak `op=assumptionsAI` ofert).
  * PDF oferty: `/bridge/offers/generate-pdf` (ten sam token, postęp w NDJSON).
  */
 
@@ -91,6 +94,8 @@ export async function GET(request: Request) {
         return nativeJson(await showcaseOfferLocations(ctx, params));
       case 'offerProduct':
         return nativeJson(await showcaseProductDetail(ctx, params.get('id') || ''));
+      case 'offerAssumptions':
+        return nativeJson(await showcaseOfferAssumptionOptions(ctx));
       case 'help':
         return nativeJson({ manual: { title: PRESENTATIONS_HELP.title, chapters: PRESENTATIONS_HELP.chapters } });
       default:
@@ -156,6 +161,8 @@ export async function POST(request: Request) {
         return nativeJson(await showcaseOfferApproval(ctx, body));
       case 'offerDiscountDisplay':
         return nativeJson(await showcaseOfferDiscountDisplay(ctx, body));
+      case 'offerAssumptionsAI':
+        return nativeJson(await showcaseOfferAssumptionsAI(ctx, body));
       case 'offerEmailSend': {
         // Wysyłka idzie do funkcji poczty tokenem pracownika (jak „Wyślij ofertę” w CRM).
         const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';

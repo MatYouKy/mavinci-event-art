@@ -35,6 +35,8 @@ const PAIRS = [
   ['src/lib/materials/materialsShared.ts', 'mobile/src/lib/materialsShared.ts'],
   ['src/lib/CRM/theme/crmThemePalette.ts', 'mobile/src/theme/crmThemePalette.ts'],
   ['src/lib/drive/driveShared.ts', 'mobile/src/lib/driveShared.ts'],
+  ['src/lib/CRM/events/teamTransport.ts', 'mobile/src/lib/teamTransport.ts'],
+  ['src/lib/CRM/Offers/eventAssumptions.ts', 'mobile/src/lib/eventAssumptions.ts'],
 ];
 
 let failed = false;

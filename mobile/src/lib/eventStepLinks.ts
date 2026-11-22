@@ -14,6 +14,7 @@ export type EventDetailTab =
   | 'steps'
   | 'agenda'
   | 'wedding'
+  | 'timeline'
   | 'checklist'
   | 'warehouse'
   | 'team'
@@ -29,10 +30,11 @@ export const EVENT_DETAIL_TAB_LABELS: Record<EventDetailTab, string> = {
   steps: 'Kroki realizacji',
   agenda: 'Agenda',
   wedding: 'Karta weselna',
+  timeline: 'Timeline',
   checklist: 'Checklista',
   warehouse: 'Magazyn',
   team: 'Zespół',
-  fleet: 'Flota',
+  fleet: 'Logistyka',
   files: 'Pliki',
   summary: 'Podsumowanie',
 };
@@ -86,7 +88,7 @@ export type EventDetailLinkContext = {
   isWedding: boolean;
   /** Widoczna zakładka „Magazyn”. */
   hasWarehouse: boolean;
-  /** Widoczna zakładka „Flota”. */
+  /** Widoczna zakładka „Logistyka” (auta, przejęcie auta, kto czym jedzie). */
   hasFleet: boolean;
   /**
    * Widoczna zakładka „Podsumowanie” (obszar „kwoty”, RPC get_event_settlement wdrożone). Bez niej krok podsumowania

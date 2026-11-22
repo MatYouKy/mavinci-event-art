@@ -104,6 +104,9 @@ extension Workspace {
         if let host = nav.tabHost, host !== window, host.isVisible {
             host.addTabbedWindow(window, ordered: .above)
             window.makeKeyAndOrderFront(nil)
+        } else {
+            // Pierwsze okno po uruchomieniu aplikacji — od razu na pełnym ekranie (Ustawienia → Wygląd).
+            LaunchFullScreen.apply(to: window)
         }
         nav.tabHost = nil
         if window.isKeyWindow { activate(nav) }

@@ -6,14 +6,17 @@ import { activeVariants, initialDraft, modularText, productPackages } from '@/li
 import { offerPdf } from '@/lib/native/offers';
 import { WIZARD_PRODUCT_SELECT, evaluateItems, pricingOf, type Evaluated } from '@/lib/native/offerWizard';
 import { resolveAudienceConfiguration, type OfferAudience } from '@/lib/CRM/Offers/audiencePricing';
-import { formatEventAssumptionItems, normalizeEventAssumptionItems } from '@/lib/CRM/Offers/eventAssumptions';
+import {
+  EVENT_ASSUMPTION_AI_INSTRUCTIONS_MAX_LENGTH, EVENT_ASSUMPTION_OPTIONS, EVENT_ASSUMPTION_VALUE_MAX_LENGTH, EVENT_GOAL_MAX_LENGTH,
+  eventAssumptionsAiSources, eventAssumptionsFromAi, formatEventAssumptionItems, normalizeEventAssumptionItems, syncGuestCountAssumptions,
+} from '@/lib/CRM/Offers/eventAssumptions';
 import { validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
 import type { ProductConfigurationSnapshot } from '@/lib/CRM/Offers/modularProduct';
 import { fail, isObject, isUuid, text, type Row } from '@/lib/social/socialCommon.server';
 import { inquiryTitleLabel, systemLabel } from '@/lib/ui/systemLabels';
 import {
   SHOWCASE_OFFER_LIMITS, isShowcaseOfferDiscountDisplay, isShowcaseOfferEmail, isShowcaseOfferPlaceholder, normalizeShowcaseOfferDraft, showcaseOfferProblem,
-  showcaseOfferScope, type ShowcaseOfferApproval, type ShowcaseOfferDiscountDisplay, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferDraft,
+  showcaseOfferHasAssumptions, showcaseOfferScope, type ShowcaseOfferApproval, type ShowcaseOfferAssumptionsDraft, type ShowcaseOfferDiscountDisplay, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferDraft,
   type ShowcaseConfigNode, type ShowcaseConfigView, type ShowcaseOfferConfiguration,
   type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferLine, type ShowcaseOfferLocation, type ShowcaseOfferPerson,
   type ShowcaseOfferPreview,
@@ -690,8 +693,15 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
     const { data } = await ctx.supabase.rpc('get_inquiry_approved_summary', { p_inquiry: inquiryId });
     approved = typeof data === 'string' && data.trim() ? data : null;
   }
-  // Nowe zapytanie: karty założeń z rozmowy (liczba gości, miejsce); otwarte zapytanie — jego założenia (jak w CRM).
-  const assumptionItems = inquiryCreated
+  // Założenia wpisane przez sprzedawcę na spotkaniu (trzy karty, liczba gości z pola „Liczba osób”); bez nich: nowe zapytanie —
+  // karty z rozmowy (liczba gości, miejsce), otwarte zapytanie — jego założenia (jak w CRM).
+  // Liczba gości karty: z pola „Liczba osób”, a bez niego — z zapytania (wyzwalacz oferty bierze ją stamtąd).
+  const inquiryGuests = Number(details.guest_count);
+  const knownGuests = draft.event.guestCount ?? (Number.isInteger(inquiryGuests) && inquiryGuests > 0 && inquiryGuests <= 100000 ? inquiryGuests : null);
+  const sellerAssumptions = showcaseOfferHasAssumptions(draft.assumptions)
+    ? syncGuestCountAssumptions(draftAssumptionItems(draft), knownGuests)
+    : null;
+  const assumptionItems = sellerAssumptions ? sellerAssumptions : inquiryCreated
     ? normalizeEventAssumptionItems([
       ...(draft.event.guestCount ? [{ key: 'guest_count', value: `${draft.event.guestCount} osób`, badge_value: String(draft.event.guestCount) }] : []),
       ...(draft.event.location ? [{ key: 'venue', value: draft.event.location }] : []),
@@ -736,7 +746,8 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
     table_count: null,
     event_assumptions: assumptions || null,
     event_assumption_items: assumptionItems,
-    event_goal: text(details.event_goal) || null,
+    // Cel ze spotkania (sprzedawca, także z pomocą AI) albo z zapytania.
+    event_goal: (draft.goal.trim() || text(details.event_goal)).slice(0, EVENT_GOAL_MAX_LENGTH) || null,
     ...totals,
     created_by: ctx.employee.id,
   }]).select('id, offer_number').single();
@@ -794,6 +805,92 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
     net: pricing.targetNet,
     gross: pricing.gross,
     approval: await guardrail(ctx, String(offer.id)),
+  };
+}
+
+// MARK: Założenia i cel eventu („Zaproponuj z AI”)
+
+/** Karty szkicu (znacznik w `badge`) → karty oferty (`badge_value`), z kartą liczby gości z pola „Liczba osób”. */
+const draftAssumptionItems = (draft: ShowcaseOfferDraft) => syncGuestCountAssumptions(
+  normalizeEventAssumptionItems(draft.assumptions.map((item) => ({ key: item.key, label: item.label, value: item.value, badge_value: item.badge }))),
+  draft.event.guestCount,
+);
+
+/** „2027-05-14T19:00” → „14.05.2027, 19:00”. */
+const draftDateLabel = (value: string) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}:\d{2}))?/.exec(value);
+  return match ? `${match[3]}.${match[2]}.${match[1]}${match[4] ? `, ${match[4]}` : ''}` : '';
+};
+
+/**
+ * Kategorie kart założeń (jak `op=assumptions` ofert na Macu): domyślne trzy karty, limit treści i lista kategorii z pytaniem,
+ * podpowiedzią i treścią domyślną. Liczbę gości i karty ze szkicu aplikacja bierze ze szkicu.
+ */
+export async function showcaseOfferAssumptionOptions(ctx: NativeContext) {
+  await requireOffer(ctx);
+  return {
+    items: normalizeEventAssumptionItems([]),
+    goal: '',
+    guestCount: null,
+    maxLength: EVENT_ASSUMPTION_VALUE_MAX_LENGTH,
+    options: EVENT_ASSUMPTION_OPTIONS.map((option) => ({
+      key: option.key, label: option.label, question: option.question, placeholder: option.placeholder,
+      multiline: option.multiline === true, defaultValue: option.defaultValue || '', defaultBadge: option.defaultBadgeValue || '',
+    })),
+  };
+}
+
+/**
+ * „Zaproponuj z AI” w „Założeniach i celu” oferty ze spotkania (CRM, Mac, tablet i telefon): treści trzech wybranych kart
+ * i opcjonalnie cel eventu — funkcja `assist-inquiry` (`draft_offer_assumptions`) tokenem sprzedawcy, jak „Zaproponuj z AI”
+ * w ofercie (uprawnienie do edycji ofert sprawdza funkcja). Kontekst: otwarte zapytanie (ustalenia, analizy, korespondencja),
+ * pozycje szkicu i liczba osób; przy nowym zapytaniu — nazwa, termin i miejsce eventu; zawsze notatka ze spotkania.
+ * Wskazówki sprzedawcy („Co chcesz osiągnąć?”) idą pierwsze. Bez zapisu — propozycja trafia do szkicu w aplikacji.
+ */
+export async function showcaseOfferAssumptionsAI(ctx: NativeContext, body: Row): Promise<ShowcaseOfferAssumptionsDraft> {
+  await requireOffer(ctx);
+  const draft = normalizeShowcaseOfferDraft(body.draft);
+  const typed = text(body.instructions).trim();
+  if (typed.length > EVENT_ASSUMPTION_AI_INSTRUCTIONS_MAX_LENGTH) fail('Wskazówki dla AI mogą mieć najwyżej 2000 znaków.');
+  const generateGoal = body.generateGoal !== false;
+  const guestCount = draft.event.guestCount;
+  const requested = draftAssumptionItems(draft);
+  const facts = draft.inquiryId ? [] : [
+    draft.event.name ? `nazwa: ${draft.event.name}` : '',
+    draftDateLabel(draft.event.date) ? `termin: ${draftDateLabel(draft.event.date)}` : '',
+    draft.event.location ? `miejsce: ${draft.event.location}` : '',
+  ].filter(Boolean);
+  const additional = [
+    typed,
+    facts.length ? `Ustalenia ze spotkania — ${facts.join(', ')}.` : '',
+    draft.note.trim() ? `Notatka sprzedawcy ze spotkania: ${draft.note.trim()}` : '',
+  ].filter(Boolean).join('\n').slice(0, EVENT_ASSUMPTION_AI_INSTRUCTIONS_MAX_LENGTH).trim();
+  const { data, error } = await ctx.supabase.functions.invoke('assist-inquiry', {
+    body: {
+      action: 'draft_offer_assumptions',
+      selectedAssumptions: requested.map((item) => ({ key: item.key, label: item.label, value: item.value })),
+      ...(additional ? { additionalInstructions: additional } : {}),
+      inquiryId: draft.inquiryId || undefined,
+      context: {
+        event_goal: draft.goal,
+        ...(guestCount == null ? {} : { guest_count: guestCount }),
+        event_category: '',
+        product_names: draft.lines.map((line) => line.label.slice(0, 120)).filter(Boolean).slice(0, 30),
+      },
+    },
+  });
+  let message = (data as Row | null)?.error as string | undefined;
+  if (error && !message) {
+    try { message = (await (error as { context?: Response }).context?.json())?.error; } catch { /* komunikat zastępczy */ }
+  }
+  if (error || message) fail(message || 'Nie udało się przygotować założeń przez AI.');
+  const result = (data as Row | null)?.result;
+  const parsed = eventAssumptionsFromAi(result, requested, generateGoal);
+  if ('error' in parsed) fail(parsed.error);
+  return {
+    items: syncGuestCountAssumptions(parsed.items, guestCount),
+    goal: parsed.goal,
+    sources: eventAssumptionsAiSources(result),
   };
 }
 

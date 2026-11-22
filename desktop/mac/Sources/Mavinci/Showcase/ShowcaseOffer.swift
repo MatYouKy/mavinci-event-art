@@ -10,7 +10,8 @@ import AppKit
 // konta); ceny, rabat i akceptację liczy serwer CRM tymi samymi funkcjami co kreator ofert. Rabat pozycji i rabat całej oferty —
 // razem, z rabatem łącznym; jak klient widzi rabat w PDF (przy pozycjach, rabat łączny, same ceny po rabacie) — wybór sprzedawcy
 // zapamiętany na serwerze (ten sam w CRM i na iPadzie). Osoba kontaktowa firmy — lista wyboru. Klient może być roboczy (sama
-// nazwa, bez dodawania do bazy) — przypisuje się go później w CRM.
+// nazwa, bez dodawania do bazy) — przypisuje się go później w CRM. „Założenia i cel” — trzy karty założeń realizacji i cel eventu
+// do oferty i PDF, z „Zaproponuj z AI” (`ShowcaseOfferAssumptionsSheet`, `op=offerAssumptionsAI`).
 // Nowe pola szkicu są opcjonalne — szkic zapisany na dysku przez starszą wersję aplikacji wczytuje się bez błędu.
 
 // MARK: Modele (jak `ShowcaseOffer*` w `showcaseShared.ts`)
@@ -64,6 +65,14 @@ struct ShowcaseOfferEvent: Codable, Hashable {
     var guestCount: Int?
 }
 
+/// Karta założeń realizacji w szkicu (jak `ShowcaseOfferAssumption`: kategoria, własny tytuł, treść, znacznik w PDF).
+struct ShowcaseOfferAssumption: Codable, Hashable {
+    var key: String
+    var label: String
+    var value: String
+    var badge: String
+}
+
 /// Podpowiedź miejsca z bazy lokalizacji („Nazwa, miasto” — jak w zapytaniach CRM).
 struct ShowcaseOfferLocation: Decodable, Identifiable, Hashable {
     var id: String
@@ -84,6 +93,10 @@ struct ShowcaseOfferDraft: Codable, Equatable {
     var inquiryId: String?
     var inquiryTitle = ""
     var event = ShowcaseOfferEvent()
+    /// Założenia realizacji — trzy karty do oferty i PDF (`nil` / puste — założenia z zapytania).
+    var assumptions: [ShowcaseOfferAssumption]?
+    /// Cel eventu (`nil` / pusty — cel z zapytania).
+    var goal: String?
     var note = ""
     var updatedAt = ""
 
@@ -504,6 +517,17 @@ enum ShowcaseOfferRules {
         try JSONDecoder().decode(ShowcaseOfferPreview.self, from: try await post("offerPreview", ["draft": json(draft)]))
     }
 
+    /// Kategorie kart „Założenia i cel” (jak `op=assumptions` ofert): lista z pytaniem i podpowiedzią, domyślne karty i limit treści.
+    func assumptionOptions() async throws -> OfferAssumptionsData {
+        try JSONDecoder().decode(OfferAssumptionsData.self, from: try await get(["op": "offerAssumptions"]))
+    }
+
+    /// „Zaproponuj z AI” — trzy karty i cel eventu; zapytanie, pozycje, termin, miejsce i notatkę dokłada serwer (do 2,5 minuty).
+    func draftAssumptions(_ draft: ShowcaseOfferDraft, instructions: String, generateGoal: Bool) async throws -> OfferAssumptionsDraft {
+        let body: [String: JSONValue] = ["draft": json(draft), "instructions": .string(instructions), "generateGoal": .bool(generateGoal)]
+        return try JSONDecoder().decode(OfferAssumptionsDraft.self, from: try await post("offerAssumptionsAI", body, timeout: 150))
+    }
+
     func clients(_ query: String) async throws -> [ShowcaseOfferClientHit] {
         struct Reply: Decodable { let clients: [ShowcaseOfferClientHit] }
         return try JSONDecoder().decode(Reply.self, from: try await get(["op": "offerClients", "q": query])).clients
@@ -646,6 +670,7 @@ struct ShowcaseOfferAddButton: View {
     @State private var guestsText = ""
     @State private var dropTarget: String?
     @State private var addingLine = false
+    @State private var assumptionsOpen = false
     @State private var locationHits: [ShowcaseOfferLocation] = []
     @FocusState private var locationFocused: Bool
 
@@ -672,6 +697,7 @@ struct ShowcaseOfferAddButton: View {
                         }
                         clientSection
                         eventSection
+                        assumptionsSection
                         linesSection
                         discountSection
                         noteSection
@@ -1051,6 +1077,49 @@ struct ShowcaseOfferAddButton: View {
         }, set: { date in
             update { next in next.event.date = next.event.date.contains("T") ? Self.fullFormat.string(from: date) : Self.dayFormat.string(from: date) }
         })
+    }
+
+    // MARK: Założenia i cel — podsumowanie w panelu, edycja i „Zaproponuj z AI” w osobnym oknie
+    private var assumptionsSection: some View {
+        let cards = (draft.assumptions ?? []).filter { card in
+            card.key != "guest_count" && !(ShowcaseOfferRules.trimmed(card.value).isEmpty && ShowcaseOfferRules.trimmed(card.badge).isEmpty)
+        }
+        let goal = ShowcaseOfferRules.trimmed(draft.goal ?? "")
+        let empty = cards.isEmpty && goal.isEmpty
+        return GroupBox {
+            VStack(alignment: .leading, spacing: 6) {
+                if empty {
+                    Text(draft.inquiryId != nil
+                         ? "Bez wpisanych założeń oferta weźmie założenia i cel z zapytania klienta."
+                         : "Trzy najważniejsze informacje o realizacji i cel eventu do oferty PDF — wpisz je albo poproś AI o propozycję.")
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(card.label.isEmpty ? "Własne założenie" : card.label).font(.callout.weight(.semibold))
+                            if !ShowcaseOfferRules.trimmed(card.value).isEmpty {
+                                Text(card.value).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                            }
+                        }
+                    }
+                    if let guests = draft.event.guestCount, (draft.assumptions ?? []).contains(where: { $0.key == "guest_count" }) {
+                        Text("Liczba gości: \(guests) osób").font(.callout).foregroundStyle(.secondary)
+                    }
+                    if !goal.isEmpty {
+                        Text("Cel: \(goal)").font(.callout).lineLimit(3)
+                    }
+                }
+                Button { assumptionsOpen = true } label: {
+                    Label(empty ? "Uzupełnij założenia i cel…" : "Zmień założenia i cel…", systemImage: "sparkles")
+                }
+                .controlSize(.small)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(4)
+        } label: { Label("Założenia i cel", systemImage: "target") }
+        .sheet(isPresented: $assumptionsOpen) {
+            ShowcaseOfferAssumptionsSheet(offer: offer, accent: accent, notify: notify)
+        }
     }
 
     // MARK: Miejsce — podpowiedzi z bazy lokalizacji albo własny tekst

@@ -8,6 +8,7 @@ import { WebView } from 'react-native-webview';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import ReorderableList from '../components/ReorderableList';
 import ShowcaseConfigurator, { type ShowcaseConfiguratorTarget } from '../components/ShowcaseConfigurator';
+import ShowcaseOfferAssumptions from '../components/ShowcaseOfferAssumptions';
 import SwipeableRow, { SWIPE_EDGE_WIDTH } from '../components/SwipeableRow';
 import WheelPicker from '../components/WheelPicker';
 import { crmThemeShowcaseAccent } from '../theme/crmThemePalette';
@@ -38,7 +39,8 @@ import {
  * miejscu): zmiana (inny wariant, pakiet albo konfiguracja), rabat pozycji (kółko jak wybór godziny), usunięcie. Osoba kontaktowa
  * firmy — lista wyboru. Scena i ekran LED — od
  * razu konfigurator (`ShowcaseConfigurator`, także z karty pokazu: „Skonfiguruj”). Klient może być roboczy (sama nazwa, bez
- * bazy) — przypisuje się go później w CRM. Ceny liczy serwer CRM; szkic zostaje na urządzeniu.
+ * bazy) — przypisuje się go później w CRM. Ceny liczy serwer CRM; szkic zostaje na urządzeniu. Założenia realizacji i cel eventu
+ * (trzy karty do PDF, „Zaproponuj z AI” ze wskazówkami sprzedawcy) — `ShowcaseOfferAssumptions`.
  */
 
 /** Konfigurator otwarty z karty pokazu („Skonfiguruj” przy scenie albo ekranie LED). */
@@ -725,6 +727,15 @@ export default function ShowcaseOfferScreen() {
               }, 'np. 120', { keyboardType: 'number-pad' })}
               <Text style={styles.muted}>Ceny „na osobę” i „na stół” liczą się z tej liczby.</Text>
             </View>
+
+            {/* Założenia realizacji (trzy karty do PDF) i cel eventu — z pomocą AI jak w ofercie w CRM */}
+            <ShowcaseOfferAssumptions
+              draft={draft}
+              accent={accent}
+              surface={surface}
+              onChange={(assumptions, goal) => update((current) => ({ ...current, assumptions, goal }))}
+              notify={notify}
+            />
 
             {/* Pozycje */}
             <View style={styles.section}>

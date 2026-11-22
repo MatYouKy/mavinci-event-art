@@ -5,7 +5,8 @@ import {
 } from './showcaseOffline';
 import {
   showcaseLayoutOf, showcaseVisibleForMe,
-  type ShowcaseBrand, type ShowcaseConfigEdit, type ShowcaseHome, type ShowcaseItemDetail, type ShowcaseOfferApproval, type ShowcaseOfferClientContext,
+  type ShowcaseBrand, type ShowcaseConfigEdit, type ShowcaseHome, type ShowcaseItemDetail, type ShowcaseOfferApproval, type ShowcaseOfferAssumptionsDraft,
+  type ShowcaseOfferClientContext,
   type ShowcaseOfferClientHit, type ShowcaseOfferConfiguration, type ShowcaseOfferDiscountDisplay, type ShowcaseOfferDraft,
   type ShowcaseOfferEmailSetup, type ShowcaseOfferLocation, type ShowcaseOfferPreview, type ShowcaseOfferResult, type ShowcaseOfferSetup, type ShowcaseOfferStatus,
   type ShowcaseProductView, type ShowcaseUrls,
@@ -200,6 +201,9 @@ export const showcaseOfferPreview = (draft: ShowcaseOfferDraft) => post<Showcase
 export const showcaseOfferConfigure = (body: { productId?: string; snapshot?: Record<string, unknown>; edits?: ShowcaseConfigEdit[]; refresh?: boolean; quantity?: number }) =>
   post<ShowcaseOfferConfiguration>('offerConfigure', body);
 export const showcaseOfferCreate = (draft: ShowcaseOfferDraft) => post<ShowcaseOfferResult>('offerCreate', { draft });
+/** „Zaproponuj z AI” w „Założeniach i celu” — trzy karty i cel eventu z rozmowy, pozycji i zapytania (bez zapisu). */
+export const showcaseOfferAssumptionsAI = (draft: ShowcaseOfferDraft, instructions: string, generateGoal: boolean) =>
+  post<ShowcaseOfferAssumptionsDraft>('offerAssumptionsAI', { draft, instructions, generateGoal });
 export const showcaseOfferStatus = (id: string) => get<ShowcaseOfferStatus>('offerStatus', { id });
 export const showcaseOfferApproval = (id: string, note: string) => post<ShowcaseOfferApproval>('offerApproval', { id, note });
 /** Zapamiętany sposób pokazania rabatu klientowi w PDF — ten sam w CRM, na Macu i w aplikacji. */

@@ -4,6 +4,7 @@ export type EventNotificationTab =
   | 'details'
   | 'steps'
   | 'warehouse'
+  | 'timeline'
   | 'fleet'
   | 'team'
   | 'agenda'
@@ -11,7 +12,7 @@ export type EventNotificationTab =
   | 'files'
   | 'wedding'
   | 'summary';
-const tabs: string[] = ['details', 'steps', 'warehouse', 'fleet', 'team', 'agenda', 'checklist', 'files', 'wedding', 'summary'];
+const tabs: string[] = ['details', 'steps', 'warehouse', 'timeline', 'fleet', 'team', 'agenda', 'checklist', 'files', 'wedding', 'summary'];
 export function getEventNotificationTab(target: {
   initial_tab?: string; metadata?: Record<string, any> | null; action_url?: string | null; workflow?: string;
 }): EventNotificationTab | undefined {
@@ -32,6 +33,9 @@ export function getEventNotificationTab(target: {
   // Podsumowanie wydarzenia (powiadomienia o wysłaniu / zatwierdzeniu: ?tab=summary, metadata.initial_tab='summary').
   // Ekran wydarzenia wraca do „Szczegółów”, gdy osoba nie ma obszaru „kwoty”.
   if (normalizeEventTabId(tab) === 'summary') return 'summary';
+  // Harmonogram (CRM ?tab=phases, starsze „timeline”) → „Timeline”; logistyka CRM → „Logistyka” (klucz 'fleet').
+  if (normalizeEventTabId(tab) === 'phases') return 'timeline';
+  if (tab === 'logistics') return 'fleet';
   if (target.metadata?.kind === 'vehicle_pickup') return 'fleet';
   if (typeof target.metadata?.warehouse_key === 'string') return 'warehouse';
   return undefined;

@@ -33,11 +33,13 @@ export default function RealizationWorkspace({
       ? 'equipment'
       : initialTab === 'fleet'
         ? 'logistics'
-        : initialTab === 'team'
-          ? 'team'
-          : initialTab === 'files'
-            ? 'files'
-            : 'overview';
+        : initialTab === 'timeline'
+          ? 'phases'
+          : initialTab === 'team'
+            ? 'team'
+            : initialTab === 'files'
+              ? 'files'
+              : 'overview';
   const [data, setData] = useState(initialData),
     [error, setError] = useState(''),
     [tab, setTab] = useState(initialSection);

@@ -115,11 +115,13 @@ export const PRESENTATIONS_HELP: HelpManual = {
         'W arkuszu „Oferta dla klienta” możesz też „Dodaj pozycję” z katalogu.',
         'Wybierz klienta z CRM albo wpisz nowego.',
         'Miejsce: wybierz z podpowiedzi z bazy lokalizacji albo wpisz własne.',
+        '„Założenia i cel”: trzy karty o realizacji i cel eventu trafią do oferty i PDF — wpisz je albo kliknij „Zaproponuj z AI” i napisz, co chcesz osiągnąć.',
         'Ustaw rabat i kliknij „Utwórz ofertę i PDF”.',
       ],
       notes: [
         'Rabat powyżej progu: ofertę pokażesz od razu, a wyślesz po akceptacji.',
         'Szkic oferty zapisuje się na tym urządzeniu.',
+        'Bez wpisanych założeń oferta weźmie założenia i cel z zapytania klienta. AI korzysta z zapytania, pozycji, terminu, miejsca i notatki ze spotkania.',
       ],
     },
     {

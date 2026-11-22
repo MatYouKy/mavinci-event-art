@@ -384,6 +384,56 @@ export function groupEventStepsByStage(steps: EventStep[]): { stage: EventStepSt
   })).filter(group => group.steps.length > 0);
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Zakres kroków na karcie eventu: etapy sprzętu widzi osoba, której dotyczą (baza i uprawnienia bez zmian).
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Etapy sprzętu (wydanie, zwrot) — na karcie eventu tylko dla osób, których dotyczą: magazyn, który przyjął event, kierownik
+ * realizacji i kierowca (kroki przypisane do nich albo przez nich zamknięte), a przed przypisaniem — osoby, które mogą przyjąć
+ * nieprzypisany krok magazynu lub kierowcy. Pozostali (sprzedawca, administrator, zespół) widzą je pod „Etapami innych osób”
+ * (tylko z prawem pomijania kroków); kroki, uprawnienia, terminy i powiadomienia w bazie się nie zmieniają.
+ */
+export const EVENT_STEP_SCOPED_STAGES: EventStepStage[] = ['dispatch', 'return'];
+
+/** Kto ogląda kroki — `my_roles` i `can_override` z `get_event_steps`. */
+export type EventStepScopeViewer = {
+  my_roles?: Partial<Record<EventStepRole, boolean>> | null;
+  can_override?: boolean | null;
+};
+
+/** Role z pulą osób (każdy magazynier / kierowca pojazdu), które biorą nieprzypisany krok przed przypisaniem. */
+const EVENT_STEP_POOL_ROLES: EventStepRole[] = ['warehouse', 'driver'];
+
+/**
+ * Czy krok dotyczy bieżącej osoby: przypisany do niej, przez nią zamknięty albo nieprzypisany krok magazynu/kierowcy, który
+ * może wykonać. Administrator i osoby z prawem pomijania mają `my_roles` z nadania — dla nich liczy się tylko przypisanie.
+ */
+export function eventStepInMyScope(
+  step: Pick<EventStep, 'is_mine' | 'completed_by_me' | 'assignee' | 'status' | 'owner_role'>,
+  viewer?: EventStepScopeViewer | null,
+): boolean {
+  if (step.is_mine || step.completed_by_me) return true;
+  if (step.assignee || !isEventStepLive(step) || viewer?.can_override) return false;
+  return EVENT_STEP_POOL_ROLES.includes(step.owner_role) && Boolean(viewer?.my_roles?.[step.owner_role]);
+}
+
+/**
+ * Czy etap jest w zakresie osoby: etapy spoza `EVENT_STEP_SCOPED_STAGES` — zawsze; wydanie i zwrot — gdy ma w nim swój krok
+ * albo jest kierownikiem realizacji (ma przypisany krok kierownika w tym evencie).
+ */
+export function eventStepStageInScope(stage: EventStepStage, steps: EventStep[], viewer?: EventStepScopeViewer | null): boolean {
+  if (!EVENT_STEP_SCOPED_STAGES.includes(stage)) return true;
+  if (steps.some(step => step.owner_role === 'manager' && step.is_mine)) return true;
+  return steps.some(step => step.stage === stage && eventStepInMyScope(step, viewer));
+}
+
+/** Opis zwiniętego (zamkniętego) kroku: status, kiedy i kto, np. „Zrobione 22.11.2026, 14:05 · Jan Kowalski”. */
+export function eventStepClosedLabel(step: Pick<EventStep, 'status' | 'completed_at' | 'completed_by_name'>): string {
+  const label = EVENT_STEP_STATUS_LABELS[step.status];
+  return [step.completed_at ? `${label} ${formatEventStepDate(step.completed_at)}` : label, step.completed_by_name].filter(Boolean).join(' · ');
+}
+
 /** Komunikat błędu z bazy (RPC zwraca czytelne komunikaty po polsku). */
 export function eventStepErrorMessage(error: unknown): string {
   const message =

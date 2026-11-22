@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import { createRefreshQueue } from '../lib/refreshQueue';
 import {
@@ -20,6 +20,8 @@ import {
 import { Feather } from '@expo/vector-icons';
 
 import PermissionGate from '../components/PermissionGate';
+import ScheduleTimeline from '../components/Timeline/ScheduleTimeline';
+import { Segmented } from '../components/Inquiries/InquiryKit';
 import {
   FleetAdHocUsage,
   FleetOperationAssignment,
@@ -29,7 +31,11 @@ import {
 } from '../components/Fleet/FleetOperationModals';
 import { useAuth } from '../contexts/AuthContext';
 import { canManage, canView } from '../lib/permissions';
+import {
+  SCREEN_VIEWS, fetchVehicleTimelines, formatEntryTime, timelineRange, useScreenTimeline, type TimelineRow, type VehicleEntry,
+} from '../lib/scheduleTimeline';
 import { supabase } from '../lib/supabase';
+import { navigateToEvent } from '../navigation/navigationRef';
 import { borderRadius, colors, spacing, typography, tone } from '../theme';
 
 interface VehicleImage {
@@ -92,6 +98,24 @@ const getStatusMeta = (status: string, inUse: boolean) => {
 
 const getVehicleTitle = (vehicle: FleetVehicle) =>
   vehicle.name || [vehicle.brand, vehicle.model].filter(Boolean).join(' ') || 'Pojazd';
+
+/** Statusy pozycji osi czasu floty (eventy — status eventu; serwisy i przeglądy — status prac), jak w CRM. */
+const TIMELINE_STATUS_LABELS: Record<string, string> = {
+  inquiry: 'Zapytanie',
+  offer_to_send: 'Oferta do wysłania',
+  offer_sent: 'Oferta wysłana',
+  offer_accepted: 'Oferta zaakceptowana',
+  in_preparation: 'Przygotowanie',
+  in_progress: 'W trakcie',
+  completed: 'Zakończone',
+  invoiced: 'Zafakturowane',
+  cancelled: 'Anulowane',
+  scheduled: 'Zaplanowany',
+  failed: 'Wynik negatywny',
+};
+
+/** Najwięcej aut na osi czasu (jedno zapytanie na auto). */
+const TIMELINE_VEHICLE_LIMIT = 60;
 
 function StatusBadge({ vehicle }: { vehicle: FleetVehicle }) {
   const meta = getStatusMeta(vehicle.status, vehicle.in_use);
@@ -460,6 +484,13 @@ function FleetContent() {
   const [filter, setFilter] = useState<FleetFilter>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Oś czasu floty (dzień / tydzień / miesiąc) — rezerwacje aut na eventy, serwisy i przeglądy (get_vehicle_timeline), jak w CRM.
+  const timeline = useScreenTimeline('fleet', 'week');
+  const showTimeline = timeline.view === 'timeline';
+  const [bookings, setBookings] = useState<VehicleEntry[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
+  const bookingsVersion = useRef(0);
 
   const loadVehicles = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true);
@@ -606,6 +637,55 @@ function FleetContent() {
     });
   }, [filter, search, vehicles]);
 
+  const range = timelineRange(timeline.zoom, timeline.anchor);
+  const rangeStart = range.start.getTime();
+  const rangeEnd = range.end.getTime();
+  const timelineVehicleIds = filteredVehicles.slice(0, TIMELINE_VEHICLE_LIMIT).map((vehicle) => vehicle.id).join(',');
+  const loadBookings = useCallback(async () => {
+    const version = ++bookingsVersion.current;
+    setBookingsLoading(true);
+    try {
+      const entries = await fetchVehicleTimelines(timelineVehicleIds ? timelineVehicleIds.split(',') : [], new Date(rangeStart), new Date(rangeEnd));
+      if (version !== bookingsVersion.current) return;
+      setBookings(entries);
+      setBookingsError(null);
+    } catch (error) {
+      if (version === bookingsVersion.current) setBookingsError(error instanceof Error ? error.message : 'Nie udało się wczytać osi czasu floty.');
+    } finally {
+      if (version === bookingsVersion.current) setBookingsLoading(false);
+    }
+  }, [timelineVehicleIds, rangeStart, rangeEnd]);
+  // Także po każdym odświeżeniu floty (zmiany na żywo w przydziałach aut do eventów) — nowe rezerwacje od razu na osi.
+  useEffect(() => {
+    if (showTimeline) void loadBookings();
+  }, [showTimeline, loadBookings, vehicles]);
+  const timelineRows = useMemo<TimelineRow[]>(() => filteredVehicles.slice(0, TIMELINE_VEHICLE_LIMIT).map((vehicle) => ({
+    id: vehicle.id,
+    label: getVehicleTitle(vehicle),
+    sublabel: vehicle.registration_number || [vehicle.brand, vehicle.model].filter(Boolean).join(' ') || null,
+    icon: 'truck' as const,
+  })), [filteredVehicles]);
+  const openBooking = (entry: VehicleEntry) => {
+    const vehicle = timelineRows.find((row) => row.id === entry.rowId);
+    const status = entry.status ? TIMELINE_STATUS_LABELS[entry.status] ?? entry.status : null;
+    const details = [
+      entry.kind === 'maintenance' ? 'Serwis / przegląd' : 'Event',
+      formatEntryTime(entry),
+      vehicle ? [vehicle.label, vehicle.sublabel].filter(Boolean).join(' · ') : null,
+      entry.driver ? `Kierowca: ${entry.driver}` : null,
+      entry.location ? (entry.kind === 'maintenance' ? `Serwis: ${entry.location}` : `Miejsce: ${entry.location}`) : null,
+      status ? `Status: ${status}` : null,
+    ].filter(Boolean).join('\n');
+    const eventId = entry.kind === 'event' ? entry.relatedId : null;
+    Alert.alert(
+      entry.title,
+      details,
+      eventId
+        ? [{ text: 'Zamknij', style: 'cancel' }, { text: 'Otwórz event', onPress: () => navigateToEvent(eventId) }]
+        : [{ text: 'OK' }],
+    );
+  };
+
   const stats = useMemo(
     () => ({
       total: vehicles.length,
@@ -674,6 +754,9 @@ function FleetContent() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.viewSwitch}>
+        <Segmented value={timeline.view} options={SCREEN_VIEWS} onChange={timeline.setView} />
+      </View>
       <View style={styles.summaryRow}>
         <View style={styles.summaryItem}>
           <Text style={styles.summaryValue}>{stats.total}</Text>
@@ -729,6 +812,22 @@ function FleetContent() {
         ))}
       </ScrollView> */}
 
+      {showTimeline ? (
+        <ScheduleTimeline
+          zoom={timeline.zoom}
+          onZoomChange={timeline.setZoom}
+          anchor={timeline.anchor}
+          onAnchorChange={timeline.setAnchor}
+          rows={timelineRows}
+          entries={bookings}
+          loading={bookingsLoading}
+          error={bookingsError}
+          onPressEntry={openBooking}
+          refreshing={refreshing}
+          onRefresh={() => { void loadVehicles(true); void loadBookings(); }}
+          emptyText={filteredVehicles.length ? 'Brak rezerwacji, serwisów i przeglądów w tym okresie.' : 'Brak pojazdów — zmień wyszukiwanie.'}
+        />
+      ) : (
       <FlatList
         data={filteredVehicles}
         keyExtractor={(item) => item.id}
@@ -753,6 +852,7 @@ function FleetContent() {
           </View>
         }
       />
+      )}
 
       <VehicleDetailsModal
         vehicle={selectedVehicle}
@@ -776,6 +876,7 @@ export default function FleetScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background.primary },
+  viewSwitch: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   centered: {
     flex: 1,
     alignItems: 'center',

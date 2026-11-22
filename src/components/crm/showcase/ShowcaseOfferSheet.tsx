@@ -3,14 +3,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   AlertTriangle, BadgePercent, Building2, CheckCircle2, ChevronLeft, ClipboardList, ExternalLink, FileText, GripVertical, Loader2, Mail, MapPin,
-  Minus, Package, Pencil, Plus, RotateCcw, Search, Send, Trash2, User, X,
+  Minus, Package, Pencil, Plus, RotateCcw, Search, Send, Sparkles, Target, Trash2, User, X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import {
+  EVENT_ASSUMPTION_AI_INSTRUCTIONS_MAX_LENGTH, EVENT_ASSUMPTION_OPTIONS, EVENT_ASSUMPTION_VALUE_MAX_LENGTH, EVENT_GOAL_MAX_LENGTH,
+  getEventAssumptionOption, normalizeEventAssumptionItems, syncGuestCountAssumptions, type EventAssumptionItem, type EventAssumptionKey,
+} from '@/lib/CRM/Offers/eventAssumptions';
+import {
   SHOWCASE_OFFER_DISCOUNT_DISPLAYS, SHOWCASE_OFFER_LIMITS, addShowcaseOfferLine, emptyShowcaseOfferClient, emptyShowcaseOfferDraft, formatShowcaseAmount,
   formatShowcasePercent, isShowcaseOfferEmail, isShowcaseOfferPlaceholder, normalizeShowcaseOfferDraft, showcaseOfferApprovalHint, showcaseOfferDiscount,
-  showcaseOfferLineFor, showcaseOfferPrice, showcaseOfferProblem,
-  type ShowcaseOfferAddResult, type ShowcaseOfferDiscountDisplay, type ShowcaseOfferApproval, type ShowcaseOfferClient, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit,
+  showcaseOfferAssumptionsFromDraft, showcaseOfferLineFor, showcaseOfferPrice, showcaseOfferProblem,
+  type ShowcaseOfferAddResult, type ShowcaseOfferAssumption, type ShowcaseOfferAssumptionsDraft, type ShowcaseOfferDiscountDisplay, type ShowcaseOfferApproval, type ShowcaseOfferClient, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit,
   type ShowcaseOfferDraft, type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferKind, type ShowcaseOfferLine,
   type ShowcaseOfferLocation, type ShowcaseOfferPreview, type ShowcaseOfferResult, type ShowcaseOfferSetup, type ShowcaseOfferStatus,
   type ShowcaseProductView, type ShowcaseUrls,
@@ -27,6 +31,7 @@ import { useDragList } from './showcaseUi';
  * z podpowiedzi bazy lokalizacji albo wpisane ręcznie. Rabat pozycji i rabat całej oferty — razem, z rabatem łącznym; jak klient
  * widzi rabat w PDF (przy pozycjach, rabat łączny, same ceny po rabacie) — wybór sprzedawcy zapamiętany na serwerze. Osoba
  * kontaktowa firmy — lista wyboru. Klient może być roboczy (sama nazwa, bez dodawania do bazy) — przypisuje się go później w CRM.
+ * „Założenia i cel” — trzy karty założeń realizacji i cel eventu do oferty i PDF, z „Zaproponuj z AI” (`op=offerAssumptionsAI`).
  */
 
 type Theme = { accent: string; surface: string; heading: string };
@@ -195,6 +200,161 @@ function DiscountSelect({ value, onChange, theme, label }: { value: number | nul
         {steps.map((step) => <option key={step} value={String(step)}>{step > 0 ? `Rabat −${formatShowcasePercent(step)}` : 'Bez rabatu'}</option>)}
       </select>
     </span>
+  );
+}
+
+/** Karty założeń szkicu → karty do edycji (bez przycinania w trakcie pisania); karta liczby gości z pola „Liczba osób”. */
+const assumptionItems = (assumptions: ShowcaseOfferAssumption[], guestCount: number | null): EventAssumptionItem[] => syncGuestCountAssumptions(
+  assumptions.length === 3
+    ? assumptions.map((item) => ({ key: item.key as EventAssumptionKey, label: item.label, value: item.value, badge_value: item.badge }))
+    : normalizeEventAssumptionItems([]),
+  guestCount,
+);
+const assumptionDraft = (items: EventAssumptionItem[], guestCount: number | null): ShowcaseOfferAssumption[] =>
+  syncGuestCountAssumptions(items, guestCount).map((item) => ({ key: item.key, label: item.label, value: item.value, badge: item.badge_value || '' }));
+
+/**
+ * „Założenia i cel” — trzy karty założeń realizacji (kategoria, własny tytuł, znacznik w PDF, treść) i cel eventu, jak założenia
+ * oferty w CRM. „Zaproponuj z AI”: wskazówki sprzedawcy; zapytanie, pozycje, termin, miejsce i notatkę ze spotkania dokłada serwer
+ * (`op=offerAssumptionsAI` — ten sam na Macu, iPadzie i telefonie). Puste karty — oferta weźmie założenia i cel z zapytania.
+ */
+function AssumptionsSection({ draft, update, theme, onNotice }: {
+  draft: ShowcaseOfferDraft;
+  update: ShowcaseOfferState['update'];
+  theme: Theme;
+  onNotice: (text: string, tone?: Tone) => void;
+}) {
+  const guestCount = draft.event.guestCount;
+  const items = useMemo(() => assumptionItems(draft.assumptions, guestCount), [draft.assumptions, guestCount]);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [instructions, setInstructions] = useState('');
+  const [withGoal, setWithGoal] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [sources, setSources] = useState('');
+  const lock = useRef(false);
+  const accent = { color: theme.accent };
+
+  const save = (next: EventAssumptionItem[]) => update((current) => ({ ...current, assumptions: assumptionDraft(next, current.event.guestCount) }));
+  const updateItem = (index: number, patch: Partial<EventAssumptionItem>) =>
+    save(items.map((item, position) => (position === index ? { ...item, ...patch } : item)));
+  const changeKey = (index: number, key: EventAssumptionKey) => {
+    const option = getEventAssumptionOption(key);
+    save(items.map((item, position) => (position === index
+      ? { key, label: key === 'custom' ? '' : option.label, value: option.defaultValue || '', badge_value: option.defaultBadgeValue || '' }
+      : item)));
+  };
+
+  const generate = async () => {
+    if (lock.current) return;
+    lock.current = true;
+    setGenerating(true);
+    setAiError('');
+    try {
+      // Karty w kolejności z ekranu — serwer zwraca je w tej samej kolejności.
+      const proposal = await showcasePost<ShowcaseOfferAssumptionsDraft>('offerAssumptionsAI', {
+        draft: { ...draft, assumptions: assumptionDraft(items, guestCount) }, instructions: instructions.trim(), generateGoal: withGoal,
+      });
+      const next = showcaseOfferAssumptionsFromDraft(proposal.items);
+      if (next.length !== 3) throw new Error('AI nie przygotowało trzech kompletnych założeń. Spróbuj ponownie.');
+      update((current) => ({ ...current, assumptions: next, goal: withGoal && proposal.goal ? proposal.goal.slice(0, EVENT_GOAL_MAX_LENGTH) : current.goal }));
+      setSources(proposal.sources || '');
+      setAiOpen(false);
+      onNotice(withGoal ? 'AI uzupełniło założenia i cel eventu — sprawdź je przed utworzeniem oferty.' : 'AI uzupełniło założenia — sprawdź je przed utworzeniem oferty.');
+    } catch (cause) {
+      setAiError(errorMessage(cause, 'Nie udało się przygotować założeń przez AI.'));
+    } finally {
+      lock.current = false;
+      setGenerating(false);
+    }
+  };
+
+  const used = new Set(items.map((item) => item.key));
+  return (
+    <Section title="Założenia i cel" icon={<Target className="h-5 w-5" />}
+      aside={(
+        <button type="button" onClick={() => { setAiError(''); setAiOpen((open) => !open); }} disabled={generating} aria-expanded={aiOpen}
+          className="flex h-11 items-center gap-1.5 rounded-full border px-4 text-[15px] disabled:opacity-40" style={{ borderColor: `${theme.accent}80`, color: theme.accent }}>
+          {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{generating ? 'AI przygotowuje…' : 'Zaproponuj z AI'}
+        </button>
+      )}>
+      <p className="text-[15px] text-[#e5e4e2]/65">
+        Trzy najważniejsze informacje o realizacji — te same karty i znaczniki trafią do oferty PDF.
+        {draft.inquiryId ? ' Puste karty — oferta weźmie założenia i cel z zapytania klienta.' : ''}
+      </p>
+      {aiOpen && (
+        <div className="space-y-3 rounded-2xl bg-black/25 p-4" style={{ boxShadow: `inset 0 0 0 1px ${theme.accent}55` }}>
+          <p className="text-[15px] text-[#e5e4e2]/75">
+            AI uzupełni trzy wybrane karty w tej samej kolejności — z {draft.inquiryId ? 'ustaleń, analiz i korespondencji zapytania, ' : 'nazwy, terminu i miejsca eventu, '}
+            pozycji oferty, notatki ze spotkania i Twoich wskazówek. Brakujące fakty oznaczy do doprecyzowania; propozycję sprawdzasz przed utworzeniem oferty.
+          </p>
+          <label className="flex items-center gap-2 text-[15px]">
+            <input type="checkbox" checked={withGoal} disabled={generating} onChange={(event) => setWithGoal(event.target.checked)} />Uzupełnij również cel eventu
+          </label>
+          <Field label="Co chcesz osiągnąć? (opcjonalnie)" hint={`Puste pole — propozycja według bazowej instrukcji. ${instructions.length}/${EVENT_ASSUMPTION_AI_INSTRUCTIONS_MAX_LENGTH}`}>
+            <textarea value={instructions} maxLength={EVENT_ASSUMPTION_AI_INSTRUCTIONS_MAX_LENGTH} rows={3} disabled={generating}
+              placeholder="Np. konferencja: podkreśl, że systemy liniowe dają każdemu na sali doskonały dźwięk. Ton profesjonalny, bez sloganów."
+              onChange={(event) => setInstructions(event.target.value.slice(0, EVENT_ASSUMPTION_AI_INSTRUCTIONS_MAX_LENGTH))} className={`${inputClass} h-auto py-3 leading-relaxed`} />
+          </Field>
+          <p className="text-[13px] text-[#e5e4e2]/45">Propozycja zastąpi treść trzech kart{withGoal ? ' i cel eventu' : ''}.</p>
+          {aiError && <p role="alert" className="text-[14px] text-red-300">{aiError}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setAiOpen(false)} disabled={generating} className="h-11 rounded-full bg-black/30 px-5 text-[15px] disabled:opacity-40" style={accent}>Anuluj</button>
+            <button type="button" onClick={generate} disabled={generating}
+              className="flex h-11 items-center gap-2 rounded-full px-5 text-[15px] font-medium disabled:opacity-40" style={{ background: theme.accent, color: theme.surface }}>
+              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{generating ? 'AI przygotowuje…' : 'Przygotuj propozycję'}
+            </button>
+          </div>
+        </div>
+      )}
+      {sources && <p className="text-[13px] text-[#e5e4e2]/45">{sources}</p>}
+      <div className="grid gap-3 lg:grid-cols-3">
+        {items.map((item, index) => {
+          const option = getEventAssumptionOption(item.key);
+          const guestLocked = item.key === 'guest_count';
+          return (
+            <div key={`${index}-${item.key}`} className="space-y-2 rounded-2xl bg-black/25 p-4 ring-1 ring-white/10">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[14px] font-semibold" style={{ ...DIGITS, color: theme.accent, background: `${theme.accent}26` }}>{index + 1}</span>
+                <select value={item.key} aria-label={`Kategoria karty ${index + 1}`} onChange={(event) => changeKey(index, event.target.value as EventAssumptionKey)}
+                  className={inputClass}>
+                  {EVENT_ASSUMPTION_OPTIONS.map((choice) => (
+                    <option key={choice.key} value={choice.key} disabled={choice.key !== 'custom' && choice.key !== item.key && used.has(choice.key)}>
+                      {choice.key === 'custom' ? 'Własne założenie' : choice.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {item.key === 'custom' && (
+                <input value={item.label === option.label ? '' : item.label} maxLength={80} placeholder="Własny tytuł (np. Energia na parkiecie)"
+                  onChange={(event) => updateItem(index, { label: event.target.value.slice(0, 80) })} className={inputClass} />
+              )}
+              {guestLocked ? (
+                <p className="text-[14px]" style={accent}>
+                  {guestCount ? `${guestCount} osób — z pola „Liczba osób” powyżej.` : 'Uzupełnij „Liczba osób” powyżej — karta wypełni się sama.'}
+                </p>
+              ) : (
+                <>
+                  <input value={item.badge_value || ''} maxLength={7} placeholder={`Znacznik w PDF (np. 180, 6 H) — puste: 0${index + 1}`} aria-label={`Znacznik karty ${index + 1}`}
+                    onChange={(event) => updateItem(index, { badge_value: event.target.value.toLocaleUpperCase('pl-PL').slice(0, 7) })} className={inputClass} style={DIGITS} />
+                  <textarea value={item.value} maxLength={EVENT_ASSUMPTION_VALUE_MAX_LENGTH} rows={option.multiline ? 4 : 2} placeholder={option.placeholder || option.question}
+                    aria-label={option.question} onChange={(event) => updateItem(index, { value: event.target.value.slice(0, EVENT_ASSUMPTION_VALUE_MAX_LENGTH) })}
+                    className={`${inputClass} h-auto py-3 leading-relaxed`} />
+                  <div className="flex gap-2 text-[13px] text-[#e5e4e2]/45">
+                    <span className="flex-1">{option.question}</span>
+                    <span className={item.value.length >= EVENT_ASSUMPTION_VALUE_MAX_LENGTH ? 'text-amber-200' : ''} style={DIGITS}>{item.value.length}/{EVENT_ASSUMPTION_VALUE_MAX_LENGTH}</span>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <Field label="Cel eventu">
+        <textarea value={draft.goal} maxLength={EVENT_GOAL_MAX_LENGTH} rows={3} placeholder="Co klient chce osiągnąć? (np. integracja zespołu i podziękowanie za rok pracy)"
+          onChange={(event) => update((current) => ({ ...current, goal: event.target.value.slice(0, EVENT_GOAL_MAX_LENGTH) }))} className={`${inputClass} h-auto py-3 leading-relaxed`} />
+      </Field>
+    </Section>
   );
 }
 
@@ -754,6 +914,8 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
                     }} className={inputClass} />
                 </Field>
               </Section>
+
+              <AssumptionsSection draft={draft} update={update} theme={theme} onNotice={onNotice} />
 
               <Section title={<>Pozycje <span style={DIGITS}>({draft.lines.length})</span></>} icon={<ClipboardList className="h-5 w-5" />}
                 aside={(
