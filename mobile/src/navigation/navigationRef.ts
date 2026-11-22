@@ -1,5 +1,5 @@
 import { getEventNotificationTab, EventNotificationTab } from '../lib/eventNotificationTarget';
-import { createNavigationContainerRef, NavigationState, PartialState, StackActions } from '@react-navigation/native';
+import { CommonActions, createNavigationContainerRef, NavigationState, PartialState, StackActions } from '@react-navigation/native';
 import { Linking } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { getSellerChatTarget } from '../lib/sellerChatTarget';
@@ -68,12 +68,38 @@ export function navigateFromMenu(screen: string) {
   if (root && root.index > 0) navigationRef.dispatch({ ...StackActions.popToTop(), target: root.key });
   if (screen === 'Tasks') {
     navigationRef.navigate('Main', { screen: 'Tasks', params: { screen: 'TasksList', initial: false } });
+  } else if (screen === 'Events') {
+    navigateToEventsList();
   } else if (screen === 'Inquiries') {
     navigationRef.navigate('Main', { screen: 'Inquiries', params: { screen: 'InquiriesList', initial: false } });
   } else if (MENU_TAB_SCREENS.has(screen)) {
     navigationRef.navigate('Main', { screen });
   } else {
     navigationRef.navigate(screen);
+  }
+}
+
+/**
+ * Lista eventów — z menu, z dashboardu („Zobacz więcej”, skrót „Eventy”) i z powiadomień bez konkretnego eventu. Zawsze
+ * lista, nie ostatnio otwarty event: event otwarty z dashboardu zostaje w stosie zakładki „Eventy” (powrót prowadzi na
+ * dashboard), więc stos zakładki wraca tu do samej listy.
+ */
+export function navigateToEventsList() {
+  if (!navigationRef.isReady()) return;
+  const root = navigationRef.getRootState() as AnyNavigationState | undefined;
+  const main = root?.routes.find((route) => route.name === 'Main');
+  const tabs = main?.state as AnyNavigationState | undefined;
+  const events = tabs?.routes.find((route) => route.name === 'Events');
+  const stack = events?.state as AnyNavigationState | undefined;
+  const onlyList = !stack || (stack.routes.length === 1 && stack.routes[0]?.name === 'EventsList');
+  if (!onlyList && stack && typeof stack.key === 'string') {
+    navigationRef.dispatch({ ...CommonActions.reset({ index: 0, routes: [{ name: 'EventsList' }] }), target: stack.key });
+    navigationRef.navigate('Main', { screen: 'Events' });
+  } else if (!onlyList) {
+    // Stos jeszcze niezamontowany (stan częściowy) — przejście do listy po nazwie.
+    navigationRef.navigate('Main', { screen: 'Events', params: { screen: 'EventsList' } });
+  } else {
+    navigationRef.navigate('Main', { screen: 'Events' });
   }
 }
 

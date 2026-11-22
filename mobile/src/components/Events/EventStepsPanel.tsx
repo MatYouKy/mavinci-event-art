@@ -177,6 +177,7 @@ export function EventStepRow({
   onOpenEvent,
   link,
   now,
+  style,
 }: {
   step: EventStep;
   /** `${step.id}:${action}` trwającej czynności (dowolnego kroku). */
@@ -191,6 +192,8 @@ export function EventStepRow({
   /** Link „Przejdź” do zakładki, w której krok się zamyka (pokazywany przy krokach do zrobienia). */
   link?: EventStepRowLink | null;
   now?: Date;
+  /** Dodatkowy styl karty (np. siatka „Moje kroki” na tablecie — karta wypełnia wysokość wiersza). */
+  style?: StyleProp<ViewStyle>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const tone = eventStepTone(step);
@@ -221,7 +224,7 @@ export function EventStepRow({
         : colors.background.tertiary;
 
   return (
-    <View style={[styles.row, { backgroundColor: rowBackground }]}>
+    <View style={[styles.row, { backgroundColor: rowBackground }, style]}>
       {!!eventLabel && (
         <TouchableOpacity
           accessibilityRole={onOpenEvent ? 'link' : undefined}

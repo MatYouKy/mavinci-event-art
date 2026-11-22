@@ -8,6 +8,7 @@ import { navigateToInquiry, navigateToSellerChat, navigateToTenders, openInCrmWe
 import { colors, spacing, typography, borderRadius } from '../theme';
 import { parseSalesDaySellers, type SalesDaySellers, type SalesDaySellersItemKind } from '../lib/sellerCockpit';
 import { getSellerChatTarget } from '../lib/sellerChatTarget';
+import { useContentWidth } from '../hooks/useTabletLayout';
 
 /*
  * „Mój dzień” sprzedawcy — te same dane co panel w CRM (get_my_sales_day): kontakty do wykonania,
@@ -16,7 +17,11 @@ import { getSellerChatTarget } from '../lib/sellerChatTarget';
  * sprzedawców zewnętrznych, których pracownik jest opiekunem — zakres liczy baza. Rozmowa otwiera się w aplikacji,
  * pozostałe sprawy (sprawdzenie oferty, potwierdzenie, zapytanie) w CRM w przeglądarce — decyzje zostają w CRM.
  * Starsza baza bez klucza `sellers` → karta ukryta.
+ * Tablet (szeroki obszar treści): zapytania i sprzedawcy obok siebie, po połowie szerokości; telefon — jedno pod drugim.
  */
+
+/** Od tej szerokości treści „Mój dzień” dzieli się na dwie kolumny (zapytania | sprzedawcy). */
+const SPLIT_WIDTH = 700;
 
 type FollowUp = { id: string; title: string; next_action_at: string; overdue: boolean };
 type WaitingOffer = { id: string; title: string | null; offer_number: string | null; days_waiting: number; inquiry_id: string | null; viewed_at: string | null };
@@ -114,6 +119,7 @@ function SellersTodoCard({ sellers }: { sellers: SalesDaySellers }) {
 
 export default function SalesDaySection({ refreshKey }: { refreshKey: number }) {
   const { employee } = useAuth();
+  const contentWidth = useContentWidth();
   const [data, setData] = useState<SalesDay | null>(null);
   const salesEnabled = canView(employee, 'inquiries');
   // Opiekun sprzedawców ma oferty (offers_manage) — karta sprzedawców bywa jedyną treścią „Mojego dnia”.
@@ -138,11 +144,13 @@ export default function SalesDaySection({ refreshKey }: { refreshKey: number }) 
   const showSellers = Boolean(sellers && (SELLER_COUNTS.some(({ key }) => sellers[key] > 0) || sellers.items.length > 0));
   if (!showSales && !showSellers) return null;
   const overdue = followups.filter((item) => item.overdue).length;
+  const split = contentWidth >= SPLIT_WIDTH && showSales && showSellers;
 
   return (
     <View style={styles.section}>
       <Text style={styles.title}>Mój dzień</Text>
-      {showSales && (<>
+      <View style={split ? styles.split : styles.stack}>
+      {showSales && (<View style={split ? styles.half : styles.stack}>
         <View style={styles.kpis}>
           <View style={styles.kpi}><Text style={[styles.kpiValue, overdue > 0 && styles.alert]}>{followups.length}</Text><Text style={styles.kpiLabel}>Kontakty na dziś{overdue > 0 ? ` (${overdue} zaległe)` : ''}</Text></View>
           <View style={styles.kpi}><Text style={styles.kpiValue}>{offers.length}</Text><Text style={styles.kpiLabel}>Oferty bez odpowiedzi</Text></View>
@@ -175,8 +183,13 @@ export default function SalesDaySection({ refreshKey }: { refreshKey: number }) 
           </TouchableOpacity>
         ))}
         {weighted > 0 && <Text style={styles.note}>Lejek ważony prawdopodobieństwem: {money(weighted)}</Text>}
-      </>)}
-      {showSellers && sellers && <SellersTodoCard sellers={sellers} />}
+      </View>)}
+      {showSellers && sellers && (
+        <View style={split ? styles.half : null}>
+          <SellersTodoCard sellers={sellers} />
+        </View>
+      )}
+      </View>
     </View>
   );
 }
@@ -187,6 +200,9 @@ const styles = StyleSheet.create({
     fontFamily: 'MBFAtom', textTransform: 'uppercase', fontSize: typography.fontSizes.lg,
     fontWeight: '400', color: colors.text.primary,
   },
+  stack: { gap: spacing.sm },
+  split: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  half: { flex: 1, minWidth: 0, gap: spacing.sm },
   kpis: { flexDirection: 'row', gap: spacing.sm },
   kpi: { flex: 1, padding: spacing.sm, borderRadius: borderRadius.md, backgroundColor: colors.background.tertiary, gap: 2 },
   kpiValue: { fontSize: typography.fontSizes.xl, fontWeight: typography.fontWeights.bold, color: colors.text.primary },

@@ -17,6 +17,7 @@ import { getVisibleMenuItems } from '../lib/permissions';
 import EmployeeAvatar from './EmployeeAvatar';
 import { APP_VERSION } from '../lib/appVersion';
 import { TABLET_SIDEBAR_WIDTH } from '../hooks/useTabletLayout';
+import { navigateToEventsList } from '../navigation/navigationRef';
 
 const DRAWER_WIDTH = TABLET_SIDEBAR_WIDTH;
 
@@ -70,6 +71,9 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
     onClose();
     if (screen === 'Tasks') {
       navigation.navigate('Tasks', { screen: 'TasksList', initial: false });
+    } else if (screen === 'Events') {
+      // Zawsze lista eventów, nie ostatnio otwarty event (np. z dashboardu).
+      navigateToEventsList();
     } else if (screen === 'Inquiries') {
       navigation.navigate('Inquiries', { screen: 'InquiriesList', initial: false });
     } else {

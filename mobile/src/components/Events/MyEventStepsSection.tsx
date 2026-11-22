@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
@@ -16,11 +16,17 @@ import { EventStepRow, type EventStepRowLink, isEventStepsUnavailable, useEventS
 
 /*
  * „Moje kroki” na Dashboardzie — kroki realizacji, które bieżąca osoba może wykonać teraz (RPC get_my_event_steps),
- * w kolejności terminów. Ukryte, gdy lista jest pusta. Główną czynność można wykonać od razu; dotknięcie
- * nazwy wydarzenia otwiera jego szczegóły.
+ * w kolejności terminów. Ukryte, gdy lista jest pusta. Główną czynność można wykonać od razu; dotknięcie karty (poza
+ * przyciskami) albo nazwy eventu otwiera event w zakładce „Kroki realizacji” — tam, gdzie krok czeka. „Przejdź” prowadzi do
+ * zakładki, w której krok się zamyka (bez osobnej zakładki — do „Kroków realizacji”).
+ * Tablet: siatka na całą szerokość (2 albo 3 kolumny, w podglądzie dwa rzędy); telefon — lista.
  */
 
 const PREVIEW = 5;
+const GRID_GAP = spacing.sm;
+
+/** Liczba kolumn siatki dla szerokości obszaru kart. */
+const gridColumns = (width: number) => (width >= 960 ? 3 : width >= 600 ? 2 : 1);
 
 const eventDate = (value: string | null) =>
   value ? new Date(value).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
@@ -32,16 +38,20 @@ export default function MyEventStepsSection({ refreshKey }: { refreshKey: number
   const [error, setError] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [gridWidth, setGridWidth] = useState(0);
   const readVersion = useRef(0);
   const channelSuffix = useRef(Math.random().toString(36).slice(2, 10)).current;
   const employeeId = employee?.id;
   const canOpenEvents = canView(employee, 'events');
   const isWarehouseWorker = employee?.permissions?.includes('equipment_manage') === true;
 
-  // „Przejdź”: zakładka wydarzenia, w której krok się zamyka; umowa i finanse — CRM w przeglądarce.
+  // „Przejdź”: zakładka eventu, w której krok się zamyka; umowa i finanse — CRM w przeglądarce; pozostałe — „Kroki realizacji”.
   const stepLink = (step: MyEventStep): EventStepRowLink | null => {
     const eventId = step.event?.id || step.event_id;
     if (!eventId) return null;
+    const stepsTab: EventStepRowLink | null = canOpenEvents
+      ? { label: 'Kroki realizacji', external: false, onPress: () => navigateToEvent(eventId, 'steps') }
+      : null;
     const target = eventStepDetailLink(eventId, step.key, {
       isWedding: step.key === 'wedding_card',
       // Ekran wydarzenia sam wraca do „Szczegółów”, gdy zakładki Floty, Magazynu lub Podsumowania nie ma.
@@ -49,7 +59,7 @@ export default function MyEventStepsSection({ refreshKey }: { refreshKey: number
       hasWarehouse: isWarehouseWorker,
       hasSummary: true,
     });
-    if (!target) return null;
+    if (!target) return stepsTab;
     if (target.kind === 'crm') return { label: target.label, external: true, onPress: () => openInCrmWeb(target.path) };
     if (!canOpenEvents) return null;
     return { label: target.label, external: false, onPress: () => navigateToEvent(eventId, target.tab) };
@@ -138,7 +148,10 @@ export default function MyEventStepsSection({ refreshKey }: { refreshKey: number
   }
   if (!steps || steps.length === 0) return null;
   const overdue = steps.filter((step) => step.overdue).length;
-  const visible = showAll ? steps : steps.slice(0, PREVIEW);
+  const columns = gridColumns(gridWidth);
+  const preview = columns > 1 ? columns * 2 : PREVIEW;
+  const visible = showAll ? steps : steps.slice(0, preview);
+  const itemWidth = columns > 1 ? Math.floor((gridWidth - GRID_GAP * (columns - 1)) / columns) : undefined;
   const rowError = runner.rowError;
 
   return (
@@ -161,25 +174,39 @@ export default function MyEventStepsSection({ refreshKey }: { refreshKey: number
         {overdue > 0 ? <Text style={styles.alert}> · po terminie: {overdue}</Text> : null}
       </Text>
 
+      <View
+        style={columns > 1 ? styles.grid : null}
+        onLayout={(event) => {
+          const width = Math.round(event.nativeEvent.layout.width);
+          setGridWidth((current) => (current === width ? current : width));
+        }}
+      >
       {visible.map((step) => {
         const date = eventDate(step.event?.event_date ?? null);
         const label = [step.event?.name || 'Event', date].filter(Boolean).join(' · ');
+        const eventId = step.event?.id || step.event_id;
+        const openEvent = canOpenEvents && eventId ? () => navigateToEvent(eventId, 'steps') : undefined;
         return (
-          <EventStepRow
-            key={step.id}
-            step={step}
-            eventLabel={label}
-            onOpenEvent={canOpenEvents && step.event?.id ? () => navigateToEvent(step.event.id, 'details') : undefined}
-            link={stepLink(step)}
-            actionsMode="primary"
-            busyKey={runner.busyKey}
-            error={rowError?.stepId === step.id ? rowError.message : null}
-            onAction={runner.start}
-          />
+          // Cała karta prowadzi do eventu (przyciski w środku działają po swojemu); czytnik ekranu — link z nazwą eventu.
+          <Pressable key={step.id} accessible={false} disabled={!openEvent} onPress={openEvent}
+            style={({ pressed }) => [itemWidth ? { width: itemWidth } : null, pressed ? styles.pressed : null]}>
+            <EventStepRow
+              style={itemWidth ? styles.gridItem : undefined}
+              step={step}
+              eventLabel={label}
+              onOpenEvent={openEvent}
+              link={stepLink(step)}
+              actionsMode="primary"
+              busyKey={runner.busyKey}
+              error={rowError?.stepId === step.id ? rowError.message : null}
+              onAction={runner.start}
+            />
+          </Pressable>
         );
       })}
+      </View>
 
-      {steps.length > PREVIEW && (
+      {steps.length > preview && (
         <TouchableOpacity accessibilityRole="button" onPress={() => setShowAll((value) => !value)}>
           <Text style={styles.link}>{showAll ? 'Pokaż mniej' : `Pokaż wszystkie (${steps.length})`}</Text>
         </TouchableOpacity>
@@ -215,4 +242,8 @@ const styles = StyleSheet.create({
   alert: { color: tone('#ff9999'), fontWeight: typography.fontWeights.semibold },
   link: { color: colors.primary.gold, paddingVertical: 10 },
   error: { color: tone('#ff9999'), marginTop: spacing.sm },
+  pressed: { opacity: 0.85 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP, marginTop: spacing.sm },
+  // Karta w siatce wypełnia wysokość wiersza (równe karty obok siebie); odstęp daje siatka.
+  gridItem: { flex: 1, marginTop: 0 },
 });

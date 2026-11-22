@@ -21,8 +21,25 @@ import { colors, spacing, typography, borderRadius, tone } from '../theme';
 import SalesDaySection from '../components/SalesDaySection';
 import MyScheduleSection from '../components/MyScheduleSection';
 import MyEventStepsSection from '../components/Events/MyEventStepsSection';
+import { navigateToEventsList } from '../navigation/navigationRef';
 
 const TABLET_BREAKPOINT = 768;
+
+/*
+ * Dashboard w aplikacji (telefon, tablet). Kolejność: plan dnia, „Moje kroki”, sprzęt (magazyn), „Mój dzień”, liczniki,
+ * „Nadchodzące eventy” i „Moje zadania”. Uszkodzony sprzęt: pracownik magazynu — wysoko, administrator — na samym końcu,
+ * pozostali (np. sprzedawcy) — bez tej sekcji (uszkodzone egzemplarze widać dopiero przy sprzęcie przypisanym do eventu).
+ * „Nadchodzące eventy” i „Moje zadania” — sekcje w ramce, tej samej stałej wysokości: dokładnie 5 kart o stałej wysokości,
+ * nadmiar otwiera „Zobacz więcej”.
+ */
+
+/** Liczba kart na listach „Nadchodzące eventy” i „Moje zadania” — wysokość kart dobrana tak, by mieściło się dokładnie tyle. */
+const LIST_SLOTS = 5;
+const CARD_HEIGHT = 96;
+const LIST_GAP = spacing.sm;
+const LIST_HEIGHT = CARD_HEIGHT * LIST_SLOTS + LIST_GAP * (LIST_SLOTS - 1);
+const MORE_ROW_HEIGHT = 40;
+const TASKS_SHOWN = 20;
 
 // --- Labels matching main CRM ---
 
@@ -84,6 +101,7 @@ interface DashboardEvent {
   id: string;
   name: string;
   event_date: string;
+  event_end_date?: string | null;
   status: string;
   category_name: string | null;
   category_color: string | null;
@@ -100,14 +118,67 @@ interface DashboardTask {
   created_at: string | null;
 }
 
+/** Event już się skończył: koniec przed chwilą obecną, a bez końca — dzień rozpoczęcia przed dzisiejszym. */
+const eventEnded = (event: { event_date: string; event_end_date?: string | null }) => {
+  if (event.event_end_date) {
+    const end = Date.parse(event.event_end_date);
+    return Number.isFinite(end) && end < Date.now();
+  }
+  const start = Date.parse(event.event_date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Number.isFinite(start) && start < today.getTime();
+};
+
+/**
+ * Lista o stałej wysokości: do 5 kart o stałej wysokości (bez pustego miejsca pod nimi); gdy kart jest więcej — „Zobacz więcej”
+ * otwiera pełną listę. Wiersz „Zobacz więcej” ma stałą wysokość, więc dwie listy obok siebie (tablet) są tej samej wysokości.
+ */
+function FixedHeightList<T>({ items, keyOf, renderItem, empty, moreLabel, onMore, more = false }: {
+  items: T[];
+  keyOf: (item: T) => string;
+  renderItem: (item: T) => React.ReactNode;
+  empty: React.ReactNode;
+  moreLabel: string;
+  onMore: () => void;
+  /** Wczytano tylko część listy — „Zobacz więcej” także wtedy, gdy wczytanych kart jest najwyżej 5. */
+  more?: boolean;
+}) {
+  const shown = items.slice(0, LIST_SLOTS);
+  const overflow = more || items.length > LIST_SLOTS;
+  return (
+    <View>
+      <View style={styles.fixedList}>
+        {shown.length === 0
+          ? <View style={styles.fixedEmpty}>{empty}</View>
+          : shown.map((item) => (
+            <View key={keyOf(item)} style={styles.slot}>
+              {renderItem(item)}
+            </View>
+          ))}
+      </View>
+      <View style={styles.moreRow}>
+        {overflow ? (
+          <TouchableOpacity accessibilityRole="button" onPress={onMore} style={styles.moreButton} hitSlop={8}>
+            <Text style={styles.moreText}>{moreLabel}</Text>
+            <Feather name="arrow-right" size={16} color={colors.primary.gold} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 export default function DashboardScreen() {
   const { employee } = useAuth();
   const navigation = useNavigation<any>();
   const [upcomingEvents, setUpcomingEvents] = useState<DashboardEvent[]>([]);
   const [myTasks, setMyTasks] = useState<DashboardTask[]>([]);
+  const [tasksMore, setTasksMore] = useState(false);
   const [damaged, setDamaged] = useState<any[]>([]);
   const [loadError, setLoadError] = useState('');
   const isWarehouse = employee?.permissions?.includes('equipment_manage') === true;
+  const isAdmin = employee?.role === 'admin' || employee?.access_level === 'admin';
   const operational = usesOperationalStages(employee);
   const { stage, error: stageError } = useOperationalStages(upcomingEvents, operational);
   const [loading, setLoading] = useState(false);
@@ -234,7 +305,7 @@ export default function DashboardScreen() {
           .from('events')
           .select(
             `
-            id, name, event_date, status,
+            id, name, event_date, event_end_date, status,
             event_categories(name, color),
             creator:employees!created_by(name, surname)
           `,
@@ -243,13 +314,14 @@ export default function DashboardScreen() {
           .gte('event_date', new Date().toISOString().split('T')[0])
           .not('status', 'eq', 'cancelled')
           .order('event_date', { ascending: true })
-          .limit(8);
+          .limit(30);
 
         if (error) throw error;
         events = (data ?? []).map((e: any) => ({
           id: e.id,
           name: e.name,
           event_date: e.event_date,
+          event_end_date: e.event_end_date ?? null,
           status: e.status,
           category_name: e.event_categories?.name ?? null,
           category_color: e.event_categories?.color ?? null,
@@ -263,7 +335,7 @@ export default function DashboardScreen() {
         isWarehouse
           ? supabase
               .from('events')
-              .select('id,name,event_date,status')
+              .select('id,name,event_date,event_end_date,status')
               .in('status', [
                 'offer_accepted',
                 'in_preparation',
@@ -319,10 +391,11 @@ export default function DashboardScreen() {
           creator_name: null,
         });
       }
+      // „Nadchodzące” — bez eventów, które już się skończyły (otwarte sprawy po evencie są w „Moich krokach”).
       setUpcomingEvents(
-        [...merged.values()].sort(
-          (a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime(),
-        ),
+        [...merged.values()]
+          .filter((event) => !eventEnded(event))
+          .sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime()),
       );
       setDamaged(broken.data || []);
 
@@ -340,7 +413,9 @@ export default function DashboardScreen() {
         .limit(50);
 
       if (tasksError) throw tasksError;
-      setMyTasks(sortTasksByUrgency(tasks ?? []).slice(0, 8));
+      const sortedTasks = sortTasksByUrgency(tasks ?? []);
+      setTasksMore(sortedTasks.length > TASKS_SHOWN);
+      setMyTasks(sortedTasks.slice(0, TASKS_SHOWN));
     } catch (error) {
       console.error('Error loading dashboard:', error);
       setLoadError(
@@ -358,12 +433,73 @@ export default function DashboardScreen() {
     });
   };
 
+  const openTasksBoard = () => navigation.navigate('Tasks', { screen: 'TasksList', initial: false });
+
   const handleTaskPress = (task: DashboardTask) => {
     navigation.navigate('Tasks', {
       screen: 'TaskDetail',
       params: { taskId: task.id },
     });
   };
+
+  // Sprzęt i uszkodzone egzemplarze (pracownik magazynu — wysoko, administrator — na końcu dashboardu).
+  const warehouseSection = isWarehouse ? (
+    <View style={{ paddingHorizontal: 16, gap: 12 }}>
+      <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+        {[
+          { screen: 'Equipment', label: 'Sprzęt', open: () => navigation.navigate('Equipment') },
+          { screen: 'Events', label: 'Eventy', open: navigateToEventsList },
+          { screen: 'Tasks', label: 'Moje zadania', open: openTasksBoard },
+        ].map((item) => (
+          <TouchableOpacity
+            key={item.screen}
+            accessibilityRole="button"
+            onPress={item.open}
+            style={{
+              padding: 12,
+              borderRadius: 8,
+              backgroundColor: colors.background.secondary,
+            }}
+          >
+            <Text style={{ color: colors.primary.gold }}>{item.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={{ color: colors.text.primary, fontSize: 18 }}>Uszkodzony sprzęt</Text>
+      {damaged.length === 0 && !loadError && (
+        <Text style={{ color: colors.text.secondary }}>
+          Brak egzemplarzy oznaczonych jako uszkodzone.
+        </Text>
+      )}
+      {damaged.map((unit) => (
+        <TouchableOpacity
+          key={unit.id}
+          accessibilityRole="button"
+          onPress={() => navigation.navigate('Equipment', { equipmentId: unit.equipment_id })}
+          style={{ padding: 12, borderRadius: 8, backgroundColor: colors.background.secondary }}
+        >
+          <Text style={{ color: colors.text.primary }}>
+            {(Array.isArray(unit.equipment) ? unit.equipment[0] : unit.equipment)?.name ||
+              'Sprzęt'}{' '}
+            · <Text style={{ color: colors.status.error }}>Uszkodzony</Text>
+          </Text>
+          {!!unit.unit_serial_number && (
+            <Text style={{ color: colors.text.secondary }}>
+              Nr seryjny: {unit.unit_serial_number}
+            </Text>
+          )}
+          {!!unit.condition_notes && (
+            <Text style={{ color: colors.text.secondary }}>{unit.condition_notes}</Text>
+          )}
+        </TouchableOpacity>
+      ))}
+      {damaged.length === 20 && (
+        <Text style={{ color: colors.text.secondary }}>
+          Pokazano 20 ostatnio aktualizowanych egzemplarzy.
+        </Text>
+      )}
+    </View>
+  ) : null;
 
   return (
     <ScrollView
@@ -389,63 +525,7 @@ export default function DashboardScreen() {
       )}
       <MyScheduleSection refreshKey={salesRefreshKey} />
       <MyEventStepsSection refreshKey={salesRefreshKey} />
-      {isWarehouse && (
-        <View style={{ paddingHorizontal: 16, gap: 12 }}>
-          <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
-            {[
-              { screen: 'Equipment', label: 'Sprzęt' },
-              { screen: 'Events', label: 'Eventy' },
-              { screen: 'Tasks', label: 'Moje zadania' },
-            ].map((item) => (
-              <TouchableOpacity
-                key={item.screen}
-                accessibilityRole="button"
-                onPress={() => navigation.navigate(item.screen)}
-                style={{
-                  padding: 12,
-                  borderRadius: 8,
-                  backgroundColor: colors.background.secondary,
-                }}
-              >
-                <Text style={{ color: colors.primary.gold }}>{item.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Text style={{ color: colors.text.primary, fontSize: 18 }}>Uszkodzony sprzęt</Text>
-          {damaged.length === 0 && !loadError && (
-            <Text style={{ color: colors.text.secondary }}>
-              Brak egzemplarzy oznaczonych jako uszkodzone.
-            </Text>
-          )}
-          {damaged.map((unit) => (
-            <TouchableOpacity
-              key={unit.id}
-              accessibilityRole="button"
-              onPress={() => navigation.navigate('Equipment', { equipmentId: unit.equipment_id })}
-              style={{ padding: 12, borderRadius: 8, backgroundColor: colors.background.secondary }}
-            >
-              <Text style={{ color: colors.text.primary }}>
-                {(Array.isArray(unit.equipment) ? unit.equipment[0] : unit.equipment)?.name ||
-                  'Sprzęt'}{' '}
-                · <Text style={{ color: colors.status.error }}>Uszkodzony</Text>
-              </Text>
-              {!!unit.unit_serial_number && (
-                <Text style={{ color: colors.text.secondary }}>
-                  Nr seryjny: {unit.unit_serial_number}
-                </Text>
-              )}
-              {!!unit.condition_notes && (
-                <Text style={{ color: colors.text.secondary }}>{unit.condition_notes}</Text>
-              )}
-            </TouchableOpacity>
-          ))}
-          {damaged.length === 20 && (
-            <Text style={{ color: colors.text.secondary }}>
-              Pokazano 20 ostatnio aktualizowanych egzemplarzy.
-            </Text>
-          )}
-        </View>
-      )}
+      {!isAdmin && warehouseSection}
       <SalesDaySection refreshKey={salesRefreshKey} />
 
       {/* Quick Stats */}
@@ -463,28 +543,30 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      <View style={isTablet ? styles.tabletColumns : undefined}>
+      <View style={[styles.lists, isTablet && styles.listsRow]}>
         {/* Upcoming Events */}
-        <View style={[styles.section, isTablet && styles.tabletColumn]}>
+        <View style={[styles.listFrame, isTablet && styles.tabletColumn]}>
           <Text style={styles.sectionTitle}>Nadchodzące eventy</Text>
-          {upcomingEvents.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Feather name="calendar" color={colors.text.tertiary} size={48} />
-              <Text style={styles.emptyText}>Brak nadchodzących eventów</Text>
-            </View>
-          ) : (
-            upcomingEvents.map((event) => (
+          <FixedHeightList
+            items={upcomingEvents}
+            keyOf={(event) => event.id}
+            empty={(
+              <View style={styles.emptyState}>
+                <Feather name="calendar" color={colors.text.tertiary} size={48} />
+                <Text style={styles.emptyText}>Brak nadchodzących eventów</Text>
+              </View>
+            )}
+            moreLabel="Zobacz więcej eventów"
+            onMore={navigateToEventsList}
+            renderItem={(event) => (
               <TouchableOpacity
-                key={event.id}
-                style={styles.card}
+                style={styles.listCard}
                 onPress={() => handleEventPress(event)}
                 activeOpacity={0.7}
               >
-                <View style={styles.cardHeader}>
-                  <Text style={styles.cardTitle} numberOfLines={2}>
-                    {event.name}
-                  </Text>
-                </View>
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {event.name}
+                </Text>
 
                 <View style={styles.labelsRow}>
                   {event.category_name && (
@@ -546,33 +628,38 @@ export default function DashboardScreen() {
                     <>
                       <Text style={styles.separator}>•</Text>
                       <Feather name="user" color={colors.text.tertiary} size={12} />
-                      <Text style={styles.cardDate}>{event.creator_name}</Text>
+                      <Text style={[styles.cardDate, styles.shrink]} numberOfLines={1}>{event.creator_name}</Text>
                     </>
                   )}
                 </View>
               </TouchableOpacity>
-            ))
-          )}
+            )}
+          />
         </View>
 
         {/* My Tasks */}
-        <View style={[styles.section, isTablet && styles.tabletColumn]}>
+        <View style={[styles.listFrame, isTablet && styles.tabletColumn]}>
           <Text style={styles.sectionTitle}>Moje zadania</Text>
-          {myTasks.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Feather name="check-square" color={colors.text.tertiary} size={48} />
-              <Text style={styles.emptyText}>Brak zadań do wykonania</Text>
-            </View>
-          ) : (
-            myTasks.map((task) => (
+          <FixedHeightList
+            items={myTasks}
+            keyOf={(task) => task.id}
+            more={tasksMore}
+            empty={(
+              <View style={styles.emptyState}>
+                <Feather name="check-square" color={colors.text.tertiary} size={48} />
+                <Text style={styles.emptyText}>Brak zadań do wykonania</Text>
+              </View>
+            )}
+            moreLabel="Zobacz wszystkie zadania"
+            onMore={openTasksBoard}
+            renderItem={(task) => (
               <TouchableOpacity
-                key={task.id}
-                style={styles.card}
+                style={styles.listCard}
                 onPress={() => handleTaskPress(task)}
                 activeOpacity={0.7}
               >
                 <View style={styles.cardHeader}>
-                  <Text style={styles.cardTitle} numberOfLines={2}>
+                  <Text style={styles.cardTitle} numberOfLines={1}>
                     {task.title}
                   </Text>
                   <View
@@ -624,10 +711,12 @@ export default function DashboardScreen() {
                     })()}
                 </View>
               </TouchableOpacity>
-            ))
-          )}
+            )}
+          />
         </View>
       </View>
+
+      {isAdmin && warehouseSection ? <View style={styles.endSection}>{warehouseSection}</View> : null}
 
       <View style={{ height: spacing.xxxl }} />
     </ScrollView>
@@ -678,25 +767,43 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.text.secondary,
   },
-  section: {
-    padding: spacing.md,
+  lists: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
     gap: spacing.md,
+  },
+  listsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  // Ramka sekcji (jak „Moje kroki” i „Mój dzień”), karty w środku w jaśniejszym tle.
+  listFrame: {
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.background.secondary,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
   },
   sectionTitle: {
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',
-    fontSize: typography.fontSizes.xl,
+    fontSize: typography.fontSizes.lg,
     fontWeight: '400',
     color: colors.text.primary,
-    marginBottom: spacing.sm,
   },
-  card: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
+  listCard: {
+    flex: 1,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    backgroundColor: colors.background.tertiary,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: colors.border.default,
-    gap: spacing.sm,
+    gap: 6,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -714,8 +821,8 @@ const styles = StyleSheet.create({
   },
   labelsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.xs,
+    overflow: 'hidden',
   },
   badge: {
     flexDirection: 'row',
@@ -739,7 +846,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    marginTop: 2,
+    overflow: 'hidden',
   },
   cardDate: {
     fontSize: typography.fontSizes.xs,
@@ -771,16 +878,12 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     alignItems: 'center',
-    padding: spacing.xxxl,
+    padding: spacing.xl,
     gap: spacing.md,
   },
   emptyText: {
     fontSize: typography.fontSizes.md,
     color: colors.text.tertiary,
-  },
-  tabletColumns: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
   },
   tabletColumn: {
     flex: 1,
@@ -788,5 +891,38 @@ const styles = StyleSheet.create({
   overdueDate: {
     color: colors.status?.error ?? '#ef4444',
     fontWeight: '700',
+  },
+  fixedList: {
+    height: LIST_HEIGHT,
+    gap: LIST_GAP,
+  },
+  fixedEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  slot: {
+    height: CARD_HEIGHT,
+  },
+  shrink: {
+    flexShrink: 1,
+  },
+  moreRow: {
+    height: MORE_ROW_HEIGHT,
+    justifyContent: 'center',
+  },
+  moreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    minHeight: MORE_ROW_HEIGHT,
+  },
+  moreText: {
+    color: colors.primary.gold,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  endSection: {
+    marginTop: spacing.lg,
   },
 });

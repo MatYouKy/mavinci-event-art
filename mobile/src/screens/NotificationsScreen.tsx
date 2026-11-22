@@ -1,7 +1,7 @@
 import { readNotificationFeed } from '../lib/notificationFeed';
 import { getEventNotificationTab } from '../lib/eventNotificationTarget';
 import { getSellerChatTarget } from '../lib/sellerChatTarget';
-import { navigateToSellerChat, routeSalesUrl } from '../navigation/navigationRef';
+import { navigateToEventsList, navigateToSellerChat, routeSalesUrl } from '../navigation/navigationRef';
 import { respondToAssignment } from '../services/assignmentResponse';
 import React, { useState, useRef } from 'react';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
@@ -384,7 +384,7 @@ export default function NotificationsScreen() {
           },
         });
       } else {
-        navigation.navigate('Main', { screen: 'Events' });
+        navigateToEventsList();
       }
       return;
     }

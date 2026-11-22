@@ -26,6 +26,7 @@ import {
   salesColleagueSoldByLabel,
   seesSalesColleagueEvents,
 } from '../lib/salesColleagueEvents';
+import { Segmented } from '../components/Inquiries/InquiryKit';
 
 export interface EventListItem {
   id: string;
@@ -66,6 +67,19 @@ const EVENT_LIST_SELECT = `
 interface Props {
   onEventPress: (event: EventListItem) => void;
 }
+
+/*
+ * Zakres listy: „Utworzone przeze mnie” (domyślnie — eventy, które pracownik utworzył) albo „Wszystkie eventy” (wszystko,
+ * co pracownik widzi: administrator i magazyn — wszystkie eventy, sprzedawca — także sprzedane przez innych sprzedawców).
+ * Pracownik magazynu (bez roli administratora) zaczyna od „Wszystkich” — przygotowuje eventy innych osób (filtry magazynu
+ * niżej). „Pokaż przeszłe eventy” działa w obu zakresach. Wybór nie znika przy powrocie z eventu; menu „Eventy” otwiera
+ * listę od nowa (domyślny zakres).
+ */
+type EventScope = 'mine' | 'all';
+const SCOPE_OPTIONS: ReadonlyArray<{ id: EventScope; label: string }> = [
+  { id: 'mine', label: 'Utworzone przeze mnie' },
+  { id: 'all', label: 'Wszystkie eventy' },
+];
 
 const normalizeStatus = (status: string | null | undefined) =>
   String(status || '')
@@ -132,6 +146,10 @@ export default function EventsScreen({ onEventPress }: Props) {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [showPastEvents, setShowPastEvents] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const isAdminRole = employee?.role === 'admin' || employee?.access_level === 'admin';
+  const [scope, setScope] = useState<EventScope>(() => (isWarehouseWorker && !isAdminRole ? 'all' : 'mine'));
+  /** „Wszystkie eventy” różnią się od „Utworzonych przeze mnie” (pełna lista albo eventy innych sprzedawców). */
+  const [scopeAvailable, setScopeAvailable] = useState(false);
 
   const fetchEvents = useCallback(
     async (isRefresh = false) => {
@@ -148,6 +166,7 @@ export default function EventsScreen({ onEventPress }: Props) {
           employee.permissions?.includes('events_manage') === true ||
           employee.permissions?.includes('equipment_manage') === true || employee.has_realizations === true;
         const showColleagues = seesSalesColleagueEvents(employee);
+        setScopeAvailable(isAdmin || showColleagues);
 
         let eventIds: string[] | null = null;
 
@@ -316,6 +335,7 @@ export default function EventsScreen({ onEventPress }: Props) {
 
   useEffect(() => {
     let result = [...events];
+    if (scopeAvailable && scope === 'mine') result = result.filter((event) => Boolean(employee?.id) && event.created_by === employee?.id);
     if (isWarehouseWorker) result = result.filter(event => matchesWarehouseFilter(warehouseFilter, event.status, handoffs[event.id], employee?.id));
 
     if (!showPastEvents) {
@@ -354,7 +374,7 @@ export default function EventsScreen({ onEventPress }: Props) {
     });
 
     setFiltered(result);
-  }, [events, search, statusFilter, showPastEvents, operationalStates, operational, isWarehouseWorker, warehouseFilter, handoffs, employee?.id]);
+  }, [events, search, statusFilter, showPastEvents, operationalStates, operational, isWarehouseWorker, warehouseFilter, handoffs, employee?.id, scope, scopeAvailable]);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -493,6 +513,11 @@ export default function EventsScreen({ onEventPress }: Props) {
         )}
       </View>
 
+      {scopeAvailable && (
+        <View style={styles.scopeRow}>
+          <Segmented value={scope} options={SCOPE_OPTIONS} onChange={setScope} />
+        </View>
+      )}
       {isWarehouseWorker && <View style={styles.filtersRow}>
         <FlatList horizontal showsHorizontalScrollIndicator={false}
           data={[{ key: 'all' as const, label: 'Wszystkie' }, { key: 'pending' as const, label: 'Do przejęcia' }, { key: 'mine' as const, label: 'Moje przygotowania' }]}
@@ -578,7 +603,14 @@ export default function EventsScreen({ onEventPress }: Props) {
               size={48}
               color={loadError ? colors.status.error : colors.text.tertiary}
             />
-            <Text style={styles.emptyText}>{loadError || 'Brak eventów'}</Text>
+            <Text style={styles.emptyText}>
+              {loadError || (scopeAvailable && scope === 'mine' ? 'Brak eventów utworzonych przez Ciebie' : 'Brak eventów')}
+            </Text>
+            {!loadError && scopeAvailable && scope === 'mine' && (
+              <TouchableOpacity accessibilityRole="button" onPress={() => setScope('all')}>
+                <Text style={styles.scopeHint}>Pokaż wszystkie eventy</Text>
+              </TouchableOpacity>
+            )}
             {loadError && (
               <TouchableOpacity style={styles.retryButton} onPress={() => void fetchEvents(true)}>
                 <Feather name="refresh-cw" size={14} color={colors.background.primary} />
@@ -613,6 +645,15 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     gap: 8,
+  },
+  scopeRow: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+  },
+  scopeHint: {
+    color: colors.primary.gold,
+    fontSize: 14,
+    paddingVertical: 8,
   },
   searchInput: {
     flex: 1,
