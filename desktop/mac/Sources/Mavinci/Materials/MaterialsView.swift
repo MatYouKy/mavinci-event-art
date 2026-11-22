@@ -7,8 +7,10 @@ import UniformTypeIdentifiers
 // Marka, drzewo folderów (domyślne foldery marki z ikonami), zawartość folderu jako siatka miniatur albo lista, sortowanie,
 // zaznaczanie jak w Finderze (⌘ i ⇧, ⌘A), wyszukiwanie w Materiałach i w plikach wydarzeń, karta pliku z boku, kosz.
 // Przeciąganie: pliki i całe foldery z Findera (na folder albo do bieżącego folderu — z postępem wysyłki), elementy między
-// folderami (na folder w siatce, na liście albo w drzewie), plik z aplikacji do Findera i innych aplikacji. Spacja / dwuklik —
-// Quick Look, Delete — do kosza, Enter — otwórz.
+// folderami (na folder w siatce, na liście albo w drzewie; z ⌥ — kopia), plik z aplikacji do Findera i innych aplikacji. Spacja /
+// dwuklik — Quick Look, Delete — do kosza, Enter — otwórz. Schowek jak w Finderze: ⌘C kopiuj, ⌘X wytnij, ⌘V wklej (kopia albo
+// przeniesienie; pliki skopiowane w Finderze — wysyłka), w menu prawym przyciskiem także „Duplikuj”, „Kopiuj do…”, „Wklej do
+// folderu”; menu na pustym miejscu: nowy folder, dodawanie plików, wklejanie.
 // Na ekranie Dysku (`drive`) pasek boczny pokazuje działy Dysku (Eventy, Oferty, Magazyn…), a drzewo folderów i albumów —
 // pod pozycją „Materiały”; w folderze „Logotypy i księga znaku” na górze logotypy, fonty i kolory z księgi znaku.
 
@@ -26,6 +28,10 @@ import UniformTypeIdentifiers
     @State private var promptName = ""
     @State private var deleting: [MaterialRef]?
     @State private var moving: [MaterialRef]?
+    /// „Kopiuj do…” — wybór folderu docelowego.
+    @State private var copying: [MaterialRef]?
+    /// Zawartość folderu ma fokus klawiatury (siatka: po kliknięciu elementu) — działają ⌘C, ⌘X, ⌘V, Delete, spacja.
+    @FocusState private var paneFocused: Bool
     @State private var savingEvent: MaterialEventHit?
     @State private var preview: URL?
     @State private var dropTarget: String?
@@ -81,6 +87,10 @@ import UniformTypeIdentifiers
 
     private var movingShown: Binding<Bool> {
         Binding(get: { moving != nil }, set: { if !$0 { moving = nil } })
+    }
+
+    private var copyingShown: Binding<Bool> {
+        Binding(get: { copying != nil }, set: { if !$0 { copying = nil } })
     }
 
     private var uploadsShown: Binding<Bool> {
@@ -154,6 +164,9 @@ import UniformTypeIdentifiers
             .sheet(isPresented: movingShown) {
                 movePicker
             }
+            .sheet(isPresented: copyingShown) {
+                copyPicker
+            }
             .sheet(item: $savingEvent) { hit in
                 saveEventPicker(hit)
             }
@@ -169,6 +182,17 @@ import UniformTypeIdentifiers
         return MaterialsFolderPicker(store: store, title: title, confirm: "Przenieś tutaj", excluded: excluded, initial: store.folderID) { target in
             moving = nil
             Task { await store.move(refs, to: target); clearSelection() }
+        }
+        .environment(\.crmTheme, theme)
+    }
+
+    private var copyPicker: some View {
+        let refs = copying ?? []
+        let title = refs.count == 1 ? "Kopiuj „\(refs[0].name)”" : "Kopiuj zaznaczone (\(refs.count))"
+        let excluded = refs.filter { $0.kind == "folder" }.map(\.id)
+        return MaterialsFolderPicker(store: store, title: title, confirm: "Kopiuj tutaj", excluded: excluded, initial: store.folderID) { target in
+            copying = nil
+            Task { await copyItems(refs, to: target) }
         }
         .environment(\.crmTheme, theme)
     }
@@ -309,6 +333,7 @@ import UniformTypeIdentifiers
                 }
                 .padding(.horizontal, 8).padding(.bottom, 8)
             }
+            if drive != nil { DriveStorageMeter(store: state.drive) }
             if home.access.manage {
                 Divider().opacity(0.3)
                 Button {
@@ -375,7 +400,15 @@ import UniformTypeIdentifiers
         if FinderDomain.available {
             Button("Pokaż w Finderze") { Task { await FinderDomain.reveal(materialsFolder: folder.id, company: folder.companyId) } }
         }
+        Divider()
+        Button("Kopiuj") { store.setClipboard([ref], cut: false) }
         if store.canManage {
+            if folder.systemKey == nil { Button("Wytnij") { store.setClipboard([ref], cut: true) } }
+            Button("Duplikuj") { Task { await copyItems([ref], to: folder.parentId) } }
+            Button("Kopiuj do…") { copying = [ref] }
+            if let title = pasteTitle(into: folder.name) {
+                Button(title) { Task { await paste(into: folder.id) } }
+            }
             Divider()
             Button("Nowy podfolder…") { askNewFolder(parent: folder.id) }
             Button("Zmień nazwę…") { askRename(ref) }
@@ -384,6 +417,23 @@ import UniformTypeIdentifiers
                 Divider()
                 Button("Usuń", role: .destructive) { deleting = [ref] }
             }
+        }
+    }
+
+    /// Menu na pustym miejscu zawartości folderu: nowy folder, pliki, wklejenie schowka, zaznaczenie wszystkiego.
+    @ViewBuilder private func paneMenu() -> some View {
+        if store.canManage {
+            Button("Nowy folder…") { askNewFolder(parent: store.folderID) }
+            Button("Dodaj pliki…") { chooseFiles() }
+            if let title = pasteTitle(into: nil) {
+                Divider()
+                Button(title) { Task { await paste(into: store.folderID) } }
+            }
+            Divider()
+        }
+        Button("Zaznacz wszystko") { selection = Set(orderedKeys) }.disabled(orderedKeys.isEmpty)
+        if FinderDomain.available, let company = store.home?.company.id {
+            Button("Pokaż w Finderze") { Task { await FinderDomain.reveal(materialsFolder: store.folderID, company: company) } }
         }
     }
 
@@ -505,7 +555,11 @@ import UniformTypeIdentifiers
         .contentShape(Rectangle())
         .onDrop(of: MaterialsDropTypes.all, isTargeted: targeted(key)) { providers in drop(providers, into: store.folderID) }
         .focusable()
+        .focused($paneFocused)
         .focusEffectDisabled()
+        .onCommand(#selector(NSText.copy(_:))) { store.setClipboard(selectedRefsAll, cut: false) }
+        .onCommand(#selector(NSText.cut(_:))) { if store.canManage { store.setClipboard(selectedRefs, cut: true) } }
+        .onCommand(#selector(NSText.paste(_:))) { Task { await paste(into: store.folderID) } }
         .onKeyPress(.space) {
             guard let file = selectedFile else { return .ignored }
             Task { await open(file) }
@@ -533,7 +587,7 @@ import UniformTypeIdentifiers
                         Text(folder.name).font(.caption).lineLimit(2).multilineTextAlignment(.center)
                     }
                     .onTapGesture(count: 2) { store.openFolder(folder.id) }
-                    .contextMenu { folderMenu(folder) }
+                    .contextMenu { selectionMenu(selection.contains(key) && selection.count > 1 ? selection : [key], folders: folders, files: files) }
                     .onDrag { store.folderDragProvider(refs(for: key)) }
                     .onDrop(of: MaterialsDropTypes.all, isTargeted: targeted("tile:" + folder.id)) { providers in drop(providers, into: folder.id) }
                     .overlay(RoundedRectangle(cornerRadius: 10).stroke(dropTarget == "tile:" + folder.id ? theme.accent : Color.clear, lineWidth: 2))
@@ -559,7 +613,14 @@ import UniformTypeIdentifiers
                 Button("Pokaż kolejne pliki (\(listing.total - listing.files.count))") { Task { await store.loadMore() } }.padding(.bottom, 14)
             }
         }
-        .background(Color.clear.contentShape(Rectangle()).onTapGesture { clearSelection() })
+        .background(
+            Color.clear.contentShape(Rectangle())
+                .onTapGesture {
+                    clearSelection()
+                    paneFocused = true
+                }
+                .contextMenu { paneMenu() }
+        )
     }
 
     private func tile<Thumb: View, Caption: View>(key: String, @ViewBuilder thumb: () -> Thumb, @ViewBuilder caption: () -> Caption) -> some View {
@@ -571,7 +632,10 @@ import UniformTypeIdentifiers
         .padding(8)
         .background(selected ? theme.accent.opacity(0.22) : Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 10))
         .contentShape(Rectangle())
-        .simultaneousGesture(TapGesture().onEnded { select(key) })
+        .simultaneousGesture(TapGesture().onEnded {
+            select(key)
+            paneFocused = true
+        })
     }
 
     private func list(_ folders: [MaterialFolder], _ files: [MaterialFile], listing: MaterialsListing?) -> some View {
@@ -587,7 +651,8 @@ import UniformTypeIdentifiers
                 .padding(.vertical, 2)
                 .background(dropTarget == "row:" + folder.id ? theme.accent.opacity(0.25) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
                 .tag(key)
-                .onDrag { store.folderDragProvider(refs(for: key)) }
+                // `itemProvider` zamiast `onDrag` — na liście `onDrag` blokuje zaznaczanie wiersza kliknięciem.
+                .itemProvider { draggable(key) ? store.folderDragProvider(refs(for: key)) : nil }
                 .onDrop(of: MaterialsDropTypes.all, isTargeted: targeted("row:" + folder.id)) { providers in drop(providers, into: folder.id) }
             }
             ForEach(files) { file in
@@ -609,7 +674,7 @@ import UniformTypeIdentifiers
                 }
                 .padding(.vertical, 2)
                 .tag(key)
-                .onDrag { store.dragProvider(file, refs: refs(for: key)) }
+                .itemProvider { store.dragProvider(file, refs: refs(for: key)) }
             }
             if let listing, listing.files.count < listing.total {
                 Button("Pokaż kolejne pliki (\(listing.total - listing.files.count))") { Task { await store.loadMore() } }
@@ -631,7 +696,12 @@ import UniformTypeIdentifiers
         Button("Podgląd") { Task { await open(file) } }
         Button("Otwórz w domyślnej aplikacji") { Task { await openExternally(file) } }
         Button("Pobierz") { Task { await store.downloadToDownloads(id: file.id, version: file.contentVersion, name: file.name) } }
+        Divider()
+        Button("Kopiuj") { store.setClipboard([ref], cut: false) }
         if store.canManage {
+            Button("Wytnij") { store.setClipboard([ref], cut: true) }
+            Button("Duplikuj") { Task { await copyItems([ref], to: file.folderId) } }
+            Button("Kopiuj do…") { copying = [ref] }
             Divider()
             Button("Zmień nazwę…") { askRename(ref) }
             Button("Przenieś…") { moving = [ref] }
@@ -655,25 +725,38 @@ import UniformTypeIdentifiers
         }
     }
 
-    @ViewBuilder private func multiMenu(_ refs: [MaterialRef]) -> some View {
-        if store.canManage, !refs.isEmpty {
-            Button("Przenieś zaznaczone (\(refs.count))…") { moving = refs }
-            albumMenu(refs.filter { $0.kind == "file" }.map(\.id))
+    /// Kilka zaznaczonych: `all` — do kopiowania (także foldery domyślne marki), `managed` — do przeniesienia i usunięcia.
+    @ViewBuilder private func multiMenu(all: [MaterialRef], managed: [MaterialRef]) -> some View {
+        if !all.isEmpty {
+            Button("Kopiuj zaznaczone (\(all.count))") { store.setClipboard(all, cut: false) }
+            if store.canManage {
+                if !managed.isEmpty { Button("Wytnij zaznaczone (\(managed.count))") { store.setClipboard(managed, cut: true) } }
+                Button("Duplikuj zaznaczone (\(all.count))") { Task { await copyItems(all, to: store.folderID) } }
+                Button("Kopiuj zaznaczone do…") { copying = all }
+            }
+        }
+        if store.canManage, !managed.isEmpty {
             Divider()
-            Button("Usuń zaznaczone (\(refs.count))", role: .destructive) { deleting = refs }
+            Button("Przenieś zaznaczone (\(managed.count))…") { moving = managed }
+            albumMenu(managed.filter { $0.kind == "file" }.map(\.id))
+            Divider()
+            Button("Usuń zaznaczone (\(managed.count))", role: .destructive) { deleting = managed }
         }
     }
 
     @ViewBuilder private func selectionMenu(_ ids: Set<String>, folders: [MaterialFolder], files: [MaterialFile]) -> some View {
         let chosenFiles = files.filter { ids.contains("f:" + $0.id) }
         let chosenFolders = folders.filter { ids.contains("d:" + $0.id) }
-        if chosenFiles.count == 1, chosenFolders.isEmpty, let file = chosenFiles.first {
+        if ids.isEmpty {
+            paneMenu()
+        } else if chosenFiles.count == 1, chosenFolders.isEmpty, let file = chosenFiles.first {
             fileMenu(file)
         } else if chosenFolders.count == 1, chosenFiles.isEmpty, let folder = chosenFolders.first {
             folderMenu(folder)
         } else {
-            multiMenu(chosenFolders.filter { $0.systemKey == nil }.map { MaterialRef(kind: "folder", id: $0.id, name: $0.name) }
-                      + chosenFiles.map { MaterialRef(kind: "file", id: $0.id, name: $0.name) })
+            let fileRefs = chosenFiles.map { MaterialRef(kind: "file", id: $0.id, name: $0.name) }
+            multiMenu(all: chosenFolders.map { MaterialRef(kind: "folder", id: $0.id, name: $0.name) } + fileRefs,
+                      managed: chosenFolders.filter { $0.systemKey == nil }.map { MaterialRef(kind: "folder", id: $0.id, name: $0.name) } + fileRefs)
         }
     }
 
@@ -732,6 +815,63 @@ import UniformTypeIdentifiers
         return []
     }
 
+    /// Wszystkie zaznaczone (także foldery domyślne marki) — do kopiowania.
+    private var selectedRefsAll: [MaterialRef] {
+        let listing = store.listing
+        return selection.compactMap { key -> MaterialRef? in
+            let id = String(key.dropFirst(2))
+            if key.hasPrefix("d:"), let folder = listing?.folders.first(where: { $0.id == id }) { return MaterialRef(kind: "folder", id: id, name: folder.name) }
+            if key.hasPrefix("f:"), let file = listing?.files.first(where: { $0.id == id }) { return MaterialRef(kind: "file", id: id, name: file.name) }
+            return nil
+        }
+    }
+
+    /// Wiersz folderu można przeciągnąć (zarządzanie Materiałami, nie folder domyślny marki).
+    private func draggable(_ key: String) -> Bool {
+        store.canManage && !refs(for: key).isEmpty
+    }
+
+    // MARK: Schowek i kopie
+
+    /// „Wklej (3)”, „Wklej „Logo.png””, po „Wytnij” — „Przenieś tutaj …”; do folderu — „Wklej do „Folder””. Pusty schowek — brak pozycji.
+    private func pasteTitle(into folderName: String?) -> String? {
+        guard let clip = store.pasteReady, let first = clip.refs.first else { return nil }
+        let what = clip.refs.count == 1 ? "„\(first.name)”" : "(\(clip.refs.count))"
+        if let folderName { return (clip.cut ? "Przenieś do „" : "Wklej do „") + folderName + "” " + what }
+        return (clip.cut ? "Przenieś tutaj " : "Wklej ") + what
+    }
+
+    /// ⌘V: schowek Materiałów (kopia albo przeniesienie) albo pliki skopiowane w Finderze (wysyłka do folderu).
+    private func paste(into target: String?) async {
+        guard store.canManage else {
+            state.notice = "Nie masz uprawnień do dodawania plików w Materiałach tej marki."
+            return
+        }
+        if let clip = store.pasteReady {
+            let created = await store.paste(clip, into: target)
+            if target == store.folderID { selectCreated(created) }
+            return
+        }
+        let urls = (NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        if !urls.isEmpty {
+            store.upload(urls, to: target)
+            return
+        }
+        state.notice = "Schowek jest pusty — zaznacz pliki lub foldery i użyj „Kopiuj” (⌘C)."
+    }
+
+    /// Kopie w folderze (Duplikuj, „Kopiuj do…”, przeciąganie z ⌥); kopie w bieżącym folderze zostają zaznaczone.
+    private func copyItems(_ refs: [MaterialRef], to target: String?) async {
+        let created = await store.copy(refs, to: target)
+        if target == store.folderID { selectCreated(created) }
+    }
+
+    private func selectCreated(_ refs: [MaterialRef]) {
+        guard !refs.isEmpty else { return }
+        selection = Set(refs.map { ($0.kind == "folder" ? "d:" : "f:") + $0.id })
+        anchor = refs.first.map { ($0.kind == "folder" ? "d:" : "f:") + $0.id }
+    }
+
     // MARK: Upuszczanie
 
     private func targeted(_ key: String) -> Binding<Bool> {
@@ -740,15 +880,23 @@ import UniformTypeIdentifiers
         })
     }
 
-    /// Elementy z aplikacji — przeniesienie; pliki i foldery z Findera (albo obrazy z innych aplikacji) — wysyłka.
+    /// Elementy z aplikacji — przeniesienie (z ⌥ — kopia, jak w Finderze); pliki i foldery z Findera (albo obrazy z innych
+    /// aplikacji) — wysyłka.
     private func drop(_ providers: [NSItemProvider], into target: String?) -> Bool {
         dropTarget = nil
         guard !providers.isEmpty else { return false }
+        let copy = NSEvent.modifierFlags.contains(.option)
         Task {
             if let refs = await MaterialsDropTypes.internalRefs(providers) {
                 guard store.canManage else { return }
-                let moving = refs.filter { !($0.kind == "folder" && $0.id == target) }
-                if !moving.isEmpty { await store.move(moving, to: target); clearSelection() }
+                let items = refs.filter { !($0.kind == "folder" && $0.id == target) }
+                guard !items.isEmpty else { return }
+                if copy {
+                    await copyItems(items, to: target)
+                } else {
+                    await store.move(items, to: target)
+                    clearSelection()
+                }
                 return
             }
             guard store.canManage else {

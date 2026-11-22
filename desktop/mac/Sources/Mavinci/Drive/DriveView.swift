@@ -179,6 +179,7 @@ struct DriveSidebarContext {
                 }
                 .padding(.horizontal, 8).padding(.bottom, 8)
             }
+            DriveStorageMeter(store: store)
         }
     }
 
@@ -365,6 +366,8 @@ struct DriveSidebarContext {
     @State private var dropTargeted = false
     /// Plik do usunięcia (dokument spółki, plik umowy stałej) — czeka na potwierdzenie.
     @State private var removing: DriveFile?
+    /// Zawartość folderu ma fokus klawiatury (siatka: po kliknięciu elementu) — działają spacja i Enter.
+    @FocusState private var paneFocused: Bool
 
     private var node: String { store.currentNode ?? section.rawValue }
     private var listing: DriveListing? { store.listings[node] }
@@ -473,6 +476,7 @@ struct DriveSidebarContext {
         .contentShape(Rectangle())
         .onDrop(of: PortfolioDrop.types, isTargeted: $dropTargeted) { providers in drop(providers) }
         .focusable()
+        .focused($paneFocused)
         .focusEffectDisabled()
         .onKeyPress(.space) {
             guard let file = selectedFile else { return .ignored }
@@ -502,7 +506,12 @@ struct DriveSidebarContext {
         return true
     }
 
+    /// Podgląd (Quick Look); instalator z Programów — od razu do „Pobrane”.
     private func open(_ file: DriveFile) async {
+        if file.isInstaller {
+            await store.downloadToDownloads(file)
+            return
+        }
         if let local = await store.previewFile(file) { preview = local }
     }
 
@@ -511,6 +520,7 @@ struct DriveSidebarContext {
         case .warehouse: return "shippingbox"
         case .employees: return "person.2"
         case .finance: return "building.columns"
+        case .programs: return "laptopcomputer.and.arrow.down"
         default: return "doc.text"
         }
     }
@@ -544,7 +554,7 @@ struct DriveSidebarContext {
     }
 
     @ViewBuilder private func fileMenu(_ file: DriveFile) -> some View {
-        Button("Podgląd") { Task { await open(file) } }
+        if !file.isInstaller { Button("Podgląd") { Task { await open(file) } } }
         Button("Otwórz w domyślnej aplikacji") { Task { await store.openExternally(file) } }
         Button("Pobierz") { Task { await store.downloadToDownloads(file) } }
         if let record = file.record {
@@ -577,7 +587,10 @@ struct DriveSidebarContext {
         .padding(8)
         .background(selected ? theme.accent.opacity(0.22) : Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 10))
         .contentShape(Rectangle())
-        .simultaneousGesture(TapGesture().onEnded { select(key) })
+        .simultaneousGesture(TapGesture().onEnded {
+            select(key)
+            paneFocused = true
+        })
     }
 
     private func grid(_ folders: [DriveFolder], _ files: [DriveFile]) -> some View {
@@ -640,13 +653,16 @@ struct DriveSidebarContext {
                         Button { store.openRecord(record) } label: { Image(systemName: "arrow.up.forward.square") }
                             .buttonStyle(.borderless).help(DriveText.recordLabel(record))
                     }
-                    Button { Task { await open(file) } } label: { Image(systemName: "eye") }.buttonStyle(.borderless).help("Podgląd (spacja)")
+                    if !file.isInstaller {
+                        Button { Task { await open(file) } } label: { Image(systemName: "eye") }.buttonStyle(.borderless).help("Podgląd (spacja)")
+                    }
                     Button { Task { await store.downloadToDownloads(file) } } label: { Image(systemName: "arrow.down.circle") }
                         .buttonStyle(.borderless).help("Pobierz")
                 }
                 .padding(.vertical, 2)
                 .tag("f:" + file.id)
-                .onDrag { store.dragProvider(file) }
+                // `itemProvider` zamiast `onDrag` — na liście `onDrag` blokuje zaznaczanie wiersza kliknięciem.
+                .itemProvider { store.dragProvider(file) }
             }
         }
         .listStyle(.inset)

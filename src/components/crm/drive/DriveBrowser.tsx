@@ -420,5 +420,6 @@ function emptyText(node: DriveFolder) {
   }
   if (node.id.startsWith('employees:') && node.id.endsWith(':documents')) return 'Brak dokumentów pracownika.';
   if (node.id === 'employees') return 'Brak aktywnych pracowników.';
+  if (node.id === 'programs') return 'Nie ma jeszcze opublikowanego instalatora aplikacji Mavinci.';
   return 'Ten folder jest pusty.';
 }

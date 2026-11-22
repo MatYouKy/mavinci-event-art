@@ -12,7 +12,7 @@ import UniformTypeIdentifiers
 // pracownika oraz do Dokumentów spółki i umów stałych („Finanse — zarządzanie”, które też je usuwa).
 
 enum DriveSection: String, Codable, CaseIterable, Identifiable {
-    case finance, events, materials, offers, calculations, contracts, warehouse, employees
+    case finance, events, materials, offers, calculations, contracts, warehouse, employees, programs
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -24,6 +24,7 @@ enum DriveSection: String, Codable, CaseIterable, Identifiable {
         case .contracts: return "signature"
         case .warehouse: return "shippingbox"
         case .employees: return "person.2"
+        case .programs: return "laptopcomputer.and.arrow.down"
         }
     }
     /// Dział przeglądany przez `/bridge/native/v1/drive` (Eventy i Materiały mają własne ekrany).
@@ -111,6 +112,8 @@ struct DriveFile: Codable, Identifiable, Hashable {
     /// Plik można usunąć z Dysku (dokument spółki, plik umowy stałej — „Finanse — zarządzanie”); starszy serwer pola nie wysyła.
     let canDelete: Bool?
     var isImage: Bool { kind == "image" }
+    /// Instalator aplikacji Mavinci (Programy).
+    var isInstaller: Bool { type == "program" }
     var deletable: Bool { canDelete == true }
     var utType: UTType { MaterialsText.type(of: name) }
 }
@@ -128,6 +131,24 @@ struct DriveListing: Codable {
     let files: [DriveFile]
     let canUpload: Bool
     let colors: [DriveBrandColor]
+}
+
+/// Miejsce na Dysku (tylko administrator, `op=storage`): pakiet, zajętość plików (magazyn) i bazy, podział plików na rodzaje.
+struct DriveStorageUsage: Codable, Equatable {
+    struct Plan: Codable, Equatable { var name: String; var updatedAt: String? }
+    struct Usage: Codable, Equatable { var used: Int64; var quota: Int64; var objects: Int64? }
+    struct Category: Codable, Equatable, Identifiable {
+        var key: String
+        var label: String
+        var bytes: Int64
+        var objects: Int64
+        var id: String { key }
+    }
+    var plan: Plan
+    var files: Usage
+    var database: Usage
+    var groups: [Category]
+    var generatedAt: String?
 }
 
 struct DriveDownload: Codable {
@@ -275,6 +296,7 @@ enum DriveText {
                 return canUpload ? "Brak dokumentów — przeciągnij tu skany i pliki albo użyj „Dodaj pliki”." : "Brak dokumentów pracownika."
             }
             return node.kind == "section" ? "Brak aktywnych pracowników." : "Ten folder jest pusty."
+        case .programs: return "Nie ma jeszcze opublikowanego instalatora aplikacji Mavinci."
         case .events, .materials: return "Ten folder jest pusty."
         }
     }

@@ -9,12 +9,13 @@
  * pliki, instrukcja), Pracownicy (pracownik → Zdjęcia, Dokumenty, Umowy). Oferty, Kalkulacje i Umowy oraz Sprzedaż, Bank,
  * Podatki i XML w Księgowości są tylko do odczytu (dokumenty powstają w CRM); pliki można dodawać do sprzętu w Magazynie, do
  * dokumentów pracownika oraz w Finansach do Kosztów miesiąca (dokument spoza KSeF), Dokumentów spółki i Umów stałych („Finanse —
- * zarządzanie”). Aplikacja na telefonie i tablecie nie przegląda Finansów — skanuje dokumenty do wybranego folderu.
+ * zarządzanie”). Aplikacja na telefonie i tablecie nie przegląda Finansów — skanuje dokumenty do wybranego folderu. Programy —
+ * instalatory aplikacji Mavinci (zawsze najnowsza wersja z `yarn dmg`) dla każdego pracownika; na telefonie i tablecie ukryte.
  */
 
 export const DRIVE_TITLE = 'Dysk';
 
-export type DriveSection = 'finance' | 'events' | 'materials' | 'offers' | 'calculations' | 'contracts' | 'warehouse' | 'employees';
+export type DriveSection = 'finance' | 'events' | 'materials' | 'offers' | 'calculations' | 'contracts' | 'warehouse' | 'employees' | 'programs';
 export type DriveDocumentSection = 'offers' | 'calculations' | 'contracts';
 
 /** Działy w kolejności jak w Finderze. */
@@ -30,6 +31,7 @@ export const DRIVE_SECTIONS: ReadonlyArray<{ key: DriveSection; label: string; d
   { key: 'contracts', label: 'Umowy', description: 'PDF-y umów: rok → miesiąc.' },
   { key: 'warehouse', label: 'Magazyn', description: 'Sprzęt: zdjęcia, pliki i instrukcje — kategoria → sprzęt.' },
   { key: 'employees', label: 'Pracownicy', description: 'Zdjęcia, dokumenty i umowy pracowników — pracownik → Zdjęcia, Dokumenty, Umowy.' },
+  { key: 'programs', label: 'Programy', description: 'Instalatory aplikacji Mavinci — zawsze najnowsza wersja (aplikacja na Maca).' },
 ];
 
 export const DRIVE_DOCUMENT_SECTIONS: readonly DriveDocumentSection[] = ['offers', 'calculations', 'contracts'];
@@ -167,7 +169,7 @@ export type DriveFileType =
   | 'offer' | 'calculation' | 'contract' | 'equipment-image' | 'equipment-file' | 'equipment-manual' | 'brand-logo' | 'brand-font' | 'company-logo'
   | 'employee-avatar' | 'employee-background' | 'employee-document' | 'employee-contract'
   | 'sales-invoice' | 'ksef-invoice' | 'ksef-xml' | 'cost-document' | 'bank-statement' | 'tax-document' | 'company-document' | 'agreement-file'
-  | 'asset-register' | 'asset-register-csv' | 'month-close' | 'clarify-report';
+  | 'asset-register' | 'asset-register-csv' | 'month-close' | 'clarify-report' | 'program';
 
 export type DriveRecordType =
   | 'offer' | 'event' | 'inquiry' | 'contract' | 'equipment' | 'company' | 'employee' | 'invoice' | 'ksef-invoice' | 'external-invoice' | 'finance';
@@ -211,7 +213,8 @@ export type DriveListing = {
 
 /** `canUpload` — dodawanie plików w dziale (Magazyn: „Zarządzanie magazynem”; Pracownicy: dokumenty wszystkich pracowników). */
 export type DriveSectionInfo = { key: DriveSection; label: string; description: string; available: boolean; canUpload: boolean };
-export type DriveRoot = { title: string; sections: DriveSectionInfo[] };
+/** `storage` — pracownik widzi „Miejsce na Dysku” (administrator; starszy serwer pola nie wysyła). */
+export type DriveRoot = { title: string; sections: DriveSectionInfo[]; storage?: boolean };
 /**
  * Księga znaku marki w Finderze: folder „Z księgi znaku” w folderze „Logotypy i księga znaku” Materiałów (`materialFolderId`),
  * z logotypami i fontami (pliki z `parentId` = `brand:<firma>`) i plikiem „Kolory marki.txt” z kolorów.
@@ -236,6 +239,7 @@ export type DriveNode =
   | { section: 'warehouse'; categoryId: string | null; equipmentId: string | null; uncategorized: boolean }
   | { section: 'employees'; employeeId: string | null; group: DriveEmployeeGroup | null }
   | { section: 'brand'; companyId: string }
+  | { section: 'programs' }
   | {
     section: 'finance'; companyId: string | null; area: 'books' | 'corporate' | 'agreements' | 'assets' | 'clarify' | null; books: boolean; year: number | null;
     month: number | null;
@@ -250,7 +254,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * `employees:<pracownik>:photos|documents|contracts`, `brand:<firma>`, `finance` | `finance:<firma>` | `finance:<firma>:books` |
  * `finance:<firma>:books:2026` | `finance:<firma>:books:2026-11` | `finance:<firma>:books:2026-11:sales|costs|bank|taxes|ksef`,
  * `finance:<firma>:corporate` | `finance:<firma>:corporate:<kategoria>`, `finance:<firma>:contracts` | `finance:<firma>:contracts:<umowa>`,
- * `finance:<firma>:assets`, `finance:<firma>:clarify`.
+ * `finance:<firma>:assets`, `finance:<firma>:clarify`, `programs`.
  */
 export function parseDriveNode(value: unknown): DriveNode | null {
   const id = String(value ?? '');
@@ -283,6 +287,7 @@ export function parseDriveNode(value: unknown): DriveNode | null {
     return null;
   }
   if (parts[0] === 'brand' && parts.length === 2 && UUID.test(parts[1])) return { section: 'brand', companyId: parts[1].toLowerCase() };
+  if (parts[0] === 'programs') return parts.length === 1 ? { section: 'programs' } : null;
   if (parts[0] === 'finance') {
     const base = {
       section: 'finance' as const, companyId: null, area: null, books: false, year: null, month: null, group: null, category: null, contractId: null,
@@ -320,8 +325,14 @@ export function parseDriveNode(value: unknown): DriveNode | null {
 /** Folder dokumentów pracownika (`employees:<pracownik>:documents`) — jedyny folder działu Pracownicy, do którego dodaje się pliki. */
 export const driveEmployeeDocumentsNode = (employeeId: string) => `employees:${employeeId.toLowerCase()}:documents`;
 
-/** Identyfikator pliku Dysku: `<typ>:<uuid>`, np. `offer:…`, `equipment-file:…`. */
+/** Instalator aplikacji Mavinci w Programach: `program:<platforma>` (na razie `mac`). */
+export const DRIVE_PROGRAM_PLATFORMS = ['mac'] as const;
+export type DriveProgramPlatform = typeof DRIVE_PROGRAM_PLATFORMS[number];
+
+/** Identyfikator pliku Dysku: `<typ>:<uuid>`, np. `offer:…`, `equipment-file:…`; instalator — `program:mac`. */
 export function parseDriveFileId(value: unknown): { type: DriveFileType; id: string } | null {
+  const program = /^program:([a-z]+)$/.exec(String(value ?? ''));
+  if (program) return (DRIVE_PROGRAM_PLATFORMS as readonly string[]).includes(program[1]) ? { type: 'program', id: program[1] } : null;
   // Zamknięcie miesiąca: `month-close:<firma>:RRRR-MM` — identyfikator `<firma>:RRRR-MM`.
   const close = /^month-close:([0-9a-f-]{36}):(\d{4})-(\d{2})$/i.exec(String(value ?? ''));
   if (close) {
@@ -398,3 +409,124 @@ export const DRIVE_RECORD_LABELS: Record<DriveRecordType, string> = {
   'external-invoice': 'Otwórz dokumenty spoza KSeF',
   finance: 'Otwórz Centrum finansów',
 };
+
+// MARK: Miejsce na Dysku (tylko administrator) — pakiet i zajętość (`crm_storage_usage`, migracja 20261126120000)
+
+export type DriveStorageGroupKey =
+  | 'materials' | 'events' | 'offers' | 'brochures' | 'mail' | 'chat' | 'website' | 'warehouse' | 'finance' | 'fleet' | 'team' | 'other';
+
+/** Rodzaje plików w zestawieniu zajętości (kolejność opisu — największe pierwsze liczy klient). */
+export const DRIVE_STORAGE_GROUPS: Record<DriveStorageGroupKey, string> = {
+  materials: 'Materiały i logotypy',
+  events: 'Pliki eventów',
+  offers: 'Oferty i sprzedaż',
+  brochures: 'Broszury',
+  mail: 'Załączniki e-mail',
+  chat: 'Czat',
+  website: 'Strona i social media',
+  warehouse: 'Magazyn',
+  finance: 'Finanse i dokumenty firmy',
+  fleet: 'Flota',
+  team: 'Pracownicy',
+  other: 'Pozostałe',
+};
+
+const DRIVE_STORAGE_BUCKETS: Record<string, DriveStorageGroupKey> = {
+  materials: 'materials', 'company-logos': 'materials',
+  'event-files': 'events',
+  'generated-offers': 'offers', 'offer-product-pages': 'offers', 'offer-template-pages': 'offers', 'seller-offer-documents': 'offers',
+  'seller-demo-pdfs': 'offers', 'seller-brand-assets': 'offers', 'sales-showcase': 'offers', 'service-catalog-images': 'offers',
+  'generated-brochures': 'brochures',
+  'email-attachments': 'mail',
+  'chat-attachments': 'chat',
+  'site-images': 'website', 'mavinci-view': 'website', 'conferences-gallery': 'website', 'social-media': 'website',
+  'equipment-images': 'warehouse', 'equipment-files': 'warehouse', 'rental-equipment-images': 'warehouse', 'connector-thumbnails': 'warehouse',
+  'location-materials': 'warehouse',
+  'external-invoices': 'finance', 'bank-statements': 'finance', 'bank-supporting-documents': 'finance', 'finance-documents': 'finance',
+  'finance-declarations': 'finance', 'finance-contracts': 'finance', 'finance-scans': 'finance', 'company-documents': 'finance',
+  'signed-contracts': 'finance',
+  'vehicle-images': 'fleet', 'vehicle-documents': 'fleet', 'fuel-receipts': 'fleet',
+  'employee-assets': 'team', 'employee-documents': 'team',
+};
+
+export type DriveStorageGroup = { key: DriveStorageGroupKey; label: string; bytes: number; objects: number };
+
+export type DriveStorageUsage = {
+  plan: { name: string; updatedAt: string | null };
+  /** Pliki — magazyn (wszystkie buckety): zajęte i limit pakietu w bajtach. */
+  files: { used: number; quota: number; objects: number };
+  /** Baza danych: rozmiar i limit pakietu w bajtach. */
+  database: { used: number; quota: number };
+  /** Zajętość plików według rodzaju — największe pierwsze, bez pustych. */
+  groups: DriveStorageGroup[];
+  generatedAt: string | null;
+};
+
+/** Domyślny pakiet (Supabase Pro): 100 GB plików, 8 GB bazy. */
+export const DRIVE_STORAGE_DEFAULT_PLAN = { name: 'Supabase Pro', filesGb: 100, databaseGb: 8 } as const;
+export const DRIVE_GB = 1024 * 1024 * 1024;
+
+const storageNumber = (value: unknown) => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+};
+
+/** Odpowiedź `crm_storage_usage()` → zestawienie dla CRM, Maca i telefonu. */
+export function driveStorageUsage(raw: unknown): DriveStorageUsage {
+  const row = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const plan = (row.plan && typeof row.plan === 'object' ? row.plan : {}) as Record<string, unknown>;
+  const groups = new Map<DriveStorageGroupKey, DriveStorageGroup>();
+  let used = 0;
+  let objects = 0;
+  for (const entry of Array.isArray(row.buckets) ? row.buckets : []) {
+    const bucket = (entry && typeof entry === 'object' ? entry : {}) as Record<string, unknown>;
+    const key = DRIVE_STORAGE_BUCKETS[String(bucket.bucket ?? '')] ?? 'other';
+    const bytes = storageNumber(bucket.bytes);
+    const count = storageNumber(bucket.objects);
+    used += bytes;
+    objects += count;
+    const group = groups.get(key) ?? { key, label: DRIVE_STORAGE_GROUPS[key], bytes: 0, objects: 0 };
+    group.bytes += bytes;
+    group.objects += count;
+    groups.set(key, group);
+  }
+  return {
+    plan: {
+      name: typeof plan.name === 'string' && plan.name.trim() ? plan.name.trim() : DRIVE_STORAGE_DEFAULT_PLAN.name,
+      updatedAt: typeof plan.updatedAt === 'string' ? plan.updatedAt : null,
+    },
+    files: { used, quota: storageNumber(plan.filesQuotaBytes) || DRIVE_STORAGE_DEFAULT_PLAN.filesGb * DRIVE_GB, objects },
+    database: { used: storageNumber(row.databaseBytes), quota: storageNumber(plan.databaseQuotaBytes) || DRIVE_STORAGE_DEFAULT_PLAN.databaseGb * DRIVE_GB },
+    groups: Array.from(groups.values()).filter((group) => group.bytes > 0).sort((a, b) => b.bytes - a.bytes),
+    generatedAt: typeof row.generatedAt === 'string' ? row.generatedAt : null,
+  };
+}
+
+/** Stan zajętości: do 80% — w porządku, od 80% — ostrzeżenie, od 95% — krytycznie. */
+export function driveStorageLevel(used: number, quota: number): 'ok' | 'warning' | 'critical' {
+  const share = quota > 0 ? used / quota : 0;
+  return share >= 0.95 ? 'critical' : share >= 0.8 ? 'warning' : 'ok';
+}
+
+/** Rozmiar po polsku z jednym miejscem po przecinku: „4,7 GB”, „824 MB”, „95,3 GB”. */
+export function formatDriveBytes(bytes: number): string {
+  const value = Math.max(0, Number(bytes) || 0);
+  if (value < 1024) return `${Math.round(value)} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let size = value / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  const digits = size >= 100 || unit === 0 ? 0 : 1;
+  return `${size.toFixed(digits).replace('.', ',').replace(/,0$/, '')} ${units[unit]}`;
+}
+
+/** Procent zajętości po polsku („4,7%”, „<0,1%”). */
+export function formatDriveShare(used: number, quota: number): string {
+  if (!(quota > 0)) return '—';
+  const share = (used / quota) * 100;
+  if (share > 0 && share < 0.1) return '<0,1%';
+  return `${share.toFixed(share >= 10 ? 0 : 1).replace('.', ',').replace(/,0$/, '')}%`;
+}

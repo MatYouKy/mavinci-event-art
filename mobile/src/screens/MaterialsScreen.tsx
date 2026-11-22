@@ -385,6 +385,25 @@ export default function MaterialsScreen() {
     });
   };
 
+  /** Kopia pliku albo folderu (z zawartością) — serwer, jak w CRM i na Macu; obok oryginału nazwa „… kopia”. */
+  const copyTo = async (ref: MaterialItemRef, target: string | null) => {
+    if (!homeCompany) return;
+    const result = await run('Kopiuję', () => materialsPost<{ copied: number; failed: MaterialBatchResult['failed'] }>('copy', {
+      companyId: homeCompany, items: [ref], targetFolderId: target,
+    }));
+    if (result?.failed.length) Alert.alert('Nie skopiowano', result.failed.map((f) => `${f.name} — ${f.error}`).join('\n'));
+    await refresh();
+  };
+
+  const copyItem = (ref: MaterialItemRef) => {
+    if (!homeCompany) return;
+    openPicker({
+      title: `Kopiuj „${ref.name}”`, confirm: 'Kopiuj tutaj', initial: folderId,
+      exclude: ref.kind === 'folder' ? materialDescendants(folders, ref.id) : new Set(),
+      pick: (target) => { void copyTo(ref, target); },
+    });
+  };
+
   const remove = (ref: MaterialItemRef) => {
     Alert.alert(`Usunąć „${ref.name}”?`,
       ref.kind === 'folder'
@@ -874,6 +893,17 @@ export default function MaterialsScreen() {
                 <SheetButton icon="edit-2" label="Zmień nazwę" onPress={() => {
                   setMenu(null);
                   rename(menuFile ? { kind: 'file', id: menuFile.id, name: menuFile.name } : { kind: 'folder', id: menuFolder!.id, name: menuFolder!.name });
+                }} />
+                {(!menuFile || menuFile.companyId === homeCompany) && (
+                  <SheetButton icon="copy" label="Duplikuj" onPress={() => {
+                    setMenu(null);
+                    if (menuFile) void copyTo({ kind: 'file', id: menuFile.id, name: menuFile.name }, menuFile.folderId);
+                    else if (menuFolder) void copyTo({ kind: 'folder', id: menuFolder.id, name: menuFolder.name }, menuFolder.parentId);
+                  }} />
+                )}
+                <SheetButton icon="folder-plus" label="Kopiuj do…" onPress={() => {
+                  setMenu(null);
+                  copyItem(menuFile ? { kind: 'file', id: menuFile.id, name: menuFile.name } : { kind: 'folder', id: menuFolder!.id, name: menuFolder!.name });
                 }} />
                 {(menuFile || (menuFolder && !menuFolder.systemKey)) && (
                   <>

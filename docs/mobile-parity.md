@@ -1519,3 +1519,48 @@ Panel „Przegląd” w karcie wydarzenia otwiera się domyślnie. Na stałe (na
   - Dysk zapamiętuje poznany rozmiar dla tej samej wersji pliku (`drive.json`, pole `sizes`), a wersja treści zawiera rozmiar (`?` — jeszcze nieznany). Kolejne listy Findera podają już właściwą długość.
   - Pliki zapisane wcześniej jako puste dostają nową wersję treści, więc system pobiera je ponownie.
 - Bez zmian na serwerze i w aplikacji mobilnej.
+
+### Mac: instalator `yarn dmg` i aktualizacje w aplikacji; CRM: pobranie instalatora (22.11.2026)
+- **`yarn dmg`** (`desktop/mac/scripts/release.sh`):
+  - kompilacja release z podpisem zespołu Mavinci; wersja w pliku `desktop/mac/VERSION` (0.23.0), numer kompilacji `RRRRMMDDGGMM`,
+  - notaryzacja Apple, gdy jest Developer ID i profil `mavinci-notary`,
+  - w `desktop/mac/build/release/`: instalator DMG, paczka aktualizacji ZIP i `latest.json` (sumy SHA-256, rozmiary, „Co nowego” z `NOTES`),
+  - publikacja przez ssh (jak `yarn deploy`) do `/var/www/mavinci/desktop-releases/mac/`: zostaje 5 najnowszych wersji, opis wydania podmieniany na końcu. `PUBLISH=0` — tylko lokalnie.
+- **Serwer**: `GET /bridge/native/v1/desktop` (`src/lib/native/desktopRelease.ts`):
+  - `op=latest` — wydanie i czy jest nowsze od kompilacji,
+  - `op=download&kind=zip|dmg` — strumień pliku.
+  - Tylko zalogowani pracownicy. Katalog: `DESKTOP_RELEASES_DIR`.
+- **CRM**: Ustawienia → Ogólne → „Aplikacja Mavinci na Maca” (`DesktopAppDownload`) — wersja, data, rozmiar, „Co nowego”, „Pobierz instalator (DMG)” z postępem i instrukcja pierwszej instalacji.
+- **Mac** (`Sources/Mavinci/Updates/`):
+  - sprawdzenie po zalogowaniu i co 4 godziny, „Sprawdź aktualizacje…” w menu Mavinci i na pasku menu,
+  - pasek „Dostępna nowa wersja” nad treścią okna („Później” do następnej wersji),
+  - arkusz z „Co nowego”: „Pobierz aktualizację” (postęp, SHA-256, `ditto`, podpis zespołu 5DC8P5M489, identyfikator pakietu i numer kompilacji), potem „Zainstaluj i uruchom ponownie” (skrypt podmienia pakiet po zamknięciu aplikacji, przy błędzie przywraca poprzedni, wynik przy następnym uruchomieniu).
+  - Kopia z folderu budowania, z obrazu dysku, bez podpisu zespołu albo bez prawa zapisu — tylko informacja i „Pobierz instalator (DMG)”.
+- Mobile: nie dotyczy — instalator i aktualizacje aplikacji na Maca.
+
+### Dysk: Programy — instalator aplikacji Mavinci (CRM, Mac, Finder) (22.11.2026)
+- **Nowy dział Dysku „Programy”** na poziomie Eventów, Materiałów i Pracowników (`DRIVE_SECTIONS`, węzeł `programs`, plik `program:mac`; kopie `driveShared.ts` web/mobile identyczne):
+  - jeden plik `Mavinci <wersja> — macOS.dmg` — zawsze najnowsze wydanie z `yarn dmg` (katalog wydań na serwerze, `latestDesktopRelease`); bez opublikowanej wersji — pusty folder z opisem,
+  - dostępny dla każdego pracownika (bez uprawnień działu), także w synchronizacji Findera (`op=sync`); wersja pliku `<kompilacja>|<SHA-256>`, więc nowe wydanie Finder i Mac pobierają od nowa.
+- **Pobranie bez nagłówka z tokenem**: `op=download&id=program:mac` zwraca podpisany adres `/bridge/native/v1/desktop?op=file&kind=dmg&build&expires&signature` (HMAC-SHA256 kluczem serwera, ważny godzinę, tylko dla bieżącego wydania; starszy build — 410, zły albo przeterminowany podpis — 403):
+  - przeglądarka pobiera go w tej samej karcie (Content-Disposition: attachment),
+  - dla Maca i Findera trasa Dysku dopisuje adres serwera (`requestOrigin`: host z nagłówków serwera pośredniczącego, poza localhost zawsze https — aplikacja łączy się tylko przez HTTPS).
+- **CRM**: ikona działu `MonitorDown`, komunikat pustego folderu; karta „Aplikacja Mavinci na Maca” w Ustawieniach wskazuje też Dysk → Programy.
+- **Mac**: `DriveSection.programs` (ikona `laptopcomputer.and.arrow.down`, komunikat pustego folderu); dwuklik na instalatorze zapisuje go w „Pobranych” i pokazuje w Finderze (bez Quick Look i przycisku podglądu). Finder — bez zmian w rozszerzeniu (dział przychodzi z synchronizacji).
+- `yarn dmg` (komunikat po publikacji) i README Maca — Dysk → Programy.
+- Mobile: dział ukryty (`MOBILE_HIDDEN`, jak Finanse) — instalator jest tylko na Maca; typy zgodne (`SECTION_ICONS`).
+
+### Dysk: schowek jak w Finderze i kopie w Materiałach, „Miejsce na Dysku”; Mac: paski edytorów dopasowane do szerokości (22.11.2026)
+- **Materiały — kopie** (`op=copy` w `/bridge/native/v1/materials`, `materialsCopy`): pliki i całe foldery (z podfolderami i plikami) do folderu marki, także z innej marki z dostępem do podglądu; kopia obiektów i miniatur w magazynie (bez pobierania), opis i tagi z oryginału; obok oryginału nazwa „… kopia”, „… kopia 2” (jak w Finderze); folderu nie można skopiować do niego samego ani podfolderu; najwyżej 300 plików i 200 folderów naraz (z zawartością), po 4 kopie równolegle; zwraca nowe elementy (zaznaczenie po wklejeniu).
+- **Mac — Materiały**:
+  - lista: wiersze zaznaczają się kliknięciem (`itemProvider` zamiast `onDrag`, który blokował zaznaczanie — także pliki na liście Dysku), siatka: kliknięcie daje fokus klawiatury (Delete, spacja, Enter, ⌘C/⌘X/⌘V),
+  - ⌘C kopiuj, ⌘X wytnij, ⌘V wklej — kopia albo przeniesienie (tylko w tej samej marce); gdy w schowku są pliki skopiowane w Finderze — wysyłka do folderu; schowek nieaktualny, gdy w międzyczasie skopiowano coś innego,
+  - menu pod prawym przyciskiem: plik / folder / kilka zaznaczonych — „Kopiuj”, „Wytnij”, „Duplikuj”, „Kopiuj do…” (wybór folderu), „Wklej do „folderu””, zmiana nazwy, przeniesienie, usunięcie; puste miejsce — „Nowy folder…”, „Dodaj pliki…”, „Wklej”, „Zaznacz wszystko”, „Pokaż w Finderze”,
+  - przeciąganie z ⌥ — kopia zamiast przeniesienia.
+- **CRM — Materiały**: ⌘C / Ctrl+C, ⌘X, ⌘V; przyciski „Kopiuj”, „Wytnij”, „Duplikuj”, „Kopiuj do…” w pasku zaznaczenia; „Wklej …” (i „Wyczyść schowek”) obok ścieżki; menu pod prawym przyciskiem na elementach i pustym miejscu (`ContextMenuPopup`); przeciąganie z Alt / ⌥ — kopia.
+- **Telefon — Materiały**: „Duplikuj” i „Kopiuj do…” w menu pliku i folderu.
+- **Miejsce na Dysku** (tylko administrator; migracja `20261126120000_drive_storage_usage.sql`: tabela `crm_storage_plan`, funkcje `crm_storage_usage()` i `crm_set_storage_plan()` z kontrolą `current_employee_is_crm_admin()`):
+  - `op=storage` / `op=storagePlan` w `/bridge/native/v1/drive`, `root.storage` — czy pokazać; podział bucketów na rodzaje i formatowanie w `driveShared.ts` (`driveStorageUsage`, `DRIVE_STORAGE_GROUPS`, `formatDriveBytes`, `formatDriveShare`, `driveStorageLevel`; kopie web/mobile identyczne),
+  - pakiet domyślnie Supabase Pro: 100 GB plików, 8 GB bazy; pliki = cały magazyn CRM (wszystkie buckety), baza = `pg_database_size`,
+  - CRM: na dole drzewa Dysku pasek zajętości i „zostało …”, okno ze szczegółami (rodzaje plików, baza) i „Zmień pakiet…” (`DriveStorageMeter`); Mac: to samo w pasku bocznym Dysku i Materiałów (popover, `DriveStorageViews.swift`); telefon: karta pod działami (podgląd, bez zmiany pakietu — `DriveStorageCard`); kolor paska: od 80% pomarańczowy, od 95% czerwony.
+- **Mac — paski edytorów Prezentacji i Realizacji** (`AdaptiveToolbar.swift`): `ViewThatFits` — pełne etykiety → ikony z podpowiedziami (krótka etykieta „Widoczna” / „Szkic”, znacznik zapisu) → tytuł w osobnym wierszu; etykiety się nie łamią; ⌘S w jednym niewidocznym przycisku poza wariantami.

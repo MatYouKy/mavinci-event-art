@@ -12,7 +12,8 @@ import {
  * Wszystko tokenem pracownika — RLS i funkcje bazy z migracji `20261120120000_materials_library.sql`, więc każdy klient widzi
  * dokładnie to, co w CRM. Treść plików nie przechodzi przez serwer: wysyłka i pobieranie przez podpisane adresy magazynu
  * (prywatny bucket `materials`). Serwer potwierdza wysyłkę (rozmiar i typ z magazynu), robi miniatury zdjęć, gdy klient
- * ich nie dostarczył, kopiuje pliki wydarzeń do Materiałów i sprząta magazyn (tylko obiekty, których nic już nie używa).
+ * ich nie dostarczył, kopiuje pliki wydarzeń do Materiałów, kopiuje pliki i całe foldery Materiałów (kopia obiektów w magazynie,
+ * bez pobierania) i sprząta magazyn (tylko obiekty, których nic już nie używa).
  */
 
 export const MATERIALS_BUCKET = 'materials';
@@ -28,6 +29,10 @@ const UPLOAD_STALE_MS = 24 * 3600_000;
 const VERSION_KEEP_MS = 30 * 24 * 3600_000;
 const SERVER_THUMB_MAX_BYTES = 25 * 1024 * 1024;
 const COPY_FALLBACK_MAX_BYTES = 300 * 1024 * 1024;
+/** Kopiowanie w Materiałach: najwięcej plików i folderów w jednej operacji (z zawartością kopiowanych folderów). */
+const COPY_MAX_FILES = 300;
+const COPY_MAX_FOLDERS = 200;
+const COPY_PARALLEL = 4;
 const THUMB_MIME = /^image\/(jpeg|png|webp|gif|svg\+xml|avif|bmp)$/;
 
 const FOLDER_COLUMNS = 'id,company_id,parent_id,name,system_key,sort_order,meta_version,created_at,updated_at';
@@ -594,6 +599,190 @@ export async function materialsMove(ctx: NativeContext, body: Row) {
   return { moved, failed };
 }
 
+/**
+ * „Nazwa kopia.pdf”, „Nazwa kopia 2.pdf” — wolna nazwa kopii w miejscu docelowym (jak w Finderze), `attempt` od 2.
+ * Folder — bez rozszerzenia („Wersja 1.5 kopia”).
+ */
+function copyName(name: string, attempt: number, folder: boolean): string {
+  if (attempt <= 1) return name;
+  const ext = folder ? '' : materialExtension(name);
+  const base = ext ? name.slice(0, -(ext.length + 1)) : name;
+  const suffix = attempt === 2 ? ' kopia' : ` kopia ${attempt - 1}`;
+  const room = 255 - suffix.length - (ext ? ext.length + 1 : 0);
+  return `${base.slice(0, Math.max(1, room)).trimEnd()}${suffix}${ext ? `.${name.slice(-ext.length)}` : ''}`;
+}
+
+type CopyFailure = { id: string; name: string; error: string };
+
+const failureText = (error: unknown, fallback: string) => (error instanceof MaterialsError ? error.message : fallback);
+
+/** Nowy folder w miejscu docelowym; przy zajętej nazwie — „Nazwa kopia”, „Nazwa kopia 2”… (`numbered: false` — bez numerowania). */
+async function insertCopiedFolder(ctx: NativeContext, companyId: string, parentId: string | null, name: string, numbered: boolean): Promise<Row> {
+  for (let attempt = 1; attempt <= 50; attempt++) {
+    const { data, error } = await ctx.supabase.from('material_folders')
+      .insert({ company_id: companyId, parent_id: parentId, name: copyName(name, attempt, true) }).select(FOLDER_COLUMNS).single();
+    if (!error) return data as Row;
+    if (error.code !== '23505' || !numbered) dbFail(error, 'Nie udało się utworzyć kopii folderu.', 'Folder o tej nazwie już jest w tym miejscu.');
+  }
+  fail('Za dużo kopii o tej nazwie w tym folderze.', 409, { code: 'exists' });
+}
+
+/**
+ * Kopia pliku: nowy wpis (`uploading`, wolna nazwa „… kopia”), kopia obiektu i miniatury w magazynie (bez pobierania), potwierdzenie
+ * jak po wysyłce, opis i tagi z oryginału. Błąd — wpis i skopiowane obiekty znikają.
+ */
+async function copyFileTo(ctx: NativeContext, source: Row, companyId: string, folderId: string | null): Promise<Row> {
+  if (source.status !== 'ready' || !text(source.storage_path)) fail('Plik jest jeszcze wysyłany.', 409);
+  const row = await insertUploading(ctx, {
+    companyId, folderId, name: text(source.name) || 'plik', mime: mimeOf(source.mime_type), size: Math.max(0, Number(source.size_bytes || 0)),
+    sha256: sha256Of(source.content_sha256), rename: true, copy: true, eventId: source.event_id ?? null,
+    sourceEventFileId: source.source_event_file_id ?? null,
+  });
+  const thumbPath = source.thumbnail_path ? `${companyId}/${row.id}/${objectName('t', '')}` : null;
+  try {
+    const storage = ctx.supabase.storage.from(MATERIALS_BUCKET);
+    const { error: copyError } = await storage.copy(source.storage_path, row.storage_path);
+    if (copyError) throw copyError;
+    let thumb: string | null = null;
+    if (thumbPath) {
+      const { error: thumbError } = await storage.copy(source.thumbnail_path, thumbPath);
+      if (!thumbError) thumb = thumbPath;
+    }
+    const { file } = await materialsCompleteUpload(ctx, {
+      fileId: row.id, path: row.storage_path, thumbPath: thumb, width: source.width, height: source.height, duration: source.duration_seconds,
+      sha256: source.content_sha256,
+    });
+    const description = text(source.description);
+    const tags = Array.isArray(source.tags) ? source.tags : [];
+    if (description || tags.length) {
+      await ctx.supabase.from('material_files').update({ description, tags }).eq('id', row.id).eq('status', 'ready');
+    }
+    return { id: file.id, name: file.name };
+  } catch (copyFailure) {
+    console.error('[materials] copy', source.id, (copyFailure as Error)?.message);
+    await ctx.supabase.from('material_files').delete().eq('id', row.id).eq('status', 'uploading');
+    await removeUnused(ctx, [row.storage_path, thumbPath]);
+    if (copyFailure instanceof MaterialsError) throw copyFailure;
+    fail('Nie udało się skopiować pliku w magazynie.', 502);
+  }
+}
+
+/** Zadania po kilka naraz (kopie obiektów w magazynie). */
+async function inParallel<T>(items: T[], limit: number, work: (item: T) => Promise<void>) {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const item = items[next++];
+      await work(item);
+    }
+  }));
+}
+
+/**
+ * Kopiowanie plików i folderów (z całą zawartością) do folderu marki — także z innej marki z dostępem do podglądu
+ * (`targetFolderId: null` — główny folder marki). Kopia obok oryginału dostaje nazwę „… kopia”. Kopie mają nowe obiekty w magazynie,
+ * więc późniejsza zmiana albo usunięcie oryginału ich nie dotyczy. Zwraca nowe elementy z poziomu docelowego (do zaznaczenia).
+ */
+export async function materialsCopy(ctx: NativeContext, body: Row) {
+  const companyId = uuidOf(body.companyId, 'Wybierz markę.');
+  await requireAccess(ctx, companyId, 'manage');
+  const target = await targetFolder(ctx, companyId, body.targetFolderId);
+  const items = (Array.isArray(body.items) ? body.items : []).slice(0, MATERIALS_MAX_BATCH) as Row[];
+  if (!items.length) fail('Zaznacz elementy do skopiowania.');
+
+  // 1. Źródła: pliki i drzewa folderów (z plikami), limity sprawdzane przed kopiowaniem.
+  const failed: CopyFailure[] = [];
+  const foldersOf = new Map<string, MaterialFolderItem[]>();
+  const companyTree = async (company: string) => {
+    if (!foldersOf.has(company)) foldersOf.set(company, await companyFolders(ctx, company));
+    return foldersOf.get(company)!;
+  };
+  type Plan = { kind: 'file'; source: Row } | { kind: 'folder'; source: Row; folders: MaterialFolderItem[]; files: Row[] };
+  const plans: Plan[] = [];
+  let fileCount = 0;
+  let folderCount = 0;
+  for (const item of items) {
+    const id = String(item?.id || '').toLowerCase();
+    if (!UUID.test(id)) continue;
+    const label = text(item.name) || (item.kind === 'folder' ? 'Folder' : 'plik');
+    try {
+      if (item.kind === 'folder') {
+        const source = await folderRow(ctx, id);
+        const all = await companyTree(source.company_id);
+        const subtree = [folderItem(source)];
+        for (let i = 0; i < subtree.length && subtree.length <= COPY_MAX_FOLDERS; i++) {
+          subtree.push(...all.filter((folder) => folder.parentId === subtree[i].id));
+        }
+        if (source.company_id === companyId && target && subtree.some((folder) => folder.id === target)) {
+          fail('Nie można skopiować folderu do niego samego ani do jego podfolderu.');
+        }
+        const ids = subtree.map((folder) => folder.id);
+        const files: Row[] = [];
+        for (let i = 0; i < ids.length; i += 100) {
+          const chunk = ids.slice(i, i + 100);
+          files.push(...await fetchAll((a, b) => ctx.supabase.from('material_files').select(FILE_COLUMNS)
+            .in('folder_id', chunk).eq('status', 'ready').order('id').range(a, b)));
+        }
+        folderCount += subtree.length;
+        fileCount += files.length;
+        plans.push({ kind: 'folder', source, folders: subtree, files });
+      } else {
+        const source = await fileRow(ctx, id);
+        if (source.status !== 'ready') fail('Plik jest jeszcze wysyłany.', 409);
+        fileCount += 1;
+        plans.push({ kind: 'file', source });
+      }
+    } catch (error) {
+      failed.push({ id, name: label, error: failureText(error, 'Nie udało się odczytać elementu.') });
+    }
+  }
+  if (fileCount > COPY_MAX_FILES || folderCount > COPY_MAX_FOLDERS) {
+    fail(`Naraz można skopiować najwyżej ${COPY_MAX_FILES} plików i ${COPY_MAX_FOLDERS} folderów (razem z zawartością folderów) — skopiuj mniejszymi częściami.`, 413);
+  }
+
+  // 2. Foldery (od góry drzewa), potem pliki — po kilka naraz.
+  const created: Array<{ kind: 'file' | 'folder'; id: string; name: string }> = [];
+  const jobs: Array<{ source: Row; folderId: string | null; top: boolean }> = [];
+  let copied = 0;
+  for (const plan of plans) {
+    if (plan.kind === 'file') {
+      jobs.push({ source: plan.source, folderId: target, top: true });
+      continue;
+    }
+    try {
+      const mapped = new Map<string, string>();
+      const top = await insertCopiedFolder(ctx, companyId, target, text(plan.source.name) || 'Folder', true);
+      mapped.set(plan.source.id, top.id);
+      created.push({ kind: 'folder', id: top.id, name: top.name });
+      for (const folder of plan.folders.slice(1)) {
+        const parent = folder.parentId ? mapped.get(folder.parentId) : undefined;
+        if (!parent) continue;
+        const copy = await insertCopiedFolder(ctx, companyId, parent, folder.name, false);
+        mapped.set(folder.id, copy.id);
+      }
+      for (const file of plan.files) {
+        const folderId = file.folder_id ? mapped.get(file.folder_id) : undefined;
+        if (folderId) jobs.push({ source: file, folderId, top: false });
+      }
+      copied += 1;
+    } catch (error) {
+      failed.push({ id: plan.source.id, name: text(plan.source.name) || 'Folder', error: failureText(error, 'Nie udało się skopiować folderu.') });
+    }
+  }
+  await inParallel(jobs, COPY_PARALLEL, async (job) => {
+    try {
+      const file = await copyFileTo(ctx, job.source, companyId, job.folderId);
+      if (job.top) {
+        copied += 1;
+        created.push({ kind: 'file', id: file.id, name: file.name });
+      }
+    } catch (error) {
+      failed.push({ id: job.source.id, name: text(job.source.name) || 'plik', error: failureText(error, 'Nie udało się skopiować pliku.') });
+    }
+  });
+  return { copied, failed, items: created };
+}
+
 /** Opis i tagi pliku. */
 export async function materialsUpdateFile(ctx: NativeContext, body: Row) {
   const id = uuidOf(body.id, 'Nieprawidłowy plik.');
@@ -689,12 +878,12 @@ async function signUpload(ctx: NativeContext, path: string) {
 /** Nowy wpis pliku (`uploading`) z wolną nazwą: przy konflikcie „Nazwa (2).ext”… (albo 409, gdy `rename = false`). */
 async function insertUploading(ctx: NativeContext, input: {
   companyId: string; folderId: string | null; name: string; mime: string; size: number; sha256: string | null; rename: boolean;
-  eventId?: string | null; sourceEventFileId?: string | null;
+  eventId?: string | null; sourceEventFileId?: string | null; copy?: boolean;
 }) {
   const id = randomUUID();
   const path = `${input.companyId}/${id}/${objectName('f', input.name)}`;
   for (let attempt = 1; attempt <= 50; attempt++) {
-    const name = attempt === 1 ? input.name : numberedMaterialName(input.name, attempt);
+    const name = attempt === 1 ? input.name : input.copy ? copyName(input.name, attempt, false) : numberedMaterialName(input.name, attempt);
     const { data, error } = await ctx.supabase.from('material_files').insert({
       id, company_id: input.companyId, folder_id: input.folderId, name, status: 'uploading', storage_path: path,
       mime_type: input.mime, size_bytes: input.size, content_sha256: input.sha256, event_id: input.eventId ?? null,

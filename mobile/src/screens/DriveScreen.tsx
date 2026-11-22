@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import BrandHeading from '../components/BrandHeading';
 import ChatVideoPreview from '../components/ChatVideoPreview';
+import DriveStorageCard from '../components/DriveStorageCard';
 import { useContentWidth } from '../hooks/useTabletLayout';
 import {
   DRIVE_RECORD_LABELS, DRIVE_TITLE, DRIVE_UPLOAD_LIMITS, driveRecordPath,
@@ -30,7 +31,7 @@ import { navigateToEvent, navigateToInquiry, navigationRef, openInCrmWeb } from 
  * i Pracownicy (pracownik → Zdjęcia, Dokumenty, Umowy — foldery według uprawnień; dokumenty dodaje sam pracownik i „Pracownicy —
  * zarządzanie”). Podgląd (zdjęcia, PDF, filmy), udostępnianie, przejście do rekordu. Na tablecie w poziomie — działy z lewej, treść obok.
  * Finansów (księgowość firm) aplikacja nie przegląda — są w CRM, na Macu i w Finderze; „Skanuj dokument” (`FinanceScanScreen`)
- * zapisuje skan w wybranym folderze Finansów.
+ * zapisuje skan w wybranym folderze Finansów. Administrator widzi pod działami „Miejsce na Dysku” (`DriveStorageCard`).
  */
 
 type Location =
@@ -47,6 +48,7 @@ const WIDE = 860;
 
 const SECTION_ICONS: Record<DriveSection, keyof typeof Feather.glyphMap> = {
   finance: 'briefcase', events: 'calendar', materials: 'archive', offers: 'file-text', calculations: 'percent', contracts: 'edit-3', warehouse: 'package', employees: 'users',
+  programs: 'download',
 };
 const KIND_ICONS: Record<string, keyof typeof Feather.glyphMap> = {
   image: 'image', video: 'film', audio: 'music', pdf: 'file-text', document: 'file-text', spreadsheet: 'grid', presentation: 'monitor',
@@ -57,8 +59,11 @@ const FOLDER_ICONS: Record<DriveFolder['kind'], keyof typeof Feather.glyphMap> =
   company: 'briefcase', books: 'book', ledger: 'folder', corporate: 'briefcase', docgroup: 'folder', agreements: 'edit-3', agreement: 'file-text',
   assets: 'package', clarify: 'alert-triangle',
 };
-/** Działy przeglądane w aplikacji — bez Finansów (pełna księgowość tylko w CRM, na Macu i w Finderze). */
-const MOBILE_HIDDEN: ReadonlyArray<DriveSection> = ['finance'];
+/**
+ * Działy przeglądane w aplikacji — bez Finansów (pełna księgowość tylko w CRM, na Macu i w Finderze) i bez Programów
+ * (instalatory aplikacji na komputer).
+ */
+const MOBILE_HIDDEN: ReadonlyArray<DriveSection> = ['finance', 'programs'];
 
 /** Dokąd trafiają pliki dodane w folderze (sprzęt albo dokumenty pracownika) — komunikaty wysyłki. */
 const uploadPlace = (node: string) => (node.startsWith('employees:') ? 'dokumentów pracownika' : 'sprzętu');
@@ -398,6 +403,7 @@ export default function DriveScreen() {
       {!wide ? <Text style={styles.muted}>Ta sama chmura co w CRM, na Macu i w Finderze — działy, do których masz dostęp.</Text> : null}
       {scanRow}
       {available.length ? available.map(sectionRow) : scanRow ? null : <Text style={styles.muted}>Nie masz dostępu do żadnego działu Dysku.</Text>}
+      {root?.storage ? <DriveStorageCard /> : null}
     </ScrollView>
   );
 

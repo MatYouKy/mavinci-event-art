@@ -48,6 +48,11 @@ struct MenuBarStatusMenu: View {
             Text(connectionText)
             Text(finderText)
             Divider()
+            AppUpdateMenuItems(updater: workspace.updater, signedIn: workspace.employee != nil) {
+                showMainWindow()
+                workspace.activeNavigation.updateShown = true
+            }
+            Divider()
             Button("Otwórz Mavinci") { showMainWindow() }
             Button(finder == .disabled ? "Włącz pliki w Finderze…" : "Pliki w Finderze") {
                 Task { await FinderDomain.reveal() }

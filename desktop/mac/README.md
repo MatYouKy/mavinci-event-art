@@ -1,6 +1,6 @@
 # Mavinci na macOS
 
-Aktualna wersja: **0.22.0**. Bieżący zakres natywny i aktualna lista tego, co zostaje w CRM — sekcja „Aktualizacja 0.19 — aktualny zakres natywny” poniżej, uzupełniona o „Aktualizację 0.20” (Flota, Czas pracy, Bazy danych, Lokalizacje, Strona, Kampanie e-mail), „Aktualizację 0.21” (Finanse) i „Aktualizację 0.22” (Finanse: wyciągi, uzgodnienie, deklaracje, przekazanie księgowej, faktury, KSeF, koszty i wypłaty; rozliczenie i prowizje wydarzenia w panelu bocznym karty; prowizje i rozliczenie przy wypłacie na karcie pracownika). Pozostałe sekcje „Aktualizacja …” opisują kolejne etapy jako historię zakresu (to, co w starszej sekcji było „w CRM”, mogło już przejść na Maca). Szczegóły techniczne każdej zmiany: wpisy „Mac: …” w `docs/mobile-parity.md`.
+Aktualna wersja: **0.23.0** (instalator i aktualizacje w aplikacji — sekcja „Instalator i aktualizacje”; wersja w pliku `VERSION`). Bieżący zakres natywny i aktualna lista tego, co zostaje w CRM — sekcja „Aktualizacja 0.19 — aktualny zakres natywny” poniżej, uzupełniona o „Aktualizację 0.20” (Flota, Czas pracy, Bazy danych, Lokalizacje, Strona, Kampanie e-mail), „Aktualizację 0.21” (Finanse) i „Aktualizację 0.22” (Finanse: wyciągi, uzgodnienie, deklaracje, przekazanie księgowej, faktury, KSeF, koszty i wypłaty; rozliczenie i prowizje wydarzenia w panelu bocznym karty; prowizje i rozliczenie przy wypłacie na karcie pracownika). Pozostałe sekcje „Aktualizacja …” opisują kolejne etapy jako historię zakresu (to, co w starszej sekcji było „w CRM”, mogło już przejść na Maca). Szczegóły techniczne każdej zmiany: wpisy „Mac: …” w `docs/mobile-parity.md`.
 
 Natywna aplikacja SwiftUI, macOS 14 lub nowszy, Swift 5.9+. Katalog `desktop/mac` jest równorzędny z `mobile`. Bez osadzonego panelu WWW i zewnętrznych bibliotek Swift.
 
@@ -80,7 +80,39 @@ Warstwa `WorkspaceBackend` oddziela UI i lokalną kopię od dostawcy. W ustawien
 ./scripts/make-dmg.sh
 ```
 
-Wynik: `build/Mavinci.dmg`. Domyślny podpis jest ad-hoc, do lokalnego uruchamiania. Dystrybucja do zespołu wymaga certyfikatu Developer ID i notaryzacji Apple, np. `SIGN_IDENTITY="Developer ID Application: …" ./scripts/build-app.sh`, następnie notaryzacja i staplowanie. Skrypty nie wysyłają aplikacji ani nie wdrażają CRM / mobile.
+Wynik: `build/Mavinci.dmg` z ostatniego `build-app.sh` (bez publikacji). Instalator do rozdania i aktualizacje w aplikacji — `yarn dmg` (sekcja niżej).
+
+## Instalator i aktualizacje (0.23)
+
+**`yarn dmg`** (z głównego katalogu projektu, `scripts/release.sh`):
+
+1. Kompilacja release z podpisem zespołu Mavinci (Team ID 5DC8P5M489). Numer kompilacji to data i godzina (`RRRRMMDDGGMM`), więc każda kolejna kompilacja jest nowsza. Wersję pokazywaną pracownikom ustawia plik `VERSION` (albo zmienna `VERSION`).
+2. Notaryzacja Apple — tylko z certyfikatem „Developer ID Application” i profilem notarytool w pęku kluczy. Profil zakłada się raz, w Terminalu: `xcrun notarytool store-credentials mavinci-notary --apple-id <Apple ID> --team-id 5DC8P5M489` (hasło aplikacji z appleid.apple.com wpisujesz sam, w Terminalu). Bez notaryzacji instalator działa, ale pierwsze otwarcie pobranego z sieci pliku wymaga zgody w macOS (prawy przycisk → Otwórz).
+3. W `build/release/`: instalator `Mavinci-<wersja>-<kompilacja>.dmg`, paczka aktualizacji `….zip` (podpisana aplikacja) i opis wydania `latest.json` (wersja, sumy SHA-256, rozmiary, „Co nowego” ze zmiennej `NOTES`).
+4. Publikacja przez ssh (ten sam serwer co `yarn deploy`) do `/var/www/mavinci/desktop-releases/mac/` (poza katalogiem aplikacji Next — `yarn deploy` jej nie usuwa). Opis wydania podmieniany jest na końcu, zostaje 5 najnowszych wersji. `PUBLISH=0 yarn dmg` — tylko pliki lokalnie.
+
+Przykład: `NOTES="Finanse w Dysku, czas pracy zespołu w telefonie." yarn dmg`.
+
+**Serwer** (`src/app/bridge/native/v1/desktop/route.ts`, `src/lib/native/desktopRelease.ts`): `op=latest` (wydanie i czy jest nowsze od kompilacji aplikacji), `op=download&kind=zip|dmg` (strumień pliku). Tylko zalogowani pracownicy (token sesji) — albo `op=file` z podpisanym adresem (HMAC, ważny godzinę, tylko dla bieżącego wydania), który Dysk wydaje zalogowanemu pracownikowi. Katalog wydań można zmienić zmienną `DESKTOP_RELEASES_DIR`.
+
+**Dysk → Programy** (CRM, Mac, Finder — dział na poziomie Eventów, Materiałów i Pracowników, dla każdego pracownika; w aplikacji na telefon i tablet ukryty): plik `Mavinci <wersja> — macOS.dmg`, zawsze najnowsze wydanie z `yarn dmg`. W przeglądarce pobiera się zwykłym linkiem, na Macu dwuklik zapisuje instalator w „Pobranych”, w Finderze (Mavinci → Programy) plik otwiera się jak każdy inny. Nowe wydanie zmienia wersję pliku, więc Finder i Mac pobierają je od nowa.
+
+**Pierwsza instalacja**: CRM → Dysk → Programy albo Ustawienia → Ogólne → „Aplikacja Mavinci na Maca” → „Pobierz instalator (DMG)”, albo plik z `build/release/`. Otwórz instalator, przeciągnij Mavinci do folderu Aplikacje i uruchom stamtąd.
+
+**Aktualizacje w aplikacji** (`Sources/Mavinci/Updates/`):
+
+- Sprawdzenie po zalogowaniu i co 4 godziny; od razu — Mavinci → „Sprawdź aktualizacje…” albo pasek menu.
+- Nowsza kompilacja → pasek „Dostępna nowa wersja” nad treścią okna („Później” chowa go do następnej wersji) i pozycja na pasku menu.
+- „Zobacz i zainstaluj”: arkusz z wersjami i „Co nowego”. „Pobierz aktualizację” pobiera paczkę (postęp), sprawdza sumę SHA-256, rozpakowuje ją (`ditto`) i sprawdza podpis zespołu Mavinci, identyfikator pakietu i numer kompilacji.
+- „Zainstaluj i uruchom ponownie”: aplikacja się zamyka, skrypt podmienia pakiet w miejscu bieżącego (przy błędzie przywraca poprzedni) i uruchamia nową wersję. Po uruchomieniu komunikat „Zainstalowano Mavinci …”, a katalog aktualizacji (`~/Library/Caches/pl.mavinci.desktop/Updates`) jest sprzątany.
+- Pliki pobrane przez aplikację nie mają kwarantanny, więc po aktualizacji macOS nie pyta ponownie o zgodę.
+- Kopia z folderu budowania (`yarn build:mac`), z obrazu dysku, bez podpisu zespołu albo w folderze bez prawa zapisu pokazuje nową wersję, ale się nie podmienia. Pokazuje wtedy powód i przycisk „Pobierz instalator (DMG)”.
+
+## Dysk: schowek jak w Finderze, kopie i miejsce na Dysku (0.23)
+
+- **Materiały** (`Materials/`): kliknięcie elementu na liście i w siatce zaznacza go i daje fokus klawiatury (lista: `itemProvider` zamiast `onDrag`, który blokował zaznaczanie wiersza). ⌘C kopiuj, ⌘X wytnij, ⌘V wklej (kopia albo przeniesienie; pliki skopiowane w Finderze — wysyłka do folderu), Delete — do kosza. Menu pod prawym przyciskiem: na elemencie — kopiuj, wytnij, duplikuj, „Kopiuj do…”, „Wklej do folderu”, zmiana nazwy, przeniesienie, usunięcie; na pustym miejscu — nowy folder, dodaj pliki, wklej, zaznacz wszystko. Przeciąganie z ⌥ — kopia. Kopie plików i całych folderów robi serwer (`op=copy`: kopia obiektów w magazynie, obok oryginału „… kopia”, najwyżej 300 plików i 200 folderów naraz).
+- **Miejsce na Dysku** (`Drive/DriveStorageViews.swift`, tylko administrator): na dole paska bocznego Dysku (także w Materiałach) zajętość plików względem pakietu; kliknięcie — pakiet, pliki według rodzaju, baza danych i „Zmień pakiet…” (`op=storage`, `op=storagePlan`, migracja `20261126120000_drive_storage_usage.sql`). Domyślnie Supabase Pro: 100 GB plików, 8 GB bazy.
+- **Paski edytorów Prezentacji i Realizacji** (`AdaptiveToolbar.swift`): pełne etykiety → same ikony (opis w podpowiedzi) → tytuł w osobnym wierszu, zależnie od szerokości okna; etykiety się nie łamią, ⌘S działa w każdym wariancie.
 
 
 ## Weryfikacja pierwszej wersji
@@ -191,7 +223,7 @@ Kierunek: aplikacja jest **odpowiednikiem 1:1 CRM w przeglądarce** (te same sek
 2. **Dashboard jak `/crm`** — `GET /bridge/native/v1/dashboard` liczy dane funkcjami `dashboardData.ts` (te same co strona), tokenem pracownika. Kafelki, szybkie akcje, podsumowanie i aktywność są filtrowane na serwerze (`canView` / `canCreate`). Widok: „Mój plan” (oś czasu dziś / 3 dni z `get_employee_schedule`), trend sprzedażowy i lejek (Swift Charts), wpływy / wydatki / wynik kasowy, „Wymaga działania”, ostatnia aktywność, szybkie akcje i „Pozostałe wskaźniki”. Sprzedawca: oś czasu i „Mój dzień” jak w CRM. Dashboard odświeża się co 5 minut i na ⌘R.
 3. **Motywy** — burgund, granat, ciemny i jasny jak w CRM (`employees.crm_theme`); Ustawienia → Wygląd. Zmiana zapisuje się w profilu i obowiązuje także w przeglądarce.
 
-Budowanie z głównego katalogu projektu: `yarn build:mac` (→ `desktop/mac/build/Mavinci.app`), instalator: `yarn dmg:mac` (→ `desktop/mac/build/Mavinci.dmg`), uruchomienie: `yarn open mac` (zamyka działającą wersję i otwiera nowo zbudowaną).
+Budowanie z głównego katalogu projektu: `yarn build:mac` (→ `desktop/mac/build/Mavinci.app`), instalator do rozdania z publikacją aktualizacji: `yarn dmg` (sekcja „Instalator i aktualizacje”), sam DMG z ostatniego budowania: `yarn dmg:mac` (→ `desktop/mac/build/Mavinci.dmg`), uruchomienie: `yarn open mac` (zamyka działającą wersję i otwiera nowo zbudowaną).
 
 Serwer: `src/app/bridge/native/v1/*` (Bearer — token Supabase z aplikacji, `src/lib/native/auth.ts`); bez klucza serwisowego. `dashboardData.ts` przyjmuje klienta z tokenem przez `withNativeDashboardClient` (AsyncLocalStorage, tylko na czas żądania). Mobile: nie dotyczy — zmiany dotyczą aplikacji na Maca i jej API.
 

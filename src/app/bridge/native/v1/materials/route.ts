@@ -1,7 +1,7 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
 import {
   MaterialsError, materialsAlbum, materialsAlbumAdd, materialsAlbumRemove, materialsAlbumReorder, materialsAlbums, materialsAlbumsReorder,
-  materialsCreateAlbum, materialsDeleteAlbum, materialsUpdateAlbum, materialsCancelUpload, materialsChanges, materialsCompleteUpload, materialsCopyFromEvent, materialsCreateFolder,
+  materialsCreateAlbum, materialsDeleteAlbum, materialsUpdateAlbum, materialsCancelUpload, materialsChanges, materialsCompleteUpload, materialsCopy, materialsCopyFromEvent, materialsCreateFolder,
   materialsDeleteForever, materialsDownload, materialsFile, materialsFinderRemove, materialsFinderTrash, materialsFinderUpdate,
   materialsHome, materialsList, materialsMove, materialsPrepareUpload, materialsPurge, materialsRemove, materialsRename, materialsRestore,
   materialsSearch, materialsSync, materialsSyncItem, materialsTrash, materialsUpdateFile, materialsUrl,
@@ -19,7 +19,8 @@ export const maxDuration = 300;
  *   Finder: sync | changes&since | item&kind=folder|file&id | download&id | finderTrash.
  *   Albumy (migracja 20261122140000): albums&company? | album&id.
  * POST JSON op=createFolder {companyId, parentId, name} | rename {kind, id, name} | move {companyId, items[{kind, id, name}],
- *   targetFolderId} | updateFile {id, description, tags} | prepareUpload {companyId, folderId, name, size, mime, sha256,
+ *   targetFolderId} | copy {companyId, items[{kind, id, name}], targetFolderId} (kopie plików i folderów z zawartością — także
+ *   z innej marki; obok oryginału „… kopia”) | updateFile {id, description, tags} | prepareUpload {companyId, folderId, name, size, mime, sha256,
  *   thumbnail, rename} albo {replaceId, baseContentVersion, …} | completeUpload {fileId, path, thumbPath, width, height,
  *   duration, sha256, baseContentVersion} | cancelUpload {fileId, path, thumbPath} | remove {items[{kind, id, name}]} |
  *   restore {ids | itemIds} | deleteForever {ids | itemIds} albo {companyId, all: true} | purge |
@@ -96,6 +97,8 @@ export async function POST(request: Request) {
         return nativeJson(await materialsRename(ctx, body));
       case 'move':
         return nativeJson(await materialsMove(ctx, body));
+      case 'copy':
+        return nativeJson(await materialsCopy(ctx, body));
       case 'updateFile':
         return nativeJson(await materialsUpdateFile(ctx, body));
       case 'prepareUpload':

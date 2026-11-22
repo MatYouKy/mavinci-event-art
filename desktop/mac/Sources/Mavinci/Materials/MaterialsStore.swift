@@ -6,7 +6,8 @@ import UniformTypeIdentifiers
 // MARK: Materiały (`/crm/materials`) — baza plików firmy natywnie, 1:1 z CRM
 //
 // Marki z dostępem, drzewo folderów, zawartość folderu (sortowanie jak w CRM), wyszukiwanie w Materiałach i w plikach
-// wydarzeń („Zapisz w Materiałach”), karta pliku (opis, tagi, wersje, podmiana treści), kosz na 30 dni i wysyłka plików oraz
+// wydarzeń („Zapisz w Materiałach”), karta pliku (opis, tagi, wersje, podmiana treści), kosz na 30 dni, schowek jak w Finderze
+// (kopiuj / wytnij / wklej, duplikuj, „Kopiuj do…” — kopie plików i całych folderów robi serwer) i wysyłka plików oraz
 // całych folderów z Findera (z postępem; miniatura zdjęcia, klatka wideo i strona PDF jak w przeglądarce). Wszystko przez
 // `/bridge/native/v1/materials` tokenem pracownika — uprawnienia i zakres marek liczy baza (RLS).
 // Lokalnie na dysku: marki, drzewo i ostatnio oglądane foldery (zaszyfrowane) oraz miniatury — ekran otwiera się od razu,
@@ -36,6 +37,8 @@ import UniformTypeIdentifiers
     @Published private(set) var albums: [MaterialAlbum] = []
     @Published private(set) var albumID: String?
     @Published private(set) var albumFiles: [String: [MaterialFile]] = [:]
+    /// Schowek (⌘C / ⌘X → ⌘V): skopiowane albo wycięte elementy.
+    @Published var clipboard: MaterialsClipboard?
 
     private var namespace: String?
     private var homeFile: SealedFile<MaterialsHome>?
@@ -86,7 +89,7 @@ import UniformTypeIdentifiers
         home = nil; loadError = nil; loading = false; companyID = nil; folderID = nil; sort = .name
         listings = [:]; listLoading = false; trashMode = false; trash = []; trashLoading = false
         query = ""; scope = .materials; search = nil; searching = false; details = [:]; uploads = nil
-        albums = []; albumID = nil; albumFiles = [:]
+        albums = []; albumID = nil; albumFiles = [:]; clipboard = nil
     }
 
     private func saveLists() {
@@ -325,27 +328,79 @@ import UniformTypeIdentifiers
         await refresh()
     }
 
-    /// Przeniesienie do folderu tej samej marki (`nil` — główny folder marki).
-    func move(_ refs: [MaterialRef], to target: String?) async {
-        guard let workspace, let company = companyID, !refs.isEmpty else { return }
+    /// Przeniesienie do folderu tej samej marki (`nil` — główny folder marki). `true` — coś przeniesiono.
+    @discardableResult
+    func move(_ refs: [MaterialRef], to target: String?) async -> Bool {
+        guard let workspace, let company = companyID, !refs.isEmpty else { return false }
         var blocked = Set<String>()
         for ref in refs where ref.kind == "folder" { blocked.formUnion(descendants(of: ref.id)) }
         if let target, blocked.contains(target) {
             workspace.notice = "Nie można przenieść folderu do niego samego ani do jego podfolderu."
-            return
+            return false
         }
         let body: [String: JSONValue] = [
             "companyId": .string(company), "items": .array(refs.map(\.json)), "targetFolderId": target.map { .string($0) } ?? .null,
         ]
         guard let data = await run("Przenoszę", "move", body, success: nil),
-              let result = try? JSONDecoder().decode(MaterialBatchResult.self, from: data) else { return }
+              let result = try? JSONDecoder().decode(MaterialBatchResult.self, from: data) else { return false }
+        let moved = result.moved ?? 0
         if result.failed.isEmpty {
-            workspace.succeed((result.moved ?? 0) == 1 ? "Przeniesiono" : "Przeniesiono: \(result.moved ?? 0)")
+            workspace.succeed(moved == 1 ? "Przeniesiono" : "Przeniesiono: \(moved)")
         } else {
-            let moved = result.moved ?? 0
             workspace.error = (moved > 0 ? "Przeniesiono: \(moved). " : "") + "Nie przeniesiono: " + result.failed.map { "\($0.name) — \($0.error)" }.joined(separator: "; ")
         }
         await refresh()
+        return moved > 0
+    }
+
+    /// Kopie plików i folderów (z całą zawartością) w folderze marki (`nil` — główny folder), także z innej marki; obok oryginału
+    /// nazwa „… kopia”. Zwraca nowe elementy (do zaznaczenia).
+    @discardableResult
+    func copy(_ refs: [MaterialRef], to target: String?) async -> [MaterialRef] {
+        guard let workspace, let company = companyID, !refs.isEmpty else { return [] }
+        let body: [String: JSONValue] = [
+            "companyId": .string(company), "items": .array(refs.map(\.json)), "targetFolderId": target.map { .string($0) } ?? .null,
+        ]
+        let pending = refs.count == 1 ? "Kopiuję „\(refs[0].name)”" : "Kopiuję (\(refs.count))"
+        guard let data = await run(pending, "copy", body, success: nil, timeout: 300),
+              let result = try? JSONDecoder().decode(MaterialCopyResult.self, from: data) else { return [] }
+        if result.failed.isEmpty {
+            workspace.succeed(result.copied == 1 ? "Skopiowano" : "Skopiowano: \(result.copied)")
+        } else {
+            workspace.error = (result.copied > 0 ? "Skopiowano: \(result.copied). " : "") + "Nie skopiowano: "
+                + result.failed.map { "\($0.name) — \($0.error)" }.joined(separator: "; ")
+        }
+        await refresh()
+        return result.items
+    }
+
+    /// Schowek, który można wkleić — pusty, gdy od „Kopiuj” coś innego trafiło do schowka systemu (np. kopiowanie w innej aplikacji).
+    var pasteReady: MaterialsClipboard? {
+        guard let clipboard, clipboard.changeCount == NSPasteboard.general.changeCount else { return nil }
+        return clipboard
+    }
+
+    /// Do schowka: elementy (wycięcie — bez folderów domyślnych marki) i ich nazwy jako tekst dla innych aplikacji.
+    func setClipboard(_ refs: [MaterialRef], cut: Bool) {
+        let list = cut ? refs.filter { ref in ref.kind == "file" || folders.first(where: { $0.id == ref.id })?.systemKey == nil } : refs
+        guard !list.isEmpty, let company = companyID ?? home?.company.id else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(list.map(\.name).joined(separator: "\n"), forType: .string)
+        clipboard = MaterialsClipboard(companyID: company, refs: list, cut: cut, changeCount: pasteboard.changeCount)
+    }
+
+    /// Wklejenie schowka do folderu: kopia albo — po „Wytnij” — przeniesienie (tylko w tej samej marce). Zwraca elementy w folderze docelowym.
+    func paste(_ clip: MaterialsClipboard, into target: String?) async -> [MaterialRef] {
+        guard let workspace, let company = companyID else { return [] }
+        guard clip.cut else { return await copy(clip.refs, to: target) }
+        guard clip.companyID == company else {
+            workspace.notice = "Elementów nie można przenieść do innej marki — skopiuj je (⌘C) i wklej (⌘V)."
+            return []
+        }
+        let moved = await move(clip.refs, to: target)
+        if moved { clipboard = nil }
+        return moved ? clip.refs : []
     }
 
     /// Do kosza na 30 dni (folder razem z zawartością).

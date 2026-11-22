@@ -178,31 +178,76 @@ enum ShowcaseListMode: Identifiable, Hashable {
         }
     }
 
+    /// Pasek karty dopasowany do szerokości okna (`AdaptiveToolbar.swift`): pełne etykiety → same ikony → tytuł w osobnym wierszu.
     private func toolbar(_ detail: ShowcaseDetail, _ draft: ShowcaseDraft) -> some View {
         let dirty = store.dirty(id)
         let saved: String = dirty ? "niezapisane zmiany" : "zapisano" + (detail.item.updatedByName.map { " · \($0)" } ?? "")
-        return HStack(spacing: 8) {
-            TextField("Tytuł karty (np. „Ekran LED na scenę”)", text: limited(field(\.title, ""), ShowcaseLimits.title))
-                .textFieldStyle(.roundedBorder).font(.title3)
-                .id("showcase-field-title")
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(highlight == "title" ? theme.accent : Color.clear, lineWidth: 2))
-            Toggle(draft.isActive ? "Widoczna na spotkaniach" : "Ukryta (szkic)", isOn: field(\.isActive, true)).toggleStyle(.switch)
-            Text(saved).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            Button { assistantOpen = true } label: { Label("Asystent AI", systemImage: "wand.and.stars") }
-                .help("Propozycje treści z danych produktów karty")
-            Button { preview(detail, draft) } label: { Label("Podgląd na iPadzie", systemImage: "ipad.landscape") }
-            Button { Task { await store.saveItem(id) } } label: { Label("Zapisz", systemImage: "square.and.arrow.down") }
-                .buttonStyle(.borderedProminent).keyboardShortcut("s", modifiers: .command).disabled(!dirty)
-            Menu {
-                if dirty { Button { store.discardDraft(id) } label: { Label("Odrzuć niezapisane zmiany", systemImage: "xmark.circle") } }
-                Button { Task { await store.duplicateItem(id) } } label: { Label("Kopia karty (ukryta)", systemImage: "plus.square.on.square") }
-                Divider()
-                Button(role: .destructive) { confirmDelete = true } label: { Label("Usuń kartę", systemImage: "trash") }
-            } label: { Label("Więcej", systemImage: "ellipsis.circle") }
-                .menuStyle(.borderlessButton).fixedSize()
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                titleField
+                visibilityToggle(draft, short: false)
+                Text(saved).font(.caption).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                toolbarActions(detail, draft, dirty: dirty, compact: false)
+            }
+            HStack(spacing: 8) {
+                titleField
+                visibilityToggle(draft, short: true)
+                AdaptiveSavedBadge(dirty: dirty, text: saved)
+                toolbarActions(detail, draft, dirty: dirty, compact: true)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                titleField
+                HStack(spacing: 8) {
+                    visibilityToggle(draft, short: true)
+                    AdaptiveSavedBadge(dirty: dirty, text: saved)
+                    Spacer(minLength: 4)
+                    toolbarActions(detail, draft, dirty: dirty, compact: true)
+                }
+            }
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 12).fill(theme.card))
+        .background { AdaptiveSaveShortcut(enabled: dirty) { Task { await store.saveItem(id) } } }
+    }
+
+    private var titleField: some View {
+        TextField("Tytuł karty (np. „Ekran LED na scenę”)", text: limited(field(\.title, ""), ShowcaseLimits.title))
+            .textFieldStyle(.roundedBorder).font(.title3)
+            .frame(minWidth: 180, idealWidth: 280, maxWidth: .infinity)
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(highlight == "title" ? theme.accent : Color.clear, lineWidth: 2))
+    }
+
+    /// Widoczność na spotkaniach; w wąskim pasku krótka etykieta (pełna w podpowiedzi).
+    private func visibilityToggle(_ draft: ShowcaseDraft, short: Bool) -> some View {
+        let full = draft.isActive ? "Widoczna na spotkaniach" : "Ukryta (szkic)"
+        return Toggle(isOn: field(\.isActive, true)) {
+            Text(short ? (draft.isActive ? "Widoczna" : "Szkic") : full).lineLimit(1)
+        }
+        .toggleStyle(.switch)
+        .fixedSize()
+        .help(full)
+    }
+
+    /// Asystent, podgląd, zapis i „Więcej”; `compact` — asystent, podgląd i „Więcej” jako ikony (opis w podpowiedzi).
+    @ViewBuilder private func toolbarActions(_ detail: ShowcaseDetail, _ draft: ShowcaseDraft, dirty: Bool, compact: Bool) -> some View {
+        Button { assistantOpen = true } label: { Label("Asystent AI", systemImage: "wand.and.stars") }
+            .labelStyle(AdaptiveLabelStyle(compact: compact))
+            .help(compact ? "Asystent AI — propozycje treści z danych produktów karty" : "Propozycje treści z danych produktów karty")
+        Button { preview(detail, draft) } label: { Label("Podgląd na iPadzie", systemImage: "ipad.landscape") }
+            .labelStyle(AdaptiveLabelStyle(compact: compact))
+            .help("Podgląd na iPadzie")
+        Button { Task { await store.saveItem(id) } } label: { Label("Zapisz", systemImage: "square.and.arrow.down") }
+            .labelStyle(AdaptiveLabelStyle(compact: false))
+            .buttonStyle(.borderedProminent).disabled(!dirty)
+            .help("Zapisz kartę (⌘S)")
+        Menu {
+            if dirty { Button { store.discardDraft(id) } label: { Label("Odrzuć niezapisane zmiany", systemImage: "xmark.circle") } }
+            Button { Task { await store.duplicateItem(id) } } label: { Label("Kopia karty (ukryta)", systemImage: "plus.square.on.square") }
+            Divider()
+            Button(role: .destructive) { confirmDelete = true } label: { Label("Usuń kartę", systemImage: "trash") }
+        } label: { Label("Więcej", systemImage: "ellipsis.circle").labelStyle(AdaptiveLabelStyle(compact: compact)) }
+            .menuStyle(.borderlessButton).fixedSize()
+            .help("Więcej")
     }
 
     private func staleBanner(_ detail: ShowcaseDetail) -> some View {

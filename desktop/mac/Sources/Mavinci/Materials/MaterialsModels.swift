@@ -179,6 +179,21 @@ struct MaterialBatchResult: Decodable {
     var failed: [Failed]
 }
 
+/// Wynik kopiowania (`op=copy`): ile elementów skopiowano, błędy i nowe elementy z folderu docelowego.
+struct MaterialCopyResult: Decodable {
+    var copied: Int
+    var failed: [MaterialBatchResult.Failed]
+    var items: [MaterialRef]
+}
+
+/// Schowek Materiałów: elementy, marka, czy wklejenie przenosi (wytnij) i stan schowka systemu w chwili kopiowania.
+struct MaterialsClipboard: Equatable {
+    var companyID: String
+    var refs: [MaterialRef]
+    var cut: Bool
+    var changeCount: Int
+}
+
 struct MaterialPrepared: Decodable {
     var fileId: String
     var name: String

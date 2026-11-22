@@ -243,40 +243,80 @@ enum PortfolioDrop {
     private func toolbar(_ detail: PortfolioDetail, _ draft: PortfolioDraft) -> some View {
         let dirty = store.dirty(id)
         let missing = portfolioPublishProblems(draft.content)
-        let onSite = detail.item.status.onSite
         let title: String = draft.content.title.isEmpty ? "Realizacja bez tytułu" : draft.content.title
         let saved: String = dirty ? "niezapisane zmiany" : "zapisano" + (detail.item.updatedByName.map { " · \($0)" } ?? "")
-        let publishTitle: String = onSite ? "Opublikuj zmiany" : "Opublikuj na stronie"
+        let publishTitle: String = detail.item.status.onSite ? "Opublikuj zmiany" : "Opublikuj na stronie"
         let publishHelp: String = missing.isEmpty ? "Publikacja na stronie mavinci.pl" : "Uzupełnij: " + missing.map(\.label).joined(separator: ", ")
-        return HStack(spacing: 8) {
-            Text(title).font(.title3.weight(.light)).lineLimit(1).truncationMode(.tail)
-            PortfolioStatusBadge(status: detail.item.status)
-            Text(saved).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            Spacer(minLength: 8)
-            Button { Task { await save() } } label: { Label("Zapisz", systemImage: "square.and.arrow.down") }
-                .buttonStyle(.borderedProminent).keyboardShortcut("s", modifiers: .command).disabled(!dirty)
-            Button { Task { await publish() } } label: { Label(publishTitle, systemImage: "paperplane") }
-                .buttonStyle(.borderedProminent)
-                .disabled(!missing.isEmpty || (!dirty && detail.item.status == .published))
-                .help(publishHelp)
-            if let link = detail.item.siteUrl, let url = URL(string: link) {
-                Button { NSWorkspace.shared.open(url) } label: { Label("Zobacz na stronie", systemImage: "arrow.up.right.square") }.help(link)
+        let heading = Text(title).font(.title3.weight(.light)).lineLimit(1).truncationMode(.tail)
+            .frame(minWidth: 120, idealWidth: 220, maxWidth: .infinity, alignment: .leading)
+            .help(title)
+        let status = PortfolioStatusBadge(status: detail.item.status).fixedSize()
+        // Pasek dopasowany do szerokości okna (`AdaptiveToolbar.swift`): pełne etykiety → ikony → tytuł w osobnym wierszu.
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                heading
+                status
+                Text(saved).font(.caption).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                toolbarActions(detail, draft, dirty: dirty, missing: !missing.isEmpty, publishTitle: publishTitle, publishHelp: publishHelp, compact: false)
             }
-            if detail.item.status == .changed || detail.item.status == .conflict {
-                Button { confirmDiscard = true } label: { Label("Wersja ze strony", systemImage: "arrow.uturn.backward") }
+            HStack(spacing: 8) {
+                heading
+                status
+                AdaptiveSavedBadge(dirty: dirty, text: saved)
+                toolbarActions(detail, draft, dirty: dirty, missing: !missing.isEmpty, publishTitle: publishTitle, publishHelp: publishHelp, compact: true)
             }
-            Button { socialShown = true } label: { Label("Utwórz post", systemImage: "square.and.pencil") }
-                .disabled(draft.content.photos.isEmpty).help("Szkic posta social media z karuzelą zdjęć realizacji")
-            Menu {
-                if dirty { Button { store.discardDraft(id) } label: { Label("Odrzuć niezapisane zmiany", systemImage: "xmark.circle") } }
-                if onSite { Button { confirmUnpublish = true } label: { Label("Usuń ze strony", systemImage: "eye.slash") } }
-                Divider()
-                Button(role: .destructive) { confirmDelete = true } label: { Label("Usuń realizację", systemImage: "trash") }
-            } label: { Label("Więcej", systemImage: "ellipsis.circle") }
-                .menuStyle(.borderlessButton).fixedSize()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    heading
+                    status
+                    AdaptiveSavedBadge(dirty: dirty, text: saved)
+                }
+                HStack(spacing: 8) {
+                    Spacer(minLength: 0)
+                    toolbarActions(detail, draft, dirty: dirty, missing: !missing.isEmpty, publishTitle: publishTitle, publishHelp: publishHelp, compact: true)
+                }
+            }
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 12).fill(theme.card))
+        .background { AdaptiveSaveShortcut(enabled: dirty) { Task { await save() } } }
+    }
+
+    /// Zapis, publikacja, strona, wersja ze strony, post i „Więcej”; `compact` — poza zapisem i publikacją same ikony (opis w podpowiedzi).
+    @ViewBuilder private func toolbarActions(_ detail: PortfolioDetail, _ draft: PortfolioDraft, dirty: Bool, missing: Bool, publishTitle: String,
+                                             publishHelp: String, compact: Bool) -> some View {
+        let onSite = detail.item.status.onSite
+        Button { Task { await save() } } label: { Label("Zapisz", systemImage: "square.and.arrow.down") }
+            .labelStyle(AdaptiveLabelStyle(compact: false))
+            .buttonStyle(.borderedProminent).disabled(!dirty)
+            .help("Zapisz realizację (⌘S)")
+        Button { Task { await publish() } } label: { Label(publishTitle, systemImage: "paperplane") }
+            .labelStyle(AdaptiveLabelStyle(compact: false))
+            .buttonStyle(.borderedProminent)
+            .disabled(missing || (!dirty && detail.item.status == .published))
+            .help(publishHelp)
+        if let link = detail.item.siteUrl, let url = URL(string: link) {
+            Button { NSWorkspace.shared.open(url) } label: { Label("Zobacz na stronie", systemImage: "arrow.up.right.square") }
+                .labelStyle(AdaptiveLabelStyle(compact: compact))
+                .help(compact ? "Zobacz na stronie — \(link)" : link)
+        }
+        if detail.item.status == .changed || detail.item.status == .conflict {
+            Button { confirmDiscard = true } label: { Label("Wersja ze strony", systemImage: "arrow.uturn.backward") }
+                .labelStyle(AdaptiveLabelStyle(compact: compact))
+                .help("Wersja ze strony")
+        }
+        Button { socialShown = true } label: { Label("Utwórz post", systemImage: "square.and.pencil") }
+            .labelStyle(AdaptiveLabelStyle(compact: compact))
+            .disabled(draft.content.photos.isEmpty)
+            .help(compact ? "Utwórz post — szkic posta social media z karuzelą zdjęć realizacji" : "Szkic posta social media z karuzelą zdjęć realizacji")
+        Menu {
+            if dirty { Button { store.discardDraft(id) } label: { Label("Odrzuć niezapisane zmiany", systemImage: "xmark.circle") } }
+            if onSite { Button { confirmUnpublish = true } label: { Label("Usuń ze strony", systemImage: "eye.slash") } }
+            Divider()
+            Button(role: .destructive) { confirmDelete = true } label: { Label("Usuń realizację", systemImage: "trash") }
+        } label: { Label("Więcej", systemImage: "ellipsis.circle").labelStyle(AdaptiveLabelStyle(compact: compact)) }
+            .menuStyle(.borderlessButton).fixedSize()
+            .help("Więcej")
     }
 
     private func staleBanner(_ detail: PortfolioDetail) -> some View {

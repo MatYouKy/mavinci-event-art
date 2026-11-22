@@ -30,6 +30,9 @@ import AppKit
                 Button("Powiadomienia") {workspace.notificationsVisible.toggle()}.keyboardShortcut("9")
                 Button("Komunikator") { workspace.toggleChat() }.keyboardShortcut("k", modifiers: [.command, .option]).disabled(workspace.employee == nil)
                 Divider()
+                Button("Sprawdź aktualizacje…") { Task { await workspace.updater.check(manual: true) } }
+                    .disabled(workspace.employee == nil || workspace.updater.busy)
+                Divider()
                 Button("Wyloguj") { Task { await workspace.logout() } }.disabled(workspace.loading || workspace.acting)
             }
         }
@@ -153,6 +156,8 @@ struct RootView: View {
                         else if nav.screen == .finance { FinanceView(store: state.finance, bank: state.finance.bank) }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
+                    // Nowa wersja aplikacji (`yarn dmg`) — pasek nad treścią okna.
+                    .safeAreaInset(edge: .top, spacing: 0) { AppUpdateBanner(updater: state.updater) { nav.updateShown = true } }
                     // `minHeight: 0` — minimalna wysokość ekranu sekcji nie wymusza wysokości okna (`.contentMinSize`): treść wyższa od okna
                     // zostaje przycięta u dołu, zamiast powiększać okno ponad ekran i przesuwać w górę całą zawartość z paskiem bocznym.
                     .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
@@ -187,6 +192,11 @@ struct RootView: View {
                         SystemHealthView()
                             .environmentObject(state).environmentObject(nav).environment(\.crmTheme, state.theme).tint(state.theme.accent)
                     }
+                    // „Aktualizacja Mavinci” — wersje, co nowego, pobranie i instalacja (pasek w oknie, menu Mavinci, pasek menu).
+                    .sheet(isPresented: $nav.updateShown) {
+                        AppUpdateSheet(updater: state.updater)
+                            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+                    }
                     // „Mianuj sprzedawcą” (karta i lista kontaktów, osoby organizacji) — kreator w tym oknie.
                     .sheet(item: $nav.sellerAppointment) { preset in
                         NewSellerWizard(store: state.sellers, preset: preset) { result in state.sellerAppointed(result) }
@@ -218,6 +228,8 @@ struct RootView: View {
             } else { LoginView() }
         }
         .sheet(isPresented: $help) { HelpView() }
+        // Sprawdzanie nowej wersji aplikacji — raz na uruchomienie (kolejne okna niczego nie dublują).
+        .task { state.updater.start() }
         .onChange(of: nav.selection) { _, next in
             if next != nil { nav.nativeSet = nil; nav.webItem = nil; nav.screen = nil }
             if let route = nav.eventRoute, next != route.origin { nav.eventRoute = nil }

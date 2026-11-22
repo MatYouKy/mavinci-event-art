@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Wersja aplikacji: zmienna VERSION albo plik desktop/mac/VERSION (aktualizacje porównują numer kompilacji BUILD).
+if [ -z "${VERSION:-}" ] && [ -f VERSION ]; then VERSION="$(tr -d '[:space:]' < VERSION)"; fi
 VERSION="${VERSION:-0.22.0}"
 CONFIGURATION="${CONFIGURATION:-release}"
 case "$CONFIGURATION" in debug|release) ;; *) echo "Nieznany wariant kompilacji"; exit 1;; esac

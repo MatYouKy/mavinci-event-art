@@ -8,15 +8,16 @@ import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds'
 import { assetRegisterRows } from '@/lib/assets/assets.server';
 import type { AssetRegisterRow } from '@/lib/assets/assetsShared';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
+import { latestDesktopRelease, signedDesktopLink } from '@/lib/native/desktopRelease';
 import {
   DRIVE_CORPORATE_CATEGORIES, DRIVE_EMPLOYEE_GROUPS, DRIVE_FINANCE_AGREEMENTS, DRIVE_FINANCE_ASSETS, DRIVE_FINANCE_BOOKS, DRIVE_FINANCE_CLARIFY,
   DRIVE_FINANCE_CORPORATE, DRIVE_FINANCE_GROUPS, DRIVE_MONTHS, driveAssetsNodeId, driveClarifyNodeId, driveMonthCloseFileId,
   DRIVE_SCAN_LIMITS, DRIVE_SECTIONS, DRIVE_TITLE, DRIVE_UPLOAD_LIMITS, EMPLOYEE_DOCUMENT_LIMITS, EMPLOYEE_DOCUMENT_TYPES, driveAgreementsNodeId, driveCorporateCategory,
   driveCorporateNodeId, driveEmployeeDocumentsNode, driveFinanceNodeId, driveMonthName, driveName, driveUniqueNames, employeeDocumentType, parseDriveFileId,
-  parseDriveNode,
+  driveStorageUsage, parseDriveNode,
   type DriveBrandColor, type DriveBrandNode, type DriveCorporateCategory, type DriveDocumentSection, type DriveDownload, type DriveEmployeeGroup, type DriveFile,
   type DriveFileType, type DriveFinanceGroup, type DriveFolder, type DriveListing, type DriveNode, type DriveRoot, type DriveSection, type DriveSectionInfo,
-  type DriveScanUpload, type DriveSync, type DriveUpload, type DriveUploadResult,
+  type DriveScanUpload, type DriveStorageUsage, type DriveSync, type DriveUpload, type DriveUploadResult,
 } from './driveShared';
 
 /*
@@ -29,6 +30,9 @@ import {
  * „Logotypy i księga znaku”). Wszystko tokenem pracownika: RLS jak w CRM decyduje, które oferty, kalkulacje, umowy, sprzęt,
  * dokumenty i umowy personelu widać. Treść plików nie przechodzi przez serwer — podpisane albo publiczne adresy magazynu;
  * wyjątek: PDF dokumentu umowy personelu powstaje raz na serwerze z treści zapisanej w CRM (kopia w `employee-documents/contracts/`).
+ * Programy — instalator aplikacji Mavinci na Maca z katalogu wydań serwera (`yarn dmg`, zawsze najnowsza wersja; podpisany adres
+ * trasy `/bridge/native/v1/desktop`), dla każdego pracownika.
+ * Miejsce na Dysku (tylko administrator): pakiet i zajętość plików oraz bazy — `crm_storage_usage()` / `crm_set_storage_plan()`.
  */
 
 type Row = Record<string, any>;
@@ -92,6 +96,8 @@ const SECTION_SCOPES: Record<DriveSection, string[]> = {
   contracts: ['contracts_view', 'contracts_manage', 'contracts_create'],
   warehouse: ['equipment_view', 'equipment_manage', 'equipment_create'],
   employees: ['employees_view', 'employees_manage', 'personnel_view', 'personnel_manage'],
+  // Programy — każdy pracownik (instalator aplikacji Mavinci).
+  programs: [],
 };
 
 const warehouseWriter = (ctx: NativeContext) =>
@@ -119,7 +125,8 @@ const canSeeContracts = (ctx: NativeContext, employeeId: string) => ctx.employee
 export function driveSections(ctx: NativeContext, finance = false): DriveSectionInfo[] {
   return DRIVE_SECTIONS.map((section) => ({
     ...section,
-    available: section.key === 'finance' ? finance : ctx.employee.isAdmin || SECTION_SCOPES[section.key].some((scope) => can(ctx.employee, scope)),
+    available: section.key === 'finance' ? finance : section.key === 'programs'
+      || ctx.employee.isAdmin || SECTION_SCOPES[section.key].some((scope) => can(ctx.employee, scope)),
     canUpload: section.key === 'warehouse' ? warehouseWriter(ctx) : section.key === 'employees' ? documentsManager(ctx) : false,
   }));
 }
@@ -133,7 +140,7 @@ function requireSection(ctx: NativeContext, key: DriveSection) {
 export async function driveRoot(ctx: NativeContext): Promise<DriveRoot> {
   // Błąd odczytu dostępu do finansów nie zamyka Dysku — dział Finanse jest wtedy chwilowo niewidoczny.
   const finance = await financeCompanies(ctx).then((companies) => companies.length > 0, () => false);
-  return { title: DRIVE_TITLE, sections: driveSections(ctx, finance) };
+  return { title: DRIVE_TITLE, sections: driveSections(ctx, finance), storage: ctx.employee.isAdmin };
 }
 
 const sectionFolder = (key: DriveSection): DriveFolder => ({
@@ -1737,6 +1744,20 @@ async function financeDownload(ctx: NativeContext, ref: { type: DriveFileType; i
   return { url: await signed('finance-declarations', text((file as Row).storage_path), doc.file.name), name: doc.file.name, mime: doc.file.mime, size: doc.file.size };
 }
 
+// MARK: Programy — instalatory aplikacji Mavinci (`yarn dmg`, `src/lib/native/desktopRelease.ts`)
+
+/** Najnowszy instalator aplikacji na Maca (brak opublikowanej wersji — pusty folder). */
+async function programFiles(): Promise<DriveFile[]> {
+  const release = await latestDesktopRelease('mac');
+  if (!release) return [];
+  return [{
+    id: 'program:mac', parentId: 'programs', name: driveName(`Mavinci ${release.version} — macOS.dmg`, 'Mavinci — macOS.dmg'), type: 'program',
+    mime: 'application/x-apple-diskimage', kind: 'archive', size: release.dmg.size, updatedAt: release.publishedAt,
+    version: `${release.build}|${release.dmg.sha256}`, thumbnailUrl: null, record: null,
+    detail: `Instalator aplikacji na Maca · wersja ${release.version} (${release.build}) · macOS ${release.minimumSystem} lub nowszy`,
+  }];
+}
+
 // MARK: Odczyt
 
 const EMPTY: Pick<DriveListing, 'canUpload' | 'colors'> = { canUpload: false, colors: [] };
@@ -1750,6 +1771,10 @@ export async function driveList(ctx: NativeContext, nodeValue: string): Promise<
   }
   if (node.section === 'employees') return employeesListing(ctx, node);
   if (node.section === 'finance') return financeListing(ctx, node);
+  if (node.section === 'programs') {
+    const root = sectionFolder('programs');
+    return { node: root, path: [root], folders: [], files: await programFiles(), ...EMPTY };
+  }
   if (node.section === 'warehouse') {
     const info = requireSection(ctx, 'warehouse');
     const catalog = await warehouseCatalog(ctx);
@@ -1875,6 +1900,8 @@ export async function driveSync(ctx: NativeContext): Promise<DriveSync> {
   }
   const brand = available.has('materials') ? await brandSync(ctx) : { brands: [], files: [] };
   files.push(...brand.files);
+  folders.push(sectionFolder('programs'));
+  files.push(...await programFiles());
   return { cursor, sections, folders, files, brands: brand.brands };
 }
 
@@ -1921,6 +1948,12 @@ export async function driveDownload(ctx: NativeContext, idValue: string, mode: '
   const ref = parseDriveFileId(idValue);
   if (!ref) fail('Nieprawidłowy plik Dysku.', 400);
   if (FINANCE_FILE_TYPES.has(ref.type)) return financeDownload(ctx, ref, mode);
+  if (ref.type === 'program') {
+    const release = await latestDesktopRelease('mac');
+    if (!release) fail('Nie ma jeszcze opublikowanego instalatora aplikacji na Maca.', 404);
+    // Ścieżka względna — trasa dopisuje adres serwera dla aplikacji na Macu i Findera (przeglądarka otwiera ją sama).
+    return { url: signedDesktopLink(release, 'dmg'), name: `Mavinci-${release.version}.dmg`, mime: 'application/x-apple-diskimage', size: release.dmg.size };
+  }
   const s = ctx.supabase;
   const signed = async (bucket: string, path: string, name: string) => {
     if (!path) fail('Ten dokument nie ma jeszcze PDF-u.', 404);
@@ -2641,4 +2674,40 @@ export async function driveDeleteFile(ctx: NativeContext, body: Row) {
   const { error: storageError } = await ctx.supabase.storage.from(DOCUMENTS_BUCKET).remove([text((data as Row).storage_path)]);
   if (storageError) console.error('[native drive] document object', storageError.message);
   return { ok: true };
+}
+
+// MARK: Miejsce na Dysku — tylko administrator (migracja 20261126120000_drive_storage_usage.sql)
+
+const STORAGE_PENDING = 'Zestawienie miejsca wymaga migracji 20261126120000_drive_storage_usage.sql — uruchom ją w Supabase.';
+
+function storageFail(error: any, fallback: string): never {
+  const code = String(error?.code || '');
+  if (code === 'PGRST202' || code === '42883' || code === '42P01') fail(STORAGE_PENDING, 503, { code: 'pending' });
+  if (code === '42501') fail('Miejsce na Dysku widzi i zmienia tylko administrator.', 403, { code: 'forbidden' });
+  if (code === '22023') fail(String(error?.message || fallback), 400);
+  console.error('[native drive] storage', code, error?.message);
+  fail(fallback, 500);
+}
+
+/** Pakiet i zajętość: pliki (magazyn, z podziałem na rodzaje) i baza danych. */
+export async function driveStorage(ctx: NativeContext): Promise<DriveStorageUsage> {
+  if (!ctx.employee.isAdmin) fail('Miejsce na Dysku widzi tylko administrator.', 403, { code: 'forbidden' });
+  const { data, error } = await ctx.supabase.rpc('crm_storage_usage');
+  if (error) storageFail(error, 'Nie udało się odczytać zajętości miejsca.');
+  return driveStorageUsage(data);
+}
+
+/** Zmiana pakietu (nazwa, limit plików i bazy w GB) — zwraca nowe zestawienie. */
+export async function driveSetStoragePlan(ctx: NativeContext, body: Row): Promise<DriveStorageUsage> {
+  if (!ctx.employee.isAdmin) fail('Pakiet miejsca na Dysku zmienia tylko administrator.', 403, { code: 'forbidden' });
+  const name = text(body.name).replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 80);
+  const filesGb = Number(body.filesGb);
+  const databaseGb = Number(body.databaseGb);
+  const valid = (value: number) => Number.isFinite(value) && value >= 1 && value <= 100_000;
+  if (!valid(filesGb) || !valid(databaseGb)) fail('Podaj limity od 1 do 100 000 GB.');
+  const { data, error } = await ctx.supabase.rpc('crm_set_storage_plan', {
+    p_name: name || 'Pakiet', p_files_gb: Math.round(filesGb * 100) / 100, p_database_gb: Math.round(databaseGb * 100) / 100,
+  });
+  if (error) storageFail(error, 'Nie udało się zapisać pakietu.');
+  return driveStorageUsage(data);
 }

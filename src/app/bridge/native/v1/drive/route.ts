@@ -1,7 +1,8 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
+import { requestOrigin } from '@/lib/native/desktopRelease';
 import {
   DriveError, driveCancelScan, driveCancelUpload, driveCompleteScan, driveCompleteUpload, driveDeleteFile, driveDownload, driveList, drivePrepareScan,
-  drivePrepareUpload, driveRoot, driveSync,
+  drivePrepareUpload, driveRoot, driveSetStoragePlan, driveStorage, driveSync,
 } from '@/lib/drive/drive.server';
 
 export const runtime = 'nodejs';
@@ -19,14 +20,15 @@ export const maxDuration = 120;
  * GET op=root | list&node=<finance|finance:<firma>[:books[:2026[-11[:sales|costs|bank|taxes|ksef]]]|:corporate[:<kategoria>]|
  *   :contracts[:<umowa>]]|offers|offers:2026|
  *   offers:2026-11|warehouse|warehouse:cat:<id>|warehouse:item:<id>|employees|employees:<id>|employees:<id>:photos|documents|contracts|
- *   brand:<firma>> | download&id=<typ:uuid>&mode=preview|download |
- *   sync (całe drzewo dla Findera).
+ *   brand:<firma>|programs> | download&id=<typ:uuid>|program:mac&mode=preview|download (adres względny — instalator z Programów — z pełnym
+ *   adresem serwera dla aplikacji na Macu, Findera i telefonu) |
+ *   sync (całe drzewo dla Findera) | storage (tylko administrator: pakiet i zajętość plików oraz bazy).
  * POST JSON op=prepareUpload {parentId: warehouse:item:<id> | employees:<id>:documents | finance:<firma>:books:RRRR-MM:costs |
  *   finance:<firma>:corporate:<kategoria> | finance:<firma>:contracts:<umowa>, name, size, mime} → podpisany adres wysyłki |
  *   completeUpload {parentId, bucket, path, name, size, mime, title?, documentType?, description?, expiryDate?, documentDate?} → {file, notice?} |
  *   cancelUpload {parentId, bucket, path} | deleteFile {id: employee-document:<id> | company-document:<id> | agreement-file:<id>} |
  *   prepareScan {parentId (folder Finansów), pages} → adresy stron | completeScan {parentId, scanId, pages, title?} → {file, notice?} |
- *   cancelScan {parentId, scanId, pages}.
+ *   cancelScan {parentId, scanId, pages} | storagePlan {name, filesGb, databaseGb} (tylko administrator — pakiet miejsca).
  */
 
 function failure(error: unknown, fallback: string) {
@@ -48,10 +50,14 @@ export async function GET(request: Request) {
         return nativeJson(await driveRoot(ctx));
       case 'list':
         return nativeJson(await driveList(ctx, params.get('node') || ''));
-      case 'download':
-        return nativeJson(await driveDownload(ctx, params.get('id') || '', params.get('mode') === 'preview' ? 'preview' : 'download'));
+      case 'download': {
+        const download = await driveDownload(ctx, params.get('id') || '', params.get('mode') === 'preview' ? 'preview' : 'download');
+        return nativeJson(download.url.startsWith('/') && ctx.client !== 'web' ? { ...download, url: requestOrigin(request) + download.url } : download);
+      }
       case 'sync':
         return nativeJson(await driveSync(ctx));
+      case 'storage':
+        return nativeJson(await driveStorage(ctx));
       default:
         return nativeJson({ error: 'Nieznana operacja.' }, 400);
     }
@@ -85,6 +91,8 @@ export async function POST(request: Request) {
         return nativeJson(await driveCompleteScan(ctx, body));
       case 'cancelScan':
         return nativeJson(await driveCancelScan(ctx, body));
+      case 'storagePlan':
+        return nativeJson(await driveSetStoragePlan(ctx, body));
       default:
         return nativeJson({ error: 'Nieznana operacja.' }, 400);
     }

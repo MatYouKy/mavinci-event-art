@@ -5,8 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import {
-  CalendarDays, ChevronDown, ChevronRight, Download, Eye, FolderInput, FolderOpen, FolderPlus, Home, LayoutGrid, Library, List, Loader2,
-  Pencil, Plus, RefreshCw, Search, Trash2, Upload, UploadCloud, X,
+  CalendarDays, ChevronDown, ChevronRight, ClipboardPaste, Copy, CopyPlus, Download, Eye, FolderInput, FolderOpen, FolderPlus, Home, LayoutGrid, Library,
+  List, Loader2, Pencil, Plus, RefreshCw, Scissors, Search, Trash2, Upload, UploadCloud, X,
 } from 'lucide-react';
 import OverlayPortal from '@/components/UI/OverlayPortal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -38,6 +38,8 @@ import DriveBrandStrip from '../drive/DriveBrandStrip';
  * PDF-ów i wideo, przeciąganie plików i całych folderów z dysku, przenoszenie przeciąganiem, panel pliku (opis, tagi, wersje),
  * kosz na 30 dni i wyszukiwanie w Materiałach albo w plikach wydarzeń (z zapisem pliku wydarzenia w Materiałach).
  * Albumy (główna baza zdjęć): pliki przeciągnięte na album w pasku bocznym albo „Dodaj do albumu” — odnośniki, bez kopii.
+ * Schowek jak w Finderze (i na Macu): ⌘C / Ctrl+C kopiuj, ⌘X wytnij, ⌘V wklej (kopia albo przeniesienie), menu pod prawym
+ * przyciskiem (elementy i puste miejsce), „Duplikuj”, „Kopiuj do…”, przeciąganie z ⌥ / Alt — kopia. Kopie robi serwer (`op=copy`).
  * Dane przez `/bridge/native/v1/materials` (to samo API dla Findera, Maca i telefonu w kolejnych etapach). Modal ładowania
  * przy akcjach, okno postępu przy wysyłce, snackbar po sukcesie lub błędzie.
  */
@@ -46,6 +48,11 @@ type View = 'grid' | 'list';
 type Sort = 'name' | 'date' | 'size' | 'type';
 type Scope = 'materials' | 'events';
 type Notify = (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
+type CopyResult = { copied: number; failed: Array<{ id: string; name: string; error: string }>; items: MaterialItemRef[] };
+/** Schowek: elementy, marka i czy wklejenie przenosi (wytnij). */
+type Clipboard = { companyId: string; refs: MaterialItemRef[]; cut: boolean };
+/** Menu pod prawym przyciskiem: na elemencie (`key`) albo na pustym miejscu (`key: null`). */
+type ContextMenu = { x: number; y: number; key: string | null };
 
 type UploadTask = {
   key: string;
@@ -156,6 +163,8 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
   const [albums, setAlbums] = useState<MaterialAlbum[]>([]);
   const [albumId, setAlbumId] = useState<string | null>(null);
   const [albumMenu, setAlbumMenu] = useState(false);
+  const [clipboard, setClipboard] = useState<Clipboard | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const uploadAbort = useRef<AbortController | null>(null);
   const reloadTimer = useRef<number | null>(null);
   const listRequest = useRef(0);
@@ -348,6 +357,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
 
   const openFolder = useCallback((id: string | null) => {
     setMode('browse');
+    setContextMenu(null);
     setAlbumId(null);
     setQuery('');
     if (id !== folderId) setListing(null);
@@ -463,16 +473,16 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
     });
   };
 
-  const moveTo = async (refs: MaterialItemRef[], target: string | null) => {
-    if (!home || !refs.length) return;
+  const moveTo = async (refs: MaterialItemRef[], target: string | null): Promise<boolean> => {
+    if (!home || !refs.length) return false;
     const blocked = new Set<string>();
     for (const ref of refs) if (ref.kind === 'folder') for (const id of Array.from(descendantIds(folders, ref.id))) blocked.add(id);
     if (target && blocked.has(target)) {
       showSnackbar('Nie można przenieść folderu do niego samego ani do jego podfolderu.', 'warning');
-      return;
+      return false;
     }
     const result = await run('Przenoszę', () => materialsPost<MaterialBatchResult>('move', { companyId: home.company.id, items: refs, targetFolderId: target }));
-    if (!result) return;
+    if (!result) return false;
     if (result.failed.length) {
       showSnackbar(`${result.moved ? `Przeniesiono: ${result.moved}. ` : ''}Nie przeniesiono: ${result.failed.map((f) => `${f.name} — ${f.error}`).join('; ')}`, 'warning');
     } else {
@@ -481,6 +491,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
     setSelection(new Set());
     setDetailsId(null);
     refresh();
+    return (result.moved || 0) > 0;
   };
 
   const removeItems = async (refs: MaterialItemRef[]) => {
@@ -504,6 +515,90 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
     setSelection(new Set());
     setDetailsId(null);
     refresh();
+  };
+
+  // MARK: Schowek i kopie
+
+  /** Do schowka: kopia (wszystko) albo wycięcie (bez folderów domyślnych marki). */
+  const toClipboard = (refs: MaterialItemRef[], cut: boolean) => {
+    if (!home) return;
+    const list = cut ? refs.filter((ref) => ref.kind === 'file' || !folders.find((folder) => folder.id === ref.id)?.systemKey) : refs;
+    if (list.length) setClipboard({ companyId: home.company.id, refs: list, cut });
+  };
+
+  const selectCreated = (refs: MaterialItemRef[]) => {
+    if (!refs.length) return;
+    setSelection(new Set(refs.map((ref) => (ref.kind === 'folder' ? folderKey(ref.id) : fileKey(ref.id)))));
+    setAnchor(null);
+    setDetailsId(null);
+  };
+
+  /** Kopie plików i folderów (z zawartością) w folderze marki; kopie w bieżącym folderze zostają zaznaczone. */
+  const copyTo = async (refs: MaterialItemRef[], target: string | null) => {
+    if (!home || !refs.length) return;
+    const result = await run(refs.length === 1 ? `Kopiuję „${refs[0].name}”` : `Kopiuję (${refs.length})`,
+      () => materialsPost<CopyResult>('copy', { companyId: home.company.id, items: refs, targetFolderId: target }));
+    if (!result) return;
+    if (result.failed.length) {
+      showSnackbar(`${result.copied ? `Skopiowano: ${result.copied}. ` : ''}Nie skopiowano: ${result.failed.map((f) => `${f.name} — ${f.error}`).join('; ')}`, 'warning');
+    } else {
+      showSnackbar(result.copied === 1 ? 'Skopiowano' : `Skopiowano: ${result.copied}`, 'success');
+    }
+    refresh();
+    if (target === folderId) selectCreated(result.items);
+  };
+
+  /** „Kopiuj do…” — wybór folderu docelowego. */
+  const copyItems = (refs: MaterialItemRef[]) => {
+    if (!home || !refs.length) return;
+    setPicker({
+      title: refs.length === 1 ? `Kopiuj „${refs[0].name}”` : `Kopiuj zaznaczone (${refs.length})`,
+      confirm: 'Kopiuj tutaj',
+      exclude: refs.filter((r) => r.kind === 'folder').map((r) => r.id),
+      initial: folderId,
+      pick: (target) => {
+        setPicker(null);
+        void copyTo(refs, target);
+      },
+    });
+  };
+
+  /** Wklejenie schowka: kopia albo — po „Wytnij” — przeniesienie (tylko w tej samej marce). */
+  const pasteInto = async (target: string | null) => {
+    if (!home || !clipboard) return;
+    if (!canManage) {
+      showSnackbar('Nie masz uprawnień do zmian w Materiałach tej marki.', 'warning');
+      return;
+    }
+    if (!clipboard.cut) {
+      await copyTo(clipboard.refs, target);
+      return;
+    }
+    if (clipboard.companyId !== home.company.id) {
+      showSnackbar('Elementów nie można przenieść do innej marki — skopiuj je (⌘C) i wklej (⌘V).', 'warning');
+      return;
+    }
+    if (await moveTo(clipboard.refs, target)) setClipboard(null);
+  };
+
+  /** „Wklej (3)”, „Wklej „logo.png””, po „Wytnij” — „Przenieś tutaj …”; do folderu — „Wklej do „Folder” …”. */
+  const pasteLabel = (into?: string) => {
+    if (!clipboard) return '';
+    const what = clipboard.refs.length === 1 ? `„${clipboard.refs[0].name}”` : `(${clipboard.refs.length})`;
+    if (into) return `${clipboard.cut ? 'Przenieś do' : 'Wklej do'} „${into}” ${what}`;
+    return `${clipboard.cut ? 'Przenieś tutaj' : 'Wklej'} ${what}`;
+  };
+
+  /** Prawy przycisk: element (zaznaczany, jeśli nie był) albo puste miejsce. */
+  const openMenu = (event: ReactMouseEvent, key: string | null) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (key && !selection.has(key)) {
+      setSelection(new Set([key]));
+      setAnchor(key);
+      setDetailsId(key.startsWith('f:') ? key.slice(2) : null);
+    }
+    setContextMenu({ x: event.clientX, y: event.clientY, key });
   };
 
   // MARK: Albumy
@@ -671,7 +766,8 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
     if (!raw || !canManage) return;
     try {
       const refs = (JSON.parse(raw) as MaterialItemRef[]).filter((ref) => ref.kind !== 'folder' || ref.id !== target);
-      if (refs.length) void moveTo(refs, target);
+      // Z ⌥ / Alt — kopia (jak w Finderze), bez — przeniesienie.
+      if (refs.length) void (event.altKey ? copyTo(refs, target) : moveTo(refs, target));
     } catch {
       // Nieznane dane przeciągania — pomijamy.
     }
@@ -688,7 +784,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
         return;
       }
       event.stopPropagation();
-      event.dataTransfer.dropEffect = files ? 'copy' : 'move';
+      event.dataTransfer.dropEffect = files || event.altKey ? 'copy' : 'move';
       if (dropTarget !== key) setDropTarget(key);
     },
     onDragLeave: (event: DragEvent) => {
@@ -701,7 +797,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
     if (!canManage) return;
     const refs = selection.has(key) ? selectedRefs() : [ref];
     event.dataTransfer.setData(ITEM_DRAG_TYPE, JSON.stringify(refs));
-    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.effectAllowed = 'copyMove';
   };
 
   // MARK: Pliki wydarzeń
@@ -734,7 +830,20 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
       if (preview || nameDialog || picker || uploads || mode !== 'browse' || searchActive || albumId) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.closest('input, textarea, select, [contenteditable="true"]'))) return;
-      if ((event.key === 'Delete' || event.key === 'Backspace') && canManage && selection.size) {
+      const mod = event.metaKey || event.ctrlKey;
+      const letter = event.key.toLowerCase();
+      if (event.key === 'Escape' && contextMenu) {
+        setContextMenu(null);
+      } else if (mod && !event.altKey && letter === 'c' && selection.size && !window.getSelection()?.toString()) {
+        event.preventDefault();
+        toClipboard(selectedRefs(), false);
+      } else if (mod && !event.altKey && letter === 'x' && canManage && selection.size) {
+        event.preventDefault();
+        toClipboard(selectedRefs(), true);
+      } else if (mod && !event.altKey && letter === 'v' && clipboard && canManage) {
+        event.preventDefault();
+        void pasteInto(folderId);
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && canManage && selection.size) {
         event.preventDefault();
         void removeItems(selectedRefs());
       } else if (event.key === 'Escape' && selection.size) {
@@ -787,6 +896,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
   const selectedFolder = selectedList.length === 1 && selectedList[0].kind === 'folder'
     ? childFolders.find((f) => f.id === selectedList[0].id) || null
     : null;
+  const hasSystemFolder = selectedList.some((ref) => ref.kind === 'folder' && !!childFolders.find((f) => f.id === ref.id)?.systemKey);
 
   const renderTree = (parentId: string | null, depth: number): ReactElement[] =>
     childrenOf(folders, parentId).flatMap((folder) => {
@@ -848,6 +958,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
         onDragStart={(event) => dragStart(event, { kind: 'folder', id: folder.id, name: folder.name }, key)}
         onClick={(event) => select(key, event)}
         onDoubleClick={() => openFolder(folder.id)}
+        onContextMenu={(event) => openMenu(event, key)}
         className={`group flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition-colors ${
           dropTarget === `tile:${folder.id}` ? 'border-[#d3bb73] bg-[#d3bb73]/20'
             : selected ? 'border-[#d3bb73]/60 bg-[#d3bb73]/10' : 'border-[#d3bb73]/10 bg-[#1c1f33] hover:border-[#d3bb73]/30'
@@ -866,6 +977,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
         onDragStart={(event) => dragStart(event, { kind: 'file', id: file.id, name: file.name }, key)}
         onClick={(event) => select(key, event)}
         onDoubleClick={() => previewFiles(file)}
+        onContextMenu={(event) => openMenu(event, key)}
         className={`group flex cursor-pointer flex-col overflow-hidden rounded-xl border transition-colors ${
           selected ? 'border-[#d3bb73]/70 ring-1 ring-[#d3bb73]/40' : 'border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
         } bg-[#1c1f33]`}>
@@ -896,7 +1008,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
             return (
               <tr key={key} draggable={canManage && !folder.systemKey} {...dropProps(folder.id, `row:${folder.id}`)}
                 onDragStart={(event) => dragStart(event, { kind: 'folder', id: folder.id, name: folder.name }, key)}
-                onClick={(event) => select(key, event)} onDoubleClick={() => openFolder(folder.id)}
+                onClick={(event) => select(key, event)} onDoubleClick={() => openFolder(folder.id)} onContextMenu={(event) => openMenu(event, key)}
                 className={`cursor-pointer border-b border-[#d3bb73]/5 ${dropTarget === `row:${folder.id}` ? 'bg-[#d3bb73]/20' : selection.has(key) ? 'bg-[#d3bb73]/10' : 'hover:bg-[#e5e4e2]/[0.03]'}`}>
                 <td className="px-3 py-2"><span className="flex items-center gap-3"><Icon className="h-5 w-5 shrink-0 text-[#d3bb73]/80" /><span className="truncate">{folder.name}</span></span></td>
                 <td className="hidden px-3 py-2 text-[#e5e4e2]/50 md:table-cell">Folder</td>
@@ -910,7 +1022,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
             return (
               <tr key={key} draggable={canManage}
                 onDragStart={(event) => dragStart(event, { kind: 'file', id: file.id, name: file.name }, key)}
-                onClick={(event) => select(key, event)} onDoubleClick={() => previewFiles(file)}
+                onClick={(event) => select(key, event)} onDoubleClick={() => previewFiles(file)} onContextMenu={(event) => openMenu(event, key)}
                 className={`cursor-pointer border-b border-[#d3bb73]/5 last:border-0 ${selection.has(key) ? 'bg-[#d3bb73]/10' : 'hover:bg-[#e5e4e2]/[0.03]'}`}>
                 <td className="px-3 py-1.5">
                   <span className="flex min-w-0 items-center gap-3">
@@ -933,7 +1045,13 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
 
   const browseContent = (
     <div {...dropProps(folderId, 'main')} className={`relative min-h-[60vh] rounded-xl ${dropTarget === 'main' ? 'ring-2 ring-[#d3bb73]/60' : ''}`}
-      onClick={(event) => { if (event.target === event.currentTarget) { setSelection(new Set()); setDetailsId(null); } }}>
+      onClick={(event) => { if (event.target === event.currentTarget) { setSelection(new Set()); setDetailsId(null); } }}
+      onContextMenu={(event) => {
+        // Elementy otwierają własne menu (bez przekazania wyżej) — tu tylko puste miejsce.
+        setSelection(new Set());
+        setDetailsId(null);
+        openMenu(event, null);
+      }}>
       {brandFolder && (
         <div className="mb-4">
           <DriveBrandStrip companyId={home.company.id} notify={notify} onPreview={(items, index) => setPreview({ items, index })} />
@@ -1169,6 +1287,16 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="min-w-0 flex-1">{breadcrumb}</div>
+                {clipboard && canManage && (
+                  <span className="inline-flex items-center gap-0.5">
+                    <button type="button" className={secondaryButton} onClick={() => void pasteInto(folderId)} title={`${pasteLabel()} (⌘V)`}>
+                      <ClipboardPaste className="h-4 w-4" /><span className="max-w-[16rem] truncate">{pasteLabel()}</span>
+                    </button>
+                    <button type="button" className={ghostButton} onClick={() => setClipboard(null)} title="Wyczyść schowek" aria-label="Wyczyść schowek">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </span>
+                )}
                 <select value={sort} onChange={(event) => setSort(event.target.value as Sort)} aria-label="Sortowanie"
                   className="rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] px-2 py-1.5 text-sm">
                   {(Object.keys(SORT_LABELS) as Sort[]).map((value) => <option key={value} value={value}>{SORT_LABELS[value]}</option>)}
@@ -1225,7 +1353,23 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
                       )}
                     </span>
                   )}
-                  {canManage && !selectedList.some((ref) => ref.kind === 'folder' && childFolders.find((f) => f.id === ref.id)?.systemKey) && (
+                  <button type="button" className={ghostButton} onClick={() => toClipboard(selectedList, false)} title="Kopiuj do schowka (⌘C)">
+                    <Copy className="h-4 w-4" />Kopiuj
+                  </button>
+                  {canManage && (
+                    <>
+                      {!hasSystemFolder && (
+                        <button type="button" className={ghostButton} onClick={() => toClipboard(selectedList, true)} title="Wytnij — wklejenie przeniesie (⌘X)">
+                          <Scissors className="h-4 w-4" />Wytnij
+                        </button>
+                      )}
+                      <button type="button" className={ghostButton} onClick={() => void copyTo(selectedList, folderId)} title="Kopia obok oryginału („… kopia”)">
+                        <CopyPlus className="h-4 w-4" />Duplikuj
+                      </button>
+                      <button type="button" className={ghostButton} onClick={() => copyItems(selectedList)}><Copy className="h-4 w-4" />Kopiuj do…</button>
+                    </>
+                  )}
+                  {canManage && !hasSystemFolder && (
                     <>
                       <button type="button" className={ghostButton} onClick={() => moveItems(selectedList)}><FolderInput className="h-4 w-4" />Przenieś</button>
                       <button type="button" className={ghostButton} onClick={() => void removeItems(selectedList)}><Trash2 className="h-4 w-4 text-red-300" />Usuń</button>
@@ -1258,6 +1402,38 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
           onIndex={(index) => setPreview((current) => current && { ...current, index })}
           onClose={() => setPreview(null)}
           onError={(message) => showSnackbar(message, 'error')} />
+      )}
+      {contextMenu && (
+        <ContextMenuPopup x={contextMenu.x} y={contextMenu.y} onClose={() => setContextMenu(null)}
+          items={contextMenu.key ? [
+            ...(selectedFolder ? [{ label: 'Otwórz', icon: FolderOpen, action: () => openFolder(selectedFolder.id) }] : []),
+            ...(selectedFile ? [
+              { label: 'Podgląd', icon: Eye, action: () => previewFiles(selectedFile) },
+              { label: 'Pobierz', icon: Download, action: () => void downloadMaterial('material', selectedFile.id).catch((error) => showSnackbar(errorMessage(error, 'Nie udało się pobrać pliku.'), 'error')) },
+            ] : []),
+            'divider' as const,
+            { label: selectedList.length > 1 ? `Kopiuj zaznaczone (${selectedList.length})` : 'Kopiuj', icon: Copy, hint: '⌘C', action: () => toClipboard(selectedList, false) },
+            ...(canManage ? [
+              ...(!hasSystemFolder ? [{ label: selectedList.length > 1 ? `Wytnij zaznaczone (${selectedList.length})` : 'Wytnij', icon: Scissors, hint: '⌘X', action: () => toClipboard(selectedList, true) }] : []),
+              { label: 'Duplikuj', icon: CopyPlus, action: () => void copyTo(selectedList, folderId) },
+              { label: 'Kopiuj do…', icon: Copy, action: () => copyItems(selectedList) },
+              ...(selectedFolder && clipboard ? [{ label: pasteLabel(selectedFolder.name), icon: ClipboardPaste, action: () => void pasteInto(selectedFolder.id) }] : []),
+              'divider' as const,
+              ...(selectedList.length === 1 && (selectedFolder || selectedFile) ? [{ label: 'Zmień nazwę…', icon: Pencil, action: () => renameItem(selectedList[0]) }] : []),
+              ...(!hasSystemFolder ? [
+                { label: 'Przenieś…', icon: FolderInput, action: () => moveItems(selectedList) },
+                'divider' as const,
+                { label: selectedList.length > 1 ? `Usuń zaznaczone (${selectedList.length})` : 'Usuń', icon: Trash2, danger: true, action: () => void removeItems(selectedList) },
+              ] : []),
+            ] : []),
+          ] : [
+            ...(canManage ? [
+              { label: 'Nowy folder…', icon: FolderPlus, action: createFolder },
+              ...(clipboard ? [{ label: pasteLabel(), icon: ClipboardPaste, hint: '⌘V', action: () => void pasteInto(folderId) }] : []),
+              'divider' as const,
+            ] : []),
+            { label: 'Zaznacz wszystko', icon: List, hint: '⌘A', action: () => setSelection(new Set(orderedKeys)), disabled: !orderedKeys.length },
+          ]} />
       )}
       {nameDialog && <NameDialog {...nameDialog} onClose={() => setNameDialog(null)} />}
       {picker && (
@@ -1365,6 +1541,54 @@ function UploadDialog({ rows, running, onCancel, onClose }: {
               : <button type="button" className={primaryButton} onClick={onClose}>Zamknij</button>}
           </div>
         </div>
+      </div>
+    </OverlayPortal>
+  );
+}
+
+type MenuEntry = { label: string; icon: typeof Copy; action: () => void; hint?: string; danger?: boolean; disabled?: boolean } | 'divider';
+
+/** Menu pod prawym przyciskiem (jak w Finderze): w miejscu kliknięcia, w granicach okna; klik obok, Escape albo wybór — zamyka. */
+function ContextMenuPopup({ x, y, items, onClose }: { x: number; y: number; items: MenuEntry[]; onClose: () => void }) {
+  const menu = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: x, top: y });
+  // Bez separatorów na początku, na końcu i podwójnych.
+  const entries = items.filter((item, index, all) => item !== 'divider' || (index > 0 && index < all.length - 1 && all[index - 1] !== 'divider'));
+
+  useEffect(() => {
+    const element = menu.current;
+    if (!element) return;
+    const { width, height } = element.getBoundingClientRect();
+    setPosition({ left: Math.max(8, Math.min(x, window.innerWidth - width - 8)), top: Math.max(8, Math.min(y, window.innerHeight - height - 8)) });
+  }, [x, y]);
+
+  useEffect(() => {
+    const close = () => onClose();
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [onClose]);
+
+  return (
+    <OverlayPortal>
+      <div className="fixed inset-0 z-[90]" onMouseDown={onClose} onContextMenu={(event) => { event.preventDefault(); onClose(); }} />
+      <div ref={menu} role="menu" style={{ left: position.left, top: position.top }}
+        className="fixed z-[91] min-w-[220px] max-w-[320px] rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] p-1 text-sm text-[#e5e4e2] shadow-2xl">
+        {entries.map((item, index) => item === 'divider' ? (
+          <div key={`divider-${index}`} className="my-1 border-t border-[#d3bb73]/10" role="separator" />
+        ) : (
+          <button key={`${item.label}-${index}`} type="button" role="menuitem" disabled={item.disabled}
+            onClick={() => { onClose(); item.action(); }}
+            className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left disabled:opacity-40 ${
+              item.danger ? 'text-red-300 hover:bg-red-500/10' : 'hover:bg-[#d3bb73]/10'}`}>
+            <item.icon className="h-4 w-4 shrink-0 opacity-70" />
+            <span className="min-w-0 flex-1 truncate">{item.label}</span>
+            {item.hint && <span className="text-xs text-[#e5e4e2]/40">{item.hint}</span>}
+          </button>
+        ))}
       </div>
     </OverlayPortal>
   );

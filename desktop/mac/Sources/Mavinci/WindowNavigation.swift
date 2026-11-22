@@ -36,6 +36,8 @@ import Combine
     @Published var sellerAppointment: NewSellerPreset?
     /// „Stan systemu i jakość danych” (administrator) — arkusz tego okna (`SystemHealthView.swift`).
     @Published var systemHealthShown = false
+    /// „Aktualizacja Mavinci” — arkusz tego okna (`Updates/AppUpdateViews.swift`).
+    @Published var updateShown = false
     /// Komunikator w tym oknie (`Chat/ChatViews.swift`): panel otwarty, zwinięty i widok (lista, rozmowa, nowa rozmowa).
     @Published var chatOpen = false
     @Published var chatMinimized = false
@@ -50,7 +52,7 @@ import Combine
     func reset() {
         selection = .day; eventRoute = nil; sellerFocus = nil; focusedID = nil; notificationsVisible = false
         nativeSet = nil; nativeFocus = nil; screen = nil; sidebarHref = "/crm"; sidebarVisibility = .all; webItem = nil
-        sellerAppointment = nil; systemHealthShown = false
+        sellerAppointment = nil; systemHealthShown = false; updateShown = false
         chatOpen = false; chatMinimized = false; chatRoute = .list
     }
 }

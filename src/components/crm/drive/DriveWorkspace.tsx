@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactElement } from 're
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle, BookOpen, Boxes, Briefcase, Building2, Calculator, CalendarDays, ChevronDown, ChevronRight, FileSignature, FileText, Folder, FolderOpen, FolderTree, HardDrive, Landmark,
-  Loader2, Package, RefreshCw, UserRound, Users,
+  Loader2, MonitorDown, Package, RefreshCw, UserRound, Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -14,6 +14,7 @@ import MaterialsPreview, { type PreviewItem } from '../materials/MaterialsPrevie
 import { cardClass, errorMessage, secondaryButton } from '../materials/materialsUi';
 import DriveBrowser from './DriveBrowser';
 import DriveEvents, { NO_DATE, eventFolderName, eventYear, type DriveEvent } from './DriveEvents';
+import DriveStorageMeter from './DriveStorageMeter';
 import { driveGet, eventFilesGet } from './driveApi';
 
 /*
@@ -21,7 +22,8 @@ import { driveGet, eventFilesGet } from './driveApi';
  * Materiały, Oferty, Kalkulacje, Umowy, Magazyn i Pracownicy (tylko działy, do których pracownik ma dostęp; Finanse — osoby
  * z dostępem do faktur firmy, bank i podatki od „Finanse — podgląd”; telefon nie pokazuje Finansów). Materiały mają pełne
  * zarządzanie (`MaterialsWorkspace`, jego drzewo folderów i albumów trafia pod pozycję „Materiały”), Eventy — przeglądanie plików
- * eventów, pozostałe działy — `DriveBrowser`. Adres strony pamięta dział i folder (odnośniki do miejsca w Dysku).
+ * eventów, pozostałe działy — `DriveBrowser`. Adres strony pamięta dział i folder (odnośniki do miejsca w Dysku). Administrator
+ * widzi na dole paska „Miejsce na Dysku” (`DriveStorageMeter`: zajętość względem pakietu).
  */
 
 type Notify = (message: string, type: 'success' | 'error' | 'info' | 'warning') => void;
@@ -30,8 +32,9 @@ type EventsNav = { year: string | null; eventId: string | null; folderId: string
 const SECTION_KEY = 'mavinci.drive.section';
 const SECTION_ICONS: Record<DriveSection, LucideIcon> = {
   finance: Landmark, events: CalendarDays, materials: FolderOpen, offers: FileText, calculations: Calculator, contracts: FileSignature, warehouse: Package, employees: Users,
+  programs: MonitorDown,
 };
-const SECTIONS: DriveSection[] = ['finance', 'events', 'materials', 'offers', 'calculations', 'contracts', 'warehouse', 'employees'];
+const SECTIONS: DriveSection[] = ['finance', 'events', 'materials', 'offers', 'calculations', 'contracts', 'warehouse', 'employees', 'programs'];
 const isSection = (value: unknown): value is DriveSection => SECTIONS.includes(value as DriveSection);
 /**
  * Folder bez podfolderów w drzewie: miesiąc (poza Finansami, gdzie miesiąc ma Sprzedaż, Koszty…), grupa pracownika, teczka
@@ -305,6 +308,7 @@ export default function DriveWorkspace() {
                   </div>
                 );
               })}
+              {root.storage && <DriveStorageMeter notify={notify} />}
             </nav>
           </aside>
 
@@ -321,6 +325,7 @@ export default function DriveWorkspace() {
                   </button>
                 );
               })}
+              {root.storage && <DriveStorageMeter notify={notify} compact />}
             </div>
             {section === 'materials' ? (
               <MaterialsWorkspace embedded sidebarPortal={portal} />

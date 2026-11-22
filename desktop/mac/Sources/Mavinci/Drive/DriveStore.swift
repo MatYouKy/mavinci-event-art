@@ -34,6 +34,10 @@ import UniformTypeIdentifiers
     @Published var eventYear: String?
     @Published var eventID: String?
     @Published private(set) var uploading = false
+    /// Miejsce na Dysku (tylko administrator): pakiet i zajętość plików oraz bazy (`op=storage`).
+    @Published private(set) var storage: DriveStorageUsage?
+    @Published private(set) var storageError: String?
+    @Published private(set) var storageLoading = false
 
     private struct Cache: Codable {
         var root: DriveRoot?
@@ -81,6 +85,7 @@ import UniformTypeIdentifiers
         root = nil; rootError = nil; loading = false; section = nil; nodes = [:]
         listings = [:]; listLoading = []; listErrors = [:]; expanded = []
         events = nil; eventsError = nil; eventYear = nil; eventID = nil; uploading = false
+        storage = nil; storageError = nil; storageLoading = false
     }
 
     private func saveCache() {
@@ -127,6 +132,44 @@ import UniformTypeIdentifiers
             } else if !quiet {
                 workspace?.error = failureText(error, "Nie udało się odświeżyć Dysku.")
             }
+        }
+    }
+
+    // MARK: Miejsce na Dysku (administrator)
+
+    /// Zajętość plików (z podziałem na rodzaje) i bazy względem pakietu; nie-administrator — nic.
+    func loadStorage() async {
+        guard let api, workspace?.employee?.isAdmin == true else { storage = nil; return }
+        let owner = workspace?.employee?.id
+        storageLoading = true
+        defer { storageLoading = false }
+        do {
+            let data = try JSONDecoder().decode(DriveStorageUsage.self, from: try await api.get("/drive", query: ["op": "storage"]))
+            guard owner == workspace?.employee?.id else { return }
+            storage = data
+            storageError = nil
+        } catch {
+            guard owner == workspace?.employee?.id else { return }
+            storageError = failureText(error, "Nie udało się odczytać zajętości miejsca.")
+        }
+    }
+
+    /// Zmiana pakietu (nazwa, limit plików i bazy w GB). `true` — zapisano.
+    func saveStoragePlan(name: String, filesGb: Double, databaseGb: Double) async -> Bool {
+        guard let workspace, let api else { return false }
+        guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return false }
+        let body: [String: JSONValue] = [
+            "op": .string("storagePlan"), "name": .string(name), "filesGb": .number(filesGb), "databaseGb": .number(databaseGb),
+        ]
+        do {
+            let data = try await workspace.withPending("Zapisuję pakiet") { try await api.post("/drive", body) }
+            storage = try JSONDecoder().decode(DriveStorageUsage.self, from: data)
+            storageError = nil
+            workspace.succeed("Zapisano pakiet miejsca na Dysku")
+            return true
+        } catch {
+            workspace.error = failureText(error, "Nie udało się zapisać pakietu.")
+            return false
         }
     }
 

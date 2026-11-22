@@ -2,6 +2,7 @@
 'use client';
 
 import CrmThemePicker from '@/components/crm/settings/CrmThemePicker';
+import DesktopAppDownload from '@/components/crm/settings/DesktopAppDownload';
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -645,6 +646,8 @@ export default function SettingsPage() {
       {activeTab === 'general' && (
         <div className="space-y-6">
           <CrmThemePicker employeeId={employee?.id} />
+
+          <DesktopAppDownload />
 
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
             <h3 className="mb-4 text-lg font-light text-[#e5e4e2]">Domyślny widok list</h3>

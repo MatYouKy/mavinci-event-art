@@ -76,6 +76,8 @@ import Network
     let drive = DriveStore()
     /// Finanse (`/crm/invoices`) — Centrum finansów, terminy i monity, zamknięcia miesięcy; kopia na dysku.
     let finance = FinanceStore()
+    /// Aktualizacje aplikacji (`Updates/AppUpdater.swift`) — wersje publikowane przez `yarn dmg` na serwerze CRM.
+    let updater = AppUpdater()
     /// Motyw okna (`employees.crm_theme`); do pierwszego odczytu profilu — ostatni motyw zapisany na tym Macu.
     @Published var theme = CrmTheme.saved
     /// Menu jak w CRM (z serwera; ostatnie zapisane na tym Macu do pierwszego odczytu).
@@ -161,6 +163,7 @@ import Network
         materials.workspace = self
         drive.workspace = self
         finance.workspace = self
+        updater.workspace = self
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 self?.pathAvailable = path.status == .satisfied

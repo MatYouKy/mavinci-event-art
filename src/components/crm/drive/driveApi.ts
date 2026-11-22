@@ -50,7 +50,8 @@ export async function downloadDriveFile(id: string) {
   link.href = result.url;
   link.rel = 'noopener';
   link.download = result.name;
-  if (!result.url.includes('/object/sign/')) link.target = '_blank';
+  // Podpisany adres magazynu albo instalator z Programów (ten sam serwer) — pobranie w tej karcie; inne adresy — nowa karta.
+  if (!result.url.includes('/object/sign/') && !result.url.startsWith('/bridge/native/v1/desktop')) link.target = '_blank';
   document.body.appendChild(link);
   link.click();
   link.remove();

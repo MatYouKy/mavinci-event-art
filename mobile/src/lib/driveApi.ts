@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { Linking, Platform, Share } from 'react-native';
 import { supabase } from './supabase';
-import type { DriveDownload, DriveFile, DriveListing, DriveRoot, DriveScanUpload, DriveUpload, DriveUploadResult } from './driveShared';
+import type { DriveDownload, DriveFile, DriveListing, DriveRoot, DriveScanUpload, DriveStorageUsage, DriveUpload, DriveUploadResult } from './driveShared';
 import type { PickedMaterial } from './materialsApi';
 
 /*
@@ -73,6 +73,8 @@ export const driveErrorStatus = (error: unknown) => (error as ApiError | null)?.
 
 /** Działy Dysku z dostępem i prawem dodawania plików. */
 export const fetchDriveRoot = () => get<DriveRoot>(DRIVE_ENDPOINT, 'root');
+/** Miejsce na Dysku (tylko administrator): pakiet i zajętość plików oraz bazy. */
+export const fetchDriveStorage = () => get<DriveStorageUsage>(DRIVE_ENDPOINT, 'storage');
 /** Folder: `offers`, `offers:2026`, `offers:2026-11`, `warehouse`, `warehouse:cat:<id>`, `warehouse:item:<id>`, `brand:<firma>`. */
 export const fetchDriveListing = (node: string) => get<DriveListing>(DRIVE_ENDPOINT, 'list', { node });
 /** Adres pliku Dysku (podpisany na godzinę albo publiczny). */
