@@ -74,6 +74,8 @@ struct OfferDetail: Codable {
         var taxAmount: Double
         var taxPercent: Double
         var mixedVat: Bool
+        /// Suma rabatów pozycji (rabat na ofertę — `discountAmount`); starszy serwer jej nie wysyła.
+        var lineDiscountAmount: Double?
     }
     struct Generated: Codable {
         var name: String
@@ -186,11 +188,15 @@ struct OfferDetail: Codable {
         var amount: Double
         var percent: Double
         var logisticsNet: Double
+        /// Rabaty pozycji — podstawa rabatu na ofertę (`listNet`) jest już po nich.
+        var lineDiscountNet: Double?
     }
     struct Summary: Codable {
         var rows: [SummaryRow]
         var vat: String
         var logisticsNote: String?
+        /// Rabat łączny, gdy oferta ma rabaty pozycji i rabat na ofertę.
+        var discountNote: String?
         var calculation: Bool
         var discount: Discount
     }

@@ -15,7 +15,7 @@ import ClientSelectorTabs from '@/components/crm/ClientSelectorTabs';
 import LocationSelector from '@/components/crm/LocationSelector';
 import SearchCombobox from '@/components/crm/SearchCombobox';
 import { resolveOfferSchedule } from '@/lib/CRM/Offers/offerSchedule';
-import { getOfferPricingTotals } from '@/lib/CRM/Offers/offerTotals';
+import { getOfferLineDiscounts, getOfferPricingTotals } from '@/lib/CRM/Offers/offerTotals';
 import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
 import { localDatetimeStringToUTC, utcToLocalDatetimeString } from '@/lib/utils/dateTimeUtils';
@@ -506,6 +506,7 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
       : offer.contact;
 
     const totals = getOfferPricingTotals(offer);
+    const lineDiscountTotal = totals.source === 'offer' ? getOfferLineDiscounts(offer) : 0;
     const selectedPricingCalculation = offer.calculation_snapshot || eventCalculations.find((calculation) =>
       calculation.id === offer.source_calculation_id,
     );
@@ -689,9 +690,14 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
                   <span className="ml-1 text-xs font-normal text-[#e5e4e2]/40">brutto</span>
                 </p>
                 <div className="mt-1 space-y-0.5 text-xs text-[#e5e4e2]/50">
+                  {lineDiscountTotal > 0 && (
+                    <div className="text-green-400">
+                      Rabaty pozycji: −{lineDiscountTotal.toFixed(2)} PLN netto
+                    </div>
+                  )}
                   {totals.discountAmount > 0 && (
                     <div className="text-green-400">
-                      Rabat {totals.discountPercent.toFixed(2)}%: −{totals.discountAmount.toFixed(2)} PLN netto
+                      Rabat {totals.discountPercent.toFixed(2)}%{lineDiscountTotal > 0 ? ' na ofertę' : ''}: −{totals.discountAmount.toFixed(2)} PLN netto
                     </div>
                   )}
                   <div>

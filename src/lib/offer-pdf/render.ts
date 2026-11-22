@@ -3301,7 +3301,8 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
         subtotal: logisticsPriceNet, total: logisticsPriceNet,
       }] : []),
     ];
-    // Use undiscounted component prices. All discounts are shown below the entire table.
+    // Undiscounted component prices; an item discount is shown in its own row (column "Rabat", value after it), the offer
+    // discount below the table.
     const rawPricingItems = originalPricingItems.map((item: any) => ({
       ...item,
       product: item.product ? { ...item.product, vat_rate: Number(offer.tax_percent ?? 23) } : undefined,
@@ -3315,19 +3316,38 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
         const addon = item.pricing_configuration?.addons?.find((addon: any) => row.id === `${item.id}:${addon.id}`);
         return { ...row, name: addon ? addon.name : item.name || row.name, description: '', calculation_note: '' };
       });
+      // Item discount (offer_items.discount_amount, never on transport/logistics): split over the item's rows (package base
+      // and add-ons) by their value, the remainder on the last row, so the rows add up to the recorded item total.
+      const itemDiscount = !usesAcceptedCalculation ? roundPricingMoney(Math.max(0, Number(item.discount_amount || 0))) : 0;
+      const itemList = roundPricingMoney(rows.reduce((sum: number, row: any) => sum + Number(row.subtotal || 0), 0));
+      if (itemDiscount > 0 && itemList > 0) {
+        const percent = Number(item.discount_percent || 0) > 0 ? Number(item.discount_percent) : itemDiscount / itemList * 100;
+        let left = Math.min(itemDiscount, itemList);
+        rows.forEach((row: any, index: number) => {
+          const list = roundPricingMoney(Number(row.subtotal || 0));
+          const share = index === rows.length - 1 ? left : Math.min(left, roundPricingMoney(itemDiscount * list / itemList));
+          left = roundPricingMoney(left - share);
+          rows[index] = { ...row, list_subtotal: list, subtotal: roundPricingMoney(list - share), line_discount_percent: Math.round(percent * 100) / 100 };
+        });
+      }
       // Preserve payable legacy transport/logistics beside the parent product.
       const extra = !usesAcceptedCalculation
         ? roundPricingMoney(Number(item.transport_cost || 0) + Number(item.logistics_cost || 0)) : 0;
       if (extra > 0) rows.push({ id: `${item.id}:logistics`, name: `${item.name} / transport i logistyka`, quantity: 1, unit: 'usł.', unit_price: extra, subtotal: extra, vat_rate: Number(offer.tax_percent ?? 23) });
       return rows;
     });
-    const pricingListNet = roundPricingMoney(pricingItems.reduce((sum: number, item: any) => sum + Number(item.subtotal || 0), 0));
+    const listValueOf = (item: any) => Number(item.list_subtotal ?? item.subtotal ?? 0);
+    const pricingListNet = roundPricingMoney(pricingItems.reduce((sum: number, item: any) => sum + listValueOf(item), 0));
     const lineDiscount = usesAcceptedCalculation ? 0 : roundPricingMoney(originalPricingItems.reduce((sum: number, item: any) => sum + Number(item.discount_amount || 0), 0));
     const pricingDiscountAmount = usesAcceptedCalculation ? 0 : Math.min(pricingListNet,
       Math.max(0, roundPricingMoney(Number(offerData.discount_amount || 0) + lineDiscount)));
     const pricingDiscountPercent = pricingListNet > 0 ? pricingDiscountAmount / pricingListNet * 100 : 0;
+    // Summary split: item discounts (already in the rows) and the offer discount, its percent of the value after item discounts.
+    const pricingLineDiscount = Math.min(lineDiscount, pricingDiscountAmount);
+    const pricingOfferDiscount = roundPricingMoney(pricingDiscountAmount - pricingLineDiscount);
+    const pricingOfferDiscountPercent = pricingListNet - pricingLineDiscount > 0 ? pricingOfferDiscount / (pricingListNet - pricingLineDiscount) * 100 : 0;
     const pricingTotalNet = roundPricingMoney(Math.max(0, pricingListNet - pricingDiscountAmount));
-    const pricingListGross = roundPricingMoney(pricingItems.reduce((sum: number, item: any) => sum + roundPricingMoney(Number(item.subtotal) * (1 + Number(item.vat_rate ?? 23) / 100)), 0));
+    const pricingListGross = roundPricingMoney(pricingItems.reduce((sum: number, item: any) => sum + roundPricingMoney(listValueOf(item) * (1 + Number(item.vat_rate ?? 23) / 100)), 0));
     // Offer rows share its VAT rate; accepted calculations may retain mixed VAT rates.
     const pricingTotalGross = usesAcceptedCalculation ? pricingListGross
       : roundPricingMoney(pricingTotalNet * (1 + Number(offer.tax_percent ?? 23) / 100));
@@ -3372,6 +3392,9 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
           list_net: pricingListNet,
           list_gross: pricingListGross,
           discount_percent: pricingDiscountPercent,
+          line_discount_amount: pricingLineDiscount,
+          offer_discount_amount: pricingOfferDiscount,
+          offer_discount_percent: pricingOfferDiscountPercent,
           total_gross: pricingTotalGross,
         },
       );
@@ -3447,9 +3470,12 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
             table_bottom_margin: 110,
             demo_mode: demoMode,
             discount_amount: pricingDiscountAmount,
-          list_net: pricingListNet,
-          list_gross: pricingListGross,
+            list_net: pricingListNet,
+            list_gross: pricingListGross,
             discount_percent: pricingDiscountPercent,
+            line_discount_amount: pricingLineDiscount,
+            offer_discount_amount: pricingOfferDiscount,
+            offer_discount_percent: pricingOfferDiscountPercent,
             show_borders: false,
             col_lp_width: 22,
             col_qty_width: 34,

@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
-import { showcaseOfferSetup } from './showcaseApi';
+import { showcaseOfferDiscountMode, showcaseOfferSetup } from './showcaseApi';
 import {
-  addShowcaseOfferLine, emptyShowcaseOfferDraft, normalizeShowcaseOfferDraft, showcaseOfferLineFor,
-  type ShowcaseOfferAddResult, type ShowcaseOfferDraft, type ShowcaseOfferKind, type ShowcaseOfferLine, type ShowcaseOfferSetup, type ShowcaseProductView,
+  addShowcaseOfferLine, emptyShowcaseOfferDraft, normalizeShowcaseOfferDraft, showcaseOfferLineFor, switchShowcaseOfferDiscountMode,
+  type ShowcaseOfferAddResult, type ShowcaseOfferDiscountMode, type ShowcaseOfferDraft, type ShowcaseOfferKind, type ShowcaseOfferLine,
+  type ShowcaseOfferSetup, type ShowcaseProductView,
 } from './showcaseShared';
 
 /*
  * Szkic „Oferty ze spotkania” w aplikacji (koszyk z pokazu i formularz) — wspólny dla karty prezentacji i ekranu oferty,
  * zapisany w pamięci urządzenia osobno dla każdego konta (jak w CRM i na Macu). Ceny, rabat i akceptację liczy serwer.
+ * Tryb rabatu (cała oferta / każda pozycja) — zapamiętany w ustawieniach sprzedawcy (`setup.discountMode`): obowiązuje w nowym
+ * szkicu i w szkicu bez rabatów; zmiana trybu w ofercie przelicza rabat i zapamiętuje wybór na serwerze.
  */
 
 export type ShowcaseOfferChoice = { kind: ShowcaseOfferKind; optionId?: string | null } | null;
@@ -39,6 +42,14 @@ function replace(next: ShowcaseOfferDraft, save = true) {
   current = next;
   emit();
   if (save) persist();
+}
+
+const hasDiscounts = (draft: ShowcaseOfferDraft) => draft.discountPercent > 0 || draft.lines.some((line) => line.discountPercent > 0);
+
+/** Tryb rabatu sprzedawcy w szkicu bez rabatów (zmiana trybu niczego tu nie przelicza). */
+function applyPreferredMode(value: ShowcaseOfferSetup) {
+  if (current.discountMode === value.discountMode || hasDiscounts(current)) return;
+  replace({ ...current, discountMode: value.discountMode }, Boolean(current.updatedAt));
 }
 
 /** Szkic zalogowanego pracownika (po zmianie konta — szkic tego konta, nie poprzedniego). */
@@ -72,12 +83,15 @@ export function useShowcaseOffer() {
       if (!active) return;
       setDraft(current);
       if (!user) return;
-      if (setup && setupOwner === user) { setOfferSetup(setup); return; }
+      if (setup && setupOwner === user) { applyPreferredMode(setup); setOfferSetup(setup); return; }
       try {
         const value = await showcaseOfferSetup();
-        setup = value;
+        // Serwer sprzed trybu rabatu (bez `discountMode`) — rabat na całą ofertę.
+        const normalized: ShowcaseOfferSetup = { ...value, discountMode: value.discountMode === 'lines' ? 'lines' : 'offer' };
+        setup = normalized;
         setupOwner = user;
-        if (active) setOfferSetup(value);
+        applyPreferredMode(normalized);
+        if (active) setOfferSetup(normalized);
       } catch { /* bez ofert z pokazu (brak migracji albo uprawnień) */ }
     });
     return () => { active = false; listeners.delete(listener); };
@@ -104,7 +118,7 @@ export function useShowcaseOffer() {
   }, []);
 
   /**
-   * Edycja pozycji: inny wariant, pakiet albo konfiguracja — w tym samym miejscu listy, z dotychczasową ilością i dniami.
+   * Edycja pozycji: inny wariant, pakiet albo konfiguracja — w tym samym miejscu listy, z dotychczasową ilością, dniami i rabatem.
    * `exists` — taka pozycja jest już w ofercie (np. ten sam wariant), `missing` — pozycji nie ma (usunięta w międzyczasie).
    */
   const replaceLine = useCallback((key: string, line: ShowcaseOfferLine): 'replaced' | 'exists' | 'missing' => {
@@ -113,7 +127,10 @@ export function useShowcaseOffer() {
     if (line.key !== key && current.lines.some((entry) => entry.key === line.key)) return 'exists';
     const previous = current.lines[index];
     const lines = [...current.lines];
-    lines[index] = { ...line, quantity: previous.quantity, days: previous.days, itemId: line.itemId || previous.itemId, itemTitle: line.itemTitle || previous.itemTitle };
+    lines[index] = {
+      ...line, quantity: previous.quantity, days: previous.days, discountPercent: previous.discountPercent,
+      itemId: line.itemId || previous.itemId, itemTitle: line.itemTitle || previous.itemTitle,
+    };
     replace({ ...current, lines, updatedAt: new Date().toISOString() });
     return 'replaced';
   }, []);
@@ -123,7 +140,25 @@ export function useShowcaseOffer() {
     return Boolean(line && draft.lines.some((entry) => entry.key === line.key));
   }, [draft.lines]);
 
-  const reset = useCallback(() => replace(emptyShowcaseOfferDraft()), []);
+  const reset = useCallback(() => replace(emptyShowcaseOfferDraft(setup?.discountMode)), []);
 
-  return { draft, setup: offerSetup, canOffer: Boolean(offerSetup?.canOffer), update, add, addLine, replaceLine, has, reset };
+  /**
+   * Zmiana trybu rabatu: przeliczenie szkicu (`switchShowcaseOfferDiscountMode`, `effectivePercent` — rabat łączny z podglądu
+   * cen) i zapamiętanie wyboru sprzedawcy na serwerze. Wynik: `false` — wyboru nie udało się zapamiętać (szkic jest zmieniony).
+   */
+  const setDiscountMode = useCallback(async (mode: ShowcaseOfferDiscountMode, effectivePercent: number | null): Promise<boolean> => {
+    replace({ ...switchShowcaseOfferDiscountMode(current, mode, effectivePercent), updatedAt: new Date().toISOString() });
+    if (setup) {
+      setup = { ...setup, discountMode: mode };
+      setOfferSetup(setup);
+    }
+    try {
+      await showcaseOfferDiscountMode(mode);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  return { draft, setup: offerSetup, canOffer: Boolean(offerSetup?.canOffer), update, add, addLine, replaceLine, has, reset, setDiscountMode };
 }

@@ -43,7 +43,7 @@ import {
   resolveContractOptions,
 } from '@/lib/CRM/contracts/contractConditions';
 import { getContractDocumentParts } from '@/lib/CRM/contracts/contractAudit';
-import { getOfferTotals } from '@/lib/CRM/Offers/offerTotals';
+import { getOfferLineDiscounts, getOfferTotals, roundMoney } from '@/lib/CRM/Offers/offerTotals';
 import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 import {
   buildOfferRequirements,
@@ -1012,10 +1012,14 @@ export async function fetchEventContractData(
         1,
         Number(invoiceSettings?.default_payment_days || 14),
       );
-      const discountAmount = useCalculationFinancials ? 0 : offerTotals?.discountAmount || 0;
-      const discountPercent = useCalculationFinancials ? 0 : offerTotals?.discountPercent || 0;
+      // Rabaty pozycji są już w `offers.subtotal`: wartość przed rabatem i rabat obejmują je (jak podsumowanie wyceny w PDF).
+      const lineDiscountAmount = useCalculationFinancials || !offerTotals ? 0 : getOfferLineDiscounts({ offer_items: offerItems || [] });
+      const discountAmount = useCalculationFinancials ? 0 : roundMoney((offerTotals?.discountAmount || 0) + lineDiscountAmount);
       const budgetBeforeDiscountNet =
-        useCalculationFinancials ? calculationNet : offerTotals ? offerTotals.listNet : budgetNet;
+        useCalculationFinancials ? calculationNet : offerTotals ? roundMoney(offerTotals.listNet + lineDiscountAmount) : budgetNet;
+      const discountPercent = useCalculationFinancials ? 0
+        : lineDiscountAmount > 0 ? (budgetBeforeDiscountNet > 0 ? discountAmount / budgetBeforeDiscountNet * 100 : 0)
+          : offerTotals?.discountPercent || 0;
 
       const formatMoney = (value: number) =>
         value.toLocaleString('pl-PL', {

@@ -66,7 +66,8 @@ export default function PreferencesClientProvider({
 
     startTransition(async () => {
       try {
-        await updateEmployeePreferences(employeeId, next);
+        // Tylko zmieniona sekcja — serwer scala ją z aktualnym zapisem (zmiany z Maca i tabletu zostają).
+        await updateEmployeePreferences(employeeId, { [module]: next[module] });
       } catch (e) {
         // w razie błędu możesz cofnąć albo pokazać snackbar
         // setPreferences(preferences);  // opcjonalny rollback
@@ -81,7 +82,7 @@ export default function PreferencesClientProvider({
 
     startTransition(async () => {
       try {
-        await updateEmployeePreferences(employeeId, next);
+        await updateEmployeePreferences(employeeId, { [module]: value });
       } catch (error) {
         console.error('Error updating preferences:', error);
       }

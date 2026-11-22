@@ -8,8 +8,8 @@ import {
   showcaseSaveSection, showcaseUpload,
 } from '@/lib/showcase/showcase.server';
 import {
-  showcaseOfferApproval, showcaseOfferClientContext, showcaseOfferClients, showcaseOfferConfigure, showcaseOfferCreate, showcaseOfferEmail, showcaseOfferEmailSend,
-  showcaseOfferLocations,
+  showcaseOfferApproval, showcaseOfferClientContext, showcaseOfferClients, showcaseOfferConfigure, showcaseOfferCreate, showcaseOfferDiscountMode, showcaseOfferEmail,
+  showcaseOfferEmailSend, showcaseOfferLocations,
   showcaseOfferPdf, showcaseOfferPreview, showcaseOfferSetup, showcaseOfferStatus,
 } from '@/lib/showcase/showcaseOffer.server';
 
@@ -41,7 +41,8 @@ export const maxDuration = 300;
  *   createItem {…, example: true} — karta z przykładu z instrukcji (ukryta).
  * POST JSON op=offerPreview {draft} | offerCreate {draft} (błąd po zapisaniu zapytania niesie `inquiryId`) |
  *   offerApproval {id, note?} | offerEmailSend {id, to, subject, text, accountId, recipientName} |
- *   offerConfigure {productId | snapshot, edits[], refresh?, quantity?} — konfigurator sceny i ekranu LED (bez stawek części).
+ *   offerConfigure {productId | snapshot, edits[], refresh?, quantity?} — konfigurator sceny i ekranu LED (bez stawek części) |
+ *   offerDiscountMode {discountMode: offer | lines} — zapamiętany tryb rabatu sprzedawcy (cała oferta / każda pozycja osobno).
  * PDF oferty: `/bridge/offers/generate-pdf` (ten sam token, postęp w NDJSON).
  */
 
@@ -147,6 +148,8 @@ export async function POST(request: Request) {
         return nativeJson(await showcaseOfferCreate(ctx, body));
       case 'offerApproval':
         return nativeJson(await showcaseOfferApproval(ctx, body));
+      case 'offerDiscountMode':
+        return nativeJson(await showcaseOfferDiscountMode(ctx, body));
       case 'offerEmailSend': {
         // Wysyłka idzie do funkcji poczty tokenem pracownika (jak „Wyślij ofertę” w CRM).
         const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';

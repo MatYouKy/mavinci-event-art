@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
+  ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -16,9 +16,10 @@ import type {
  * Macu (`/bridge/native/v1/showcase?op=offerConfigure` → `modularConfigurator.ts`): rozmiar i wysokość podestu z doborem
  * wariantów, sekcje ekranu LED (kafelki 0,5 × 0,5 m), warianty i dodatki z drzewa sprzętu, cena zestawu. Każda zmiana idzie na
  * serwer (po kolei), który zwraca konfigurację i widok. Klient widzi ekran razem ze sprzedawcą — bez stawek części.
- * Na szerokim ekranie (tablet w poziomie) — ustawienia po lewej, podsumowanie zestawu po prawej.
- * Rozmiar podestu i układ sekcji LED wybiera się na siatce pod dotyk (`ConfiguratorGrids.tsx` — jak siatki w CRM i na Macu):
- * dotknięcie albo przeciągnięcie palcem; liczby obok zostają do dokładnego wpisania.
+ * Jedna kolumna na całą szerokość (siatka podestu i ekranu LED wykorzystuje cały ekran tabletu), podsumowanie zestawu na
+ * dole, cena zestawu stale w stopce obok „Dodaj do oferty”. Rozmiar podestu i układ sekcji LED wybiera się na siatce pod
+ * dotyk (`ConfiguratorGrids.tsx` — jak siatki w CRM i na Macu); warianty i dodatki — lista z polami wyboru (jeden wariant
+ * z grupy albo dodatek do włączenia), zaznaczenie widać na całym wierszu.
  */
 
 export type ShowcaseConfiguratorTarget = {
@@ -52,7 +53,8 @@ export default function ShowcaseConfigurator({ target, accent, surface, onClose,
   onSave: (configuration: ShowcaseOfferConfiguration, target: ShowcaseConfiguratorTarget) => void;
 }) {
   const { width } = useWindowDimensions();
-  const wide = width >= 900;
+  /** Cena zestawu w stopce — gdy jest miejsce (tablet, telefon w poziomie); na wąskim ekranie podsumowanie na dole listy. */
+  const roomy = width >= 600;
   const [config, setConfig] = useState<ShowcaseOfferConfiguration | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
@@ -106,12 +108,24 @@ export default function ShowcaseConfigurator({ target, accent, surface, onClose,
       <Text style={[styles.chipText, active && { color: accent }]}>{label}</Text>
     </TouchableOpacity>
   );
-  const toggle = (label: string, value: boolean, onChange: (value: boolean) => void, key?: string) => (
-    <View key={key || label} style={styles.toggleRow}>
-      <Text style={[styles.text, styles.flex]}>{label}</Text>
-      <Switch value={value} onValueChange={onChange} disabled={busy} trackColor={{ true: accent, false: shade(0.4) }} />
-    </View>
-  );
+  /** Wiersz wyboru (cały wiersz dotykowy): `radio` — jeden z grupy, `check` — dodatek do włączenia. */
+  const option = (kind: 'radio' | 'check', label: string, active: boolean, onPress: () => void, key: string) => {
+    const [name, ...rest] = label.split(' · ');
+    const icon = kind === 'radio' ? (active ? 'check-circle' : 'circle') : (active ? 'check-square' : 'square');
+    return (
+      <TouchableOpacity key={key} onPress={onPress} disabled={busy} activeOpacity={0.6}
+        style={[styles.option, active && { borderColor: accent, backgroundColor: glow(0.08) }]}
+        accessibilityRole={kind === 'radio' ? 'radio' : 'checkbox'} accessibilityState={kind === 'radio' ? { selected: active } : { checked: active }}>
+        <Feather name={icon} size={20} color={active ? accent : colors.text.tertiary} />
+        <View style={styles.flex}>
+          <Text style={[styles.text, active && { color: accent }]}>{name}</Text>
+          {rest.length ? <Text style={styles.muted}>{rest.join(' · ')}</Text> : null}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+  const toggle = (label: string, value: boolean, onChange: (value: boolean) => void, key?: string) =>
+    option('check', label, value, () => onChange(!value), key || label);
   const presets = (list: ShowcaseConfigPreset[], width: number | null, depth: number | null) => (
     <View style={styles.wrap}>
       {list.map((preset) => chip(preset.label, width === preset.width && depth === preset.depth,
@@ -132,9 +146,9 @@ export default function ShowcaseConfigurator({ target, accent, surface, onClose,
           {group.kind === 'choice' ? (
             <>
               <Text style={styles.label}>{group.label}</Text>
-              <View style={styles.wrap}>
-                {group.placeholder === 'Bez dodatku' ? chip('Bez dodatku', !group.selected, () => edit('choice', { key: group.key, linkId: '' }), `${group.key}:none`) : null}
-                {group.options.map((option) => chip(option.label, group.selected === option.id, () => edit('choice', { key: group.key, linkId: option.id }), option.id))}
+              <View style={styles.options}>
+                {group.placeholder === 'Bez dodatku' ? option('radio', 'Bez dodatku', !group.selected, () => edit('choice', { key: group.key, linkId: '' }), `${group.key}:none`) : null}
+                {group.options.map((entry) => option('radio', entry.label, group.selected === entry.id, () => edit('choice', { key: group.key, linkId: entry.id }), entry.id))}
               </View>
             </>
           ) : group.kind === 'optional' ? (
@@ -347,22 +361,21 @@ export default function ShowcaseConfigurator({ target, accent, surface, onClose,
           </View>
           {problem ? <Text style={[styles.banner, styles.error]}>{problem}</Text> : null}
           {view ? (
-            wide ? (
-              <View style={[styles.flex, styles.columns]}>
-                <ScrollView style={styles.main} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">{settings(view)}</ScrollView>
-                <ScrollView style={styles.side} contentContainerStyle={styles.content}>{summary(view)}</ScrollView>
-              </View>
-            ) : (
-              <ScrollView style={styles.flex} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-                {settings(view)}
-                {summary(view)}
-              </ScrollView>
-            )
+            <ScrollView style={styles.flex} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+              {settings(view)}
+              {summary(view)}
+            </ScrollView>
           ) : (
             <View style={styles.center}>{busy ? <ActivityIndicator color={accent} size="large" /> : <Text style={styles.muted}>{problem || 'Konfigurator niedostępny.'}</Text>}</View>
           )}
           <View style={styles.footer}>
             <TouchableOpacity onPress={onClose} style={styles.secondary}><Text style={[styles.buttonText, { color: accent }]}>Anuluj</Text></TouchableOpacity>
+            {view && roomy ? (
+              <View style={styles.footerTotal}>
+                <Text style={[styles.footerPrice, { color: accent }]} numberOfLines={2}>{view.error ? 'Uzupełnij konfigurację' : view.totalText}</Text>
+                <Text style={styles.muted} numberOfLines={1}>{view.title}</Text>
+              </View>
+            ) : null}
             <TouchableOpacity onPress={() => { if (config && target && ready) onSave(config, target); }} disabled={!ready}
               style={[styles.primary, { backgroundColor: accent }, !ready && styles.disabled]} accessibilityRole="button">
               <Feather name={target?.lineKey ? 'check' : 'plus'} size={18} color={surface} />
@@ -420,9 +433,6 @@ function Stepper({ value, min, max, accent, disabled, onChange }: { value: numbe
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  columns: { flexDirection: 'row' },
-  main: { flex: 3 },
-  side: { flex: 2, borderLeftWidth: 1, borderLeftColor: glow(0.08) },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xxl },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
   head: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: glow(0.1) },
@@ -444,7 +454,11 @@ const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: borderRadius.full, borderWidth: 1, borderColor: glow(0.15), maxWidth: '100%' },
   chipText: { color: colors.text.primary, fontSize: typography.fontSizes.sm },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
+  options: { gap: spacing.xs },
+  option: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 52, paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    borderRadius: borderRadius.lg, borderWidth: 1, borderColor: glow(0.1), backgroundColor: shade(0.18),
+  },
   node: { gap: spacing.xs },
   nodeChild: { marginLeft: spacing.md, paddingLeft: spacing.sm, borderLeftWidth: 1, borderLeftColor: glow(0.12) },
   group: { gap: spacing.xs, marginTop: spacing.xs },
@@ -461,7 +475,9 @@ const styles = StyleSheet.create({
   iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: shade(0.3) },
   button: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: spacing.md, borderRadius: borderRadius.full, borderWidth: 1, alignSelf: 'flex-start' },
   buttonText: { fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.semibold },
-  footer: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: glow(0.1) },
+  footer: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderTopWidth: 1, borderTopColor: glow(0.1) },
+  footerTotal: { flexShrink: 1, maxWidth: '45%', alignItems: 'flex-end' },
+  footerPrice: { fontSize: typography.fontSizes.md, fontWeight: typography.fontWeights.semibold, textAlign: 'right' },
   secondary: { minHeight: 52, paddingHorizontal: spacing.lg, borderRadius: borderRadius.lg, alignItems: 'center', justifyContent: 'center', backgroundColor: shade(0.3), borderWidth: 1, borderColor: glow(0.1) },
   primary: { flex: 1, minHeight: 52, borderRadius: borderRadius.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   primaryText: { fontSize: typography.fontSizes.md, fontWeight: typography.fontWeights.semibold },

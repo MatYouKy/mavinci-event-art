@@ -127,3 +127,72 @@ export function getOfferPricingTotals(offer: OfferPricingTotalsInput) {
     hasMixedVatRates: vatRates.size > 1,
   };
 }
+
+type OfferLineDiscountItem = { discount_amount?: number | string | null };
+
+/** Suma rabatów pozycji (`offer_items.discount_amount`) — są już w `offers.subtotal`, czyli w podstawie rabatu na ofertę. */
+export function getOfferLineDiscounts(offer: { offer_items?: OfferLineDiscountItem[] | null }) {
+  return roundMoney((offer.offer_items || []).reduce((sum, item) => sum + Math.max(0, asNumber(item.discount_amount)), 0));
+}
+
+export type OfferSummaryRow = {
+  key: 'items' | 'logistics' | 'list' | 'lineDiscount' | 'offerDiscount' | 'total';
+  label: string;
+  net: number;
+  gross: number;
+  emphasis?: boolean;
+};
+
+/**
+ * Tabela „Podsumowanie” oferty — ta sama w CRM, na Macu i w aplikacji (i w tej samej kolejności co podsumowanie wyceny w PDF):
+ * razem przed rabatem, rabaty pozycji, rabat na ofertę (procent od wartości po rabatach pozycji), razem po rabacie.
+ * `totals` — wynik `getOfferPricingTotals` (albo podgląd edytowanego rabatu na ofertę).
+ */
+export function getOfferSummary(
+  offer: OfferPricingTotalsInput & { offer_items?: OfferLineDiscountItem[] | null },
+  totals: ReturnType<typeof getOfferPricingTotals> = getOfferPricingTotals(offer),
+) {
+  const lineDiscount = totals.source === 'offer' ? getOfferLineDiscounts(offer) : 0;
+  const offerDiscount = totals.discountAmount;
+  const discount = roundMoney(lineDiscount + offerDiscount);
+  const withVat = (net: number) => roundMoney(net * (1 + totals.taxPercent / 100));
+  const listNet = roundMoney(totals.listNet + lineDiscount);
+  const listGross = totals.hasMixedVatRates ? totals.gross : withVat(listNet);
+  // Wartość po rabatach pozycji (podstawa rabatu na ofertę) — dzieli różnicę brutto między oba rabaty.
+  const afterLinesGross = totals.hasMixedVatRates ? totals.gross : withVat(totals.listNet);
+  const logisticsNet = totals.source === 'offer' && offer.logistics_enabled ? roundMoney(Math.max(0, asNumber(offer.logistics_price_net))) : 0;
+  const rows: OfferSummaryRow[] = [];
+  if (logisticsNet > 0) {
+    const itemsNet = roundMoney(listNet - logisticsNet);
+    rows.push({ key: 'items', label: 'Pozycje oferty', net: itemsNet, gross: withVat(itemsNet) });
+    rows.push({ key: 'logistics', label: 'Logistyka', net: logisticsNet, gross: withVat(logisticsNet) });
+  }
+  rows.push({ key: 'list', label: 'Razem przed rabatem', net: listNet, gross: listGross });
+  if (lineDiscount > 0) {
+    rows.push({
+      key: 'lineDiscount', label: 'Rabaty pozycji', net: -lineDiscount,
+      gross: -roundMoney(listGross - (offerDiscount > 0 ? afterLinesGross : totals.gross)),
+    });
+  }
+  if (offerDiscount > 0) {
+    const percent = totals.discountPercent.toFixed(2);
+    rows.push({
+      key: 'offerDiscount', label: lineDiscount > 0 ? `Rabat ${percent}% na ofertę` : `Rabat ${percent}%`,
+      net: -offerDiscount, gross: -roundMoney((lineDiscount > 0 ? afterLinesGross : listGross) - totals.gross),
+    });
+  }
+  rows.push({ key: 'total', label: discount > 0 ? 'Razem po rabacie' : 'Razem do zapłaty', net: totals.net, gross: totals.gross, emphasis: true });
+  const discountPercent = listNet > 0 ? discount / listNet * 100 : 0;
+  return {
+    rows,
+    lineDiscount,
+    offerDiscount,
+    discount,
+    discountPercent,
+    logisticsNet,
+    /** Rabat łączny (pozycje i cała oferta) — tylko gdy są oba rodzaje; ten liczy się do progu akceptacji rabatu. */
+    discountNote: lineDiscount > 0 && offerDiscount > 0
+      ? `Rabat łączny: ${discountPercent.toFixed(2)}% (${discount.toFixed(2)} zł netto) wobec wartości przed rabatami.`
+      : null,
+  };
+}

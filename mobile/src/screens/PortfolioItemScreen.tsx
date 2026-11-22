@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { UNSTABLE_usePreventRemove as usePreventRemove, useNavigation, useRoute } from '@react-navigation/native';
 import { appPalette, colors, spacing, borderRadius, typography } from '../theme';
 import ReorderableList from '../components/ReorderableList';
 import {
@@ -164,18 +164,16 @@ export default function PortfolioItemScreen() {
   const dirty = useMemo(() => Boolean(detail && draft && (
     JSON.stringify(draft.content) !== JSON.stringify(detail.item.content) || draft.eventId !== detail.item.eventId
   )), [detail, draft]);
-  const dirtyRef = useRef(false);
-  dirtyRef.current = dirty;
 
-  // Wyjście z niezapisanymi zmianami — pytanie.
-  useEffect(() => navigation.addListener('beforeRemove', (event: any) => {
-    if (!dirtyRef.current || leaving.current) return;
-    event.preventDefault();
+  // Wyjście z niezapisanymi zmianami — pytanie. `usePreventRemove` (nie `beforeRemove`): native-stack blokuje wtedy gest
+  // i przycisk systemowy, więc ekran nie znika natywnie przed pytaniem.
+  usePreventRemove(dirty, ({ data }) => {
+    if (leaving.current) { navigation.dispatch(data.action); return; }
     Alert.alert('Niezapisane zmiany', 'Realizacja ma niezapisane zmiany. Wyjść bez zapisu?', [
       { text: 'Zostań', style: 'cancel' },
-      { text: 'Wyjdź bez zapisu', style: 'destructive', onPress: () => { leaving.current = true; navigation.dispatch(event.data.action); } },
+      { text: 'Wyjdź bez zapisu', style: 'destructive', onPress: () => { leaving.current = true; navigation.dispatch(data.action); } },
     ]);
-  }), [navigation]);
+  });
 
   const set = (patch: Partial<PortfolioContent>) => setDraft((current) => (current ? { ...current, content: { ...current.content, ...patch } } : current));
 

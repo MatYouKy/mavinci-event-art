@@ -287,9 +287,11 @@ struct OfferInfoField<Content: View>: View {
                 OfferInfoField(symbol: "banknote", label: "Wartość oferty") {
                     (Text(OfferText.pln(basic.totals.gross)).font(.title3.weight(.semibold)) + Text(" brutto").font(.caption).foregroundColor(.secondary))
                         .monospacedDigit()
+                    if basic.totals.hasLineDiscounts {
+                        Text(basic.totals.lineDiscountLabel).font(.caption).foregroundStyle(.green)
+                    }
                     if basic.totals.discountAmount > 0 {
-                        Text("Rabat \(String(format: "%.2f", basic.totals.discountPercent))%: −\(OfferText.pln(basic.totals.discountAmount)) netto")
-                            .font(.caption).foregroundStyle(.green)
+                        Text(basic.totals.offerDiscountLabel).font(.caption).foregroundStyle(.green)
                     }
                     Text("Netto: \(OfferText.pln(basic.totals.net))").font(.caption).foregroundStyle(.secondary).monospacedDigit()
                     Text("VAT (\(basic.totals.mixedVat ? "wg stawek pozycji" : "\(OfferText.number(basic.totals.taxPercent))%")): \(OfferText.pln(basic.totals.taxAmount))")
@@ -560,15 +562,16 @@ struct OfferItemRoute: Identifiable {
                         .padding(.bottom, 4)
                 }
                 if item.discountPercent > 0 {
-                    Text("Rabat: \(OfferText.number(item.discountPercent))%").font(.caption2).foregroundStyle(.green)
+                    Text("Rabat pozycji: \(OfferText.number(item.discountPercent))%").font(.caption2).foregroundStyle(.green)
                 }
                 Text("Wartość netto").font(.caption2).foregroundStyle(.secondary)
                 Text(OfferText.pln(item.net)).font(.callout.weight(.semibold)).monospacedDigit()
+                if item.discountAmount > 0 {
+                    // Wartość netto przed rabatem pozycji.
+                    Text(OfferText.pln(item.net + item.discountAmount)).font(.caption2).strikethrough().foregroundStyle(.secondary).monospacedDigit()
+                }
                 Text("brutto · VAT \(OfferText.number(vatRate))%").font(.caption2).foregroundStyle(.secondary)
                 Text(OfferText.pln(item.gross)).font(.caption).monospacedDigit()
-                if item.discountAmount > 0 {
-                    Text(OfferText.pln(item.subtotal)).font(.caption2).strikethrough().foregroundStyle(.secondary).monospacedDigit()
-                }
             }
             .frame(minWidth: 130, alignment: .trailing)
         }
@@ -1126,6 +1129,7 @@ struct OfferDiscountPreview {
                 }
                 Text(detail.summary.vat).font(.caption).foregroundStyle(.secondary)
                 if let note = detail.summary.logisticsNote { Text(note).font(.caption).foregroundStyle(.secondary) }
+                if let note = detail.summary.discountNote { Text(note).font(.caption).foregroundStyle(.secondary) }
             }
             if canEditDiscount {
                 if editing { discountEditor } else {
@@ -1161,7 +1165,7 @@ struct OfferDiscountPreview {
     private var discountEditor: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Rabat").font(.callout.weight(.semibold))
-            Text("Podstawa rabatu: \(OfferText.money(base.listNet)) netto\(base.logisticsNet > 0 ? " — pozycje oferty wraz z logistyką" : ""). Ustaw rabat kwotowy, procentowy albo docelową cenę całej oferty.")
+            Text(base.baseHint)
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             discountField("amount", "Rabat netto (zł)", preview?.amount)
             discountField("percent", "Rabat (%)", preview?.percent)
@@ -1204,4 +1208,28 @@ struct OfferDiscountPreview {
     }
 
     private func signed(_ value: Double) -> String { value < 0 ? "−" + OfferText.amount(-value) : OfferText.amount(value) }
+}
+
+// MARK: Rabaty pozycji i rabat na ofertę (teksty jak w CRM — `OfferBasicInfo`, `OfferDetails`)
+
+extension OfferDetail.Totals {
+    var hasLineDiscounts: Bool { (lineDiscountAmount ?? 0) > 0 }
+    /// „Rabaty pozycji: −… netto”.
+    var lineDiscountLabel: String { "Rabaty pozycji: −\(OfferText.pln(lineDiscountAmount ?? 0)) netto" }
+    /// „Rabat 10.00%: −… netto” — z dopiskiem „na ofertę”, gdy oferta ma też rabaty pozycji.
+    var offerDiscountLabel: String {
+        let percent = String(format: "%.2f", discountPercent)
+        let scope = hasLineDiscounts ? " na ofertę" : ""
+        return "Rabat \(percent)%\(scope): −\(OfferText.pln(discountAmount)) netto"
+    }
+}
+
+extension OfferDetail.Discount {
+    /// Podpowiedź edytora rabatu: podstawa (wartość po rabatach pozycji, z logistyką).
+    var baseHint: String {
+        let logistics = logisticsNet > 0 ? " — pozycje oferty wraz z logistyką" : ""
+        let lines = lineDiscountNet ?? 0
+        let afterLines = lines > 0 ? ", po rabatach pozycji (−\(OfferText.money(lines)))" : ""
+        return "Podstawa rabatu: \(OfferText.money(listNet)) netto\(logistics)\(afterLines). Ustaw rabat kwotowy, procentowy albo docelową cenę całej oferty."
+    }
 }

@@ -6,9 +6,10 @@ import { colors, spacing, borderRadius, typography, glow, shade } from '../theme
 /*
  * Siatki wyboru rozmiaru w konfiguratorze (tablet i telefon) — jak `StageModuleGrid` / `LedSectionGrid` w CRM i
  * `StageDeckGrid` / `LedSectionGrid` na Macu, pod dotyk: dotknięcie pola wybiera prostokątny układ od lewego górnego rogu,
- * przeciągnięcie palcem pokazuje układ na żywo (z opisem pod siatką) i wybiera go po puszczeniu. Podziałka w metrach,
- * siatka rośnie razem z wyborem (zapas 1 m), a przyciski pod nią poszerzają ją o kolejny metr. Duża siatka przewija się
- * w poziomie za podziałkę; liczby obok siatki zostają do dokładnego wpisania.
+ * przeciągnięcie palcem pokazuje układ na żywo (z opisem pod siatką) i wybiera go po puszczeniu. Podziałka w metrach.
+ * Siatka wypełnia całą dostępną szerokość (pola wygodne pod palec), rośnie razem z wyborem (zapas 1 m), a pasy „+” przy
+ * prawej i dolnej krawędzi dokładają kolumnę albo rząd. Za duża siatka przewija się w poziomie za podziałkę; liczby obok
+ * siatki zostają do dokładnego wpisania.
  */
 
 type Cell = { column: number; row: number };
@@ -16,6 +17,10 @@ type Cell = { column: number; row: number };
 const RULER_WIDTH = 28;
 const RULER_HEIGHT = 18;
 const GAP = 2;
+/** Pas „+” przy prawej i dolnej krawędzi siatki (dokłada kolumnę albo rząd). */
+const EDGE = 30;
+/** Miejsce zajęte obok pól w poziomie: podziałka, pas „+” i odstępy. */
+const CHROME = RULER_WIDTH + EDGE + 3 * GAP + 4;
 /** Powyżej tylu pól siatka nie jest rysowana (układ ustawia się liczbami) — płynność na telefonie. */
 const MAX_CELLS = 1800;
 
@@ -44,10 +49,15 @@ const TileLayer = memo(function TileLayer({ columns, rows, pitchX, pitchY, color
 
 type Ruler = { at: number; text: string };
 
-/** Siatka dotykowa: `columns` × `rows` pól o rozstawie `pitchX` × `pitchY`; wybór zawsze od pola (1, 1). */
-function TouchGrid({ columns, rows, pitchX, pitchY, selected, accent, disabled, horizontal, vertical, label, onPreview, onChoose }: {
+type Expand = { label: string; onPress: () => void } | null;
+
+/**
+ * Siatka dotykowa: `columns` × `rows` pól o rozstawie `pitchX` × `pitchY`; wybór zawsze od pola (1, 1). `right` / `down` —
+ * pasy „+” przy krawędziach (bez nich: siatka ma już największy rozmiar).
+ */
+function TouchGrid({ columns, rows, pitchX, pitchY, selected, accent, disabled, horizontal, vertical, label, right, down, onPreview, onChoose }: {
   columns: number; rows: number; pitchX: number; pitchY: number; selected: Cell | null; accent: string; disabled: boolean;
-  horizontal: Ruler[]; vertical: Ruler[]; label: string;
+  horizontal: Ruler[]; vertical: Ruler[]; label: string; right: Expand; down: Expand;
   onPreview: (cell: Cell | null) => void; onChoose: (cell: Cell) => void;
 }) {
   const [preview, setPreview] = useState<Cell | null>(null);
@@ -120,7 +130,21 @@ function TouchGrid({ columns, rows, pitchX, pitchY, selected, accent, disabled, 
             </View>
           ) : null}
         </View>
+        {right ? (
+          <TouchableOpacity onPress={right.onPress} disabled={disabled} style={[styles.edge, { height: height - GAP, borderColor: accent }]}
+            accessibilityRole="button" accessibilityLabel={`Rozszerz siatkę: ${right.label}`}>
+            <Feather name="plus" size={16} color={accent} />
+            <Text style={[styles.edgeText, { color: accent }]}>{right.label}</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
+      {down ? (
+        <TouchableOpacity onPress={down.onPress} disabled={disabled} style={[styles.edgeDown, { width: width - GAP, borderColor: accent }]}
+          accessibilityRole="button" accessibilityLabel={`Rozszerz siatkę: ${down.label}`}>
+          <Feather name="plus" size={16} color={accent} />
+          <Text style={[styles.edgeText, { color: accent }]}>{down.label}</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -138,26 +162,6 @@ function GridFrame({ contentWidth, onWidth, children }: { contentWidth: number; 
         <ScrollView horizontal bounces={false} showsHorizontalScrollIndicator={contentWidth > frame} contentContainerStyle={styles.frameContent}>
           {children}
         </ScrollView>
-      ) : null}
-    </View>
-  );
-}
-
-function ExpandButtons({ accent, disabled, right, down, onRight, onDown }: {
-  accent: string; disabled: boolean; right: string | null; down: string | null; onRight: () => void; onDown: () => void;
-}) {
-  if (!right && !down) return null;
-  return (
-    <View style={styles.wrap}>
-      {right ? (
-        <TouchableOpacity onPress={onRight} disabled={disabled} style={[styles.expand, { borderColor: accent }]} accessibilityRole="button" accessibilityLabel={`Rozszerz siatkę: ${right}`}>
-          <Feather name="arrow-right" size={14} color={accent} /><Text style={[styles.expandText, { color: accent }]}>{right}</Text>
-        </TouchableOpacity>
-      ) : null}
-      {down ? (
-        <TouchableOpacity onPress={onDown} disabled={disabled} style={[styles.expand, { borderColor: accent }]} accessibilityRole="button" accessibilityLabel={`Rozszerz siatkę: ${down}`}>
-          <Feather name="arrow-down" size={14} color={accent} /><Text style={[styles.expandText, { color: accent }]}>{down}</Text>
-        </TouchableOpacity>
       ) : null}
     </View>
   );
@@ -213,11 +217,14 @@ export function StageDeckGrid({ width, depth, accent, disabled, onChoose }: {
 
   const maxColumns = Math.floor(100 / cellWidth);
   const maxRows = Math.floor(100 / cellDepth);
-  const visibleColumns = Math.min(maxColumns, Math.max(Math.floor(12 / cellWidth), (columns ?? 0) + 1, extent.columns));
+  const room = Math.max(0, frame - CHROME);
+  /** Cała szerokość: tyle blatów, ile mieści się przy ~36 pkt na metr (na telefonie — co najmniej 12 m, gęściej). */
+  const fitColumns = Math.floor(Math.floor(room / 36) / cellWidth);
+  const visibleColumns = Math.min(maxColumns, Math.max(Math.floor(12 / cellWidth), (columns ?? 0) + 1, extent.columns, fitColumns));
   const visibleRows = Math.min(maxRows, Math.max(Math.floor(6 / cellDepth), (rows ?? 0) + 1, extent.rows));
   const metresX = visibleColumns * cellWidth;
   const metresY = visibleRows * cellDepth;
-  const pixelsPerMetre = clamp(Math.floor((frame - RULER_WIDTH - 4) / metresX), 10, 30);
+  const pixelsPerMetre = clamp(Math.floor(room / metresX), 10, 44);
   const tooLarge = visibleColumns * visibleRows > MAX_CELLS;
   const selected = pending || (columns && rows ? { column: columns, row: rows } : null);
 
@@ -232,7 +239,7 @@ export function StageDeckGrid({ width, depth, accent, disabled, onChoose }: {
   };
   const caption = preview
     ? `Wybierasz ${plain(preview.column * cellWidth)} × ${plain(preview.row * cellDepth)} m — ${preview.column * preview.row} ${plural(preview.column * preview.row, 'blat', 'blaty', 'blatów')}.`
-    : 'Dotknij pola albo przeciągnij palcem, aby wybrać prostokątny układ (front × głębokość). Siatka rośnie razem z wyborem.';
+    : 'Dotknij pola albo przeciągnij palcem, aby wybrać prostokątny układ (front × głębokość). „+” przy krawędzi dokłada kolumnę albo rząd blatów.';
 
   return (
     <View style={styles.box}>
@@ -245,23 +252,19 @@ export function StageDeckGrid({ width, depth, accent, disabled, onChoose }: {
       {tooLarge ? (
         <Text style={styles.muted}>Ten układ jest za duży na siatkę — ustaw szerokość i głębokość liczbami.</Text>
       ) : (
-        <GridFrame contentWidth={RULER_WIDTH + metresX * pixelsPerMetre} onWidth={setFrame}>
+        <GridFrame contentWidth={CHROME + metresX * pixelsPerMetre} onWidth={setFrame}>
           {frame ? (
             <TouchGrid columns={visibleColumns} rows={visibleRows} pitchX={cellWidth * pixelsPerMetre} pitchY={cellDepth * pixelsPerMetre}
               selected={selected} accent={accent} disabled={disabled}
               horizontal={metreMarks(metresX, pixelsPerMetre, 26)} vertical={metreMarks(metresY, pixelsPerMetre, 16)}
               label={selected ? `Podest ${plain(selected.column * cellWidth)} × ${plain(selected.row * cellDepth)} m` : 'Siatka podestu — nie wybrano układu'}
+              right={visibleColumns < maxColumns ? { label: `${cellWidth} m`, onPress: () => setExtent({ columns: Math.min(maxColumns, visibleColumns + 1), rows: visibleRows }) } : null}
+              down={visibleRows < maxRows ? { label: `${cellDepth} m`, onPress: () => setExtent({ columns: visibleColumns, rows: Math.min(maxRows, visibleRows + 1) }) } : null}
               onPreview={setPreview} onChoose={choose} />
           ) : null}
         </GridFrame>
       )}
       <Text style={[styles.caption, preview && { color: accent }]}>{caption}</Text>
-      {!tooLarge ? (
-        <ExpandButtons accent={accent} disabled={disabled}
-          right={visibleColumns < maxColumns ? `+${cellWidth} m w prawo` : null} down={visibleRows < maxRows ? `+${cellDepth} m w dół` : null}
-          onRight={() => setExtent({ columns: Math.min(maxColumns, visibleColumns + 1), rows: visibleRows })}
-          onDown={() => setExtent({ columns: visibleColumns, rows: Math.min(maxRows, visibleRows + 1) })} />
-      ) : null}
     </View>
   );
 }
@@ -280,9 +283,12 @@ export function LedSectionGrid({ columns, rows, accent, disabled, onChoose }: {
   const selectedRows = whole(rows);
   /** Pełne metry (parzysta liczba kafelków) z zapasem 1 m na powiększenie — jak na Macu. */
   const margin = (selected: number) => Math.ceil((selected + 2) / 2) * 2;
-  const visibleColumns = Math.min(200, Math.max(extent.columns, margin(selectedColumns)));
+  const room = Math.max(0, frame - CHROME);
+  /** Cała szerokość: tyle pełnych metrów, ile mieści się przy kafelku ~44 pkt (na telefonie — co najmniej 6 m, gęściej). */
+  const fitColumns = Math.floor(room / 44 / 2) * 2;
+  const visibleColumns = Math.min(200, Math.max(extent.columns, margin(selectedColumns), fitColumns));
   const visibleRows = Math.min(200, Math.max(extent.rows, margin(selectedRows)));
-  const pitch = clamp(Math.floor((frame - RULER_WIDTH - 4) / visibleColumns), 12, 40);
+  const pitch = clamp(Math.floor(room / visibleColumns), 12, 56);
   const tooLarge = visibleColumns * visibleRows > MAX_CELLS;
   const selected = pending || (selectedColumns && selectedRows ? { column: selectedColumns, row: selectedRows } : null);
 
@@ -292,30 +298,26 @@ export function LedSectionGrid({ columns, rows, accent, disabled, onChoose }: {
   };
   const caption = preview
     ? `Wybierasz ${preview.column} × ${preview.row} ${plural(preview.column * preview.row, 'kafelek', 'kafelki', 'kafelków')} · ${plain(preview.column / 2)} × ${plain(preview.row / 2)} m · ${plain(preview.column * preview.row / 4)} m².`
-    : '2 kafelki = 1 m. Dotknij pola albo przeciągnij palcem, aby wybrać układ sekcji; siatka rośnie razem z wyborem.';
+    : '2 kafelki = 1 m. Dotknij pola albo przeciągnij palcem, aby wybrać układ sekcji; „+” przy krawędzi dokłada metr siatki.';
 
   return (
     <View style={styles.gap}>
       {tooLarge ? (
         <Text style={styles.muted}>Ta sekcja jest za duża na siatkę — ustaw kafelki w poziomie i w pionie liczbami.</Text>
       ) : (
-        <GridFrame contentWidth={RULER_WIDTH + visibleColumns * pitch} onWidth={setFrame}>
+        <GridFrame contentWidth={CHROME + visibleColumns * pitch} onWidth={setFrame}>
           {frame ? (
             <TouchGrid columns={visibleColumns} rows={visibleRows} pitchX={pitch} pitchY={pitch}
               selected={selected} accent={accent} disabled={disabled}
               horizontal={metreMarks(visibleColumns / 2, pitch * 2, 26)} vertical={metreMarks(visibleRows / 2, pitch * 2, 16)}
               label={selected ? `Sekcja ${selected.column} × ${selected.row} kafelków` : 'Siatka sekcji — nie wybrano układu'}
+              right={visibleColumns < 200 ? { label: '1 m', onPress: () => setExtent({ columns: Math.min(200, visibleColumns + 2), rows: visibleRows }) } : null}
+              down={visibleRows < 200 ? { label: '1 m', onPress: () => setExtent({ columns: visibleColumns, rows: Math.min(200, visibleRows + 2) }) } : null}
               onPreview={setPreview} onChoose={choose} />
           ) : null}
         </GridFrame>
       )}
       <Text style={[styles.caption, preview && { color: accent }]}>{caption}</Text>
-      {!tooLarge ? (
-        <ExpandButtons accent={accent} disabled={disabled}
-          right={visibleColumns < 200 ? '+1 m w prawo' : null} down={visibleRows < 200 ? '+1 m w dół' : null}
-          onRight={() => setExtent({ columns: Math.min(200, visibleColumns + 2), rows: visibleRows })}
-          onDown={() => setExtent({ columns: visibleColumns, rows: Math.min(200, visibleRows + 2) })} />
-      ) : null}
     </View>
   );
 }
@@ -330,9 +332,17 @@ const styles = StyleSheet.create({
   ruler: { color: colors.text.tertiary, fontSize: 10 },
   muted: { color: colors.text.tertiary, fontSize: typography.fontSizes.sm },
   caption: { color: colors.text.tertiary, fontSize: typography.fontSizes.sm },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   expand: {
     minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.md, borderRadius: borderRadius.full, borderWidth: 1,
   },
   expandText: { fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.semibold },
+  edge: {
+    width: EDGE, marginLeft: GAP * 2, borderRadius: borderRadius.md, borderWidth: 1, borderStyle: 'dashed',
+    alignItems: 'center', justifyContent: 'center', gap: 2,
+  },
+  edgeDown: {
+    height: EDGE, marginLeft: RULER_WIDTH, marginTop: GAP * 2, borderRadius: borderRadius.md, borderWidth: 1, borderStyle: 'dashed',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  edgeText: { fontSize: 10, fontWeight: typography.fontWeights.semibold },
 });

@@ -4,10 +4,12 @@ import {
   GestureResponderEvent,
   PanResponder,
   PanResponderGestureState,
+  StyleProp,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  ViewStyle,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, typography } from '../theme';
@@ -18,15 +20,35 @@ const SWIPE_DIRECTION_RATIO = 1.4;
 const SWIPE_VELOCITY_THRESHOLD = 0.35;
 const OVERSHOOT_RESISTANCE = 0.2;
 
+/** Akcja odsłaniana przesunięciem w lewo (jak w Outlooku): kilka obok siebie, ostatnia przy prawej krawędzi. */
+export interface SwipeAction {
+  key: string;
+  label: string;
+  icon: keyof typeof Feather.glyphMap;
+  /** Tło przycisku. */
+  color: string;
+  /** Kolor ikony i podpisu (domyślnie biały). */
+  foreground?: string;
+  onPress: () => void;
+}
+
 interface SwipeableRowProps {
   children: React.ReactNode;
-  onDelete: () => void;
+  /** Jedna akcja (dotychczasowe użycie) — pomijana, gdy podano `actions`. */
+  onDelete?: () => void;
 
   actionLabel?: string;
   actionIcon?: keyof typeof Feather.glyphMap;
   actionColor?: string;
   actionWidth?: number;
   disabled?: boolean;
+  /** Kilka akcji (np. Edytuj, Usuń). */
+  actions?: SwipeAction[];
+  /** Uchwyt przy prawej krawędzi wiersza: podpowiada przesunięcie, dotknięcie odsłania i chowa akcje. */
+  edgeHint?: boolean;
+  /** Wygląd kontenera (np. zaokrąglenie) i wiersza (tło zasłaniające akcje). */
+  containerStyle?: StyleProp<ViewStyle>;
+  rowStyle?: StyleProp<ViewStyle>;
 }
 
 export default function SwipeableRow({
@@ -35,9 +57,18 @@ export default function SwipeableRow({
   actionLabel = 'Usuń',
   actionIcon = 'trash-2',
   actionColor = '#DC2626',
-  actionWidth = DEFAULT_ACTION_WIDTH,
+  actionWidth: singleActionWidth = DEFAULT_ACTION_WIDTH,
   disabled = false,
+  actions,
+  edgeHint = false,
+  containerStyle,
+  rowStyle,
 }: SwipeableRowProps) {
+  const buttons: SwipeAction[] = actions?.length
+    ? actions
+    : [{ key: 'delete', label: actionLabel, icon: actionIcon, color: actionColor, onPress: () => onDelete?.() }];
+  /** Szerokość odsłanianego pasa akcji. */
+  const actionWidth = singleActionWidth * buttons.length;
   const translateX = useRef(new Animated.Value(0)).current;
 
   /**
@@ -226,9 +257,9 @@ export default function SwipeableRow({
     [actionWidth, disabled],
   );
 
-  const handleActionPress = () => {
+  const handleActionPress = (action: SwipeAction) => {
     close();
-    onDelete();
+    action.onPress();
   };
 
   return (
@@ -236,8 +267,9 @@ export default function SwipeableRow({
       style={[
         styles.container,
         {
-          backgroundColor: actionColor,
+          backgroundColor: buttons[buttons.length - 1].color,
         },
+        containerStyle,
       ]}
     >
       <View
@@ -245,46 +277,69 @@ export default function SwipeableRow({
           styles.actionBackground,
           {
             width: actionWidth,
-            backgroundColor: actionColor,
           },
         ]}
       >
-        <TouchableOpacity
-          style={[
-            styles.actionButton,
-            {
-              width: actionWidth,
-            },
-          ]}
-          activeOpacity={0.8}
-          onPress={handleActionPress}
-        >
-          <Feather
-            name={actionIcon}
-            size={20}
-            color="#FFFFFF"
-          />
+        {buttons.map((action) => (
+          <TouchableOpacity
+            key={action.key}
+            style={[
+              styles.actionButton,
+              {
+                width: singleActionWidth,
+                backgroundColor: action.color,
+              },
+            ]}
+            activeOpacity={0.8}
+            onPress={() => handleActionPress(action)}
+            accessibilityRole="button"
+            accessibilityLabel={action.label}
+          >
+            <Feather
+              name={action.icon}
+              size={20}
+              color={action.foreground || '#FFFFFF'}
+            />
 
-          <Text style={styles.actionText}>
-            {actionLabel}
-          </Text>
-        </TouchableOpacity>
+            <Text style={[styles.actionText, action.foreground ? { color: action.foreground } : null]}>
+              {action.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <Animated.View
         {...panResponder.panHandlers}
         style={[
           styles.row,
+          rowStyle,
           {
             transform: [{ translateX }],
           },
         ]}
       >
         {children}
+        {edgeHint ? (
+          <TouchableOpacity
+            style={styles.edge}
+            onPress={() => (isOpenRef.current ? close() : open())}
+            disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel={buttons.map((action) => action.label).join(', ')}
+            accessibilityHint="Pokazuje akcje wiersza. Możesz też przesunąć wiersz w lewo."
+          >
+            <View style={styles.edgeGrip}>
+              <Feather name="chevrons-left" size={16} color={colors.text.tertiary} />
+            </View>
+          </TouchableOpacity>
+        ) : null}
       </Animated.View>
     </View>
   );
 }
+
+/** Szerokość uchwytu przy prawej krawędzi (`edgeHint`) — treść wiersza zostawia tyle miejsca z prawej. */
+export const SWIPE_EDGE_WIDTH = 32;
 
 const styles = StyleSheet.create({
   container: {
@@ -297,15 +352,31 @@ const styles = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: 'row',
   },
 
   actionButton: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 3,
+  },
+
+  edge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  edgeGrip: {
+    width: 22,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 11,
+    backgroundColor: 'rgba(127,127,127,0.12)',
   },
 
   actionText: {

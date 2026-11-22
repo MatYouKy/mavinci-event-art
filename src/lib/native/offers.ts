@@ -1,7 +1,7 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { can, type NativeContext } from './auth';
-import { getOfferPricingTotals, roundMoney } from '@/lib/CRM/Offers/offerTotals';
+import { getOfferLineDiscounts, getOfferPricingTotals, getOfferSummary, roundMoney } from '@/lib/CRM/Offers/offerTotals';
 import { offerSource } from '@/lib/CRM/Offers/offerSource';
 import { resolveOfferSchedule } from '@/lib/CRM/Offers/offerSchedule';
 import { offerNeedsTables } from '@/lib/CRM/Offers/audiencePricing';
@@ -285,35 +285,21 @@ function assumptionsView(offer: Row) {
   };
 }
 
-/** Tabela „Podsumowanie” jak `OfferDetails` (pozycje, logistyka, rabat, razem). */
+/** Tabela „Podsumowanie” jak `OfferDetails` (pozycje, logistyka, rabaty pozycji, rabat na ofertę, razem — `getOfferSummary`). */
 function summaryView(offer: Row) {
   const totals = getOfferPricingTotals(offer);
-  const lineDiscounts = totals.source === 'offer'
-    ? (offer.offer_items || []).reduce((sum: number, item: Row) => sum + Number(item.discount_amount || 0), 0) : 0;
-  const listNet = totals.listNet + lineDiscounts;
-  const logisticsNet = totals.source === 'offer' && offer.logistics_enabled ? roundMoney(Math.max(0, Number(offer.logistics_price_net) || 0)) : 0;
-  const logisticsGross = roundMoney(logisticsNet * (1 + totals.taxPercent / 100));
-  const itemsNet = roundMoney(listNet - logisticsNet);
-  const discount = totals.discountAmount + lineDiscounts;
-  const discountPercent = listNet > 0 ? discount / listNet * 100 : 0;
-  const listGross = totals.hasMixedVatRates ? totals.gross : Math.round(listNet * (1 + totals.taxPercent / 100) * 100) / 100;
-  const rows: Array<{ label: string; net: number; gross: number; emphasis?: boolean }> = [];
-  if (logisticsNet > 0) {
-    rows.push({ label: 'Pozycje oferty', net: itemsNet, gross: roundMoney(itemsNet * (1 + totals.taxPercent / 100)) });
-    rows.push({ label: 'Logistyka', net: logisticsNet, gross: logisticsGross });
-  }
-  rows.push({ label: 'Razem przed rabatem', net: listNet, gross: listGross });
-  if (discount > 0) rows.push({ label: `Rabat ${discountPercent.toFixed(2)}%`, net: -discount, gross: -(listGross - totals.gross) });
-  rows.push({ label: discount > 0 ? 'Razem po rabacie' : 'Razem do zapłaty', net: totals.net, gross: totals.gross, emphasis: true });
+  const summary = getOfferSummary(offer, totals);
   return {
-    rows,
+    rows: summary.rows.map(({ label, net, gross, emphasis }) => (emphasis ? { label, net, gross, emphasis } : { label, net, gross })),
     vat: `Kwoty w PLN · VAT ${totals.hasMixedVatRates ? 'według stawek pozycji' : `${totals.taxPercent}%`}: ${totals.taxAmount.toFixed(2)} zł`,
-    logisticsNote: logisticsNet > 0 ? 'Logistyka jest ujęta w sumie. Rabat od całej oferty obejmuje również jej cenę.' : null,
+    logisticsNote: summary.logisticsNet > 0 ? 'Logistyka jest ujęta w sumie. Rabat od całej oferty obejmuje również jej cenę.' : null,
+    /** Rabat łączny, gdy oferta ma rabaty pozycji i rabat na ofertę. */
+    discountNote: summary.discountNote,
     calculation: totals.source === 'calculation',
-    /** Podstawa rabatu całej oferty (jak edytor rabatu w `OfferDetails`). */
+    /** Podstawa rabatu całej oferty (jak edytor rabatu w `OfferDetails`) — wartość po rabatach pozycji. */
     discount: {
       listNet: totals.listNet, taxPercent: totals.taxPercent, amount: totals.discountAmount, percent: totals.discountPercent,
-      logisticsNet,
+      logisticsNet: summary.logisticsNet, lineDiscountNet: summary.lineDiscount,
     },
   };
 }
@@ -448,6 +434,8 @@ export async function offerDetail(ctx: NativeContext, id: string) {
       totals: {
         gross: totals.gross, net: totals.net, discountAmount: totals.discountAmount, discountPercent: totals.discountPercent,
         taxAmount: totals.taxAmount, taxPercent: totals.taxPercent, mixedVat: totals.hasMixedVatRates,
+        /** Suma rabatów pozycji (rabat na ofertę — `discountAmount`). */
+        lineDiscountAmount: totals.source === 'offer' ? getOfferLineDiscounts(offer) : 0,
       },
       lastGenerated: offer.last_generated_by && offer.last_generated_at ? {
         name: `${text(offer.last_generated_by_employee?.name)} ${text(offer.last_generated_by_employee?.surname) || 'Nieznany'}`.trim(),

@@ -621,6 +621,8 @@ export type ShowcaseOfferLine = {
   /** Pakiet „wycena indywidualna” — cenę uzgadnia sprzedawca. */
   priceOnRequest: boolean;
   agreedPrice: number | null;
+  /** Rabat tej pozycji w procentach (0–100) — jak rabat pozycji w kreatorze ofert; tylko w trybie rabatu „na pozycje”. */
+  discountPercent: number;
   /** Karta pokazu, z której dodano pozycję. */
   itemId: string | null;
   itemTitle: string;
@@ -644,6 +646,11 @@ export type ShowcaseOfferClient = {
   lastName: string;
   email: string;
   phone: string;
+  /**
+   * Klient roboczy — sama nazwa (np. „Firma z targów”), bez dodawania do bazy klientów. Oferta i zapytanie powstają bez
+   * klienta, a klienta przypisuje się później w CRM. Używana tylko bez klienta z CRM i bez nowego klienta.
+   */
+  placeholder: string;
 };
 
 /** `locationId` — miejsce wybrane z bazy lokalizacji (CRM → Lokalizacje); `null` — wpisane ręcznie. */
@@ -652,11 +659,25 @@ export type ShowcaseOfferEvent = { name: string; date: string; location: string;
 /** Podpowiedź miejsca z bazy lokalizacji. `label` — „Nazwa, miasto” (jak w zapytaniach CRM). */
 export type ShowcaseOfferLocation = { id: string; name: string; city: string; address: string; label: string };
 
+/**
+ * Rabat w ofercie — wybór sprzedawcy (zapamiętany w jego ustawieniach, `employees.preferences.offerWizard.discountMode`):
+ * `offer` — jeden rabat na całą ofertę (od wartości pozycji), `lines` — osobny rabat każdej pozycji. Tryby się wykluczają,
+ * więc w ofercie i w PDF zawsze widać jeden rodzaj rabatu.
+ */
+export type ShowcaseOfferDiscountMode = 'offer' | 'lines';
+export const SHOWCASE_OFFER_DISCOUNT_MODES: ReadonlyArray<{ key: ShowcaseOfferDiscountMode; label: string }> = [
+  { key: 'offer', label: 'Na całą ofertę' },
+  { key: 'lines', label: 'Na pozycje' },
+];
+export const isShowcaseOfferDiscountMode = (value: unknown): value is ShowcaseOfferDiscountMode => value === 'offer' || value === 'lines';
+
 export type ShowcaseOfferDraft = {
   /** Identyfikator przyszłej oferty — ponowne „Utwórz ofertę” po zerwanym połączeniu nie tworzy drugiej. */
   id: string;
   lines: ShowcaseOfferLine[];
+  /** Rabat całej oferty (tryb `offer`; w trybie `lines` zawsze 0). */
   discountPercent: number;
+  discountMode: ShowcaseOfferDiscountMode;
   client: ShowcaseOfferClient;
   /** Otwarte zapytanie klienta (oferta jako kolejny wariant) albo `null` — nowe zapytanie. */
   inquiryId: string | null;
@@ -674,6 +695,8 @@ export type ShowcaseOfferSetup = {
   canApprove: boolean;
   guardrails: { enabled: boolean; maxDiscountPercent: number; minMarginPercent: number };
   validDays: number;
+  /** Zapamiętany tryb rabatu sprzedawcy — dla nowego szkicu (zmiana: `op=offerDiscountMode`). */
+  discountMode: ShowcaseOfferDiscountMode;
 };
 
 export type ShowcaseOfferClientHit = {
@@ -707,7 +730,11 @@ export type ShowcaseOfferPreviewLine = {
   quantity: number;
   days: number;
   unitPrice: number;
+  /** Wartość netto po rabacie pozycji. */
   subtotal: number;
+  /** Wartość netto przed rabatem pozycji i ten rabat (%). */
+  listSubtotal: number;
+  discountPercent: number;
   /** Ilość z liczby osób albo stołów (bez ręcznej zmiany). */
   quantityFromAudience: boolean;
   error: string | null;
@@ -716,9 +743,14 @@ export type ShowcaseOfferPreviewLine = {
 };
 export type ShowcaseOfferPreview = {
   lines: ShowcaseOfferPreviewLine[];
+  /** Wartość pozycji netto po ich rabatach (podstawa rabatu całej oferty). */
   listNet: number;
+  /** Rabat całej oferty. */
   discountPercent: number;
   discountAmount: number;
+  /** Suma rabatów pozycji i rabat łączny (pozycje + cała oferta, wobec wartości przed rabatami) — ten liczy się do progu akceptacji. */
+  lineDiscountAmount: number;
+  effectiveDiscountPercent: number;
   net: number;
   taxPercent: number;
   tax: number;
@@ -736,6 +768,8 @@ export type ShowcaseOfferResult = {
   inquiryCreated: boolean;
   clientName: string;
   clientEmail: string;
+  /** Oferta bez klienta w bazie (klient roboczy) — klienta przypisuje się w CRM. */
+  clientPlaceholder: boolean;
   net: number;
   gross: number;
   approval: ShowcaseOfferApproval;
@@ -768,13 +802,19 @@ export const showcaseOfferLineKey = (productId: string, kind: ShowcaseOfferKind,
 
 export const emptyShowcaseOfferClient = (): ShowcaseOfferClient => ({
   organizationId: null, organizationName: '', contactId: null, contactName: '', company: '', nip: '', firstName: '', lastName: '', email: '', phone: '',
+  placeholder: '',
 });
 
-export function emptyShowcaseOfferDraft(): ShowcaseOfferDraft {
+/** Klient roboczy (sama nazwa, bez bazy) — bez klienta z CRM i bez nowego klienta. */
+export const isShowcaseOfferPlaceholder = (client: ShowcaseOfferClient) =>
+  Boolean(client.placeholder && !client.organizationId && !client.contactId && !client.company && !client.firstName && !client.lastName);
+
+export function emptyShowcaseOfferDraft(discountMode: ShowcaseOfferDiscountMode = 'offer'): ShowcaseOfferDraft {
   return {
     id: showcaseOfferDraftId(),
     lines: [],
     discountPercent: 0,
+    discountMode,
     client: emptyShowcaseOfferClient(),
     inquiryId: null,
     inquiryTitle: '',
@@ -789,7 +829,7 @@ const wholeIn = (value: unknown, min: number, max: number, fallback: number) => 
   return Number.isFinite(number) ? Math.min(max, Math.max(min, Math.round(number))) : fallback;
 };
 
-/** Rabat całej oferty w procentach (0–100, dwa miejsca po przecinku). */
+/** Rabat (cała oferta albo pozycja) w procentach (0–100, dwa miejsca po przecinku). */
 export function showcaseOfferDiscount(value: unknown): number {
   const number = typeof value === 'string' ? Number(value.replace(',', '.')) : Number(value);
   return Number.isFinite(number) ? Math.min(100, Math.max(0, Math.round(number * 100) / 100)) : 0;
@@ -834,6 +874,7 @@ export function normalizeShowcaseOfferLine(raw: unknown): ShowcaseOfferLine | nu
     days: wholeIn(value.days, 1, SHOWCASE_OFFER_LIMITS.days, 1),
     priceOnRequest,
     agreedPrice: priceOnRequest ? showcaseOfferPrice(value.agreedPrice) : null,
+    discountPercent: showcaseOfferDiscount(value.discountPercent),
     itemId: isShowcaseUuid(value.itemId) ? value.itemId.toLowerCase() : null,
     itemTitle: showcaseLine(value.itemTitle, SHOWCASE_LIMITS.title),
     modular,
@@ -853,16 +894,23 @@ export function normalizeShowcaseOfferDraft(raw: unknown): ShowcaseOfferDraft {
   }
   const client = object(value.client);
   const event = object(value.event);
+  const organizationId = isShowcaseUuid(client.organizationId) ? client.organizationId.toLowerCase() : null;
+  const contactId = isShowcaseUuid(client.contactId) ? client.contactId.toLowerCase() : null;
   const guests = Number(event.guestCount);
   const date = typeof event.date === 'string' ? event.date.trim() : '';
+  // Szkic sprzed wyboru trybu (bez `discountMode`) z rabatami pozycji — tryb „na pozycje”.
+  const discountMode: ShowcaseOfferDiscountMode = isShowcaseOfferDiscountMode(value.discountMode)
+    ? value.discountMode
+    : lines.some((line) => line.discountPercent > 0) ? 'lines' : 'offer';
   return {
     id: isShowcaseUuid(value.id) ? value.id.toLowerCase() : showcaseOfferDraftId(),
-    lines,
-    discountPercent: showcaseOfferDiscount(value.discountPercent),
+    lines: discountMode === 'lines' ? lines : lines.map((line) => (line.discountPercent ? { ...line, discountPercent: 0 } : line)),
+    discountPercent: discountMode === 'offer' ? showcaseOfferDiscount(value.discountPercent) : 0,
+    discountMode,
     client: {
-      organizationId: isShowcaseUuid(client.organizationId) ? client.organizationId.toLowerCase() : null,
+      organizationId,
       organizationName: showcaseLine(client.organizationName, 200),
-      contactId: isShowcaseUuid(client.contactId) ? client.contactId.toLowerCase() : null,
+      contactId,
       contactName: showcaseLine(client.contactName, 200),
       company: showcaseLine(client.company, 200),
       nip: typeof client.nip === 'string' ? client.nip.replace(/\D/g, '').slice(0, 20) : '',
@@ -870,6 +918,7 @@ export function normalizeShowcaseOfferDraft(raw: unknown): ShowcaseOfferDraft {
       lastName: showcaseLine(client.lastName, 120),
       email: showcaseLine(client.email, 200).toLowerCase(),
       phone: showcaseLine(client.phone, 50),
+      placeholder: organizationId || contactId ? '' : showcaseLine(client.placeholder, 200),
     },
     inquiryId: isShowcaseUuid(value.inquiryId) ? value.inquiryId.toLowerCase() : null,
     inquiryTitle: showcaseLine(value.inquiryTitle, 200),
@@ -882,6 +931,24 @@ export function normalizeShowcaseOfferDraft(raw: unknown): ShowcaseOfferDraft {
     },
     note: showcaseText(value.note, SHOWCASE_OFFER_LIMITS.note),
     updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt.slice(0, 40) : '',
+  };
+}
+
+/**
+ * Zmiana trybu rabatu z zachowaniem wartości oferty. Na pozycje — każda pozycja dostaje dotychczasowy rabat całej oferty.
+ * Na całą ofertę — rabat łączny pozycji (`effectivePercent`, `ShowcaseOfferPreview.effectiveDiscountPercent`); bez podglądu
+ * cen — wspólny rabat pozycji, jeśli wszystkie mają ten sam, inaczej bez rabatu.
+ */
+export function switchShowcaseOfferDiscountMode(draft: ShowcaseOfferDraft, mode: ShowcaseOfferDiscountMode, effectivePercent: number | null = null): ShowcaseOfferDraft {
+  if (draft.discountMode === mode) return draft;
+  if (mode === 'lines') {
+    const percent = showcaseOfferDiscount(draft.discountPercent);
+    return { ...draft, discountMode: mode, discountPercent: 0, lines: draft.lines.map((line) => ({ ...line, discountPercent: percent })) };
+  }
+  const shared = draft.lines.length && draft.lines.every((line) => line.discountPercent === draft.lines[0].discountPercent) ? draft.lines[0].discountPercent : 0;
+  return {
+    ...draft, discountMode: mode, discountPercent: showcaseOfferDiscount(effectivePercent ?? shared),
+    lines: draft.lines.map((line) => (line.discountPercent ? { ...line, discountPercent: 0 } : line)),
   };
 }
 
@@ -915,6 +982,7 @@ export function showcaseOfferLineFor(
     days: 1,
     priceOnRequest: pack?.priceOnRequest === true,
     agreedPrice: null,
+    discountPercent: 0,
     itemId: item?.id || null,
     itemTitle: item?.title || '',
   });
@@ -1030,8 +1098,8 @@ export function showcaseOfferProblem(draft: ShowcaseOfferDraft): string | null {
   const unpriced = draft.lines.find((line) => line.priceOnRequest && !(line.agreedPrice && line.agreedPrice > 0));
   if (unpriced) return `Wpisz uzgodnioną cenę: ${unpriced.label}.`;
   const client = draft.client;
-  if (!client.organizationId && !client.contactId && !client.company && !(client.firstName && client.lastName)) {
-    return 'Wybierz klienta z CRM albo wpisz firmę lub imię i nazwisko klienta.';
+  if (!client.organizationId && !client.contactId && !client.company && !(client.firstName && client.lastName) && !isShowcaseOfferPlaceholder(client)) {
+    return 'Wybierz klienta z CRM, wpisz firmę lub imię i nazwisko klienta albo nazwę roboczą (bez bazy).';
   }
   if (!client.contactId && (client.firstName || client.lastName) && !(client.firstName && client.lastName)) return 'Podaj imię i nazwisko osoby kontaktowej.';
   if (client.email && !isShowcaseOfferEmail(client.email)) return 'Podaj poprawny adres e-mail.';
@@ -1039,7 +1107,10 @@ export function showcaseOfferProblem(draft: ShowcaseOfferDraft): string | null {
   return null;
 }
 
-/** Podpowiedź przy rabacie: powyżej progu oferta czeka na akceptację przed wysłaniem (pokazać klientowi można od razu). */
+/**
+ * Podpowiedź przy rabacie: powyżej progu oferta czeka na akceptację przed wysłaniem (pokazać klientowi można od razu).
+ * `discountPercent` — rabat łączny (pozycje i cała oferta; `ShowcaseOfferPreview.effectiveDiscountPercent`).
+ */
 export function showcaseOfferApprovalHint(setup: ShowcaseOfferSetup | null, discountPercent: number): string {
   if (!setup || setup.canApprove || !setup.guardrails.enabled) return '';
   const limit = setup.guardrails.maxDiscountPercent;

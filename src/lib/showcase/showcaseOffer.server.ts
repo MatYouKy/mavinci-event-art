@@ -12,8 +12,8 @@ import type { ProductConfigurationSnapshot } from '@/lib/CRM/Offers/modularProdu
 import { fail, isObject, isUuid, text, type Row } from '@/lib/social/socialCommon.server';
 import { inquiryTitleLabel, systemLabel } from '@/lib/ui/systemLabels';
 import {
-  SHOWCASE_OFFER_LIMITS, isShowcaseOfferEmail, normalizeShowcaseOfferDraft, showcaseOfferProblem, showcaseOfferScope,
-  type ShowcaseOfferApproval, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferDraft,
+  SHOWCASE_OFFER_LIMITS, isShowcaseOfferDiscountMode, isShowcaseOfferEmail, isShowcaseOfferPlaceholder, normalizeShowcaseOfferDraft, showcaseOfferProblem,
+  showcaseOfferScope, type ShowcaseOfferApproval, type ShowcaseOfferDiscountMode, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferDraft,
   type ShowcaseConfigNode, type ShowcaseConfigView, type ShowcaseOfferConfiguration,
   type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferLine, type ShowcaseOfferLocation, type ShowcaseOfferPerson,
   type ShowcaseOfferPreview,
@@ -105,16 +105,24 @@ const personName = (row: Row) => text(row.full_name).trim() || [text(row.first_n
 
 // MARK: Ustawienia
 
-/** Czy pracownik tworzy oferty z pokazu, progi rabatu i czy sam akceptuje rabaty. */
+/** Sekcja `offerWizard` ustawień pracownika (`employees.preferences`) — tryb rabatu w ofercie. */
+const offerWizardPreferences = (preferences: unknown): Row => {
+  const wizard = isObject(preferences) ? (preferences as Row).offerWizard : null;
+  return isObject(wizard) ? (wizard as Row) : {};
+};
+
+/** Czy pracownik tworzy oferty z pokazu, progi rabatu, czy sam akceptuje rabaty i jego tryb rabatu (cała oferta / pozycje). */
 export async function showcaseOfferSetup(ctx: NativeContext): Promise<ShowcaseOfferSetup> {
-  const [allowed, approve, limits] = await Promise.all([
+  const [allowed, approve, limits, profile] = await Promise.all([
     ctx.supabase.rpc('sales_showcase_offer_can'),
     ctx.supabase.rpc('current_employee_can_approve_offers'),
     ctx.supabase.from('sales_offer_guardrails').select('enabled, max_discount_percent, min_margin_percent').eq('id', 1).maybeSingle(),
+    ctx.supabase.from('employees').select('preferences').eq('id', ctx.employee.id).maybeSingle(),
   ]);
   if (allowed.error && !missingFunction(allowed.error)) fail('Nie udało się sprawdzić uprawnień do ofert.', 500);
   const guard = (limits.data || null) as Row | null;
   const enabled = allowed.data === true;
+  const savedMode = offerWizardPreferences((profile.data as Row | null)?.preferences).discountMode;
   return {
     canOffer: enabled,
     reason: allowed.error ? MIGRATION : enabled ? '' : DENIED,
@@ -125,7 +133,24 @@ export async function showcaseOfferSetup(ctx: NativeContext): Promise<ShowcaseOf
       minMarginPercent: number(guard?.min_margin_percent, 25),
     },
     validDays: SHOWCASE_OFFER_LIMITS.validDays,
+    discountMode: isShowcaseOfferDiscountMode(savedMode) ? savedMode : 'offer',
   };
+}
+
+/**
+ * Zapamiętanie trybu rabatu sprzedawcy (`employees.preferences.offerWizard.discountMode`) — ten sam w CRM, na Macu, iPadzie
+ * i telefonie. Własny wiersz pracownika, jego tokenem (RLS); pozostałe ustawienia zostają bez zmian.
+ */
+export async function showcaseOfferDiscountMode(ctx: NativeContext, body: Row): Promise<{ discountMode: ShowcaseOfferDiscountMode }> {
+  if (!isShowcaseOfferDiscountMode(body.discountMode)) fail('Nieznany tryb rabatu.', 400);
+  const discountMode = body.discountMode;
+  const { data, error } = await ctx.supabase.from('employees').select('preferences').eq('id', ctx.employee.id).maybeSingle();
+  if (error || !data) fail('Nie udało się odczytać ustawień.', 500);
+  const preferences = isObject((data as Row).preferences) ? ((data as Row).preferences as Row) : {};
+  const next = { ...preferences, offerWizard: { ...offerWizardPreferences(preferences), discountMode } };
+  const saved = await ctx.supabase.from('employees').update({ preferences: next }).eq('id', ctx.employee.id).select('id').maybeSingle();
+  if (saved.error || !saved.data) fail('Nie udało się zapamiętać trybu rabatu.', 500);
+  return { discountMode };
 }
 
 // MARK: Klient
@@ -325,7 +350,8 @@ function lineDraft(product: Row, line: ShowcaseOfferLine): Row | string {
   }
   base.quantity = line.quantity;
   base.days = line.days;
-  base.discountPercent = 0;
+  // Rabat pozycji (jak w kreatorze ofert) — rabat całej oferty liczy się od wartości po nim.
+  base.discountPercent = line.discountPercent;
   return { productId: String(product.id), name: name.slice(0, 300), description: description.slice(0, 4000), draft: base };
 }
 
@@ -347,7 +373,10 @@ function configuredDraft(product: Row, line: ShowcaseOfferLine): Row | string {
     productId: String(product.id),
     name: (described.name || text(product.name) || 'Produkt').slice(0, 300),
     description: described.description.slice(0, 4000),
-    draft: { ...base, variantId: null, packageId: '', addons: [], modular, modularManual: false, quantity: line.quantity, days: line.days, discountPercent: 0 },
+    draft: {
+      ...base, variantId: null, packageId: '', addons: [], modular, modularManual: false, quantity: line.quantity, days: line.days,
+      discountPercent: line.discountPercent,
+    },
   };
 }
 
@@ -405,6 +434,8 @@ async function evaluateDraft(ctx: NativeContext, draft: ShowcaseOfferDraft, thum
     days: item ? item.days : line.days,
     unitPrice: item ? cents(item.unitPrice) : 0,
     subtotal: item ? cents(item.subtotal) : 0,
+    listSubtotal: item ? cents(item.quantity * item.days * item.unitPrice) : 0,
+    discountPercent: item ? item.discountPercent : line.discountPercent,
     quantityFromAudience: item ? item.unit === 'osoba' || item.unit === 'stół' : false,
     error: error || item?.error || null,
     thumbnailUrl: thumbnails.get(line.productId) || null,
@@ -419,11 +450,20 @@ async function evaluateDraft(ctx: NativeContext, draft: ShowcaseOfferDraft, thum
   return { draft, audience, items, lines, pricing, problem };
 }
 
+/** Rabaty pozycji (od ich wartości przed rabatem) i rabat łączny z rabatem całej oferty — jak próg akceptacji w bazie. */
+function discountsOf(evaluation: Evaluation) {
+  const before = evaluation.items.reduce((sum, item) => sum + item.quantity * item.days * item.unitPrice, 0);
+  const lineDiscountAmount = cents(Math.max(0, before - evaluation.pricing.listNet));
+  const effective = before > 0 ? (lineDiscountAmount + evaluation.pricing.discountAmount) / before * 100 : 0;
+  return { lineDiscountAmount, effectiveDiscountPercent: Math.round(effective * 100) / 100 };
+}
+
 const previewOf = (evaluation: Evaluation): ShowcaseOfferPreview => ({
   lines: evaluation.lines,
   listNet: cents(evaluation.pricing.listNet),
   discountPercent: Math.round(evaluation.pricing.discountPercent * 100) / 100,
   discountAmount: evaluation.pricing.discountAmount,
+  ...discountsOf(evaluation),
   net: evaluation.pricing.targetNet,
   taxPercent: evaluation.pricing.taxPercent,
   tax: evaluation.pricing.taxAmount,
@@ -570,13 +610,21 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
     const existing = existingRow as Row;
     if (String(existing.created_by) !== String(ctx.employee.id)) fail('Ta oferta już istnieje. Odśwież pokaz i spróbuj ponownie.', 409);
     const client = await clientOf(ctx, existing.organization_id, existing.contact_id);
+    let clientName = client.name;
+    if (!clientName && isUuid(existing.inquiry_id)) {
+      // Klient roboczy — nazwa z zapytania.
+      const { data: inquiryRow } = await ctx.supabase.from('tasks').select('inquiry_details').eq('id', existing.inquiry_id).maybeSingle();
+      const details = (inquiryRow as Row | null)?.inquiry_details;
+      clientName = isObject(details) ? text((details as Row).client_text) : '';
+    }
     return {
       offerId: String(existing.id),
       number: text(existing.offer_number),
       inquiryId: text(existing.inquiry_id),
       inquiryCreated: false,
-      clientName: client.name,
+      clientName,
       clientEmail: client.email,
+      clientPlaceholder: !isUuid(existing.organization_id) && !isUuid(existing.contact_id),
       net: cents(number(existing.subtotal) - number(existing.discount_amount)),
       gross: number(existing.total_amount),
       approval: await guardrail(ctx, String(existing.id)),
@@ -609,6 +657,8 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
         lastName: draft.client.lastName,
         email: draft.client.email,
         phone: draft.client.phone,
+        // Klient roboczy (sama nazwa, bez bazy) — zapytanie i oferta bez klienta; przypisanie później w CRM.
+        placeholder: isShowcaseOfferPlaceholder(draft.client) ? draft.client.placeholder : '',
       },
       event: {
         name: draft.event.name, date: draft.event.date, location: draft.event.location, locationId: draft.event.locationId,
@@ -648,7 +698,9 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
     ], '')
     : normalizeEventAssumptionItems(details.event_assumption_items, text(details.event_assumptions));
   const assumptions = formatEventAssumptionItems(assumptionItems) || (inquiryCreated ? '' : text(details.scope));
+  const placeholder = request.placeholder === true;
   const notes = [
+    placeholder ? `Klient roboczy: ${text(request.clientName) || 'bez nazwy'} — przypisz klienta w CRM przed wysłaniem oferty.` : '',
     approved ? `Zatwierdzone podsumowanie zapytania:\n${approved}` : '',
     draft.note ? `Notatka ze spotkania:\n${draft.note}` : '',
   ].filter(Boolean).join('\n\n');
@@ -660,17 +712,20 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
     tax_amount: pricing.taxAmount,
     total_amount: pricing.gross,
   };
-  const business = request.clientType !== 'individual';
-  const title = (draft.event.name || inquiryTitleLabel(text(inquiry.title)) || evaluation.items.map((item) => item.name).join(', ')).slice(0, 180);
+  // Bez klienta (klient roboczy) — oferta bez typu klienta i bez powiązań (jak oferta bez klienta w CRM).
+  const clientType = request.clientType === 'business' ? 'business' : request.clientType === 'individual' ? 'individual' : null;
+  // Tytuł nie bierze nazwy roboczej klienta (zapytanie „Zapytanie: <nazwa robocza>”) — trafiłaby do PDF.
+  const title = (draft.event.name || (placeholder && inquiryCreated ? '' : inquiryTitleLabel(text(inquiry.title)))
+    || evaluation.items.map((item) => item.name).join(', ')).slice(0, 180);
   const { data: created, error: offerError } = await ctx.supabase.from('offers').insert([{
     id: draft.id,
     inquiry_id: inquiryId,
     source_brief_revision: Number(inquiry.brief_revision || 1),
     event_id: isUuid(inquiry.event_id) ? inquiry.event_id : null,
     title: title || null,
-    client_type: business ? 'business' : 'individual',
-    organization_id: business && isUuid(request.organizationId) ? request.organizationId : null,
-    contact_id: isUuid(request.contactId) ? request.contactId : null,
+    client_type: clientType,
+    organization_id: clientType === 'business' && isUuid(request.organizationId) ? request.organizationId : null,
+    contact_id: clientType && isUuid(request.contactId) ? request.contactId : null,
     valid_until: warsawDate(SHOWCASE_OFFER_LIMITS.validDays),
     status: 'draft',
     notes: notes || null,
@@ -730,6 +785,7 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
     inquiryCreated,
     clientName: text(request.clientName),
     clientEmail: text(request.clientEmail),
+    clientPlaceholder: placeholder,
     net: pricing.targetNet,
     gross: pricing.gross,
     approval: await guardrail(ctx, String(offer.id)),

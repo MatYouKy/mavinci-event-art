@@ -4,7 +4,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { UNSTABLE_usePreventRemove as usePreventRemove, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import {
@@ -196,16 +196,17 @@ export default function MaterialsScreen() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [query, scope, searchActive]);
 
-  // Wstecz (gest, przycisk): z kosza do folderów, z podfolderu — folder wyżej.
-  useEffect(() => navigation.addListener('beforeRemove', (event: any) => {
-    if (trashMode) { event.preventDefault(); setTrashMode(false); return; }
-    if (openAlbum && !searchActive) { event.preventDefault(); setOpenAlbum(null); return; }
-    if (albumsMode && !searchActive) { event.preventDefault(); setAlbumsMode(false); return; }
-    if (folderId && !searchActive) {
-      event.preventDefault();
-      setFolderId(folders.find((f) => f.id === folderId)?.parentId ?? null);
-    }
-  }), [navigation, trashMode, folderId, folders, searchActive, openAlbum, albumsMode]);
+  // Wstecz (gest, przycisk): z kosza do folderów, z albumu do albumów, z podfolderu — folder wyżej. `usePreventRemove` zamiast
+  // `beforeRemove`: native-stack wtedy sam blokuje gest i przycisk systemowy (zamiast usunąć ekran natywnie — błąd „removed
+  // natively but didn't get removed from JS state”), a wstecz trafia tutaj. Menu (pasek boczny tabletu) zawsze wychodzi.
+  const nested = trashMode || (!searchActive && (Boolean(openAlbum) || albumsMode || Boolean(folderId)));
+  usePreventRemove(nested, ({ data }) => {
+    if (data.action.type !== 'GO_BACK' && data.action.type !== 'POP') { navigation.dispatch(data.action); return; }
+    if (trashMode) { setTrashMode(false); return; }
+    if (openAlbum && !searchActive) { setOpenAlbum(null); return; }
+    if (albumsMode && !searchActive) { setAlbumsMode(false); return; }
+    if (folderId && !searchActive) setFolderId(folders.find((f) => f.id === folderId)?.parentId ?? null);
+  });
 
   // MARK: Nawigacja
 

@@ -321,6 +321,9 @@ export default function OfferItems({
                     const effectiveVatRate = Number(vatRate || 23);
                     const netValue = Number(item.total || 0);
                     const grossValue = netValue * (1 + effectiveVatRate / 100);
+                    // Wartość przed rabatem pozycji (brutto, jak wartość powyżej) — przekreślona przy rabacie.
+                    const itemDiscount = Number(item.discount_amount || 0);
+                    const listGrossValue = (netValue + itemDiscount) * (1 + effectiveVatRate / 100);
                     const unitGross = Number(item.unit_price || 0) * (1 + effectiveVatRate / 100);
                     const catalogLayout = item.product?.offer_page_variant === 'compact'
                       || item.product?.offer_page_variant === 'visual'
@@ -542,7 +545,7 @@ export default function OfferItems({
 
                                 {item.discount_percent > 0 && (
                                   <div className="mt-1 text-xs text-green-400">
-                                    Rabat: {item.discount_percent}%
+                                    Rabat pozycji: {Number(item.discount_percent).toLocaleString('pl-PL', { maximumFractionDigits: 2 })}%{itemDiscount > 0 ? ` (−${itemDiscount.toFixed(2)} PLN netto)` : ''}
                                   </div>
                                 )}
                               </div>
@@ -561,9 +564,9 @@ export default function OfferItems({
                                   {grossValue.toFixed(2)} PLN
                                 </div>
 
-                                {item.discount_amount > 0 && (
+                                {itemDiscount > 0 && (
                                   <div className="mt-1 text-xs text-[#e5e4e2]/35 line-through">
-                                    {item.subtotal.toFixed(2)} PLN
+                                    {listGrossValue.toFixed(2)} PLN
                                   </div>
                                 )}
                               </div>

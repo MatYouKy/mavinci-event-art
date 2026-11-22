@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { calculateOfferDiscount, type OfferDiscountMode } from '@/lib/CRM/Offers/offerDiscount';
 import { getOfferStatusBadgeProps } from '../../helpers/statusColors';
-import { getOfferPricingTotals, roundMoney } from '@/lib/CRM/Offers/offerTotals';
+import { getOfferPricingTotals, getOfferSummary } from '@/lib/CRM/Offers/offerTotals';
 
 export const OfferDetails = ({ offer, canEdit = false, onSaved }: { offer: any; canEdit?: boolean; onSaved?: () => unknown }) => {
   const { showSnackbar } = useSnackbar();
@@ -23,15 +23,9 @@ export const OfferDetails = ({ offer, canEdit = false, onSaved }: { offer: any; 
     discountPercent: discountPreview.discount_percent, net: discountPreview.net,
     taxAmount: discountPreview.tax_amount, gross: discountPreview.total_amount,
   } : discountBase;
-  const lineDiscounts = totals.source === 'offer' ? (offer.offer_items || []).reduce((sum: number, item: any) => sum + Number(item.discount_amount || 0), 0) : 0;
-  const displayListNet = totals.listNet + lineDiscounts;
-  const customerLogisticsNet = totals.source === 'offer' && offer.logistics_enabled
-    ? roundMoney(Math.max(0, Number(offer.logistics_price_net) || 0)) : 0;
-  const customerLogisticsGross = roundMoney(customerLogisticsNet * (1 + totals.taxPercent / 100));
-  const displayItemsNet = roundMoney(displayListNet - customerLogisticsNet);
-  const displayDiscount = totals.discountAmount + lineDiscounts;
-  const displayDiscountPercent = displayListNet > 0 ? displayDiscount / displayListNet * 100 : 0;
-  const displayListGross = totals.hasMixedVatRates ? totals.gross : Math.round(displayListNet * (1 + totals.taxPercent / 100) * 100) / 100;
+  // Rabaty pozycji i rabat na ofertę osobno (jak podsumowanie wyceny w PDF, na Macu i w aplikacji).
+  const summary = getOfferSummary(offer, totals);
+  const customerLogisticsNet = summary.logisticsNet;
   const saveDiscount = async () => {
     if (!canEditDiscount || !discountPreview || loading) return;
     setLoading(true);
@@ -63,15 +57,17 @@ export const OfferDetails = ({ offer, canEdit = false, onSaved }: { offer: any; 
       <div className="mb-4 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
         <p className="mb-2 text-sm text-[#e5e4e2]/60">Podsumowanie</p>
         <table className="w-full text-sm"><thead><tr className="text-xs text-[#e5e4e2]/50"><th className="pb-2 text-left">Cała oferta</th><th className="pb-2 text-right">Netto</th><th className="pb-2 text-right">Brutto</th></tr></thead><tbody>
-          {customerLogisticsNet > 0 && <>
-            <tr className="text-[#e5e4e2]/70"><td className="py-2">Pozycje oferty</td><td className="text-right">{displayItemsNet.toFixed(2)}</td><td className="text-right">{roundMoney(displayItemsNet * (1 + totals.taxPercent / 100)).toFixed(2)}</td></tr>
-            <tr className="text-[#e5e4e2]/70"><td className="py-2">Logistyka</td><td className="text-right">{customerLogisticsNet.toFixed(2)}</td><td className="text-right">{customerLogisticsGross.toFixed(2)}</td></tr>
-          </>}
-          <tr><td className="py-2 text-[#e5e4e2]/70">Razem przed rabatem</td><td className="text-right">{displayListNet.toFixed(2)}</td><td className="text-right">{displayListGross.toFixed(2)}</td></tr>
-          {displayDiscount > 0 && <tr className="text-[#d3bb73]"><td className="py-2">Rabat {displayDiscountPercent.toFixed(2)}%</td><td className="text-right">−{displayDiscount.toFixed(2)}</td><td className="text-right">−{(displayListGross - totals.gross).toFixed(2)}</td></tr>}
-          <tr className="bg-[#d3bb73]/10 font-medium text-[#d3bb73]"><td className="py-3">{displayDiscount > 0 ? 'Razem po rabacie' : 'Razem do zapłaty'}</td><td className="text-right">{totals.net.toFixed(2)}</td><td className="text-right">{totals.gross.toFixed(2)}</td></tr>
+          {summary.rows.map((row) => {
+            const money = (value: number) => (value < 0 ? `−${Math.abs(value).toFixed(2)}` : value.toFixed(2));
+            if (row.emphasis) return <tr key={row.key} className="bg-[#d3bb73]/10 font-medium text-[#d3bb73]"><td className="py-3">{row.label}</td><td className="text-right">{money(row.net)}</td><td className="text-right">{money(row.gross)}</td></tr>;
+            const discountRow = row.key === 'lineDiscount' || row.key === 'offerDiscount';
+            return <tr key={row.key} className={discountRow ? 'text-[#d3bb73]' : row.key === 'list' ? '' : 'text-[#e5e4e2]/70'}>
+              <td className={row.key === 'list' ? 'py-2 text-[#e5e4e2]/70' : 'py-2'}>{row.label}</td><td className="text-right">{money(row.net)}</td><td className="text-right">{money(row.gross)}</td>
+            </tr>;
+          })}
         </tbody></table>
         <p className="mt-2 text-xs text-[#e5e4e2]/50">Kwoty w PLN · VAT {totals.hasMixedVatRates ? 'według stawek pozycji' : `${totals.taxPercent}%`}: {totals.taxAmount.toFixed(2)} zł</p>
+        {summary.discountNote && <p className="mt-2 text-xs text-[#e5e4e2]/50">{summary.discountNote}</p>}
         {customerLogisticsNet > 0 && <p className="mt-2 text-xs text-[#e5e4e2]/50">Logistyka jest ujęta w sumie. Rabat od całej oferty obejmuje również jej cenę.</p>}
       </div>
 
@@ -79,7 +75,7 @@ export const OfferDetails = ({ offer, canEdit = false, onSaved }: { offer: any; 
           {editingDiscount && canEditDiscount && <section className="rounded-xl bg-[#0a0d1a]/60 p-4">
             <h3 className="mb-2 text-base font-medium text-[#e5e4e2]">Rabat</h3>
             <>
-              <p className="mb-3 text-xs text-[#e5e4e2]/60">Podstawa rabatu: {discountBase.listNet.toFixed(2)} zł netto{customerLogisticsNet > 0 ? ' — pozycje oferty wraz z logistyką' : ''}. Ustaw rabat kwotowy, procentowy albo docelową cenę całej oferty.</p>
+              <p className="mb-3 text-xs text-[#e5e4e2]/60">Podstawa rabatu: {discountBase.listNet.toFixed(2)} zł netto{customerLogisticsNet > 0 ? ' — pozycje oferty wraz z logistyką' : ''}{summary.lineDiscount > 0 ? `, po rabatach pozycji (−${summary.lineDiscount.toFixed(2)} zł)` : ''}. Ustaw rabat kwotowy, procentowy albo docelową cenę całej oferty.</p>
               <div className="grid gap-3">
                 {([
                   ['amount', 'Rabat netto (zł)', discountPreview?.discount_amount],

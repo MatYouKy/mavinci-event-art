@@ -1,13 +1,18 @@
 import { PDFDocument, PDFFont, PDFPage, rgb, RGB } from 'pdf-lib';
 
-/** Shared by CRM offers, seller offers and the public seller demo. */
+/**
+ * Shared by CRM offers, seller offers and the public seller demo.
+ * Item discounts: rows carrying `line_discount_percent` > 0 add a "Rabat" column and show their values after that discount;
+ * `config.line_discount_amount` / `offer_discount_amount` / `offer_discount_percent` split the summary into
+ * "before discount → item discounts → offer discount → total". Without them the single combined discount row stays as before.
+ */
 export function drawPaginatedOfferPricingTable(
   pdf: PDFDocument, pageIndex: number, items: any[], totalNet: number,
   regular: PDFFont, bold: PDFFont, config: any = {},
 ) {
   if (!items.length) return;
   const english = config.language === 'en';
-  const labels: Record<string, string> = {"Lp.": "No.", "Nazwa pozycji": "Item", "Ilość": "Qty", "Jedn.": "Unit", "Dni": "Days", "Cena jedn.\nnetto": "Unit price\nexcl. VAT", "Wartość\nnetto": "Total\nexcl. VAT", "Wartość\nbrutto": "Total\nincl. VAT", "Pozycja": "Item", "szt.": "pcs", "PRÓBNA KALKULACJA · CIĄG DALSZY": "SAMPLE QUOTATION · CONTINUED", "WYCENA · CIĄG DALSZY": "QUOTATION · CONTINUED", "Kontynuacja pozycji z poprzedniej strony. Wszystkie kwoty w PLN.": "Items continued from the previous page. All amounts in PLN.", "RAZEM PRZED RABATEM (PLN)": "TOTAL BEFORE DISCOUNT (PLN)", "RAZEM WPISANE CENY (PLN)": "TOTAL ENTERED PRICES (PLN)", "RAZEM PO RABACIE (PLN)": "TOTAL AFTER DISCOUNT (PLN)", "RAZEM (PLN)": "TOTAL (PLN)", "Netto razem": "Total excl. VAT", "Brutto razem": "Total incl. VAT", "Dalsze pozycje na kolejnej stronie →": "More items on the next page →", "Koniec kalkulacji · podsumowanie obejmuje wszystkie strony.": "End of quotation · totals include all pages.", "Wartość wybranego wariantu znajduje się w porównaniu pakietów.": "The price of the selected option is shown in the package comparison."};
+  const labels: Record<string, string> = {"Lp.": "No.", "Nazwa pozycji": "Item", "Ilość": "Qty", "Jedn.": "Unit", "Dni": "Days", "Cena jedn.\nnetto": "Unit price\nexcl. VAT", "Wartość\nnetto": "Total\nexcl. VAT", "Wartość\nbrutto": "Total\nincl. VAT", "Pozycja": "Item", "szt.": "pcs", "PRÓBNA KALKULACJA · CIĄG DALSZY": "SAMPLE QUOTATION · CONTINUED", "WYCENA · CIĄG DALSZY": "QUOTATION · CONTINUED", "Kontynuacja pozycji z poprzedniej strony. Wszystkie kwoty w PLN.": "Items continued from the previous page. All amounts in PLN.", "RAZEM PRZED RABATEM (PLN)": "TOTAL BEFORE DISCOUNT (PLN)", "RAZEM WPISANE CENY (PLN)": "TOTAL ENTERED PRICES (PLN)", "RAZEM PO RABACIE (PLN)": "TOTAL AFTER DISCOUNT (PLN)", "RAZEM (PLN)": "TOTAL (PLN)", "Rabat": "Discount", "RABATY POZYCJI (PLN)": "ITEM DISCOUNTS (PLN)", "Netto razem": "Total excl. VAT", "Brutto razem": "Total incl. VAT", "Dalsze pozycje na kolejnej stronie →": "More items on the next page →", "Koniec kalkulacji · podsumowanie obejmuje wszystkie strony.": "End of quotation · totals include all pages.", "Wartość wybranego wariantu znajduje się w porównaniu pakietów.": "The price of the selected option is shown in the package comparison."};
   const t = (value: string) => english ? labels[value] || value : value;
   const firstPage = pdf.getPage(pageIndex);
   const { width, height } = firstPage.getSize();
@@ -28,8 +33,13 @@ export function drawPaginatedOfferPricingTable(
   const rowHeight = Math.max(config.row_height || 27, lineHeight + 12);
   const showSummary = config.show_summary !== false;
   const discount = Number(config.discount_amount || 0);
+  // Split summary (item discounts and the offer discount) only when the caller provides both parts.
+  const splitDiscount = discount > 0 && config.line_discount_amount !== undefined;
+  const lineDiscount = splitDiscount ? Math.max(0, Number(config.line_discount_amount) || 0) : 0;
+  const offerDiscount = splitDiscount ? Math.max(0, Number(config.offer_discount_amount) || 0) : discount;
+  const discountRows = discount > 0 ? 1 + (splitDiscount ? (lineDiscount > 0 ? 1 : 0) + (offerDiscount > 0 ? 1 : 0) : 1) : 0;
   const summaryGap = 12;
-  const summaryHeight = showSummary ? summaryGap + 44 + (discount > 0 ? 56 : 0) : 0;
+  const summaryHeight = showSummary ? summaryGap + 44 + discountRows * 28 : 0;
   const bottom = 110; // Reserved for continuation notes and the document footer.
   const continuationTop = 122;
   const capacity = height - continuationTop - headerHeight - bottom;
@@ -45,6 +55,7 @@ export function drawPaginatedOfferPricingTable(
     { key: 'days', label: t('Dni'), width: 28, align: 'center' },
   ];
   if (config.show_unit_price_net !== false) columns.push({ key: 'price', label: t('Cena jedn.\nnetto'), width: config.col_unit_price_width || 56, align: 'right' });
+  if (items.some(item => Number(item.line_discount_percent) > 0)) columns.push({ key: 'discount', label: t('Rabat'), width: config.col_discount_width || 38, align: 'center' });
   if (config.show_vat_column === true) columns.push({ key: 'vat', label: 'VAT', width: config.col_vat_width || 34, align: 'center' });
   if (config.show_value_net !== false) columns.push({ key: 'net', label: t('Wartość\nnetto'), width: config.col_value_net_width || 66, align: 'right' });
   if (config.show_value_gross !== false) columns.push({ key: 'gross', label: t('Wartość\nbrutto'), width: config.col_value_gross_width || 66, align: 'right' });
@@ -92,9 +103,11 @@ export function drawPaginatedOfferPricingTable(
     const description = String(item.calculation_description || '').trim();
     const lines = [...nameLines, ...(description && description !== name.trim()
       ? wrap(description, columns[1].width - 10) : [])];
+    const lineDiscountPercent = Number(item.line_discount_percent) || 0;
     const values = {
       lp: `${index + 1}.`, days: Number(item.days ?? 1).toLocaleString(english ? 'en-GB' : 'pl-PL'), quantity: quantity.toLocaleString(english ? 'en-GB' : 'pl-PL'), unit: item.unit || t('szt.'),
       price: item.price_label || (missing ? '—' : money(price)), vat: `${vat}%`, net: missing ? '—' : money(net), gross: missing ? '—' : money(gross),
+      discount: lineDiscountPercent > 0 ? `−${lineDiscountPercent.toLocaleString(english ? 'en-GB' : 'pl-PL', { maximumFractionDigits: 2 })}%` : '—',
     };
     for (let offset = 0; offset < lines.length; offset += maxLines) {
       const part = lines.slice(offset, offset + maxLines);
@@ -198,7 +211,16 @@ export function drawPaginatedOfferPricingTable(
           y -= 28;
         };
         summaryRow(t('RAZEM PRZED RABATEM (PLN)'), listNet, listGross);
-        summaryRow(`${english ? 'DISCOUNT' : 'RABAT'} ${money(Number(config.discount_percent || 0))}% (PLN)`, -discount, -round(listGross - gross));
+        if (!splitDiscount) {
+          summaryRow(`${english ? 'DISCOUNT' : 'RABAT'} ${money(Number(config.discount_percent || 0))}% (PLN)`, -discount, -round(listGross - gross));
+        } else {
+          // Rows already show values after item discounts: their total separates the item and offer discount (gross too).
+          if (lineDiscount > 0) summaryRow(t('RABATY POZYCJI (PLN)'), -lineDiscount, -round(listGross - computedGross));
+          const offerPercent = money(Number(config.offer_discount_percent || 0));
+          if (offerDiscount > 0) summaryRow(lineDiscount > 0
+            ? (english ? `OFFER DISCOUNT ${offerPercent}% (PLN)` : `RABAT ${offerPercent}% NA OFERTĘ (PLN)`)
+            : `${english ? 'DISCOUNT' : 'RABAT'} ${offerPercent}% (PLN)`, -offerDiscount, -round((lineDiscount > 0 ? computedGross : listGross) - gross));
+        }
       }
       page.drawRectangle({ x: left, y: y - 44, width: tableWidth, height: 44, color: headerColor });
       drawCell(page, partial ? t('RAZEM WPISANE CENY (PLN)') : discount > 0 ? t('RAZEM PO RABACIE (PLN)') : t('RAZEM (PLN)'), left, y - 26, labelWidth, fontSize, bold, headerText);
