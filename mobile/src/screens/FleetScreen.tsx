@@ -20,7 +20,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 
 import PermissionGate from '../components/PermissionGate';
-import ScheduleTimeline from '../components/Timeline/ScheduleTimeline';
+import ScheduleTimeline, { type TimelineDetails } from '../components/Timeline/ScheduleTimeline';
 import { Segmented } from '../components/Inquiries/InquiryKit';
 import {
   FleetAdHocUsage,
@@ -32,7 +32,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { canManage, canView } from '../lib/permissions';
 import {
-  SCREEN_VIEWS, fetchVehicleTimelines, formatEntryTime, timelineRange, useScreenTimeline, type TimelineRow, type VehicleEntry,
+  SCREEN_VIEWS, fetchVehicleTimelines, timelineRange, useScreenTimeline, type TimelineRow, type VehicleEntry,
 } from '../lib/scheduleTimeline';
 import { supabase } from '../lib/supabase';
 import { navigateToEvent } from '../navigation/navigationRef';
@@ -665,25 +665,25 @@ function FleetContent() {
     sublabel: vehicle.registration_number || [vehicle.brand, vehicle.model].filter(Boolean).join(' ') || null,
     icon: 'truck' as const,
   })), [filteredVehicles]);
-  const openBooking = (entry: VehicleEntry) => {
-    const vehicle = timelineRows.find((row) => row.id === entry.rowId);
+  /** Szczegóły rezerwacji pod osią: auto, kierowca, miejsce, status; „Otwórz event” i karta auta. */
+  const bookingDetails = (entry: VehicleEntry): TimelineDetails => {
+    const vehicle = vehicles.find((item) => item.id === entry.rowId) ?? null;
     const status = entry.status ? TIMELINE_STATUS_LABELS[entry.status] ?? entry.status : null;
-    const details = [
-      entry.kind === 'maintenance' ? 'Serwis / przegląd' : 'Event',
-      formatEntryTime(entry),
-      vehicle ? [vehicle.label, vehicle.sublabel].filter(Boolean).join(' · ') : null,
-      entry.driver ? `Kierowca: ${entry.driver}` : null,
-      entry.location ? (entry.kind === 'maintenance' ? `Serwis: ${entry.location}` : `Miejsce: ${entry.location}`) : null,
-      status ? `Status: ${status}` : null,
-    ].filter(Boolean).join('\n');
     const eventId = entry.kind === 'event' ? entry.relatedId : null;
-    Alert.alert(
-      entry.title,
-      details,
-      eventId
-        ? [{ text: 'Zamknij', style: 'cancel' }, { text: 'Otwórz event', onPress: () => navigateToEvent(eventId) }]
-        : [{ text: 'OK' }],
-    );
+    return {
+      badge: { label: entry.kind === 'maintenance' ? 'Serwis / przegląd' : status ? `Event · ${status}` : 'Event', color: entry.color },
+      facts: [
+        vehicle ? { icon: 'truck', text: [getVehicleTitle(vehicle), vehicle.registration_number].filter(Boolean).join(' · ') } : null,
+        entry.driver ? { icon: 'user', text: `Kierowca: ${entry.driver}` } : null,
+        entry.location ? { icon: entry.kind === 'maintenance' ? 'tool' : 'map-pin', text: entry.kind === 'maintenance' ? `Serwis: ${entry.location}` : entry.location } : null,
+        entry.kind === 'maintenance' && status ? { icon: 'info', text: `Status: ${status}` } : null,
+      ],
+      description: entry.kind === 'maintenance' ? entry.description : null,
+      actions: [
+        eventId ? { label: 'Otwórz event', icon: 'arrow-right-circle', primary: true, onPress: () => navigateToEvent(eventId) } : null,
+        vehicle ? { label: 'Karta auta', icon: 'truck', primary: !eventId, onPress: () => setSelectedVehicle(vehicle) } : null,
+      ],
+    };
   };
 
   const stats = useMemo(
@@ -818,11 +818,13 @@ function FleetContent() {
           onZoomChange={timeline.setZoom}
           anchor={timeline.anchor}
           onAnchorChange={timeline.setAnchor}
+          scale={timeline.scale}
+          onScaleChange={timeline.setScale}
           rows={timelineRows}
           entries={bookings}
           loading={bookingsLoading}
           error={bookingsError}
-          onPressEntry={openBooking}
+          details={bookingDetails}
           refreshing={refreshing}
           onRefresh={() => { void loadVehicles(true); void loadBookings(); }}
           emptyText={filteredVehicles.length ? 'Brak rezerwacji, serwisów i przeglądów w tym okresie.' : 'Brak pojazdów — zmień wyszukiwanie.'}

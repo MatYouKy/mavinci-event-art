@@ -27,7 +27,7 @@ import {
   seesSalesColleagueEvents,
 } from '../lib/salesColleagueEvents';
 import { Segmented } from '../components/Inquiries/InquiryKit';
-import ScheduleTimeline from '../components/Timeline/ScheduleTimeline';
+import ScheduleTimeline, { type TimelineDetails } from '../components/Timeline/ScheduleTimeline';
 import { HOUR, SCREEN_VIEWS, useScreenTimeline, type TimelineEntry } from '../lib/scheduleTimeline';
 
 export interface EventListItem {
@@ -414,6 +414,35 @@ export default function EventsScreen({ onEventPress }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, search, statusFilter, operationalStates, operational, isWarehouseWorker, warehouseFilter, handoffs, employee?.id, scope, scopeAvailable]);
 
+  /** Szczegóły eventu pod osią: status, klient, miejsce, rozliczenie, magazyn; „Otwórz event”. */
+  const eventDetails = (event: EventListItem): TimelineDetails => {
+    const status = displayStatus(event);
+    const handoff = isWarehouseWorker ? handoffs[event.id] : undefined;
+    const wedding = event.has_wedding_card || event.category_name?.trim().toLocaleLowerCase('pl-PL').startsWith('wesel') === true;
+    return {
+      badge: { label: (operational ? OPERATIONAL_LABELS : STATUS_LABELS)[status] || 'Nowy event', color: STATUS_COLORS[status] || '#6b7280' },
+      facts: [
+        event.organization_name ? { icon: 'briefcase', text: event.organization_name } : null,
+        event.location_name ? { icon: 'map-pin', text: event.location_name } : null,
+        event.category_name ? { icon: 'tag', text: event.category_name } : null,
+        event.creator_name ? { icon: 'user', text: `Opiekun: ${event.creator_name}` } : null,
+        event.billing_arrangement !== 'direct' && event.billing_organization_name ? { icon: 'credit-card', text: `Rozliczenie: ${event.billing_organization_name}` } : null,
+        wedding ? {
+          icon: 'heart',
+          text: event.has_wedding_card
+            ? `Karta weselna${event.wedding_card_progress !== null ? ` · ${event.wedding_card_progress}%` : ''}`
+            : 'Wesele · karta jeszcze nieutworzona',
+        } : null,
+        handoff !== undefined && (handoff?.accepted_at || canAcceptWarehouseHandoff(event.status, handoff)) ? {
+          icon: 'package',
+          text: `${handoff?.accepted_at ? warehouseOwnerLabel(handoff, employee?.id) : 'Magazyn · do przejęcia'}${handoff?.ready_at ? ' · Gotowość potwierdzona' : ''}`,
+        } : null,
+        event.is_sales_colleague ? { icon: 'eye', text: `${SALES_COLLEAGUE_BADGE_LABEL} — podgląd sprzedaży` } : null,
+      ],
+      actions: [{ label: 'Otwórz event', icon: 'arrow-right-circle', primary: true, onPress: () => onEventPress(event) }],
+    };
+  };
+
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleDateString('pl-PL', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -600,8 +629,10 @@ export default function EventsScreen({ onEventPress }: Props) {
           onZoomChange={timeline.setZoom}
           anchor={timeline.anchor}
           onAnchorChange={timeline.setAnchor}
+          scale={timeline.scale}
+          onScaleChange={timeline.setScale}
           entries={timelineEntries}
-          onPressEntry={(entry) => onEventPress(entry.event)}
+          details={(entry) => eventDetails(entry.event)}
           refreshing={refreshing}
           onRefresh={() => fetchEvents(true)}
           error={loadError}

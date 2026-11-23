@@ -24,7 +24,8 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMobile } from '@/hooks/useMobile';
 import TaskCard from '@/components/crm/TaskCard';
 import TaskSearchInput, { useTaskSearch } from '@/components/crm/TaskSearchInput';
-import SellerDatePicker from '@/app/(public)/seller/_components/SellerDatePicker';
+import TaskDueField from '@/components/crm/tasks/TaskDueField';
+import { taskDueIso, taskDueParts } from '@/lib/CRM/tasks/taskDue';
 import {
   useGetTasksListQuery,
   useCreateTaskMutation,
@@ -250,6 +251,8 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
     priority: 'medium' as TaskPriority,
     board_column: 'todo' as TaskBoardColumn,
     due_date: '',
+    /** Godzina terminu (`HH:MM`, czas polski); pusta — cały dzień. */
+    due_time: '',
     assigned_employees: [] as string[],
   });
 
@@ -397,7 +400,8 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
         description: task.description || '',
         priority: task.priority,
         board_column: task.board_column,
-        due_date: task.due_date ? task.due_date.split('T')[0] : '',
+        due_date: taskDueParts(task.due_date)?.day ?? '',
+        due_time: taskDueParts(task.due_date)?.time ?? '',
         assigned_employees: task.task_assignees.map((a) => a.employee_id),
       });
     } else {
@@ -408,6 +412,7 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
         priority: 'medium',
         board_column: (defaultColumn || 'todo') as TaskBoardColumn,
         due_date: '',
+        due_time: '',
         assigned_employees: currentEmployee?.id ? [currentEmployee.id] : [],
       });
     }
@@ -539,7 +544,7 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
           description: formData.description || null,
           priority: formData.priority,
           board_column: formData.board_column,
-          due_date: formData.due_date || null,
+          due_date: formData.due_date ? taskDueIso(formData.due_date, formData.due_time || null) : null,
           assigned_employees: formData.assigned_employees,
           assigned_by: currentEmployee?.id,
         }).unwrap();
@@ -552,7 +557,7 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
           description: formData.description || null,
           priority: formData.priority,
           board_column: formData.board_column,
-          due_date: formData.due_date || null,
+          due_date: formData.due_date ? taskDueIso(formData.due_date, formData.due_time || null) : null,
           assigned_employees: formData.assigned_employees,
           created_by: currentEmployee?.id || undefined,
           owner_id: currentEmployee?.id || null,
@@ -992,10 +997,10 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
               </div>
 
               <div>
-                <SellerDatePicker
-                  label="Termin wykonania"
-                  value={formData.due_date}
-                  onChange={(due_date) => setFormData((previous) => ({ ...previous, due_date }))}
+                <TaskDueField
+                  day={formData.due_date}
+                  time={formData.due_time}
+                  onChange={(due_date, due_time) => setFormData((previous) => ({ ...previous, due_date, due_time }))}
                   onValidityChange={setDueDateValid}
                 />
               </div>

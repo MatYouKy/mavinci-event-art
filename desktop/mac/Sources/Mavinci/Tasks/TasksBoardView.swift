@@ -339,8 +339,8 @@ struct TaskEditRequest: Identifiable {
                     .font(.caption2.weight(.medium)).padding(.horizontal, 6).padding(.vertical, 2)
                     .background(CrmTheme.rgb(0x22c55e).opacity(0.14), in: Capsule()).foregroundStyle(CrmTheme.rgb(0x4ade80))
                 }
-                if let due = task.due {
-                    Label(TaskDates.short(due), systemImage: "calendar").font(.caption2).foregroundStyle(.secondary)
+                if let due = TaskDates.label(task) {
+                    Label(due, systemImage: "calendar").font(.caption2).foregroundStyle(.secondary)
                 }
                 if task.comments > 0 {
                     Label("\(task.comments)", systemImage: "text.bubble").font(.caption2.weight(.medium))
@@ -455,7 +455,7 @@ struct TaskEditRequest: Identifiable {
             if !task.description.isEmpty { section("Opis") { Text(task.description).textSelection(.enabled) } }
             section("Szczegóły") {
                 VStack(alignment: .leading, spacing: 6) {
-                    if let due = task.due { row("Termin wykonania", TaskDates.short(due)) }
+                    if let due = TaskDates.label(task, long: true) { row("Termin wykonania", due) }
                     if !task.workingName.isEmpty { row("Pracuje teraz", task.workingName) }
                     if let detail, !detail.creatorName.isEmpty { row("Utworzył(a)", detail.creatorName) }
                     if !task.assignees.isEmpty {

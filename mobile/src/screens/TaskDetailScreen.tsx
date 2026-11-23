@@ -25,10 +25,11 @@ import EmployeeAvatar from '../components/EmployeeAvatar';
 import { SearchableDropdown } from '@/components/SearchableDropdown';
 import { sendTaskAssignmentPush } from '../services/taskAssignmentNotifications';
 import { TaskFileSources } from '../components/Tasks/TaskFilesField';
-import { useNotice } from '../components/Inquiries/InquiryKit';
+import { DayField, TimeField, useNotice } from '../components/Inquiries/InquiryKit';
 import { pickTaskFiles, type TaskFileSource } from '../lib/taskFiles';
 import { TASK_ATTACHMENT_MAX_BYTES, addTaskComment, uploadTaskAttachment } from '../lib/tasksBoard';
 import { openPdf } from '../lib/driveApi';
+import { taskDueIso, taskDueLabel, taskDueOverdue, taskDueParts } from '../lib/taskDue';
 
 interface TaskDetailScreenProps {
   route: {
@@ -147,6 +148,9 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
   const [editDescription, setEditDescription] = useState('');
   const [editPriority, setEditPriority] = useState<Task['priority']>('medium');
   const [editStatus, setEditStatus] = useState<string>('todo');
+  /** Termin: dzień (`YYYY-MM-DD`) i opcjonalna godzina (`HH:MM`) w czasie polskim; bez godziny — cały dzień. */
+  const [editDueDay, setEditDueDay] = useState('');
+  const [editDueTime, setEditDueTime] = useState('');
   const [availableEmployees, setAvailableEmployees] = useState<AvailableEmployee[]>([]);
   const [editAssigneeIds, setEditAssigneeIds] = useState<Set<string>>(new Set());
   const [openedDropdown, setOpenedDropdown] = useState<string | null>(null);
@@ -362,6 +366,9 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     setEditDescription(task.description || '');
     setEditPriority(task.priority);
     setEditStatus(statusOf(task));
+    const due = taskDueParts(task.due_date);
+    setEditDueDay(due?.day ?? '');
+    setEditDueTime(due?.time ?? '');
     setEditAssigneeIds(new Set(assignees.map((a) => a.employee_id)));
     setShowEditModal(true);
     (async () => {
@@ -408,6 +415,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
         description: editDescription.trim() || null,
         priority: editPriority,
       };
+      // Termin zapisujemy tylko po zmianie (dzień albo godzina) — bez zmiany zostaje dokładnie ten sam zapis.
+      const before = taskDueParts(task.due_date);
+      if ((before?.day ?? '') !== editDueDay || (before?.time ?? '') !== (editDueDay ? editDueTime : '')) {
+        update.due_date = editDueDay ? taskDueIso(editDueDay, editDueTime || null) : null;
+      }
       // Zadanie — kolumna tablicy (baza sama ustawia status, jak w CRM); zapytanie — własny status.
       if (editStatus !== statusOf(task)) {
         if (task.is_inquiry) update.status = editStatus;
@@ -639,7 +651,9 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
               {task.due_date && (
                 <View style={styles.infoRow}>
                   <Text style={styles.infoLabel}>Termin:</Text>
-                  <Text style={styles.infoValue}>{formatDate(task.due_date)}</Text>
+                  <Text style={[styles.infoValue, statusOf(task) !== 'completed' && taskDueOverdue(task.due_date) && { color: colors.status.error }]}>
+                    {taskDueLabel(task.due_date)}{taskDueParts(task.due_date)?.time ? '' : ' · cały dzień'}
+                  </Text>
                 </View>
               )}
               <View style={styles.assigneesSection}>
@@ -869,6 +883,18 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                   );
                 })}
               </View>
+
+              <Text style={styles.formLabel}>Termin wykonania</Text>
+              <DayField value={editDueDay} onChange={setEditDueDay} placeholder="Bez terminu" />
+              {editDueDay ? (
+                <View style={styles.dueEdit}>
+                  <TimeField value={editDueTime} onChange={setEditDueTime} placeholder="Godzina (opcjonalnie)" />
+                  <Text style={styles.dueHint}>{editDueTime ? `Termin: do ${editDueTime}.` : 'Bez godziny — termin na cały dzień (do końca dnia).'}</Text>
+                  <TouchableOpacity onPress={() => { setEditDueDay(''); setEditDueTime(''); }} accessibilityRole="button">
+                    <Text style={styles.dueClear}>Usuń termin</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
 
               <Text style={styles.formLabel}>Status</Text>
               <View style={styles.chipRow}>
@@ -1382,6 +1408,19 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     marginBottom: spacing.xs,
     marginTop: spacing.md,
+  },
+  dueEdit: {
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  dueHint: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.text.tertiary,
+  },
+  dueClear: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.status.error,
+    paddingVertical: spacing.xs,
   },
   formInput: {
     backgroundColor: colors.background.primary,

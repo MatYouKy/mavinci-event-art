@@ -2,8 +2,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Nowe zadanie i edycja — jak formularz w CRM: tytuł, opis, załączniki (każda tablica, jak w aplikacji na telefonie), priorytet,
-/// kolumna, termin wykonania i przypisani pracownicy (tablica firmowa). Tablica prywatna zapisuje zadanie prywatne z identyfikatorem
-/// nadanym raz na formularz, więc ponowienie po zerwanym połączeniu nie tworzy duplikatu.
+/// kolumna, termin wykonania (dzień i opcjonalnie godzina — bez godziny cały dzień, jak w CRM i w aplikacji) i przypisani pracownicy
+/// (tablica firmowa). Tablica prywatna zapisuje zadanie prywatne z identyfikatorem nadanym raz na formularz, więc ponowienie po
+/// zerwanym połączeniu nie tworzy duplikatu.
 @MainActor struct TaskEditorSheet: View {
     @ObservedObject var store: TasksStore
     let request: TaskEditRequest
@@ -18,6 +19,8 @@ import UniformTypeIdentifiers
     @State private var column: BoardColumnKind = .todo
     @State private var hasDue = false
     @State private var due = Date()
+    /// Termin z godziną (bez niej — cały dzień, do 23:59).
+    @State private var hasTime = false
     @State private var assignees: [String] = []
     @State private var personQuery = ""
     @State private var files: [AttachmentFile] = []
@@ -76,6 +79,13 @@ import UniformTypeIdentifiers
                     if hasDue {
                         DatePicker("Data", selection: $due, displayedComponents: .date)
                             .environment(\.timeZone, MeetingDates.zone).environment(\.locale, Locale(identifier: "pl_PL"))
+                        Toggle("Godzina", isOn: $hasTime)
+                        if hasTime {
+                            DatePicker("Do godziny", selection: $due, displayedComponents: .hourAndMinute)
+                                .environment(\.timeZone, MeetingDates.zone).environment(\.locale, Locale(identifier: "pl_PL"))
+                        }
+                        Text(hasTime ? "Termin: do \(MeetingDates.time(due))." : "Bez godziny — termin na cały dzień (do końca dnia).")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 .disabled(savedID != nil)
@@ -136,12 +146,17 @@ import UniformTypeIdentifiers
                 if !files.contains(where: { $0.url == url }) { files.append(AttachmentFile(url: url, size: size)) }
             }
         }
+        .onChange(of: hasTime) { _, on in
+            // Godzina włączona przy terminie bez godziny — zaczynamy od 18:00 (zamiast końca dnia).
+            guard on, prepared, editing?.dueTime == nil else { return }
+            due = MeetingDates.calendar.date(bySettingHour: 18, minute: 0, second: 0, of: due) ?? due
+        }
         .task {
             guard !prepared else { return }
             prepared = true
             if let task = editing {
                 title = task.title; details = task.description; priority = task.priorityKind; column = task.column
-                if let date = task.due { hasDue = true; due = date }
+                if let date = task.due { hasDue = true; due = date; hasTime = task.dueTime != nil }
                 assignees = task.assignees.map(\.id)
             } else {
                 column = request.column
@@ -169,6 +184,7 @@ import UniformTypeIdentifiers
                     "priority": .string(priority.rawValue),
                     "boardColumn": .string(column.rawValue),
                     "dueDate": hasDue ? .string(TaskDates.dayString(due)) : .null,
+                    "dueTime": hasDue && hasTime ? .string(MeetingDates.time(due)) : .null,
                 ]
                 let target = editing?.id ?? (company ? nil : newID)
                 id = try await store.save(id: target, existing: editing != nil, data: data, assignees: company ? assignees : nil)

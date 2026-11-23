@@ -87,6 +87,8 @@ struct BoardTask: Codable, Hashable, Identifiable {
     var due: Date? { dueDate.flatMap(MeetingDates.parse) ?? dueDate.flatMap { TaskDates.day($0) } }
     /// Data w formularzu: dzień (RRRR-MM-DD) w czasie polskim.
     var dueDay: String? { due.map { MeetingDates.format($0, "yyyy-MM-dd") } }
+    /// Godzina terminu (`HH:mm`, czas polski) albo `nil` — termin na cały dzień (jak `taskDue.ts`).
+    var dueTime: String? { dueDate.flatMap(TaskDates.time) }
 }
 
 /// Kolejność kart jak w CRM: priorytet (od pilnych), termin (najbliższy), kolejność na tablicy.
@@ -155,4 +157,26 @@ enum TaskDates {
     static func day(_ value: String) -> Date? { dayFormatter.date(from: String(value.prefix(10))) }
     static func dayString(_ date: Date) -> String { dayFormatter.string(from: date) }
     static func short(_ date: Date) -> String { MeetingDates.format(date, "dd.MM.yyyy") }
+
+    private static let utc: Calendar = {
+        var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(secondsFromGMT: 0) ?? .current; return c
+    }()
+
+    /// Godzina terminu z zapisu w bazie (`HH:mm`, czas polski) albo `nil` — termin na cały dzień: 23:59 i północ czasu polskiego
+    /// oraz dokładna północ UTC (dawny zapis samej daty). Te same reguły co `src/lib/CRM/tasks/taskDue.ts`.
+    static func time(_ value: String) -> String? {
+        guard value.count > 10, let date = MeetingDates.parse(value) else { return nil }
+        let parts = utc.dateComponents([.hour, .minute, .second], from: date)
+        if parts.hour == 0 && parts.minute == 0 && parts.second == 0 { return nil }
+        let clock = MeetingDates.time(date)
+        return clock == "23:59" || clock == "00:00" ? nil : clock
+    }
+
+    /// Termin na karcie i w szczegółach: „27.11.2026, 18:00” albo „27.11.2026” (z `long` — dzień tygodnia i „cały dzień”).
+    static func label(_ task: BoardTask, long: Bool = false) -> String? {
+        guard let due = task.due else { return nil }
+        let day = MeetingDates.format(due, long ? "EEE dd.MM.yyyy" : "dd.MM.yyyy")
+        if let time = task.dueTime { return "\(day), \(time)" }
+        return long ? "\(day) · cały dzień" : day
+    }
 }

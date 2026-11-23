@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { showcaseOfferDraftId } from './showcaseShared';
+import { taskDueOverdue, taskDueParts, warsawToday } from './taskDue';
 
 /*
  * Zadania w aplikacji — to samo API co aplikacja na Maca (`/bridge/native/v1/tasks`, `src/lib/native/tasks.ts`; token sesji
@@ -79,30 +80,34 @@ export const taskPriority = (priority: string) => TASK_PRIORITIES.find((item) =>
 const isColumn = (value: unknown): value is TaskColumnId => TASK_COLUMNS.some((column) => column.id === value);
 const isPriority = (value: unknown): value is TaskPriorityId => TASK_PRIORITIES.some((priority) => priority.id === value);
 
-/** Dzień terminu (`YYYY-MM-DD`, czas polski) z zapisu w bazie (data albo znacznik czasu). */
+/** Dzień terminu (`YYYY-MM-DD`, czas polski) z zapisu w bazie (data albo znacznik czasu) — wspólne reguły `taskDue.ts`. */
 export function taskDueDay(value: string | null | undefined): string | null {
-  if (!value) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
-  const time = Date.parse(value);
-  if (Number.isNaN(time)) return /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(time));
-  const part = (type: string) => parts.find((item) => item.type === type)?.value || '';
-  return `${part('year')}-${part('month')}-${part('day')}`;
+  return taskDueParts(value)?.day ?? null;
+}
+
+/** Godzina terminu (`HH:MM`, czas polski) albo `null` — termin na cały dzień. */
+export function taskDueClock(value: string | null | undefined): string | null {
+  return taskDueParts(value)?.time ?? null;
 }
 
 /** Dzisiejszy dzień w czasie polskim (`YYYY-MM-DD`). */
-export const taskToday = (now: Date = new Date()) => taskDueDay(now.toISOString()) || now.toISOString().slice(0, 10);
+export const taskToday = (now: Date = new Date()) => warsawToday(now.getTime());
 
-/** Termin na karcie: „Dziś”, „Jutro”, „Wczoraj” albo „12.11.2026”; stan — po terminie, wkrótce, później. */
+/**
+ * Termin na karcie: „Dziś, 18:00”, „Jutro”, „Wczoraj” albo „12.11.2026” (z godziną, gdy jest); stan — po terminie (minęła godzina,
+ * a termin na cały dzień — po jego końcu), wkrótce (dziś i jutro), później.
+ */
 export function taskDueBadge(value: string | null | undefined, done: boolean, now: Date = new Date()): { label: string; state: 'overdue' | 'soon' | 'later' | 'done' } | null {
-  const day = taskDueDay(value);
-  if (!day) return null;
+  const parts = taskDueParts(value);
+  if (!parts) return null;
+  const { day, time } = parts;
   const today = taskToday(now);
   const shift = (days: number) => taskToday(new Date(now.getTime() + days * 86_400_000));
   const [year, month, date] = day.split('-');
-  const label = day === today ? 'Dziś' : day === shift(1) ? 'Jutro' : day === shift(-1) ? 'Wczoraj' : `${date}.${month}.${year}`;
+  const dayLabel = day === today ? 'Dziś' : day === shift(1) ? 'Jutro' : day === shift(-1) ? 'Wczoraj' : `${date}.${month}.${year}`;
+  const label = time ? `${dayLabel}, ${time}` : dayLabel;
   if (done) return { label, state: 'done' };
-  if (day < today) return { label, state: 'overdue' };
+  if (taskDueOverdue(value, now.getTime())) return { label, state: 'overdue' };
   if (day <= shift(1)) return { label, state: 'soon' };
   return { label, state: 'later' };
 }
@@ -276,8 +281,10 @@ export type TaskSaveInput = {
   description: string;
   priority: TaskPriorityId;
   boardColumn: TaskColumnId;
-  /** `YYYY-MM-DD` albo `null` (bez terminu). */
+  /** Dzień terminu `YYYY-MM-DD` (czas polski) albo `null` (bez terminu). */
   dueDate: string | null;
+  /** Godzina terminu `HH:MM` (czas polski) albo `null` — cały dzień. */
+  dueTime: string | null;
   /** Tablica firmowa — przypisani pracownicy (`null` — bez zmian). */
   assignees: string[] | null;
 };
@@ -297,6 +304,7 @@ export async function saveBoardTask(board: TaskBoardKind, input: TaskSaveInput):
       priority: input.priority,
       boardColumn: input.boardColumn,
       dueDate: input.dueDate,
+      dueTime: input.dueDate ? input.dueTime : null,
     },
     ...(input.assignees ? { assignees: input.assignees } : {}),
   });
@@ -306,8 +314,8 @@ export async function saveBoardTask(board: TaskBoardKind, input: TaskSaveInput):
   return id;
 }
 
-/** Zapis jednego pola z karty (priorytet, termin) — pozostałe dane bez zmian. */
-export function saveBoardTaskFields(board: TaskBoardKind, task: BoardTask, change: Partial<Pick<TaskSaveInput, 'priority' | 'dueDate' | 'boardColumn' | 'title' | 'description'>>) {
+/** Zapis jednego pola z karty (priorytet, termin) — pozostałe dane bez zmian (termin razem z godziną). */
+export function saveBoardTaskFields(board: TaskBoardKind, task: BoardTask, change: Partial<Pick<TaskSaveInput, 'priority' | 'dueDate' | 'dueTime' | 'boardColumn' | 'title' | 'description'>>) {
   return saveBoardTask(board, {
     id: task.id,
     existing: true,
@@ -316,6 +324,7 @@ export function saveBoardTaskFields(board: TaskBoardKind, task: BoardTask, chang
     priority: change.priority ?? task.priority,
     boardColumn: change.boardColumn ?? task.boardColumn,
     dueDate: change.dueDate !== undefined ? change.dueDate : taskDueDay(task.dueDate),
+    dueTime: change.dueTime !== undefined ? change.dueTime : change.dueDate !== undefined ? null : taskDueClock(task.dueDate),
     assignees: null,
   });
 }

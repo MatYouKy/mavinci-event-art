@@ -2,6 +2,7 @@
 'use client';
 
 import { formatSystemSubject } from '@/lib/ui/systemLabels';
+import { taskDueLabel } from '@/lib/CRM/tasks/taskDue';
 
 import { useRouter } from 'next/navigation';
 import { Calendar, GripVertical, Edit, Trash2, UserPlus, MessageSquare } from 'lucide-react';
@@ -187,7 +188,7 @@ const assignees = useMemo(() => {
         {task.due_date && (
           <div className="flex items-center gap-1 text-xs text-[#e5e4e2]/60">
             <Calendar className="w-3 h-3" />
-            {new Date(task.due_date).toLocaleDateString('pl-PL')}
+            {taskDueLabel(task.due_date, { weekday: false })}
           </div>
         )}
 

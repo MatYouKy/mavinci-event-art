@@ -15,6 +15,7 @@ import {
   Switch,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
 } from 'react-native';
 import { MEETING_RECURRENCE_OPTIONS, meetingRecurrenceLabel } from '../lib/meetingRecurrence';
 import {
@@ -31,7 +32,7 @@ import {
 } from '../lib/meetingStatus';
 import { cancelObsoleteMeetingAlerts } from '../services/meetingReminders';
 import SwipeableRow from '../components/SwipeableRow';
-import ScheduleTimeline from '../components/Timeline/ScheduleTimeline';
+import ScheduleTimeline, { type TimelineDetails, type TimelineIcon } from '../components/Timeline/ScheduleTimeline';
 import { Segmented } from '../components/Inquiries/InquiryKit';
 import { HOUR, SCREEN_VIEWS, addDays, startOfDay, useScreenTimeline, type TimelineEntry } from '../lib/scheduleTimeline';
 
@@ -602,6 +603,51 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
     }];
   }), [meetings, employee?.id]);
 
+  /** Szczegóły spotkania pod osią: status, miejsce, uczestnicy, notatki; odpowiedź, szczegóły, edycja, nawigacja. */
+  const meetingDetails = (meeting: Meeting): TimelineDetails => {
+    const status = meetingStatusOption(meeting.status);
+    const mine = myMeetingResponse(meeting, employee?.id);
+    const organizer = Boolean(employee?.id && meeting.created_by === employee.id);
+    const needsAnswer = !organizer && meetingNeedsMyResponse(meeting, employee?.id) && isUpcoming(meeting.datetime_end || meeting.datetime_start || '');
+    const answer = mine && mine !== 'pending' && !organizer ? meetingResponseOption(mine) : null;
+    const place = meeting.location_text?.trim() || '';
+    return {
+      badge: status.value !== 'confirmed'
+        ? { label: status.label, color: status.color }
+        : needsAnswer ? { label: 'Czeka na Twoją odpowiedź', color: colors.primary.gold }
+          : answer ? { label: `Twoja odpowiedź: ${answer.label}`, color: answer.color } : null,
+      facts: [
+        place ? { icon: 'map-pin', text: place } : null,
+        meeting.participants?.length ? { icon: 'users', text: `Uczestnicy${meetingResponseSummaryText(meeting) ? ` · ${meetingResponseSummaryText(meeting)}` : ''}` } : null,
+        meeting.series_id ? { icon: 'repeat', text: `${meetingRecurrenceLabel(meeting.recurrence_days, meeting.datetime_start)} (czas polski)` } : null,
+        { icon: meeting.is_private ? 'lock' : 'briefcase', text: meeting.is_private ? 'Spotkanie prywatne' : 'Spotkanie firmowe' },
+      ],
+      description: meeting.notes?.trim() || null,
+      actions: [
+        ...(needsAnswer
+          ? MEETING_RESPONSES.filter((option) => option.value !== 'pending').map((option) => ({
+            label: option.action,
+            icon: (option.value === 'accepted' ? 'check' : option.value === 'declined' ? 'x' : 'help-circle') as TimelineIcon,
+            primary: option.value === 'accepted',
+            danger: option.value === 'declined',
+            disabled: Boolean(respondingTo),
+            onPress: () => { void respondToMeeting(meeting, option.value); },
+          }))
+          : []),
+        { label: 'Szczegóły', icon: 'maximize-2', primary: !needsAnswer, onPress: () => setSelectedMeeting(meeting) },
+        organizer ? { label: 'Edytuj', icon: 'edit-2', onPress: () => openEditMeeting(meeting) } : null,
+        place ? {
+          label: 'Nawiguj',
+          icon: 'navigation',
+          onPress: () => {
+            const query = encodeURIComponent(place);
+            void Linking.openURL(Platform.OS === 'ios' ? `https://maps.apple.com/?q=${query}` : `https://www.google.com/maps/search/?api=1&query=${query}`);
+          },
+        } : null,
+      ],
+    };
+  };
+
   const upcomingMeetings = meetings.filter((m) => isUpcoming(m.datetime_start || ''));
   const pastMeetings = meetings.filter((m) => !isUpcoming(m.datetime_start || ''));
   const availableMeetingColors = MEETING_COLORS.some(
@@ -845,8 +891,10 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
           onZoomChange={timeline.setZoom}
           anchor={timeline.anchor}
           onAnchorChange={timeline.setAnchor}
+          scale={timeline.scale}
+          onScaleChange={timeline.setScale}
           entries={timelineEntries}
-          onPressEntry={(entry) => setSelectedMeeting(entry.meeting)}
+          details={(entry) => meetingDetails(entry.meeting)}
           refreshing={refreshing}
           onRefresh={() => fetchMeetings(true)}
           emptyText="Brak spotkań w tym okresie."

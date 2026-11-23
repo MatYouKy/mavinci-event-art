@@ -19,13 +19,14 @@ import { TaskBoardCard } from '../components/Tasks/TaskBoardCard';
 import { TaskEditorSheet, type TaskEditTarget } from '../components/Tasks/TaskEditorSheet';
 import { BoardGrip } from '../components/InquiryBoard';
 import { ActionMenu, type MenuItem } from '../components/Inquiries/WorkspaceSheets';
-import { DayField, NoticeScope, Segmented, Sheet, SheetActions, kit, useNotice } from '../components/Inquiries/InquiryKit';
+import { DayField, NoticeScope, Segmented, Sheet, SheetActions, TimeField, kit, useNotice } from '../components/Inquiries/InquiryKit';
 import type { TasksStackParamList } from '../navigation/TasksStackNavigator';
 import {
   TASK_COLUMNS, TASK_PRIORITIES, boardDropIndex, boardTaskTimer, cachedTaskBoard, deleteBoardTask, loadTaskBoard, moveBoardTask, newTaskId,
-  saveBoardTask, saveBoardTaskFields, sortBoardTasks, taskColumnLabel, taskDueBadge, taskDueDay, taskPriority,
+  saveBoardTask, saveBoardTaskFields, sortBoardTasks, taskColumnLabel, taskDueBadge, taskDueClock, taskDueDay, taskPriority,
   type ActiveTaskTimer, type BoardTask, type TaskBoardData, type TaskBoardKind, type TaskColumnId, type TaskPriorityId,
 } from '../lib/tasksBoard';
+import { taskDueIso } from '../lib/taskDue';
 
 /*
  * Tablica zadań jak w Trello (te same dane, uprawnienia i zapisy co CRM i aplikacja na Maca — `lib/tasksBoard.ts`):
@@ -133,7 +134,7 @@ export default function TasksScreen() {
   const [editor, setEditor] = useState<TaskEditTarget | null>(null);
   const [menuTask, setMenuTask] = useState<BoardTask | null>(null);
   const [priorityTask, setPriorityTask] = useState<BoardTask | null>(null);
-  const [dueTarget, setDueTarget] = useState<{ task: BoardTask; day: string } | null>(null);
+  const [dueTarget, setDueTarget] = useState<{ task: BoardTask; day: string; time: string } | null>(null);
   const [deleting, setDeleting] = useState<BoardTask | null>(null);
   const [stopping, setStopping] = useState<{ task: BoardTask; column: TaskColumnId } | null>(null);
   const [switching, setSwitching] = useState<BoardTask | null>(null);
@@ -511,7 +512,7 @@ export default function TasksScreen() {
     markBusy(tempId, true);
     try {
       await saveBoardTask(board, {
-        id, existing: false, title, description: '', priority: 'medium', boardColumn: column, dueDate: null,
+        id, existing: false, title, description: '', priority: 'medium', boardColumn: column, dueDate: null, dueTime: null,
         assignees: company ? (me ? [me] : []) : null,
       });
       notify(`Dodano kartę: ${title}`);
@@ -542,9 +543,10 @@ export default function TasksScreen() {
     if (done) { patchTask(task.id, (item) => ({ ...item, priority })); reload(true); }
   };
 
-  const saveDue = async (task: BoardTask, day: string | null) => {
-    const done = await run('Zapisuję termin…', () => saveBoardTaskFields(board, task, { dueDate: day }), day ? 'Termin zapisany.' : 'Usunięto termin.');
-    if (done) { setDueTarget(null); patchTask(task.id, (item) => ({ ...item, dueDate: day })); reload(true); }
+  /** Termin z karty: dzień i opcjonalna godzina (bez godziny — cały dzień). */
+  const saveDue = async (task: BoardTask, day: string | null, time: string | null) => {
+    const done = await run('Zapisuję termin…', () => saveBoardTaskFields(board, task, { dueDate: day, dueTime: day ? time : null }), day ? 'Termin zapisany.' : 'Usunięto termin.');
+    if (done) { setDueTarget(null); patchTask(task.id, (item) => ({ ...item, dueDate: day ? taskDueIso(day, time) : null })); reload(true); }
   };
 
   const removeTask = async (task: BoardTask) => {
@@ -604,7 +606,7 @@ export default function TasksScreen() {
     else if (key === 'start') { if (timer) setSwitching(task); else void startTimer(task, 'start'); }
     else if (key === 'stop') void stopTimer();
     else if (key === 'priority') setPriorityTask(task);
-    else if (key === 'due') setDueTarget({ task, day: taskDueDay(task.dueDate) ?? '' });
+    else if (key === 'due') setDueTarget({ task, day: taskDueDay(task.dueDate) ?? '', time: taskDueClock(task.dueDate) ?? '' });
     else if (key === 'edit') setEditor({ key: Date.now(), task, column: task.boardColumn });
     else if (key === 'crm') openInCrmWeb(`/crm/tasks/${task.id}`);
     else if (key === 'delete') setDeleting(task);
@@ -834,12 +836,16 @@ export default function TasksScreen() {
 
       {dueTarget ? (
         <Sheet visible title="Termin wykonania" subtitle={dueTarget.task.titleLabel} onClose={() => setDueTarget(null)} width={480}
-          footer={<SheetActions onCancel={() => setDueTarget(null)} onConfirm={() => void saveDue(dueTarget.task, dueTarget.day || null)} label="Zapisz" />}>
+          footer={<SheetActions onCancel={() => setDueTarget(null)} onConfirm={() => void saveDue(dueTarget.task, dueTarget.day || null, dueTarget.time || null)} label="Zapisz" />}>
           <DayField value={dueTarget.day} onChange={(day) => setDueTarget({ ...dueTarget, day })} placeholder="Bez terminu" />
           {dueTarget.day ? (
-            <TouchableOpacity onPress={() => setDueTarget({ ...dueTarget, day: '' })} style={kit.secondary} accessibilityRole="button">
-              <Text style={kit.secondaryText}>Bez terminu</Text>
-            </TouchableOpacity>
+            <>
+              <TimeField value={dueTarget.time} onChange={(time) => setDueTarget({ ...dueTarget, time })} placeholder="Godzina (opcjonalnie)" />
+              <Text style={kit.muted}>{dueTarget.time ? `Termin: do ${dueTarget.time}.` : 'Bez godziny — termin na cały dzień (do końca dnia).'}</Text>
+              <TouchableOpacity onPress={() => setDueTarget({ ...dueTarget, day: '', time: '' })} style={kit.secondary} accessibilityRole="button">
+                <Text style={kit.secondaryText}>Bez terminu</Text>
+              </TouchableOpacity>
+            </>
           ) : null}
         </Sheet>
       ) : null}

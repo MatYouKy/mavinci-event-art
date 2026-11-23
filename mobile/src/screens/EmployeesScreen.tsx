@@ -9,7 +9,6 @@ import {
   RefreshControl,
   TextInput,
   Linking,
-  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../theme';
@@ -18,11 +17,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { isAdmin, canManage } from '../lib/permissions';
 import PermissionGate from '../components/PermissionGate';
 import EmployeeAvatar from '../components/EmployeeAvatar';
-import ScheduleTimeline from '../components/Timeline/ScheduleTimeline';
+import ScheduleTimeline, { type TimelineDetails } from '../components/Timeline/ScheduleTimeline';
 import { Segmented } from '../components/Inquiries/InquiryKit';
 import { navigateToEvent, navigateToInquiry, navigateToMeeting, navigateToTask } from '../navigation/navigationRef';
 import {
-  SCHEDULE_KIND_LABELS, SCHEDULE_LEGEND, SCREEN_VIEWS, fetchEmployeeSchedule, formatEntryTime, scheduleEventId, timelineRange,
+  SCHEDULE_KIND_LABELS, SCHEDULE_LEGEND, SCREEN_VIEWS, fetchEmployeeSchedule, scheduleEventId, timelineRange,
   useScreenTimeline, type ScheduleEntry, type TimelineRow,
 } from '../lib/scheduleTimeline';
 
@@ -144,12 +143,24 @@ function EmployeesContent() {
     avatarUrl: item.avatar_url ?? null,
     avatarMetadata: item.avatar_metadata ?? null,
   })), [filtered]);
-  const openScheduleEntry = (entry: ScheduleEntry) => {
+  /** Szczegóły pozycji planu pod osią: rodzaj, osoba, opis; „Otwórz” (event, spotkanie, zapytanie, zadanie) i telefon do osoby. */
+  const scheduleDetails = (entry: ScheduleEntry): TimelineDetails => {
     const open = scheduleTarget(entry);
-    const person = timelineRows.find((row) => row.id === entry.rowId)?.label;
-    const details = [SCHEDULE_KIND_LABELS[entry.kind], formatEntryTime(entry), person, entry.subtitle !== SCHEDULE_KIND_LABELS[entry.kind] ? entry.subtitle : null]
-      .filter(Boolean).join('\n');
-    Alert.alert(entry.title, details, open ? [{ text: 'Zamknij', style: 'cancel' }, { text: 'Otwórz', onPress: open }] : [{ text: 'OK' }]);
+    const person = filtered.find((item) => item.id === entry.rowId);
+    const personName = person ? person.nickname || [person.name, person.surname].filter(Boolean).join(' ') : null;
+    const target = entry.kind === 'event' || entry.kind === 'phase' ? 'Otwórz event'
+      : entry.kind === 'meeting' ? 'Otwórz spotkanie' : entry.kind === 'task' ? 'Otwórz zadanie' : 'Otwórz zapytanie';
+    return {
+      badge: { label: SCHEDULE_KIND_LABELS[entry.kind], color: entry.color },
+      facts: [
+        personName ? { icon: 'user', text: [personName, person?.occupation].filter(Boolean).join(' · ') } : null,
+        entry.subtitle && entry.subtitle !== SCHEDULE_KIND_LABELS[entry.kind] ? { icon: 'info', text: entry.subtitle } : null,
+      ],
+      actions: [
+        open ? { label: target, icon: 'arrow-right-circle', primary: true, onPress: open } : null,
+        person?.phone ? { label: 'Zadzwoń', icon: 'phone', onPress: () => handleCall(person.phone!) } : null,
+      ],
+    };
   };
 
   const getAccessBadge = (emp: EmployeeListItem) => {
@@ -328,12 +339,14 @@ function EmployeesContent() {
           onZoomChange={timeline.setZoom}
           anchor={timeline.anchor}
           onAnchorChange={timeline.setAnchor}
+          scale={timeline.scale}
+          onScaleChange={timeline.setScale}
           rows={timelineRows}
           entries={schedule}
           loading={scheduleLoading}
           error={scheduleError}
           legend={SCHEDULE_LEGEND}
-          onPressEntry={openScheduleEntry}
+          details={scheduleDetails}
           refreshing={refreshing}
           onRefresh={() => { void loadAll(true); void loadSchedule(); }}
           emptyText="Brak eventów, spotkań i nieobecności w tym okresie."

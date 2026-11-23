@@ -22,6 +22,8 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useMobile } from '@/hooks/useMobile';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import TaskAssigneeAvatars, { Assignee } from '@/components/crm/TaskAssigneeAvatars';
+import TaskDueField from '@/components/crm/tasks/TaskDueField';
+import { taskDueIso, taskDueLabel, taskDueParts } from '@/lib/CRM/tasks/taskDue';
 
 /** Miniatura wybranego załącznika (zdjęcie) albo ikona pliku — jak w formularzu „Zadania firmowe”. */
 function TaskAttachmentPreview({ file }: { file: File }) {
@@ -117,7 +119,10 @@ export default function PrivateTasksBoardTab({
     priority: 'medium' as 'low' | 'medium' | 'high' | 'urgent',
     board_column: 'todo',
     due_date: '',
+    /** Godzina terminu (`HH:MM`, czas polski); pusta — cały dzień. */
+    due_time: '',
   });
+  const [dueValid, setDueValid] = useState(true);
 
   const columns = [
     { id: 'todo', label: 'Do zrobienia', color: 'border-yellow-500/30' },
@@ -689,7 +694,8 @@ export default function PrivateTasksBoardTab({
         description: task.description || '',
         priority: task.priority,
         board_column: task.board_column,
-        due_date: task.due_date ? task.due_date.split('T')[0] : '',
+        due_date: taskDueParts(task.due_date)?.day ?? '',
+        due_time: taskDueParts(task.due_date)?.time ?? '',
       });
     } else {
       setEditingTask(null);
@@ -699,8 +705,10 @@ export default function PrivateTasksBoardTab({
         priority: 'medium',
         board_column: defaultColumn || 'todo',
         due_date: '',
+        due_time: '',
       });
     }
+    setDueValid(true);
     setAttachmentFiles([]);
     setShowModal(true);
   };
@@ -766,6 +774,10 @@ export default function PrivateTasksBoardTab({
       showSnackbar('Tytuł zadania jest wymagany', 'warning');
       return;
     }
+    if (!dueValid) {
+      showSnackbar('Podaj poprawną datę w formacie DD.MM.RRRR.', 'warning');
+      return;
+    }
 
     savingRef.current = true;
     setSaving(true);
@@ -781,7 +793,7 @@ export default function PrivateTasksBoardTab({
             description: formData.description || null,
             priority: formData.priority,
             board_column: formData.board_column,
-            due_date: formData.due_date || null,
+            due_date: formData.due_date ? taskDueIso(formData.due_date, formData.due_time || null) : null,
           })
           .eq('id', editingTask.id);
 
@@ -798,7 +810,7 @@ export default function PrivateTasksBoardTab({
             description: formData.description || null,
             priority: formData.priority,
             board_column: formData.board_column,
-            due_date: formData.due_date || null,
+            due_date: formData.due_date ? taskDueIso(formData.due_date, formData.due_time || null) : null,
             status: formData.board_column === 'review' ? 'in_progress' : formData.board_column,
             is_private: true,
             owner_id: employeeId,
@@ -1064,7 +1076,7 @@ export default function PrivateTasksBoardTab({
                       {task.due_date && (
                         <div className="flex items-center gap-1 text-[10px] text-[#e5e4e2]/40">
                           <Calendar className="h-3 w-3" />
-                          {new Date(task.due_date).toLocaleDateString('pl-PL')}
+                          {taskDueLabel(task.due_date, { weekday: false })}
                         </div>
                       )}
                     </div>
@@ -1221,12 +1233,12 @@ export default function PrivateTasksBoardTab({
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/80">Termin</label>
-                <input
-                  type="date"
-                  value={formData.due_date}
-                  onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                <TaskDueField
+                  label="Termin"
+                  day={formData.due_date}
+                  time={formData.due_time}
+                  onChange={(due_date, due_time) => setFormData({ ...formData, due_date, due_time })}
+                  onValidityChange={setDueValid}
                 />
               </div>
 

@@ -23,6 +23,11 @@ export const SCREEN_VIEWS: ReadonlyArray<{ id: ScreenView; label: string }> = [
   { id: 'timeline', label: 'Timeline' },
 ];
 
+/** Powiększenie osi („lupka”): mnożnik szerokości kolumn dnia / godziny. */
+export const TIMELINE_SCALES = [1, 1.5, 2, 3, 4] as const;
+export const timelineScaleLabel = (scale: number) => `${String(scale).replace('.', ',')}×`;
+const timelineScale = (value: unknown): number => (TIMELINE_SCALES as readonly number[]).includes(Number(value)) ? Number(value) : 1;
+
 /** Pozycja na osi: wiersz (pracownik, auto) albo — bez wierszy — wspólny tor (spotkania, eventy). */
 export type TimelineEntry = {
   id: string;
@@ -144,14 +149,15 @@ export function withOpacity(color: string | null | undefined, opacity: number): 
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Widok ekranu (lista / timeline) i skala — zapamiętane na urządzeniu osobno dla każdego ekranu
+// Widok ekranu (lista / timeline), skala i powiększenie — zapamiętane na urządzeniu osobno dla każdego ekranu
 // ---------------------------------------------------------------------------------------------------------------
 
-const memory = new Map<string, { view: ScreenView; zoom: TimelineZoom }>();
+type ScreenTimelineState = { view: ScreenView; zoom: TimelineZoom; scale: number };
+const memory = new Map<string, ScreenTimelineState>();
 
 export function useScreenTimeline(screen: 'meetings' | 'events' | 'employees' | 'fleet', defaultZoom: TimelineZoom = 'week') {
   const key = `mavinci.timeline.${screen}`;
-  const [state, setState] = useState(() => memory.get(key) ?? { view: 'list' as ScreenView, zoom: defaultZoom });
+  const [state, setState] = useState<ScreenTimelineState>(() => memory.get(key) ?? { view: 'list', zoom: defaultZoom, scale: 1 });
   const [anchor, setAnchor] = useState(() => new Date());
   useEffect(() => {
     if (memory.has(key)) return;
@@ -159,10 +165,11 @@ export function useScreenTimeline(screen: 'meetings' | 'events' | 'employees' | 
     AsyncStorage.getItem(key)
       .then((raw) => {
         if (!active || !raw) return;
-        const saved = JSON.parse(raw) as { view?: unknown; zoom?: unknown };
-        const next = {
-          view: saved.view === 'timeline' ? 'timeline' as const : 'list' as const,
+        const saved = JSON.parse(raw) as { view?: unknown; zoom?: unknown; scale?: unknown };
+        const next: ScreenTimelineState = {
+          view: saved.view === 'timeline' ? 'timeline' : 'list',
           zoom: saved.zoom === 'day' || saved.zoom === 'week' || saved.zoom === 'month' ? saved.zoom : defaultZoom,
+          scale: timelineScale(saved.scale),
         };
         memory.set(key, next);
         setState(next);
@@ -170,7 +177,7 @@ export function useScreenTimeline(screen: 'meetings' | 'events' | 'employees' | 
       .catch(() => undefined);
     return () => { active = false; };
   }, [key, defaultZoom]);
-  const update = (patch: Partial<{ view: ScreenView; zoom: TimelineZoom }>) => {
+  const update = (patch: Partial<ScreenTimelineState>) => {
     setState((current) => {
       const next = { ...current, ...patch };
       memory.set(key, next);
@@ -181,9 +188,12 @@ export function useScreenTimeline(screen: 'meetings' | 'events' | 'employees' | 
   return {
     view: state.view,
     zoom: state.zoom,
+    /** Powiększenie osi (`TIMELINE_SCALES`). */
+    scale: state.scale,
     anchor,
     setView: (view: ScreenView) => update({ view }),
     setZoom: (zoom: TimelineZoom) => update({ zoom }),
+    setScale: (scale: number) => update({ scale: timelineScale(scale) }),
     setAnchor,
   };
 }

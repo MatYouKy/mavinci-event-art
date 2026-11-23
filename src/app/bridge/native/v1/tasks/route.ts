@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { nativeContext, nativeJson, nativeUnauthorized, readJson, type NativeContext } from '@/lib/native/auth';
 import { activeTimer, invalidateTasks, taskAccess, tasksItems, tasksState, type TaskBoard } from '@/lib/native/tasks';
+import { taskDueFromInput, taskDueParts } from '@/lib/CRM/tasks/taskDue';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,8 @@ export const maxDuration = 60;
  * `TaskDetailClient`): zadanie firmowe z przypisaniami (+ powiadomienie push), zadanie prywatne (idempotentny zapis z id
  * z aplikacji), przeniesienie kolumny z osobą pracującą, licznik czasu (`time_entries`), komentarze i załączniki
  * (`event-files/task-attachments`). Tokenem pracownika — RLS jak w przeglądarce.
+ * Termin (`save`: `dueDate` + `dueTime`): dzień i opcjonalna godzina w czasie polskim (`taskDue.ts`; bez godziny — cały dzień,
+ * 23:59). Starsza wersja aplikacji wysyła sam dzień (bez `dueTime`) — przy edycji ten sam dzień z godziną zostaje z godziną.
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -20,11 +23,6 @@ const failure = (message: string, status = 400) => nativeJson({ error: message }
 const errorText = (error: unknown, fallback: string) =>
   (error as { message?: string })?.message || (typeof error === 'string' ? error : fallback);
 const boardOf = (value: unknown): TaskBoard => (value === 'company' ? 'company' : value === 'event' ? 'event' : 'mine');
-const dateOrNull = (value: unknown) => {
-  if (value === null || value === undefined || value === '') return null;
-  const text = String(value);
-  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : undefined;
-};
 
 async function stopTimer(ctx: NativeContext) {
   const { error } = await ctx.supabase.from('time_entries').update({ end_time: new Date().toISOString() })
@@ -158,10 +156,17 @@ export async function POST(request: Request) {
         const title = String(data.title || '').trim();
         const column = String(data.boardColumn || 'todo');
         const priority = String(data.priority || 'medium');
-        const due = dateOrNull(data.dueDate);
+        const withTime = Object.prototype.hasOwnProperty.call(data, 'dueTime');
+        let due = taskDueFromInput(data.dueDate, withTime ? data.dueTime : undefined);
         if (!title) return failure('Tytuł zadania jest wymagany');
         if (!columns.includes(column) || !priorities.includes(priority)) return failure('Nieprawidłowe dane zadania.');
-        if (due === undefined) return failure('Podaj poprawną datę w formacie DD.MM.RRRR.');
+        if (due === undefined) return failure('Podaj poprawny termin: dzień (DD.MM.RRRR) i opcjonalnie godzinę.');
+        // Starsza wersja aplikacji (sam dzień, bez `dueTime`): ten sam dzień przy edycji nie kasuje godziny ustawionej gdzie indziej.
+        if (!withTime && due && id && uuid.test(id) && /^\d{4}-\d{2}-\d{2}$/.test(String(data.dueDate))) {
+          const { data: current } = await ctx.supabase.from('tasks').select('due_date').eq('id', id).maybeSingle();
+          const before = taskDueParts((current?.due_date as string | null | undefined) ?? null);
+          if (before?.time && before.day === String(data.dueDate)) due = String(current?.due_date);
+        }
         const fields = { title, description: String(data.description || '').trim() || null, priority, board_column: column, due_date: due };
         const assignees = Array.isArray(body.assignees)
           ? [...new Set(body.assignees.map(String).filter((value: string) => uuid.test(value)))] as string[]

@@ -22,6 +22,8 @@ import { Task } from '@/components/crm/TaskCard';
 import type { IEmployee } from '@/app/(crm)/crm/employees/type';
 import Image from 'next/image';
 import { sendTaskAssignmentPush } from '@/lib/CRM/tasks/sendTaskAssignmentPush';
+import TaskDueField from '@/components/crm/tasks/TaskDueField';
+import { taskDueIso, taskDueParts } from '@/lib/CRM/tasks/taskDue';
 
 type EmployeeLite = {
   id: string;
@@ -81,7 +83,10 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     priority: 'medium' as 'low' | 'medium' | 'high' | 'urgent',
     board_column: 'todo',
     due_date: '',
+    /** Godzina terminu (`HH:MM`, czas polski); pusta — cały dzień. */
+    due_time: '',
   });
+  const [dueValid, setDueValid] = useState(true);
 
   const columns = [
     { id: 'todo', label: 'Do zrobienia', color: 'border-yellow-500/30 bg-yellow-500/5' },
@@ -471,7 +476,8 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         description: task.description || '',
         priority: task.priority,
         board_column: task.board_column || '',
-        due_date: task.due_date || '',
+        due_date: taskDueParts(task.due_date)?.day ?? '',
+        due_time: taskDueParts(task.due_date)?.time ?? '',
       });
     } else {
       setEditingTask(null);
@@ -481,8 +487,10 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         priority: 'medium',
         board_column: 'todo',
         due_date: '',
+        due_time: '',
       });
     }
+    setDueValid(true);
     setShowModal(true);
   };
 
@@ -495,6 +503,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       priority: 'medium',
       board_column: 'todo',
       due_date: '',
+      due_time: '',
     });
   };
 
@@ -503,6 +512,10 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
 
     if (!formData.title.trim()) {
       showSnackbar('Tytuł zadania jest wymagany', 'error');
+      return;
+    }
+    if (!dueValid) {
+      showSnackbar('Podaj poprawną datę w formacie DD.MM.RRRR.', 'warning');
       return;
     }
 
@@ -518,7 +531,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
           | 'review'
           | 'completed'
           | 'cancelled',
-        due_date: formData.due_date || null,
+        due_date: formData.due_date ? taskDueIso(formData.due_date, formData.due_time || null) : null,
         event_id: eventId,
         is_private: false,
         owner_id: null,
@@ -1078,12 +1091,12 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/80">Termin</label>
-                <input
-                  type="date"
-                  value={formData.due_date}
-                  onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                  className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
+                <TaskDueField
+                  label="Termin"
+                  day={formData.due_date}
+                  time={formData.due_time}
+                  onChange={(due_date, due_time) => setFormData({ ...formData, due_date, due_time })}
+                  onValidityChange={setDueValid}
                 />
               </div>
 

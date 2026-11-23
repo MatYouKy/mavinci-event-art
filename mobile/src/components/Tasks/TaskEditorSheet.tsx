@@ -2,17 +2,18 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography, ink } from '../../theme';
-import { DayField, Label, SelectField, SelectList, Sheet, SheetActions, kit } from '../Inquiries/InquiryKit';
+import { DayField, Label, SelectField, SelectList, Sheet, SheetActions, TimeField, kit } from '../Inquiries/InquiryKit';
 import { TaskFilesField } from './TaskFilesField';
 import type { PickedTaskFile } from '../../lib/taskFiles';
 import {
-  TASK_COLUMNS, TASK_PRIORITIES, newTaskId, saveBoardTask, taskColumnLabel, taskDueDay, taskEmployees, uploadTaskAttachment,
+  TASK_COLUMNS, TASK_PRIORITIES, newTaskId, saveBoardTask, taskColumnLabel, taskDueClock, taskDueDay, taskEmployees, uploadTaskAttachment,
   type BoardTask, type TaskBoardKind, type TaskColumnId, type TaskEmployee, type TaskPriorityId,
 } from '../../lib/tasksBoard';
 
 /*
  * Nowe zadanie i edycja — jak formularz w CRM i na Macu: tytuł, opis, załączniki (zdjęcia, zrzuty ekranu, aparat, pliki, obraz
- * ze schowka), priorytet, kolumna, termin wykonania i przypisani pracownicy (tablica firmowa). Najpierw zapis zadania, potem pliki
+ * ze schowka), priorytet, kolumna, termin wykonania (dzień i opcjonalnie godzina — bez godziny cały dzień) i przypisani pracownicy
+ * (tablica firmowa). Najpierw zapis zadania, potem pliki
  * po kolei; plik, który się nie wysłał, zostaje w formularzu — „Wyślij pozostałe pliki” nie tworzy drugiego zadania (zadanie
  * prywatne ma identyfikator nadany raz na formularz).
  */
@@ -37,6 +38,7 @@ export function TaskEditorSheet({ board, target, me, run, notify, onClose, onSav
   const [priority, setPriority] = useState<TaskPriorityId>(editing?.priority ?? 'medium');
   const [column, setColumn] = useState<TaskColumnId>(editing?.boardColumn ?? target.column);
   const [due, setDue] = useState(taskDueDay(editing?.dueDate) ?? '');
+  const [dueTime, setDueTime] = useState(taskDueClock(editing?.dueDate) ?? '');
   const [assignees, setAssignees] = useState<string[]>(
     editing ? editing.assignees.map((person) => person.id) : company && me ? [me] : [],
   );
@@ -80,6 +82,7 @@ export function TaskEditorSheet({ board, target, me, run, notify, onClose, onSav
           priority,
           boardColumn: column,
           dueDate: due || null,
+          dueTime: due && dueTime ? dueTime : null,
           assignees: company ? assignees : null,
         }));
         if (!id) return;
@@ -147,11 +150,17 @@ export function TaskEditorSheet({ board, target, me, run, notify, onClose, onSav
           <DayField value={due} onChange={(value) => { if (!locked) setDue(value); }} placeholder="Bez terminu" />
         </View>
         {due && !locked ? (
-          <TouchableOpacity onPress={() => setDue('')} style={kit.iconButton} accessibilityRole="button" accessibilityLabel="Usuń termin">
+          <TouchableOpacity onPress={() => { setDue(''); setDueTime(''); }} style={kit.iconButton} accessibilityRole="button" accessibilityLabel="Usuń termin">
             <Feather name="x" size={16} color={colors.text.tertiary} />
           </TouchableOpacity>
         ) : null}
       </View>
+      {due ? (
+        <>
+          <TimeField value={dueTime} onChange={(value) => { if (!locked) setDueTime(value); }} placeholder="Godzina (opcjonalnie)" />
+          <Text style={kit.muted}>{dueTime ? `Termin: do ${dueTime}.` : 'Bez godziny — termin na cały dzień (do końca dnia).'}</Text>
+        </>
+      ) : null}
 
       {company ? (
         <>

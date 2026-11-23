@@ -45,6 +45,8 @@ import {
 import { IEmployee } from '../../employees/type';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { sendTaskAssignmentPush } from '@/lib/CRM/tasks/sendTaskAssignmentPush';
+import TaskDueField from '@/components/crm/tasks/TaskDueField';
+import { taskDueIso, taskDueLabel, taskDueParts } from '@/lib/CRM/tasks/taskDue';
 
 interface Task {
   id: string;
@@ -153,6 +155,9 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
   const [isDragging, setIsDragging] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editedTask, setEditedTask] = useState<Partial<Task>>({});
+  /** Termin w edycji: dzień i opcjonalna godzina (czas polski); bez godziny — cały dzień. */
+  const [editDue, setEditDue] = useState({ day: '', time: '' });
+  const [editDueValid, setEditDueValid] = useState(true);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [availableEmployees, setAvailableEmployees] = useState<IEmployee[]>([]);
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
@@ -624,6 +629,8 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
       priority: task.priority,
       due_date: task.due_date,
     });
+    setEditDue({ day: taskDueParts(task.due_date)?.day ?? '', time: taskDueParts(task.due_date)?.time ?? '' });
+    setEditDueValid(true);
     setIsEditing(true);
   };
 
@@ -637,6 +644,14 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
       showSnackbar('Tytuł zadania jest wymagany', 'warning');
       return;
     }
+    if (!editDueValid) {
+      showSnackbar('Podaj poprawną datę w formacie DD.MM.RRRR.', 'warning');
+      return;
+    }
+    // Termin bez zmian zostaje dokładnie tym samym zapisem; zmieniony — dzień i godzina w czasie polskim (bez godziny: cały dzień).
+    const before = taskDueParts(task.due_date);
+    const dueChanged = (before?.day ?? '') !== editDue.day || (before?.time ?? '') !== (editDue.day ? editDue.time : '');
+    const dueDate = dueChanged ? (editDue.day ? taskDueIso(editDue.day, editDue.time || null) : null) : task.due_date;
 
     try {
       await updateTask({
@@ -644,7 +659,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
         title: editedTask.title,
         description: editedTask.description || null,
         priority: editedTask.priority as any,
-        due_date: editedTask.due_date || null,
+        due_date: dueDate || null,
       }).unwrap();
 
       showSnackbar('Zadanie zaktualizowane', 'success');
@@ -1002,14 +1017,12 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/60">
-                      Termin
-                    </label>
-                    <input
-                      type="date"
-                      value={editedTask.due_date ? editedTask.due_date.split('T')[0] : ''}
-                      onChange={(e) => setEditedTask({ ...editedTask, due_date: e.target.value })}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1a1d2e] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
+                    <TaskDueField
+                      label="Termin"
+                      day={editDue.day}
+                      time={editDue.time}
+                      onChange={(day, time) => setEditDue({ day, time })}
+                      onValidityChange={setEditDueValid}
                     />
                   </div>
                 </div>
@@ -1103,7 +1116,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
                       className={`flex items-center gap-1.5 ${isMobile ? 'text-xs' : 'text-sm'} text-[#e5e4e2]/60`}
                     >
                       <Calendar className={`${isMobile ? 'h-3 w-3' : 'h-4 w-4'}`} />
-                      {new Date(task.due_date).toLocaleDateString('pl-PL')}
+                      {taskDueLabel(task.due_date)}
                     </div>
                   )}
                 </div>
