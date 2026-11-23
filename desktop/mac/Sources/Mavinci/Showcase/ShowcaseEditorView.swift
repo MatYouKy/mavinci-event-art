@@ -6,6 +6,9 @@ import UniformTypeIdentifiers
 // wstęp, zdjęcie główne — także przeciągnięciem z Findera, Zdjęć, Safari), produkty z katalogu (kolejność przeciąganiem), bloki
 // pokazu w kolejności spotkania (przeciąganie za uchwyt): zdjęcia, punkty, z katalogu produktów, specyfikacja, pytania klientów,
 // tekst, realizacje ze strony; lista kontrolna z przejściem do bloku i podgląd jak na iPadzie (także przed zapisem). „Zapisz” (⌘S).
+// Aktywna karta pokazuje się też na stronie produktu dla klienta (`/produkty/<id>` każdego powiązanego produktu — bez ukrytych
+// bloków, `src/lib/showcase/showcaseProductPage.server.ts`), chyba że wyłączono „Pokazuj na stronie produktu dla klienta”
+// (karta tylko na spotkaniach); globus przy produkcie otwiera tę stronę.
 
 /// Miejsce, do którego trafią wybrane zdjęcia.
 enum ShowcasePhotoTarget: Identifiable, Hashable {
@@ -718,6 +721,13 @@ enum ShowcaseListMode: Identifiable, Hashable {
                 ForEach(Array(draft.productIDs.enumerated()), id: \.element) { entry in productRow(entry.element, main: entry.offset == 0) }
                 if draft.productIDs.isEmpty {
                     Text("Powiąż produkty — warianty, ceny, pakiety i przygotowanie zaciągną się z Oferty → Produkty.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    if draft.productPageSwitch {
+                        Toggle("Pokazuj na stronie produktu dla klienta", isOn: field(\.showOnProductPage, true))
+                            .toggleStyle(.switch)
+                    }
+                    Text(productPageNote(draft))
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
             .id("showcase-field-products")
@@ -744,6 +754,13 @@ enum ShowcaseListMode: Identifiable, Hashable {
         }
     }
 
+    /// Gdzie pokazuje się karta: szkic — nigdzie, wyłączony przełącznik — tylko spotkania, inaczej także strona produktu.
+    private func productPageNote(_ draft: ShowcaseDraft) -> String {
+        if !draft.isActive { return "Szkic — karta nie pokazuje się na spotkaniach ani na stronie produktu dla klienta." }
+        if draft.productPageSwitch && !draft.showOnProductPage { return "Karta tylko na spotkaniach — strona produktu dla klienta jej nie pokazuje." }
+        return "Po zapisie treść karty (zdjęcia, punkty, pytania, realizacje — bez ukrytych bloków i cen) pokazuje się też na stronie produktu dla klienta. Podgląd: globus przy produkcie."
+    }
+
     private func productRow(_ productID: String, main: Bool) -> some View {
         let targeted = productTarget == productID
         let name = store.productNames[productID] ?? "Produkt"
@@ -754,6 +771,8 @@ enum ShowcaseListMode: Identifiable, Hashable {
             Text(name).font(.callout).lineLimit(1)
             if main { Text("(główny)").font(.caption2).foregroundStyle(.secondary) }
             Spacer(minLength: 4)
+            Button { state.openCRM("/produkty/\(productID)") } label: { Image(systemName: "globe") }
+                .buttonStyle(.borderless).help("Strona produktu dla klienta — z materiałem tej karty")
             Button { state.openCRM("/crm/offers/products/\(productID)") } label: { Image(systemName: "arrow.up.right.square") }
                 .buttonStyle(.borderless).help("Karta produktu w CRM")
             Button { mutate { $0.productIDs.removeAll { $0 == productID } } } label: { Image(systemName: "xmark") }

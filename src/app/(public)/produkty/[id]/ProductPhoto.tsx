@@ -3,9 +3,11 @@
 import { useRef } from 'react';
 import { Maximize2, X } from 'lucide-react';
 
-export default function ProductPhoto({ src, alt, className = '', language = 'pl' }: { src: string; alt: string; className?: string; language?: 'pl' | 'en' }) {
+/** Zdjęcie z powiększeniem; `full` — większa wersja do powiększenia (gdy `src` to miniatura). */
+export default function ProductPhoto({ src, full, alt, className = '', language = 'pl' }: { src: string; full?: string; alt: string; className?: string; language?: 'pl' | 'en' }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const english = language === 'en';
+  const large = full || src;
   return <>
     <button type="button" onClick={() => dialog.current?.showModal()} aria-label={`${english ? 'Enlarge photo' : 'Powiększ zdjęcie'}: ${alt}`}
       className={`group relative block w-full overflow-hidden bg-black/10 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d3bb73]/40 ${className}`}>
@@ -15,8 +17,8 @@ export default function ProductPhoto({ src, alt, className = '', language = 'pl'
     <dialog ref={dialog} aria-label={`${english ? 'Photo' : 'Zdjęcie'}: ${alt}`} onClick={event=>{if(event.target===event.currentTarget)dialog.current?.close();}}
       className="m-auto max-h-[94dvh] w-[calc(100%_-_2rem)] max-w-6xl overflow-auto rounded-2xl bg-[#250914] p-0 text-[#e5e4e2] shadow-2xl backdrop:bg-black/85">
       <header className="flex items-center justify-between gap-4 px-5 py-3"><p className="text-sm">{alt}</p><button autoFocus type="button" onClick={()=>dialog.current?.close()} aria-label={english ? 'Close photo' : 'Zamknij zdjęcie'} className="rounded-lg p-2 hover:bg-white/10"><X className="h-5 w-5"/></button></header>
-      <img src={src} alt={alt} className="max-h-[72dvh] w-full object-contain" />
-      <footer className="px-5 py-4 text-sm"><a href={src} target="_blank" rel="noopener noreferrer" className="font-medium text-[#d3bb73] underline underline-offset-4">{english ? 'Open the full-size photo in a new tab' : 'Otwórz zdjęcie w pełnym rozmiarze w nowej karcie'}</a></footer>
+      <img src={large} alt={alt} loading="lazy" className="max-h-[72dvh] w-full object-contain" />
+      <footer className="px-5 py-4 text-sm"><a href={large} target="_blank" rel="noopener noreferrer" className="font-medium text-[#d3bb73] underline underline-offset-4">{english ? 'Open the full-size photo in a new tab' : 'Otwórz zdjęcie w pełnym rozmiarze w nowej karcie'}</a></footer>
     </dialog>
   </>;
 }

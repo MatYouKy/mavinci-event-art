@@ -72,6 +72,10 @@ struct MenuBarStatusMenu: View {
             if FinderDomain.available, workspace.employee != nil, finder == .missing || finderFailed {
                 Button("Spróbuj ponownie dodać „Mavinci” do Findera") { Task { await retryFinder() } }
             }
+            // Galeria widżetów bez nowych widżetów (np. starsza kopia aplikacji w galerii) — `WidgetBridge.refreshGallery`.
+            if WidgetBridge.bundled {
+                Button("Odśwież widżety na pulpicie") { Task { await refreshWidgets() } }
+            }
             Button("Synchronizuj teraz") {
                 Task {
                     await workspace.refresh(force: true)
@@ -111,6 +115,17 @@ struct MenuBarStatusMenu: View {
         if alert.runModal() == .alertFirstButtonReturn {
             Task { await retryFinder() }
         }
+    }
+
+    /// Widżety zgłoszone od nowa — wynik w oknie (menu na pasku działa także przy zamkniętym oknie aplikacji).
+    @MainActor private func refreshWidgets() async {
+        let message = await WidgetBridge.refreshGallery()
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Widżety Mavinci"
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func setLaunchAtLogin(_ on: Bool) {

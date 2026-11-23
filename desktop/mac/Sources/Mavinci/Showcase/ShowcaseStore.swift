@@ -13,6 +13,10 @@ struct ShowcaseDraft: Equatable {
     var title: String
     var tagline: String
     var isActive: Bool
+    /// „Pokazuj na stronie produktu dla klienta” (bez przełącznika na serwerze — `true`, nie wysyłamy).
+    var showOnProductPage: Bool
+    /// Serwer zna przełącznik strony produktu (po migracji 20261128100000).
+    var productPageSwitch: Bool
     var productIDs: [String]
     var content: ShowcaseContent
     /// Wersja karty, z której powstała kopia — zapis z inną wersją serwer odrzuca (zmiany z innego okna).
@@ -22,6 +26,8 @@ struct ShowcaseDraft: Equatable {
         title = detail.item.title
         tagline = detail.item.tagline
         isActive = detail.item.isActive
+        showOnProductPage = detail.item.showOnProductPage ?? true
+        productPageSwitch = detail.item.showOnProductPage != nil
         productIDs = detail.item.productIds
         content = detail.item.content
         version = detail.item.version
@@ -29,6 +35,7 @@ struct ShowcaseDraft: Equatable {
 
     func differs(from detail: ShowcaseDetail) -> Bool {
         title != detail.item.title || tagline != detail.item.tagline || isActive != detail.item.isActive
+            || showOnProductPage != (detail.item.showOnProductPage ?? true)
             || productIDs != detail.item.productIds || content != detail.item.content
     }
 }
@@ -444,10 +451,11 @@ enum ShowcaseUploadTarget {
 
     @discardableResult func saveItem(_ id: String) async -> ShowcaseDetail? {
         guard let draft = drafts[id] else { return nil }
-        let body: [String: JSONValue] = [
+        var body: [String: JSONValue] = [
             "id": .string(id), "version": .number(Double(draft.version)), "title": .string(draft.title), "tagline": .string(draft.tagline),
             "isActive": .bool(draft.isActive), "productIds": .array(draft.productIDs.map { JSONValue.string($0) }), "content": draft.content.json,
         ]
+        if draft.productPageSwitch { body["showOnProductPage"] = .bool(draft.showOnProductPage) }
         return await runDetail("Zapisuję kartę", "saveItem", body, success: "Zapisano kartę")
     }
 

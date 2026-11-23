@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import { ArrowUpRight, CheckCircle2, Info } from 'lucide-react';
 import ProductPhoto from './ProductPhoto';
+import ProductShowcase from './ProductShowcase';
+import type { PublicShowcaseCard } from '@/lib/showcase/showcaseProductPage.server';
 
 export type PublicProductContent = {
   product: { name: string; is_active: boolean; offer_image_alt: string; offer_short_description: string; sales_packages_enabled: boolean };
@@ -47,8 +49,10 @@ const entries = (value: unknown): { title: string; text: string }[] => !Array.is
 });
 
 
-export default function PublicProductContentView({ polish, english, initialLanguage, imageUrls }: {
+export default function PublicProductContentView({ polish, english, initialLanguage, imageUrls, showcase = [] }: {
   polish: PublicProductContent; english: PublicProductContent | null; initialLanguage: 'pl' | 'en'; imageUrls: Record<string,string>;
+  /** Materiał z Prezentacji powiązanych z produktem (`showcaseProductPage.server.ts`). */
+  showcase?: PublicShowcaseCard[];
 }) {
   const [selected, setSelected] = useState<'pl' | 'en'>(initialLanguage);
   useEffect(() => { setSelected(initialLanguage); }, [initialLanguage, polish.product.name]);
@@ -103,6 +107,7 @@ export default function PublicProductContentView({ polish, english, initialLangu
           return <div key={index}>{body.length > 0 && first.length < 100 ? <><h3 className="mb-2 text-base font-medium text-[#e5e4e2]">{first}</h3><p className="whitespace-pre-line leading-7 text-[#e5e4e2]/75">{body.join('\n')}</p></> : <p className="whitespace-pre-line leading-7 text-[#e5e4e2]/75">{section}</p>}</div>;
         })}</div>
       </section>}
+      <ProductShowcase cards={showcase} language={language} productName={product.name} />
       {!!requirements.length && <section className="rounded-2xl bg-[#401525] p-7">
         <h2 className="text-lg uppercase text-[#d3bb73]">{text.requirements}</h2>
         <ul className="mt-5 space-y-4">{requirements.map((item, index) => <li key={index} className="flex gap-3"><CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-[#d3bb73]" /><div>{item.title && <p className="font-medium">{item.title}</p>}<p className="whitespace-pre-line text-sm leading-6 text-[#e5e4e2]/70">{item.text}</p></div></li>)}</ul>

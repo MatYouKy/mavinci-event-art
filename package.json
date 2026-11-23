@@ -8,7 +8,7 @@
     "build": "next build",
     "build:mac": "bash desktop/mac/scripts/build-app.sh",
     "dmg:mac": "bash desktop/mac/scripts/make-dmg.sh",
-    "dmg": "bash desktop/mac/scripts/release.sh",
+    "release": "bash desktop/mac/scripts/release.sh",
     "open": "bash desktop/open.sh",
     "open:mac": "bash desktop/open.sh mac",
     "start": "next start",

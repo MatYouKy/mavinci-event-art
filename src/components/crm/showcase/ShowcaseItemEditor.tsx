@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import {
-  AlertTriangle, CheckCircle2, ChevronDown, CircleDashed, Copy, ExternalLink, FolderOpen, GripVertical, Images, Package, Plus, Save, Tablet,
+  AlertTriangle, CheckCircle2, ChevronDown, CircleDashed, Copy, ExternalLink, FolderOpen, Globe, GripVertical, Images, Package, Plus, Save, Tablet,
   Trash2, Upload, Wand2, X,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -25,14 +25,17 @@ import { Toggle, hasFiles, imageFiles, useDragList } from './showcaseUi';
  * Karta prezentacji (Strefa sprzedawcy → Prezentacje): tytuł, hasło, wstęp i zdjęcie główne, produkty z katalogu (dane na
  * bieżąco z Oferty → Produkty), bloki w kolejności pokazu (przeciąganie za uchwyt), lista kontrolna z przejściem do bloku
  * i podgląd jak na iPadzie (także przed zapisem). „Zapisz” (⌘S) — wersja chroni przed nadpisaniem zmian z innego okna.
+ * Aktywna karta pokazuje się też na stronie produktu dla klienta (`/produkty/[id]` każdego powiązanego produktu — bez ukrytych
+ * bloków; `showcaseProductPage.server.ts`), chyba że wyłączono „Pokazuj na stronie produktu dla klienta” (tylko spotkania).
  * Te same dane na Macu (natywny edytor) i — w etapie 2 — na iPadzie.
  */
 
-type Draft = { title: string; tagline: string; isActive: boolean; productIds: string[]; content: ShowcaseContent };
+type Draft = { title: string; tagline: string; isActive: boolean; showOnProductPage: boolean; productIds: string[]; content: ShowcaseContent };
 type PhotoTarget = 'hero' | string;
 
 const draftOf = (detail: ShowcaseItemDetail): Draft => ({
-  title: detail.item.title, tagline: detail.item.tagline, isActive: detail.item.isActive, productIds: detail.item.productIds, content: detail.item.content,
+  title: detail.item.title, tagline: detail.item.tagline, isActive: detail.item.isActive,
+  showOnProductPage: detail.item.showOnProductPage ?? true, productIds: detail.item.productIds, content: detail.item.content,
 });
 
 export default function ShowcaseItemEditor({ id, onChanged, onDeleted, onOpen, onDirtyChange, onPreview }: {
@@ -111,6 +114,7 @@ export default function ShowcaseItemEditor({ id, onChanged, onDeleted, onOpen, o
     if (!detail || !draft) return null;
     const result = await run('Zapisuję kartę', () => showcasePost<ShowcaseItemDetail>('saveItem', {
       id: detail.item.id, version: detail.item.version, title: draft.title, tagline: draft.tagline, isActive: draft.isActive,
+      ...(detail.item.showOnProductPage === undefined ? {} : { showOnProductPage: draft.showOnProductPage }),
       productIds: draft.productIds, content: normalizeShowcaseContent(draft.content),
     }), 'Zapisano kartę');
     if (result) { apply(result); onChanged(); }
@@ -308,6 +312,7 @@ export default function ShowcaseItemEditor({ id, onChanged, onDeleted, onOpen, o
                 <div key={product.id} {...productDrag.rowProps(product.id)} className={`flex items-center gap-2 rounded-lg bg-[#0f1119] px-2 py-1.5 text-sm ${productDrag.indicator(product.id)} ${productDrag.dragging(product.id) ? 'opacity-40' : ''}`}>
                   <span {...productDrag.handleProps(product.id)} className="cursor-grab text-[#e5e4e2]/40 active:cursor-grabbing" title="Przeciągnij, żeby zmienić kolejność"><GripVertical className="h-4 w-4" /></span>
                   <span className="min-w-0 flex-1 truncate">{product.name}{index === 0 && <span className="ml-1 text-[11px] text-[#e5e4e2]/40">(główny)</span>}</span>
+                  <a href={`/produkty/${product.id}`} target="_blank" rel="noreferrer" title="Strona produktu dla klienta — z materiałem tej karty" className="text-[#e5e4e2]/40 hover:text-[#d3bb73]"><Globe className="h-3.5 w-3.5" /></a>
                   <a href={`/crm/offers/products/${product.id}`} target="_blank" rel="noreferrer" title="Karta produktu" className="text-[#e5e4e2]/40 hover:text-[#d3bb73]"><ExternalLink className="h-3.5 w-3.5" /></a>
                   <button type="button" aria-label={`Usuń ${product.name}`} className="text-[#e5e4e2]/40 hover:text-red-300"
                     onClick={() => setDraft({ ...draft, productIds: draft.productIds.filter((entry) => entry !== product.id) })}><X className="h-3.5 w-3.5" /></button>
@@ -315,6 +320,17 @@ export default function ShowcaseItemEditor({ id, onChanged, onDeleted, onOpen, o
               ))}
               {!products.length && <p className="text-xs text-[#e5e4e2]/45">Powiąż produkty — warianty, ceny, pakiety i przygotowanie zaciągną się z Oferty → Produkty.</p>}
             </div>
+            {products.length > 0 && detail.item.showOnProductPage !== undefined && (
+              <Toggle checked={draft.showOnProductPage} onChange={(showOnProductPage) => setDraft({ ...draft, showOnProductPage })}
+                label="Pokazuj na stronie produktu dla klienta" />
+            )}
+            {products.length > 0 && <p className="text-xs leading-5 text-[#e5e4e2]/45">
+              {!draft.isActive
+                ? 'Szkic — karta nie pokazuje się na spotkaniach ani na stronie produktu dla klienta.'
+                : detail.item.showOnProductPage !== undefined && !draft.showOnProductPage
+                  ? 'Karta tylko na spotkaniach — strona produktu dla klienta jej nie pokazuje.'
+                  : 'Po zapisie treść karty (zdjęcia, punkty, pytania, realizacje — bez ukrytych bloków i cen) pokazuje się też na stronie produktu dla klienta. Podgląd: ikona globusa.'}
+            </p>}
           </section>
 
           <section className={`${cardClass} space-y-2 p-4`}>

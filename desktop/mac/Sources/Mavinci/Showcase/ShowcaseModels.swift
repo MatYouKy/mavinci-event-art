@@ -427,6 +427,8 @@ struct ShowcaseItem: Codable, Hashable {
     var title: String
     var tagline: String
     var isActive: Bool
+    /// Aktywna karta także na stronie produktu dla klienta (`/produkty/<id>`); `nil` — serwer bez przełącznika (migracja 20261128100000).
+    var showOnProductPage: Bool?
     var productIds: [String]
     var content: ShowcaseContent
     var version: Int

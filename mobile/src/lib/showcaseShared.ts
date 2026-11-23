@@ -276,6 +276,11 @@ export type ShowcaseItemDetail = {
     title: string;
     tagline: string;
     isActive: boolean;
+    /**
+     * Aktywna karta pokazuje się też na stronie produktu dla klienta (`/produkty/[id]`). Brak — baza bez przełącznika
+     * (migracja 20261128100000): przełącznika nie pokazujemy, strona produktu pokazuje aktywne karty.
+     */
+    showOnProductPage?: boolean;
     productIds: string[];
     content: ShowcaseContent;
     version: number;

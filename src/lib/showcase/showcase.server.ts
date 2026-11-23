@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { NativeContext } from '@/lib/native/auth';
 import { SITE } from '@/lib/SEO/site';
 import { brochurePalette } from '@/lib/brochures/decorativePages';
@@ -36,7 +37,11 @@ import {
 const BUCKET = 'sales-showcase';
 const PRODUCT_BUCKET = 'offer-product-pages';
 const SECTION_FIELDS = 'id, title, subtitle, icon, cover, sort_order, is_active, version, updated_at';
-const ITEM_FIELDS = 'id, section_id, title, tagline, product_ids, content, sort_order, is_active, version, created_at, created_by, updated_at, updated_by';
+/**
+ * Wszystkie kolumny karty — także `show_on_product_page` (migracja 20261128100000), gdy już jest: bez migracji odczyt działa dalej,
+ * a przełącznika „Pokazuj na stronie produktu” po prostu nie ma (`showOnProductPage` pominięte w odpowiedzi).
+ */
+const ITEM_FIELDS = '*';
 const SITE_FIELDS = 'id, title, slug, category, location, event_date, date, description, image, image_url, alt, image_metadata, gallery, gallery_images';
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MANAGE_MESSAGE = 'Prezentacje przygotowuje osoba z uprawnieniem „Prezentacje — przygotowanie” albo „Zarządzanie ofertami”.';
@@ -111,8 +116,8 @@ function siteMedia(src: unknown, thumb: unknown, caption: unknown): ShowcaseMedi
   };
 }
 
-/** Treść z zapisu: adresy zdjęć ze strony tylko z naszego Storage. */
-function cleanContent(raw: unknown): ShowcaseContent {
+/** Treść z zapisu: adresy zdjęć ze strony tylko z naszego Storage (także strona produktu — `showcaseProductPage.server.ts`). */
+export function cleanShowcaseContent(raw: unknown): ShowcaseContent {
   const content = normalizeShowcaseContent(raw);
   const allowed = (media: ShowcaseMedia | null) => !media || media.source !== 'site' || isOwnPublicStorageUrl(media.path);
   return {
@@ -124,24 +129,27 @@ function cleanContent(raw: unknown): ShowcaseContent {
 
 // Podpisane adresy ----------------------------------------------------------------------------------------------------------
 
-async function signPaths(ctx: NativeContext, bucket: string, paths: string[], ttl = 3600) {
+async function signPaths(client: SupabaseClient, bucket: string, paths: string[], ttl = 3600) {
   const urls = new Map<string, string>();
   const unique = Array.from(new Set(paths.filter(Boolean)));
   for (let start = 0; start < unique.length; start += 100) {
-    const { data } = await ctx.supabase.storage.from(bucket).createSignedUrls(unique.slice(start, start + 100), ttl);
+    const { data } = await client.storage.from(bucket).createSignedUrls(unique.slice(start, start + 100), ttl);
     for (const item of data || []) if (item?.signedUrl && item.path) urls.set(item.path, item.signedUrl);
   }
   return urls;
 }
 
-/** Adresy zdjęć (klucz `showcaseMediaKey`): własne i produktów — podpisane na godzinę, ze strony — publiczne. */
-async function mediaUrls(ctx: NativeContext, media: Array<ShowcaseMedia | null | undefined>): Promise<ShowcaseUrls> {
+/**
+ * Adresy zdjęć (klucz `showcaseMediaKey`): własne i produktów — podpisane na godzinę, ze strony — publiczne. `client` — klient
+ * pracownika (RLS) albo serwisowy strony produktu (`/produkty/[id]`, tylko zdjęcia kart pokazanych publicznie).
+ */
+export async function showcaseMediaUrls(client: SupabaseClient, media: Array<ShowcaseMedia | null | undefined>): Promise<ShowcaseUrls> {
   const list = media.filter((item): item is ShowcaseMedia => Boolean(item));
   const uploads = list.filter((item) => item.source === 'upload' || item.source === 'material');
   const products = list.filter((item) => item.source === 'product');
   const [own, catalog] = await Promise.all([
-    signPaths(ctx, BUCKET, uploads.flatMap((item) => [item.path, item.thumb || ''])),
-    signPaths(ctx, PRODUCT_BUCKET, products.map((item) => item.path)),
+    signPaths(client, BUCKET, uploads.flatMap((item) => [item.path, item.thumb || ''])),
+    signPaths(client, PRODUCT_BUCKET, products.map((item) => item.path)),
   ]);
   const urls: ShowcaseUrls = {};
   for (const item of list) {
@@ -159,6 +167,8 @@ async function mediaUrls(ctx: NativeContext, media: Array<ShowcaseMedia | null |
   }
   return urls;
 }
+
+const mediaUrls = (ctx: NativeContext, media: Array<ShowcaseMedia | null | undefined>) => showcaseMediaUrls(ctx.supabase, media);
 
 /** Miniatury zdjęć produktów katalogu (`offer_image_path`) po identyfikatorze produktu — pozycje „Oferty ze spotkania”. */
 export async function showcaseProductThumbs(ctx: NativeContext, rows: Row[]): Promise<Map<string, string>> {
@@ -436,14 +446,17 @@ function realizationView(row: Row): ShowcaseRealizationView {
   };
 }
 
-async function realizationViews(ctx: NativeContext, ids: string[]): Promise<ShowcaseRealizationView[]> {
+/** Realizacje ze strony (`portfolio_projects`) w kolejności `ids`; `client` — pracownika albo serwisowy strony produktu. */
+export async function showcaseRealizationViews(client: SupabaseClient, ids: string[]): Promise<ShowcaseRealizationView[]> {
   const unique = Array.from(new Set(ids.filter(isUuid)));
   if (!unique.length) return [];
-  const { data, error } = await ctx.supabase.from('portfolio_projects').select(SITE_FIELDS).in('id', unique);
+  const { data, error } = await client.from('portfolio_projects').select(SITE_FIELDS).in('id', unique);
   check(error, 'Nie udało się pobrać realizacji ze strony.');
   const views = ((data || []) as Row[]).map(realizationView);
   return unique.map((id) => views.find((view) => view.id === id)).filter((view): view is ShowcaseRealizationView => Boolean(view));
 }
+
+const realizationViews = (ctx: NativeContext, ids: string[]) => showcaseRealizationViews(ctx.supabase, ids);
 
 const productMediaList = (products: ShowcaseProductView[]) => products.flatMap((product) => [
   product.image, ...product.variants.map((variant) => variant.image), ...product.packages.map((item) => item.image),
@@ -469,6 +482,7 @@ async function detail(ctx: NativeContext, row: Row): Promise<ShowcaseItemDetail>
       title: text(row.title),
       tagline: text(row.tagline),
       isActive: row.is_active !== false,
+      ...('show_on_product_page' in row ? { showOnProductPage: row.show_on_product_page !== false } : {}),
       productIds,
       content,
       version: Number(row.version) || 1,
@@ -667,7 +681,7 @@ export async function showcaseSaveItem(ctx: NativeContext, body: Row) {
   if (!Number.isInteger(version) || version !== Number(row.version)) fail('Kartę zmieniono w innym oknie. Odśwież widok — Twoje zmiany nie zostały zapisane.', 409);
   const title = showcaseLine(body.title, SHOWCASE_LIMITS.title);
   if (!title) fail('Podaj tytuł karty.', 400);
-  const content = cleanContent(body.content);
+  const content = cleanShowcaseContent(body.content);
   const patch: Row = {
     title,
     tagline: showcaseLine(body.tagline, SHOWCASE_LIMITS.tagline),
@@ -675,6 +689,8 @@ export async function showcaseSaveItem(ctx: NativeContext, body: Row) {
     content,
     is_active: body.isActive !== false,
   };
+  // Przełącznik strony produktu — tylko gdy baza go ma (migracja 20261128100000) i aplikacja go przysłała (starsza wersja — bez zmian).
+  if ('show_on_product_page' in row && typeof body.showOnProductPage === 'boolean') patch.show_on_product_page = body.showOnProductPage;
   const { data, error } = await ctx.supabase.from('sales_showcase_items').update(patch).eq('id', row.id).eq('version', version).select(ITEM_FIELDS);
   check(error, 'Nie udało się zapisać karty.');
   if (!data?.length) fail('Kartę zmieniono w innym oknie. Odśwież widok — Twoje zmiany nie zostały zapisane.', 409);
@@ -696,6 +712,7 @@ export async function showcaseDuplicateItem(ctx: NativeContext, body: Row) {
     content: normalizeShowcaseContent(row.content),
     sort_order: await nextItemOrder(ctx, String(row.section_id)),
     is_active: false,
+    ...('show_on_product_page' in row ? { show_on_product_page: row.show_on_product_page !== false } : {}),
   }).select(ITEM_FIELDS).single();
   check(error, 'Nie udało się skopiować karty.');
   return detail(ctx, data as Row);
@@ -1031,7 +1048,7 @@ export async function showcasePhotos(ctx: NativeContext, params: URLSearchParams
       .eq('event_id', eventId).in('mime_type', IMAGE_TYPES).order('created_at', { ascending: false }).limit(150);
     if (error) return { source, photos: [], problem: 'Nie masz dostępu do plików tego eventu.' };
     const rows = (data || []) as Row[];
-    const urls = await signPaths(ctx, 'event-files', rows.map((row) => text(row.file_path)));
+    const urls = await signPaths(ctx.supabase, 'event-files', rows.map((row) => text(row.file_path)));
     return {
       source,
       photos: rows.map((row) => ({
@@ -1060,7 +1077,7 @@ export async function showcasePhotos(ctx: NativeContext, params: URLSearchParams
     const { data, error } = await query;
     if (error) return { source, photos: [], problem: 'Materiały nie są dostępne albo nie masz do nich dostępu.' };
     const rows = ((data || []) as Row[]).slice(0, 120);
-    const urls = await signPaths(ctx, 'materials', rows.map((row) => text(row.thumbnail_path) || text(row.storage_path)));
+    const urls = await signPaths(ctx.supabase, 'materials', rows.map((row) => text(row.thumbnail_path) || text(row.storage_path)));
     const empty = !rows.length && !offset && !(await materialAccess(ctx, null)).view;
     return {
       source,
@@ -1079,7 +1096,7 @@ export async function showcasePhotos(ctx: NativeContext, params: URLSearchParams
     const { data, error } = await query;
     if (error) return { source, photos: [], problem: 'Biblioteka social media nie jest dostępna.' };
     const rows = (data || []) as Row[];
-    const urls = await signPaths(ctx, 'social-media', rows.map((row) => text(row.thumbnail_path)));
+    const urls = await signPaths(ctx.supabase, 'social-media', rows.map((row) => text(row.thumbnail_path)));
     return {
       source,
       photos: rows.map((row) => ({

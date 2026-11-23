@@ -31,7 +31,8 @@ export const maxDuration = 300;
  *   saveLayout {layout: {sections: [{id, hidden}], items: {<dział>: [{id, hidden}]}}} | resetLayout — własny układ pracownika
  *   (kolejność działów i kart, ukryte u niego; `home` zwraca listę już w tym układzie, z `hiddenForMe`) |
  *   createItem {sectionId, title?, productId?} („Utwórz z produktu” — treść z katalogu) |
- *   saveItem {id, version, title, tagline, isActive, productIds[], content} | duplicateItem {id} | deleteItem {id} |
+ *   saveItem {id, version, title, tagline, isActive, showOnProductPage?, productIds[], content} (`showOnProductPage` — karta także na
+ *   stronie produktu dla klienta `/produkty/[id]`, migracja 20261128100000) | duplicateItem {id} | deleteItem {id} |
  *   import {itemId | sectionId, source: product | site | material | event | social, productId+path | realizationId+path | fileId,
  *   caption?, reference?} → `{photo, urls}` (`material` + `reference: true` — odnośnik do Materiałów zamiast kopii).
  * Oferta ze spotkania (`src/lib/showcase/showcaseOffer.server.ts`, migracja 20261122120000):

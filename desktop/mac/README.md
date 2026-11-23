@@ -149,8 +149,13 @@ kod buduje widżety na iPhonie i iPadzie (`mobile/plugins/withMavinciWidgets.js`
 - Budowanie: `scripts/build-app.sh` razem z rozszerzeniem Findera (tylko z podpisem zespołu Mavinci); `WIDGETS=0` — bez widżetów.
 
 **Dodanie na pulpit:** kliknij pulpit prawym przyciskiem → „Edytuj widżety…” → wyszukaj „Mavinci” → przeciągnij wybrany widżet na pulpit
-(albo do Centrum powiadomień). Aplikacja po zalogowaniu sama zgłasza widżety systemowi; gdy w galerii ich nie ma (albo brakuje nowych) —
-zamknij i otwórz aplikację (najlepiej z folderu Aplikacje) i otwórz galerię ponownie.
+(albo do Centrum powiadomień). Aplikacja po zalogowaniu sama zgłasza widżety systemowi.
+
+**Galeria bez nowych widżetów** (np. brak „Kalendarza” i „Spotkań”): macOS pokazuje widżety jednej zarejestrowanej kopii rozszerzenia
+i pamięta ich listę — przy kilku kopiach aplikacji (folder Aplikacje, `desktop/mac/build`, instalator) galeria mogła pokazywać starszą.
+Działająca kopia przy pierwszym uruchomieniu nowej wersji sama zgłasza swoje widżety, wyrejestrowuje inne kopie (`pluginkit -r`)
+i uruchamia ponownie usługę widżetów `chronod` (widżety na pulpicie zostają). Ręcznie: pasek menu → **„Odśwież widżety na pulpicie”**
+(także Centrum powiadomień), potem galeria od nowa. Kod: `Widgets/WidgetBridge.swift` (`WidgetRegistration`).
 
 ## Dysk: schowek jak w Finderze, kopie i miejsce na Dysku (0.23)
 
@@ -757,6 +762,22 @@ Kod: `ShowcasePreviewView.swift` (`surface`, `ink`, `scrim`, schemat kolorów z 
 - **Nagłówki pokazu** (podgląd jak na iPadzie): wersaliki, wyłącznie krój regularny fontu nagłówków z księgi znaku (pogrubienie ucina części liter), cyfry fontem tekstu (w foncie nagłówków „0” wygląda jak „O”) — tak samo w CRM i w telefonie.
 
 Kod: `Showcase/ShowcaseHelp.swift`, `Showcase/ShowcaseAssistant.swift`, `ShowcaseOffer.swift` (`ShowcaseOfferAddLineSheet`, pole miejsca), `ShowcasePreviewView.swift` (`ShowcaseHeadingText`).
+
+## Aktualizacja — Prezentacje na stronie produktu dla klienta (`/produkty/[id]`)
+
+Jedna praca, dwa miejsca: aktywna karta prezentacji pokazuje się też na stronie produktu dla klienta każdego powiązanego produktu
+(„Produkty z katalogu” w karcie) — pod opisem produktu, sekcja „Zobacz w praktyce”: hasło, wstęp, zdjęcie główne i bloki widoczne
+na spotkaniu (zdjęcia, korzyści, kroki, „co obejmuje”, specyfikacja, pytania klientów, tekst, realizacje ze strony). Bloki „Z katalogu
+produktów” tego produktu strona pomija (warianty, pakiety i wymagania pokazuje sama), innego produktu — jako odnośnik „Zobacz też”.
+Bez cen, ukrytych bloków i szkiców; zdjęcia produktu z góry strony się nie powtarzają. W wersji angielskiej strony — same zdjęcia
+(treść prezentacji jest po polsku). Serwer: `src/lib/showcase/showcaseProductPage.server.ts`; w edytorze karty (CRM i Mac) globus przy
+produkcie otwiera jego stronę, a pod listą produktów jest informacja, gdzie karta się pokazuje.
+
+**Przełącznik „Pokazuj na stronie produktu dla klienta”** (edytor karty, pod produktami; CRM i Mac): wyłączony — karta zostaje tylko
+na spotkaniach. Domyślnie włączony (dotychczasowe karty bez zmian), zmiana podnosi wersję karty jak każda edycja, kopia karty go dziedziczy.
+Kolumna `sales_showcase_items.show_on_product_page` — migracja `20261128100000_sales_showcase_product_page.sql`; bez niej przełącznika
+nie widać, a strona produktu pokazuje wszystkie aktywne karty (serwer czyta kolumnę tylko, gdy istnieje — kolejność migracji i wdrożenia
+dowolna).
 
 ## Aktualizacja — Prezentacje: baza zdjęć z albumami i okładki działów
 

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import PublicProductContentView, { type PublicProductContent } from './PublicProductContent';
+import { productShowcaseCards } from '@/lib/showcase/showcaseProductPage.server';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Poznaj produkt / Explore the product — MAVINCI', robots: { index: false, follow: false } };
@@ -29,8 +30,11 @@ export default async function PublicProductPage({ params, searchParams }: {
   const rawPackages = product.sales_packages_enabled ? rows(product.sales_packages) : [];
   const paths = [...new Set([product.offer_image_path, ...(variants || []).map(v => v.offer_image_path), ...rawPackages.map(p => p.image_path)]
     .filter((path): path is string => typeof path === 'string' && Boolean(path) && !/^(?:[a-z]+:|\/\/)/i.test(path)))];
-  const { data: signedImages } = paths.length
-    ? await supabase.storage.from('offer-product-pages').createSignedUrls(paths, 3600) : { data: [] };
+  // Zdjęcia produktu, wariantów i pakietów — podpisane; materiał z Prezentacji powiązanych z produktem bez tych samych zdjęć.
+  const [{ data: signedImages }, showcase] = await Promise.all([
+    paths.length ? supabase.storage.from('offer-product-pages').createSignedUrls(paths, 3600) : Promise.resolve({ data: [] as { path: string | null; signedUrl: string; error: string | null }[] }),
+    productShowcaseCards(supabase, product.id, paths),
+  ]);
   const imageUrls: Record<string,string> = Object.fromEntries((signedImages || []).filter(image => image.path && image.signedUrl && !image.error).map(image => [image.path!, image.signedUrl!]));
   const serviceIds: string[] = Array.isArray(product.related_service_ids) ? product.related_service_ids : [];
   const { data: linkedServices } = serviceIds.length
@@ -96,5 +100,5 @@ export default async function PublicProductPage({ params, searchParams }: {
   const polish = project('pl');
   const english = project('en');
   return <PublicProductContentView key={product.id} polish={polish} english={englishReady ? english : null}
-    initialLanguage={searchParams?.lang === 'en' && englishReady ? 'en' : 'pl'} imageUrls={imageUrls} />;
+    initialLanguage={searchParams?.lang === 'en' && englishReady ? 'en' : 'pl'} imageUrls={imageUrls} showcase={showcase} />;
 }
