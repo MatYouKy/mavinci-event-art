@@ -1,14 +1,15 @@
 import Foundation
 import WidgetKit
 
-// MARK: Widżety Mavinci („Moje zadania”, „Zadania prywatne”, „Kalendarz”, „Spotkania”) — po stronie aplikacji
+// MARK: Widżety Mavinci („Moje zadania”, „Zadania prywatne”, „Kalendarz”, „Spotkania”, „Wydarzenia”) — po stronie aplikacji
 //
 // Widżety to rozszerzenie `MavinciWidgets.appex` w pakiecie (budowane razem z rozszerzeniem Findera — podpis zespołu Mavinci).
 // Dane pobierają same, ze wspólną sesją z kontenera grupy (`FinderShared`), więc działają też przy zamkniętej aplikacji.
 // Aplikacja po zalogowaniu zgłasza rozszerzenie systemowi (`pluginkit -a` — galeria widżetów widzi je także wtedy, gdy aplikacja
 // nie jest w folderze Aplikacje) i prosi o odświeżenie widżetów po zmianach: zadań i licznika czasu (`TasksStore`), spotkań
-// (`MeetingsStore` — także zmiany z CRM po synchronizacji), planu dnia (`Workspace.loadSchedule`) i po wylogowaniu.
-// Kliknięcie widżetu: `mavinci://tasks`, `mavinci://calendar`, `mavinci://meetings`, pozycji — `mavinci://<rodzaj>/<id>`
+// (`MeetingsStore` — także zmiany z CRM po synchronizacji), listy eventów (`EventsStore`), planu dnia (`Workspace.loadSchedule`)
+// i po wylogowaniu.
+// Kliknięcie widżetu: `mavinci://tasks`, `mavinci://calendar`, `mavinci://meetings`, `mavinci://events`, pozycji — `mavinci://<rodzaj>/<id>`
 // (`MavinciApp.onOpenURL`).
 //
 // Galeria widżetów: macOS pokazuje widżety jednej zarejestrowanej kopii rozszerzenia i pamięta ich listę (usługa `chronod`).
@@ -154,5 +155,10 @@ extension Workspace {
     func showMeetingsFromWidget() {
         if navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/meetings" }) { openHref("/crm/meetings") }
         else { showCalendarFromWidget() }
+    }
+
+    /// Widżet „Wydarzenia” (`mavinci://events`): lista Eventów, a bez dostępu do niej — kalendarz.
+    func showEventsFromWidget() {
+        if employee?.canView(.events) == true { switchSection(.events) } else { showCalendarFromWidget() }
     }
 }

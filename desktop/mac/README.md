@@ -126,7 +126,7 @@ Pierwsze okno po uruchomieniu aplikacji przechodzi od razu na pełny ekran (osob
 - Pliki pobrane przez aplikację nie mają kwarantanny, więc po aktualizacji macOS nie pyta ponownie o zgodę.
 - Kopia z folderu budowania (`yarn build:mac`), z obrazu dysku, bez podpisu zespołu albo w folderze bez prawa zapisu pokazuje nową wersję, ale się nie podmienia. Pokazuje wtedy powód i przycisk „Pobierz instalator (DMG)”.
 
-## Widżety na pulpit: „Moje zadania”, „Zadania prywatne”, „Kalendarz” i „Spotkania”
+## Widżety na pulpit: „Moje zadania”, „Zadania prywatne”, „Kalendarz”, „Spotkania” i „Wydarzenia”
 
 Rozszerzenie `MavinciWidgets.appex` (`Sources/MavinciWidgets`) — widżety WidgetKit na pulpit i do Centrum powiadomień (macOS 14). Ten sam
 kod buduje widżety na iPhonie i iPadzie (`mobile/plugins/withMavinciWidgets.js`, różnice w `#if os(iOS)` — także ekran blokady).
@@ -138,21 +138,29 @@ kod buduje widżety na iPhonie i iPadzie (`mobile/plugins/withMavinciWidgets.js`
   kontakty w zapytaniach, oddzwonienia i nieobecności; w nagłówku dzisiejsza data, „Do potwierdzenia” przy zaproszeniu do eventu.
 - **„Spotkania”** — Twoje spotkania na 14 dni (autor albo uczestnik, bez odwołanych i odrzuconych) z miejscem, liczbą osób i organizatorem;
   zaproszenie bez odpowiedzi — złote „Odpowiedz” i „… do odpowiedzi” w nagłówku, „Może” i „Wstępne” jak w CRM.
-- Rozmiary: mały (najbliższa pozycja / liczba zadań), średni (3 pozycje z godziną i dniem), duży (terminarz z nagłówkami dni) i bardzo duży
-  (dwie kolumny). Trwające pozycje mają „Teraz”, zakończone znikają same (wpisy osi czasu na początek i koniec każdej pozycji).
+- **Przypomnienie** („Spotkania” i „Kalendarz”): pozycja zaczynająca się w ciągu godziny ma pod godziną złote „za 25 min”; mały widżet
+  i ekran blokady — „Za 1 h 10 min · 14:00” do 2 godzin przed. Oś czasu ma wtedy wpis co minutę, więc odliczanie działa bez sieci.
+- **„Wydarzenia”** — najbliższe eventy (trwające i na 30 dni, bez anulowanych): widoczne jak na liście Eventów (RLS) i Twoje realizacje;
+  godzina, miejsce, klient, kolor kategorii, w nagłówku liczba eventów. Etap sprzedaży niepotwierdzonych („Zapytanie”, „Oferta do wysłania”,
+  „Oferta wysłana”) — tylko dla osób widzących etapy sprzedaży; zapytanie albo oferta do wysłania na 72 godziny przed eventem —
+  „… do potwierdzenia” w nagłówku.
+- Rozmiary: mały (najbliższa pozycja / liczba zadań), średni (najbliższe pozycje z godziną i dniem), duży (terminarz z nagłówkami dni)
+  i bardzo duży (dwie kolumny). Listy pokazują tylko pozycje mieszczące się w całości — stałe wysokości wierszy (`WidgetLayout`), miejsce
+  mierzone w widżecie — z linią podziału między pozycjami; resztę opisuje „i 3 więcej…” (średni — licznik w nagłówku). Trwające pozycje
+  mają „Teraz”, zakończone znikają same (wpisy osi czasu na początek i koniec każdej pozycji).
 - Kliknięcie pozycji otwiera ją w aplikacji: `mavinci://task|event|meeting|inquiry|contact/<id>`; kliknięcie widżetu — sekcję:
-  `mavinci://tasks`, `mavinci://calendar`, `mavinci://meetings` (`MavinciApp.onOpenURL`, `Widgets/WidgetBridge.swift`).
-- Dane: `GET /bridge/native/v1/tasks?op=widget` (`tasksWidget` w `src/lib/native/tasks.ts`) oraz `GET /bridge/native/v1/widgets?op=calendar|meetings`
+  `mavinci://tasks`, `mavinci://calendar`, `mavinci://meetings`, `mavinci://events` (`MavinciApp.onOpenURL`, `Widgets/WidgetBridge.swift`).
+- Dane: `GET /bridge/native/v1/tasks?op=widget` (`tasksWidget` w `src/lib/native/tasks.ts`) oraz `GET /bridge/native/v1/widgets?op=calendar|meetings|events`
   (`src/lib/native/widgets.ts`) z sesją z kontenera grupy (jak Finder), więc widżety działają też przy zamkniętej aplikacji; bez internetu —
   ostatnie dane z dopiskiem „bez połączenia” (`WidgetSupport.swift`).
-- Odświeżanie co 15 minut i od razu po zmianach w aplikacji (`WidgetBridge.reload`): zadania i licznik czasu, spotkania (także zmiany z CRM
-  po synchronizacji), plan dnia i wylogowanie; po wylogowaniu widżety proszą o zalogowanie.
+- Odświeżanie co 15 minut i od razu po zmianach w aplikacji (`WidgetBridge.reload`): zadania i licznik czasu, spotkania i lista eventów
+  (także zmiany z CRM po synchronizacji), plan dnia i wylogowanie; po wylogowaniu widżety proszą o zalogowanie.
 - Budowanie: `scripts/build-app.sh` razem z rozszerzeniem Findera (tylko z podpisem zespołu Mavinci); `WIDGETS=0` — bez widżetów.
 
 **Dodanie na pulpit:** kliknij pulpit prawym przyciskiem → „Edytuj widżety…” → wyszukaj „Mavinci” → przeciągnij wybrany widżet na pulpit
 (albo do Centrum powiadomień). Aplikacja po zalogowaniu sama zgłasza widżety systemowi.
 
-**Galeria bez nowych widżetów** (np. brak „Kalendarza” i „Spotkań”): macOS pokazuje widżety jednej zarejestrowanej kopii rozszerzenia
+**Galeria bez nowych widżetów** (np. brak „Kalendarza”, „Spotkań” albo „Wydarzeń”): macOS pokazuje widżety jednej zarejestrowanej kopii rozszerzenia
 i pamięta ich listę — przy kilku kopiach aplikacji (folder Aplikacje, `desktop/mac/build`, instalator) galeria mogła pokazywać starszą.
 Działająca kopia przy pierwszym uruchomieniu nowej wersji sama zgłasza swoje widżety, wyrejestrowuje inne kopie (`pluginkit -r`)
 i uruchamia ponownie usługę widżetów `chronod` (widżety na pulpicie zostają). Ręcznie: pasek menu → **„Odśwież widżety na pulpicie”**
@@ -912,8 +920,8 @@ Serwer: `GET /bridge/native/v1/materials` `op=sync | changes&since= | item | dow
 **Ekran natywny „Materiały”** (pozycja w pasku bocznym — już nie otwiera przeglądarki), 1:1 z CRM, te same uprawnienia i zakres marek:
 
 1. **Marka i drzewo folderów** (domyślne foldery marki z ikonami: Logotypy i księga znaku, Zdjęcia, Wideo, Prezentacje i oferty, Dokumenty, Social media), okruszki, „Pokaż w Finderze” (ten sam folder w Mavinci → Materiały).
-2. **Zawartość folderu** — siatka miniatur (zdjęcia, klatka wideo z czasem trwania, pierwsza strona PDF) albo lista; sortowanie: nazwa, data zmiany, rozmiar, rodzaj; zaznaczanie jak w Finderze (⌘ i ⇧, ⌘A, Esc), **spacja / dwuklik — Quick Look**, Enter — otwórz, Delete — do kosza; menu kontekstowe (podgląd, otwórz w domyślnej aplikacji, pobierz do „Pobrane”, zmień nazwę, przenieś, podmień treść, usuń).
-3. **Przeciąganie**: pliki i całe foldery z Findera (oraz zdjęcia ze Zdjęć, Safari, Poczty) na folder w siatce, na liście, w drzewie albo do bieżącego folderu — wysyłka z oknem postępu (najwyżej 100 plików naraz, do 2 GB na plik; foldery powstają jak na dysku; „Przerwij wysyłkę”); elementy przeciągnięte w aplikacji na inny folder — przeniesienie (także kilka zaznaczonych); plik przeciągnięty z aplikacji do Findera, na biurko albo do innej aplikacji — kopia pliku.
+2. **Zawartość folderu** — siatka miniatur (zdjęcia, klatka wideo z czasem trwania, pierwsza strona PDF) albo lista; sortowanie: nazwa, data zmiany, rozmiar, rodzaj; zaznaczanie jak w Finderze (⌘ i ⇧, ⌘A, Esc; przy co najmniej dwóch elementach plakietka na dole: liczba, „10 plików · 2 foldery · 24,3 MB”, „Czynności” jak pod prawym przyciskiem i odznaczenie), **spacja / dwuklik — Quick Look**, Enter — otwórz, Delete — do kosza; menu kontekstowe (podgląd, otwórz w domyślnej aplikacji, pobierz do „Pobrane”, zmień nazwę, przenieś, podmień treść, usuń).
+3. **Przeciąganie**: pliki i całe foldery z Findera (oraz zdjęcia ze Zdjęć, Safari, Poczty) na folder w siatce, na liście, w drzewie albo do bieżącego folderu — wysyłka z oknem postępu (najwyżej 2000 plików naraz — idą po kolei, każdy osobno — do 2 GB na plik; plik, który już jest w Materiałach marki — ta sama treść, SHA-256 — jest pomijany, a okno pokazuje, gdzie już leży; foldery powstają jak na dysku; „Przerwij wysyłkę”); elementy przeciągnięte w aplikacji na inny folder — przeniesienie (także kilka zaznaczonych); plik przeciągnięty z aplikacji do Findera, na biurko albo do innej aplikacji — kopia pliku.
 4. **Karta pliku** z boku: duży podgląd, rodzaj, rozmiar, wymiary, czas, folder, kto i kiedy dodał / zmienił, powiązane wydarzenie; opis i tagi (zarządzanie), poprzednie wersje z pobraniem (30 dni), „Podmień treść”.
 5. **Wyszukiwanie** w Materiałach wszystkich marek (nazwa, opis, tagi — „Pokaż w folderze”) albo w plikach wydarzeń (wg dostępu do wydarzeń) z **„Zapisz w Materiałach”** do wybranego folderu (ten sam plik w marce — bez duplikatu).
 6. **Kosz** (zarządzanie): elementy z ostatnich 30 dni (folder razem z zawartością), kto i kiedy usunął, ile dni zostało, „Przywróć”, „Usuń na zawsze”, „Opróżnij kosz”; sprzątanie kosza i starych wersji co 6 godzin (jak w CRM).

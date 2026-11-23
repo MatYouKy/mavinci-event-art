@@ -4,6 +4,7 @@ import {
   navigateToCalendarTab,
   navigateToClients,
   navigateToEvent,
+  navigateToEventsList,
   navigateToInquiry,
   navigateToMeeting,
   navigateToTask,
@@ -13,14 +14,14 @@ import {
 /*
  * Widżety Mavinci na iPhonie i iPadzie (kod `desktop/mac/Sources/MavinciWidgets`, cel `MavinciWidgets` —
  * `plugins/withMavinciWidgets.js`) otwierają aplikację adresem `mavinci-crm://…` — ten sam zestaw co `mavinci://…` na Macu:
- *  - cały widżet: `tasks` (Moje zadania), `calendar` (Kalendarz), `meetings` (Spotkania),
+ *  - cały widżet: `tasks` (Moje zadania), `calendar` (Kalendarz), `meetings` (Spotkania), `events` (Wydarzenia — lista eventów),
  *  - pozycja: `task/<id>`, `event/<id>`, `meeting/<id>`, `inquiry/<id>`, `contact/<id>` (kontakt — lista Klientów).
  * Adres z uruchomienia aplikacji (`getInitialURL`) i adresy przy działającej aplikacji (zdarzenie `url`).
  */
 
 const SCHEME = 'mavinci-crm';
 const UUID = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
-const SECTIONS = new Set(['tasks', 'calendar', 'meetings']);
+const SECTIONS = new Set(['tasks', 'calendar', 'meetings', 'events']);
 const RECORDS = new Set(['task', 'event', 'meeting', 'inquiry', 'contact']);
 
 export type WidgetLink = { host: string; id: string | null };
@@ -53,6 +54,7 @@ export function openWidgetUrl(url: string | null | undefined): boolean {
     case 'tasks': navigateFromMenu('Tasks'); return true;
     case 'calendar': navigateToCalendarTab(); return true;
     case 'meetings': navigateFromMenu('Meetings'); return true;
+    case 'events': navigateToEventsList(); return true;
     default: return false;
   }
 }

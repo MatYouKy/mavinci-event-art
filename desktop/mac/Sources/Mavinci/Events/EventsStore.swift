@@ -104,7 +104,11 @@ struct EventsIndex: Codable {
             if let next = state.operational { index.operational = next }
             let current = index.list
             if let next = try await current.merged(with: SyncedSetState(hash: state.hash, width: state.width, buckets: state.buckets),
-                                                   fetch: { try await self.fetchItems($0) }) { index.list = next }
+                                                   fetch: { try await self.fetchItems($0) }) {
+                index.list = next
+                // Lista eventów się zmieniła (także w CRM) — widżet „Wydarzenia” od razu.
+                WidgetBridge.reload()
+            }
             publish()
             index.syncedAt = Date(); lastSync = index.syncedAt; loadError = nil
             scheduleSave()

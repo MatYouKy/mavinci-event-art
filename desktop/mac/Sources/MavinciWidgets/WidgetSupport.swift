@@ -140,6 +140,19 @@ enum WidgetTime {
         return shortDay.string(from: date)
     }
 
+    /// Przypomnienie przed początkiem: „za 25 min”, „za 1 h 10 min”, „za 2 h” (`capitalized` — „Za …”); dalej niż `limit` minut
+    /// albo po początku — nil. Minuty w górę, więc wpis osi czasu co minutę przed początkiem pokazuje dokładną liczbę.
+    static func countdown(to start: Date, now: Date, limit: Int, capitalized: Bool = false) -> String? {
+        let seconds = start.timeIntervalSince(now)
+        guard seconds > 0 else { return nil }
+        let minutes = Int((seconds / 60).rounded(.up))
+        guard minutes <= limit else { return nil }
+        let prefix = capitalized ? "Za" : "za"
+        if minutes < 60 { return "\(prefix) \(minutes) min" }
+        let rest = minutes % 60
+        return rest == 0 ? "\(prefix) \(minutes / 60) h" : "\(prefix) \(minutes / 60) h \(rest) min"
+    }
+
     /// Nagłówek dnia w terminarzu: „Dziś · pon. 23.11”, „Jutro · wt. 24.11”, „środa, 26.11”.
     static func dayTitle(_ date: Date, now: Date) -> String {
         if calendar.isDate(date, inSameDayAs: now) { return "Dziś · " + shortDay.string(from: date) }
@@ -226,6 +239,59 @@ struct WidgetMessage: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+// MARK: Listy — pozycje zawsze w całości, linie podziału między nimi
+
+/// Stałe wysokości wierszy list (średni, duży i bardzo duży widżet): lista pokazuje tyle pozycji, ile mieści się w widżecie w całości
+/// (miejsce mierzone `GeometryReader`), z linią podziału między wierszami; resztę opisuje „i 3 więcej…” albo licznik w nagłówku.
+enum WidgetLayout {
+    /// Wiersz pozycji: tytuł i opis w dwóch liniach.
+    static let row: CGFloat = 34
+    /// Linia podziału między wierszami.
+    static let divider: CGFloat = 1
+    /// Nagłówek dnia w terminarzu.
+    static let dayHeader: CGFloat = 20
+    /// Wiersz „i 3 więcej…”.
+    static let more: CGFloat = 16
+    /// Odstęp kolumn bardzo dużego widżetu.
+    static let columnSpacing: CGFloat = 20
+    /// Odstęp nagłówka widżetu od listy.
+    static let headerSpacing: CGFloat = 8
+
+    /// Dodatkowy margines treści od krawędzi widżetu (ponad margines systemu).
+    static func inset(_ family: WidgetFamily) -> CGFloat {
+        switch family {
+        case .systemLarge, .systemExtraLarge: return 6
+        case .systemMedium: return 2
+        default: return 0
+        }
+    }
+
+    /// Kolumny listy: bardzo duży widżet — dwie, pozostałe — jedna.
+    static func columns(_ family: WidgetFamily) -> Int { family == .systemExtraLarge ? 2 : 1 }
+
+    /// Ile wierszy (z liniami podziału) mieści się w całości w `height`.
+    static func rows(in height: CGFloat) -> Int {
+        max(0, Int(((height + divider) / (row + divider)).rounded(.down)))
+    }
+}
+
+/// Linia podziału między wierszami listy.
+struct WidgetDivider: View {
+    var body: some View {
+        Rectangle().fill(WidgetPalette.ink.opacity(0.1)).frame(height: WidgetLayout.divider)
+    }
+}
+
+/// „i 3 więcej…” pod listą.
+struct WidgetMore: View {
+    let count: Int
+
+    var body: some View {
+        Text("i \(count) więcej…").font(.system(size: 10.5)).foregroundStyle(WidgetPalette.ink.opacity(0.5)).lineLimit(1)
+            .frame(maxWidth: .infinity, minHeight: WidgetLayout.more, maxHeight: WidgetLayout.more, alignment: .bottomLeading)
     }
 }
 

@@ -1,13 +1,14 @@
 import { nativeContext, nativeJson, nativeUnauthorized } from '@/lib/native/auth';
-import { calendarWidget, meetingsWidget } from '@/lib/native/widgets';
+import { calendarWidget, eventsWidget, meetingsWidget } from '@/lib/native/widgets';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
 /*
- * Widżety „Kalendarz” i „Spotkania” (Mac — pulpit i Centrum powiadomień; iPhone i iPad — ekran główny i ekran blokady):
- * GET op=calendar — plan pracownika na 7 dni (`get_employee_schedule`), op=meetings — jego spotkania na 14 dni.
+ * Widżety „Kalendarz”, „Spotkania” i „Wydarzenia” (Mac — pulpit i Centrum powiadomień; iPhone i iPad — ekran główny i ekran
+ * blokady): GET op=calendar — plan pracownika na 7 dni (`get_employee_schedule`), op=meetings — jego spotkania na 14 dni,
+ * op=events — najbliższe eventy na 30 dni (jak lista Eventów).
  * Tokenem pracownika (RLS jak w CRM); szczegóły: `src/lib/native/widgets.ts`. Widżet zadań: `/bridge/native/v1/tasks?op=widget`.
  */
 
@@ -21,6 +22,8 @@ export async function GET(request: Request) {
         return nativeJson(await calendarWidget(ctx));
       case 'meetings':
         return nativeJson(await meetingsWidget(ctx));
+      case 'events':
+        return nativeJson(await eventsWidget(ctx));
       default:
         return nativeJson({ error: 'Nieznana operacja.' }, 400);
     }

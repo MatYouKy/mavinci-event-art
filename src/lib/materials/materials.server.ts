@@ -897,6 +897,24 @@ async function insertUploading(ctx: NativeContext, input: {
   fail('Za dużo plików o tej nazwie w tym folderze.', 409, { code: 'exists' });
 }
 
+/**
+ * Duplikat przy wysyłce: gotowy plik marki o tej samej treści (SHA-256 — przeglądarka do 100 MB, Mac zawsze), a bez skrótu
+ * (większe pliki z przeglądarki, telefon) — o tej samej nazwie i rozmiarze w tym samym folderze. Kosz się nie liczy.
+ */
+async function duplicateOf(ctx: NativeContext, input: {
+  companyId: string; folderId: string | null; name: string; size: number; sha256: string | null;
+}): Promise<Row | null> {
+  let query = ctx.supabase.from('material_files').select(FILE_COLUMNS).eq('company_id', input.companyId).eq('status', 'ready');
+  if (input.sha256) {
+    query = query.eq('content_sha256', input.sha256);
+  } else {
+    query = (input.folderId ? query.eq('folder_id', input.folderId) : query.is('folder_id', null)).eq('name', input.name).eq('size_bytes', input.size);
+  }
+  const { data, error } = await query.order('created_at', { ascending: true }).limit(1).maybeSingle();
+  if (error) dbFail(error, 'Nie udało się sprawdzić, czy plik już jest w Materiałach.');
+  return (data as Row | null) ?? null;
+}
+
 const mimeOf = (value: unknown) => {
   const mime = text(value).trim().toLowerCase().slice(0, 200);
   return /^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(mime) ? mime : 'application/octet-stream';
@@ -905,7 +923,9 @@ const mimeOf = (value: unknown) => {
 /**
  * Krok 1 wysyłki: wpis pliku i jednorazowe podpisane adresy (plik idzie z przeglądarki / Maca / telefonu prosto do
  * magazynu). `replaceId` — nowa treść istniejącego pliku (`baseContentVersion` chroni przed nadpisaniem cudzej zmiany).
- * `thumbnail: true` — także adres na miniaturę JPEG przygotowaną przez klienta.
+ * `thumbnail: true` — także adres na miniaturę JPEG przygotowaną przez klienta. `skipDuplicates: true` (CRM, Mac i telefon od wersji
+ * z pomijaniem duplikatów; Finder i starsze wersje — bez) — gdy ten plik już jest w Materiałach marki (`duplicateOf`), bez wpisu
+ * i adresów: `{ duplicate: true, file }` z istniejącym plikiem.
  */
 export async function materialsPrepareUpload(ctx: NativeContext, body: Row) {
   const size = Math.max(0, Math.round(Number(body.size) || 0));
@@ -936,6 +956,13 @@ export async function materialsPrepareUpload(ctx: NativeContext, body: Row) {
   await requireAccess(ctx, companyId, 'manage');
   const folderId = await targetFolder(ctx, companyId, body.folderId);
   const name = nameOf(body.name, 'Plik nie ma nazwy.');
+  if (body.skipDuplicates === true) {
+    const existing = await duplicateOf(ctx, { companyId, folderId, name, size, sha256 });
+    if (existing) {
+      const [file] = await fileItems(ctx, [existing]);
+      return { duplicate: true as const, file };
+    }
+  }
   const row = await insertUploading(ctx, { companyId, folderId, name, mime, size, sha256, rename: body.rename !== false });
   const thumbPath = body.thumbnail ? `${companyId}/${row.id}/${objectName('t', '')}` : null;
   const [uploadUrl, thumbUploadUrl] = await Promise.all([signUpload(ctx, row.storage_path), thumbPath ? signUpload(ctx, thumbPath) : null]);

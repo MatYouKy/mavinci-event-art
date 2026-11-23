@@ -7,8 +7,16 @@
 export const MATERIALS_MAX_FILE_BYTES = 2 * 1024 * 1024 * 1024;
 /** Ile dni element czeka w koszu, zanim zniknie na zawsze. */
 export const MATERIALS_TRASH_DAYS = 30;
-/** Najwięcej plików w jednej wysyłce z CRM. */
+/**
+ * Najwięcej elementów w jednym zapytaniu operacji zbiorczej (przenoszenie, kopiowanie, kosz, albumy). Większe zaznaczenie aplikacje
+ * wysyłają w kolejnych porcjach (`materialChunks`, `mergeMaterialReplies`) — serwer resztę ponad limit by pominął.
+ */
 export const MATERIALS_MAX_BATCH = 100;
+/**
+ * Najwięcej plików w jednej wysyłce. Pliki idą po kolei, każdy osobno, więc to tylko zabezpieczenie przed przypadkowym upuszczeniem
+ * ogromnego folderu (np. całej biblioteki zdjęć); miejsce na Dysku sprawdza serwer przy każdym pliku.
+ */
+export const MATERIALS_MAX_UPLOAD = 2000;
 
 export type MaterialAccess = { view: boolean; manage: boolean; admin: boolean; employeeId: string | null };
 export const NO_MATERIAL_ACCESS: MaterialAccess = { view: false, manage: false, admin: false, employeeId: null };
@@ -153,4 +161,48 @@ export function cleanMaterialTags(value: unknown): string[] {
     if (tags.length >= 30) break;
   }
   return tags;
+}
+
+/** Porcje listy po `size` elementów (operacje zbiorcze — serwer przyjmuje najwyżej `MATERIALS_MAX_BATCH` naraz). */
+export function materialChunks<T>(list: readonly T[], size: number = MATERIALS_MAX_BATCH): T[][] {
+  const step = Math.max(1, Math.floor(size));
+  const chunks: T[][] = [];
+  for (let i = 0; i < list.length; i += step) chunks.push(list.slice(i, i + step));
+  return chunks;
+}
+
+/** Odpowiedzi kolejnych porcji tej samej operacji jako jedna: liczby się sumują, listy łączą, pozostałe pola — z pierwszej odpowiedzi. */
+export function mergeMaterialReplies<T extends object>(replies: readonly T[]): T {
+  const merged: Record<string, unknown> = {};
+  for (const reply of replies) {
+    for (const [key, value] of Object.entries(reply as Record<string, unknown>)) {
+      const current = merged[key];
+      if (typeof value === 'number' && (current === undefined || typeof current === 'number')) {
+        merged[key] = (typeof current === 'number' ? current : 0) + value;
+      } else if (Array.isArray(value)) {
+        merged[key] = Array.isArray(current) ? [...current, ...value] : [...value];
+      } else if (!(key in merged)) {
+        merged[key] = value;
+      }
+    }
+  }
+  return merged as T;
+}
+
+/** „1 plik”, „2 pliki”, „5 plików”; „1 folder”, „3 foldery”, „12 folderów”. */
+export function materialCountLabel(count: number, kind: 'file' | 'folder'): string {
+  const [one, few, many] = kind === 'file' ? ['plik', 'pliki', 'plików'] : ['folder', 'foldery', 'folderów'];
+  const last = count % 10;
+  const tens = count % 100;
+  if (count === 1) return `1 ${one}`;
+  return `${count} ${last >= 2 && last <= 4 && (tens < 12 || tens > 14) ? few : many}`;
+}
+
+/** Opis zaznaczenia: „10 plików · 2 foldery · 24,3 MB” (rozmiar — samych plików). */
+export function materialSelectionSummary(files: number, folders: number, bytes: number): string {
+  return [
+    files ? materialCountLabel(files, 'file') : null,
+    folders ? materialCountLabel(folders, 'folder') : null,
+    files ? formatMaterialBytes(bytes) : null,
+  ].filter(Boolean).join(' · ');
 }

@@ -85,7 +85,8 @@ import SwiftUI
     }
 }
 
-/// Okno wysyłki: pliki z miejscem docelowym, postęp, błędy; „Przerwij” w trakcie, „Zamknij” po zakończeniu.
+/// Okno wysyłki: pliki z miejscem docelowym, postęp, błędy i pominięte duplikaty (gdzie już są); „Przerwij” w trakcie, „Zamknij” po
+/// zakończeniu.
 @MainActor struct MaterialsUploadSheet: View {
     @ObservedObject var store: MaterialsStore
     @Environment(\.crmTheme) private var theme
@@ -93,7 +94,7 @@ import SwiftUI
     var body: some View {
         let batch = store.uploads
         let rows = batch?.rows ?? []
-        let done = rows.filter { $0.status == .done }.count
+        let done = rows.filter { $0.status == .done || $0.status == .skipped }.count
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(batch?.running == true ? "Wysyłanie plików (\(done)/\(rows.count))" : "Wysyłka zakończona (\(done)/\(rows.count))").font(.title3.weight(.semibold))
@@ -115,6 +116,10 @@ import SwiftUI
                                 ProgressView(value: row.size > 0 ? min(1, Double(row.sent) / Double(row.size)) : 0).tint(theme.accent)
                             }
                             if let error = row.error { Text(error).font(.caption).foregroundStyle(.red) }
+                            if row.status == .skipped {
+                                Text(["Pominięto — duplikat", row.note].compactMap { $0 }.joined(separator: " · "))
+                                    .font(.caption).foregroundStyle(theme.accent).lineLimit(2).help(row.note ?? "")
+                            }
                         }
                         .padding(8)
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
@@ -141,6 +146,7 @@ import SwiftUI
         case .waiting: return "clock"
         case .uploading: return "arrow.up.circle"
         case .done: return "checkmark.circle.fill"
+        case .skipped: return "doc.on.doc"
         case .failed: return "exclamationmark.triangle.fill"
         case .cancelled: return "xmark.circle"
         }
@@ -150,7 +156,7 @@ import SwiftUI
         switch status {
         case .done: return .green
         case .failed: return .red
-        case .uploading: return theme.accent
+        case .uploading, .skipped: return theme.accent
         default: return .secondary
         }
     }

@@ -14,10 +14,10 @@ import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { supabase } from '@/lib/supabase/browser';
 import {
-  MATERIALS_MAX_BATCH, MATERIAL_KIND_LABELS, formatMaterialBytes, materialKind, type MaterialKind,
+  MATERIALS_MAX_BATCH, MATERIALS_MAX_UPLOAD, MATERIAL_KIND_LABELS, formatMaterialBytes, materialKind, materialSelectionSummary, type MaterialKind,
 } from '@/lib/materials/materialsShared';
 import {
-  downloadMaterial, materialsGet, materialsPost, uploadMaterial, type EventFileHit, type MaterialAlbum, type MaterialBatchResult,
+  MaterialDuplicateError, downloadMaterial, materialsGet, materialsPost, materialsPostInBatches, uploadMaterial, type EventFileHit, type MaterialAlbum, type MaterialBatchResult,
   type MaterialFile, type MaterialFolder, type MaterialItemRef, type MaterialsHome, type MaterialsListing, type MaterialsSearch,
   type UploadTarget,
 } from './materialsApi';
@@ -64,7 +64,10 @@ type UploadTask = {
 };
 type UploadRow = {
   key: string; name: string; size: number; loaded: number; place: string;
-  status: 'waiting' | 'uploading' | 'done' | 'error' | 'cancelled'; error?: string;
+  /** `skipped` — plik już jest w Materiałach marki (duplikat), nie wysłano go. */
+  status: 'waiting' | 'uploading' | 'done' | 'skipped' | 'error' | 'cancelled'; error?: string;
+  /** Gdzie jest już ten plik (pominięty duplikat). */
+  note?: string;
 };
 
 const SORT_LABELS: Record<Sort, string> = { name: 'Nazwa', date: 'Data zmiany', size: 'Rozmiar', type: 'Rodzaj' };
@@ -90,6 +93,14 @@ function writeStorage(key: string, value: string) {
   }
 }
 
+/** „Nie przeniesiono: a — powód; b — powód” oraz komunikat przerwanej operacji zbiorczej (kolejna porcja się nie udała). */
+function batchProblems(label: string, failed: Array<{ name: string; error: string }>, interrupted?: string) {
+  return [
+    failed.length ? `${label}: ${failed.map((f) => `${f.name} — ${f.error}`).join('; ')}` : null,
+    interrupted ? `Przerwano w trakcie: ${interrupted}` : null,
+  ].filter(Boolean).join('. ');
+}
+
 /** Pliki z przeciągnięcia: zwykłe pliki i całe foldery z dysku (z podfolderami), bez plików ukrytych. */
 async function droppedFiles(entries: Array<FileSystemEntry | null>, plain: File[]) {
   if (!entries.some(Boolean)) return { files: plain.map((file) => ({ file, dirs: [] as string[] })), truncated: false };
@@ -107,7 +118,7 @@ async function droppedFiles(entries: Array<FileSystemEntry | null>, plain: File[
     return all;
   };
   const walk = async (entry: FileSystemEntry, dirs: string[], depth: number): Promise<void> => {
-    if (files.length >= MATERIALS_MAX_BATCH) {
+    if (files.length >= MATERIALS_MAX_UPLOAD) {
       truncated = true;
       return;
     }
@@ -481,10 +492,10 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
       showSnackbar('Nie można przenieść folderu do niego samego ani do jego podfolderu.', 'warning');
       return false;
     }
-    const result = await run('Przenoszę', () => materialsPost<MaterialBatchResult>('move', { companyId: home.company.id, items: refs, targetFolderId: target }));
+    const result = await run('Przenoszę', () => materialsPostInBatches<MaterialBatchResult>('move', 'items', refs, { companyId: home.company.id, targetFolderId: target }));
     if (!result) return false;
-    if (result.failed.length) {
-      showSnackbar(`${result.moved ? `Przeniesiono: ${result.moved}. ` : ''}Nie przeniesiono: ${result.failed.map((f) => `${f.name} — ${f.error}`).join('; ')}`, 'warning');
+    if (result.failed.length || result.interrupted) {
+      showSnackbar(`${result.moved ? `Przeniesiono: ${result.moved}. ` : ''}${batchProblems('Nie przeniesiono', result.failed, result.interrupted)}`, 'warning');
     } else {
       showSnackbar(result.moved === 1 ? 'Przeniesiono' : `Przeniesiono: ${result.moved}`, 'success');
     }
@@ -505,10 +516,10 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
       confirmText: 'Przenieś do kosza',
     });
     if (!ok) return;
-    const result = await run('Przenoszę do kosza', () => materialsPost<MaterialBatchResult>('remove', { items: refs }));
+    const result = await run('Przenoszę do kosza', () => materialsPostInBatches<MaterialBatchResult>('remove', 'items', refs));
     if (!result) return;
-    if (result.failed.length) {
-      showSnackbar(`${result.removed ? `Usunięto: ${result.removed}. ` : ''}Nie usunięto: ${result.failed.map((f) => `${f.name} — ${f.error}`).join('; ')}`, 'warning');
+    if (result.failed.length || result.interrupted) {
+      showSnackbar(`${result.removed ? `Usunięto: ${result.removed}. ` : ''}${batchProblems('Nie usunięto', result.failed, result.interrupted)}`, 'warning');
     } else {
       showSnackbar(result.removed === 1 ? 'Przeniesiono do kosza' : `Przeniesiono do kosza: ${result.removed}`, 'success');
     }
@@ -537,10 +548,10 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
   const copyTo = async (refs: MaterialItemRef[], target: string | null) => {
     if (!home || !refs.length) return;
     const result = await run(refs.length === 1 ? `Kopiuję „${refs[0].name}”` : `Kopiuję (${refs.length})`,
-      () => materialsPost<CopyResult>('copy', { companyId: home.company.id, items: refs, targetFolderId: target }));
+      () => materialsPostInBatches<CopyResult>('copy', 'items', refs, { companyId: home.company.id, targetFolderId: target }));
     if (!result) return;
-    if (result.failed.length) {
-      showSnackbar(`${result.copied ? `Skopiowano: ${result.copied}. ` : ''}Nie skopiowano: ${result.failed.map((f) => `${f.name} — ${f.error}`).join('; ')}`, 'warning');
+    if (result.failed.length || result.interrupted) {
+      showSnackbar(`${result.copied ? `Skopiowano: ${result.copied}. ` : ''}${batchProblems('Nie skopiowano', result.failed, result.interrupted)}`, 'warning');
     } else {
       showSnackbar(result.copied === 1 ? 'Skopiowano' : `Skopiowano: ${result.copied}`, 'success');
     }
@@ -608,11 +619,23 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
     setNameDialog({
       title: fileIds.length ? `Nowy album z zaznaczonych (${fileIds.length})` : 'Nowy album', label: 'Nazwa albumu', initial: '', confirm: 'Utwórz album',
       submit: async (name) => {
-        const result = await run('Tworzę album', () => materialsPost<{ album: MaterialAlbum; added: number }>('createAlbum', {
-          companyId: home.company.id, name, fileIds,
-        }));
+        // Album z pierwszą porcją plików, reszta dokładana porcjami (serwer przyjmuje najwyżej MATERIALS_MAX_BATCH naraz).
+        const result = await run('Tworzę album', async () => {
+          const created = await materialsPost<{ album: MaterialAlbum; added: number }>('createAlbum', {
+            companyId: home.company.id, name, fileIds: fileIds.slice(0, MATERIALS_MAX_BATCH),
+          });
+          const rest = fileIds.slice(MATERIALS_MAX_BATCH);
+          if (!rest.length) return { ...created, interrupted: undefined as string | undefined };
+          const more = await materialsPostInBatches<{ added: number }>('albumAdd', 'fileIds', rest, { id: created.album.id })
+            .catch((error: unknown): { added: number; interrupted?: string } => ({ added: 0, interrupted: errorMessage(error, 'Nie udało się dodać wszystkich plików.') }));
+          return { album: created.album, added: created.added + (more.added || 0), interrupted: more.interrupted };
+        });
         if (!result) return false;
-        showSnackbar(result.added ? `Utworzono album „${result.album.name}” (${result.added}) — pliki zostały na swoich miejscach` : `Utworzono album „${result.album.name}”`, 'success');
+        if (result.interrupted) {
+          showSnackbar(`Utworzono album „${result.album.name}” (${result.added}), ale nie dodano wszystkich plików: ${result.interrupted}`, 'warning');
+        } else {
+          showSnackbar(result.added ? `Utworzono album „${result.album.name}” (${result.added}) — pliki zostały na swoich miejscach` : `Utworzono album „${result.album.name}”`, 'success');
+        }
         void loadAlbums();
         return true;
       },
@@ -622,11 +645,15 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
   const addToAlbum = async (album: MaterialAlbum, fileIds: string[]) => {
     setAlbumMenu(false);
     if (!fileIds.length) return;
-    const result = await run('Dodaję do albumu', () => materialsPost<{ added: number; skipped: number }>('albumAdd', { id: album.id, fileIds }));
+    const result = await run('Dodaję do albumu', () => materialsPostInBatches<{ added: number; skipped: number }>('albumAdd', 'fileIds', fileIds, { id: album.id }));
     if (!result) return;
-    showSnackbar(result.added
-      ? `Dodano do albumu „${album.name}”: ${result.added}${result.skipped ? ` (pominięto: ${result.skipped})` : ''} — bez kopiowania plików`
-      : `Album „${album.name}” ma już te pliki.`, result.added ? 'success' : 'info');
+    if (result.interrupted) {
+      showSnackbar(`Dodano do albumu „${album.name}”: ${result.added || 0}. Nie dodano reszty: ${result.interrupted}`, 'warning');
+    } else {
+      showSnackbar(result.added
+        ? `Dodano do albumu „${album.name}”: ${result.added}${result.skipped ? ` (pominięto: ${result.skipped})` : ''} — bez kopiowania plików`
+        : `Album „${album.name}” ma już te pliki.`, result.added ? 'success' : 'info');
+    }
     void loadAlbums();
   };
 
@@ -683,6 +710,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
     uploadAbort.current = controller;
     const cache = new Map<string, string | null>();
     let done = 0;
+    let skipped = 0;
     let failed = rows.filter((row) => row.status === 'error').length;
     for (const task of tasks) {
       if (task.file.size > limit) continue;
@@ -706,11 +734,16 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
             last = now;
             patch(task.key, { loaded });
           }
-        }, controller.signal);
+        }, controller.signal, { skipDuplicates: !task.replace });
         patch(task.key, { status: 'done', loaded: task.file.size });
         done += 1;
       } catch (error) {
-        if ((error as Error)?.name === 'AbortError') {
+        if (error instanceof MaterialDuplicateError) {
+          // Ten sam plik już jest w Materiałach marki — bez drugiej kopii (w innym folderze: „Kopiuj do…” albo album).
+          skipped += 1;
+          const where = [home.company.name, ...pathOf(foldersRef.current, error.file.folderId).map((f) => f.name), error.file.name].join(' / ');
+          patch(task.key, { status: 'skipped', loaded: task.file.size, note: `Już jest: ${where}` });
+        } else if ((error as Error)?.name === 'AbortError') {
           patch(task.key, { status: 'cancelled' });
         } else {
           failed += 1;
@@ -721,10 +754,16 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
     uploadAbort.current = null;
     setUploads((current) => current && { ...current, running: false });
     refresh();
+    const duplicates = skipped ? ` Pominięto duplikaty: ${skipped}.` : '';
     if (controller.signal.aborted) {
-      showSnackbar(done ? `Wysyłkę przerwano — wgrano: ${done}.` : 'Wysyłkę przerwano.', 'warning');
+      showSnackbar(done ? `Wysyłkę przerwano — wgrano: ${done}.${duplicates}` : `Wysyłkę przerwano.${duplicates}`, 'warning');
     } else if (failed) {
-      showSnackbar(`Wgrano: ${done}. Nie udało się: ${failed} — szczegóły w oknie wysyłki.`, 'error');
+      showSnackbar(`Wgrano: ${done}.${duplicates} Nie udało się: ${failed} — szczegóły w oknie wysyłki.`, 'error');
+    } else if (skipped) {
+      // Okno zostaje otwarte — widać, które pliki już były i gdzie leżą.
+      showSnackbar(done
+        ? `Wgrano: ${done}. Pominięto duplikaty (już są w Materiałach): ${skipped} — szczegóły w oknie wysyłki.`
+        : `Te pliki już są w Materiałach (${skipped}) — nic nie wgrano, szczegóły w oknie wysyłki.`, 'info');
     } else {
       showSnackbar(done === 1 ? (tasks[0].replace ? 'Podmieniono plik' : 'Wgrano plik') : `Wgrano pliki: ${done}`, 'success');
       setUploads(null);
@@ -737,10 +776,10 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
       return;
     }
     if (!list.length) return;
-    if (truncated || list.length > MATERIALS_MAX_BATCH) {
-      showSnackbar(`Naraz można wgrać najwyżej ${MATERIALS_MAX_BATCH} plików — wgrywam pierwsze ${MATERIALS_MAX_BATCH}.`, 'warning');
+    if (truncated || list.length > MATERIALS_MAX_UPLOAD) {
+      showSnackbar(`Naraz można wgrać najwyżej ${MATERIALS_MAX_UPLOAD} plików — wgrywam pierwsze ${MATERIALS_MAX_UPLOAD}.`, 'warning');
     }
-    void startUploads(list.slice(0, MATERIALS_MAX_BATCH).map(({ file, dirs }, index) => ({
+    void startUploads(list.slice(0, MATERIALS_MAX_UPLOAD).map(({ file, dirs }, index) => ({
       key: `${Date.now()}-${index}`, file, kind: materialKind(file.type, file.name), parentId, dirs,
     })));
   };
@@ -897,6 +936,12 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
     ? childFolders.find((f) => f.id === selectedList[0].id) || null
     : null;
   const hasSystemFolder = selectedList.some((ref) => ref.kind === 'folder' && !!childFolders.find((f) => f.id === ref.id)?.systemKey);
+  /** „10 plików · 2 foldery · 24,3 MB” — jak plakietka zaznaczenia na Macu. */
+  const selectedSummary = materialSelectionSummary(
+    selectedList.filter((ref) => ref.kind === 'file').length,
+    selectedList.filter((ref) => ref.kind === 'folder').length,
+    selectedList.reduce((sum, ref) => sum + (ref.kind === 'file' ? files.find((f) => f.id === ref.id)?.size || 0 : 0), 0),
+  );
 
   const renderTree = (parentId: string | null, depth: number): ReactElement[] =>
     childrenOf(folders, parentId).flatMap((folder) => {
@@ -1316,7 +1361,10 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
 
               {selection.size > 0 && (
                 <div className={`${cardClass} flex flex-wrap items-center gap-2 px-3 py-2 text-sm`}>
-                  <span className="mr-auto text-[#e5e4e2]/70">Zaznaczono: {selection.size}</span>
+                  <span className="mr-auto flex min-w-0 items-center gap-2 text-[#e5e4e2]/70">
+                    <span className="rounded-full bg-[#d3bb73] px-2 py-0.5 text-xs font-semibold tabular-nums text-[#1c1f33]">{selectedList.length}</span>
+                    <span className="truncate">Zaznaczono: {selectedSummary}</span>
+                  </span>
                   {selectedFolder && (
                     <button type="button" className={ghostButton} onClick={() => openFolder(selectedFolder.id)}><FolderOpen className="h-4 w-4" />Otwórz</button>
                   )}
@@ -1502,9 +1550,9 @@ function UploadDialog({ rows, running, onCancel, onClose }: {
   rows: UploadRow[]; running: boolean; onCancel: () => void; onClose: () => void;
 }) {
   const total = rows.reduce((sum, row) => sum + (row.status === 'error' && !row.loaded ? 0 : row.size), 0);
-  const loaded = rows.reduce((sum, row) => sum + (row.status === 'done' ? row.size : row.loaded), 0);
+  const loaded = rows.reduce((sum, row) => sum + (row.status === 'done' || row.status === 'skipped' ? row.size : row.loaded), 0);
   const percent = total ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
-  const finished = rows.filter((row) => row.status === 'done').length;
+  const finished = rows.filter((row) => row.status === 'done' || row.status === 'skipped').length;
   return (
     <OverlayPortal>
       <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="Wysyłanie plików">
@@ -1526,13 +1574,14 @@ function UploadDialog({ rows, running, onCancel, onClose }: {
                 <div className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate" title={row.name}>{row.name}</span>
                   <span className={`shrink-0 text-xs ${
-                    row.status === 'done' ? 'text-emerald-300' : row.status === 'error' ? 'text-red-300' : row.status === 'cancelled' ? 'text-[#e5e4e2]/40' : 'text-[#e5e4e2]/60'
+                    row.status === 'done' ? 'text-emerald-300' : row.status === 'skipped' ? 'text-[#d3bb73]' : row.status === 'error' ? 'text-red-300'
+                      : row.status === 'cancelled' ? 'text-[#e5e4e2]/40' : 'text-[#e5e4e2]/60'
                   }`}>
-                    {row.status === 'done' ? 'Gotowe' : row.status === 'error' ? 'Błąd' : row.status === 'cancelled' ? 'Anulowano'
+                    {row.status === 'done' ? 'Gotowe' : row.status === 'skipped' ? 'Pominięto — duplikat' : row.status === 'error' ? 'Błąd' : row.status === 'cancelled' ? 'Anulowano'
                       : row.status === 'uploading' ? `${row.size ? Math.round((row.loaded / row.size) * 100) : 0}%` : 'Czeka'}
                   </span>
                 </div>
-                <p className="truncate text-xs text-[#e5e4e2]/40">{row.error || `${formatMaterialBytes(row.size)} · ${row.place}`}</p>
+                <p className="truncate text-xs text-[#e5e4e2]/40" title={row.note}>{row.error || row.note || `${formatMaterialBytes(row.size)} · ${row.place}`}</p>
               </li>
             ))}
           </ul>

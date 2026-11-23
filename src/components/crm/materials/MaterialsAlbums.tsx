@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEve
 import { ArrowLeft, Download, Eye, FolderOpen, ImageIcon, Library, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { MATERIAL_ALBUM_LIMITS, formatMaterialBytes } from '@/lib/materials/materialsShared';
 import {
-  downloadMaterial, materialsGet, materialsPost, type MaterialAccess, type MaterialAlbum, type MaterialFile, type MaterialItemRef,
+  downloadMaterial, materialsGet, materialsPost, materialsPostInBatches, type MaterialAccess, type MaterialAlbum, type MaterialFile, type MaterialItemRef,
 } from './materialsApi';
 import {
   ITEM_DRAG_TYPE, MaterialThumb, cardClass, dateLabel, errorMessage, ghostButton, inputClass, primaryButton, secondaryButton,
@@ -67,11 +67,15 @@ export function MaterialsAlbumsSidebar({ albums, activeId, canManage, run, notif
     if (Array.from(event.dataTransfer.types).includes(ALBUM_DRAG)) { await reorder(album.id); setDragged(null); return; }
     const ids = draggedFileIds(event);
     if (!ids.length) return;
-    const result = await run('Dodaję do albumu', () => materialsPost<{ added: number; skipped: number }>('albumAdd', { id: album.id, fileIds: ids }));
+    const result = await run('Dodaję do albumu', () => materialsPostInBatches<{ added: number; skipped: number }>('albumAdd', 'fileIds', ids, { id: album.id }));
     if (!result) return;
-    notify(result.added
-      ? `Dodano do albumu „${album.name}”: ${result.added}${result.skipped ? ` (pominięto: ${result.skipped})` : ''} — bez kopiowania plików`
-      : `Album „${album.name}” ma już te pliki.`, result.added ? 'success' : 'info');
+    if (result.interrupted) {
+      notify(`Dodano do albumu „${album.name}”: ${result.added || 0}. Nie dodano reszty: ${result.interrupted}`, 'warning');
+    } else {
+      notify(result.added
+        ? `Dodano do albumu „${album.name}”: ${result.added}${result.skipped ? ` (pominięto: ${result.skipped})` : ''} — bez kopiowania plików`
+        : `Album „${album.name}” ma już te pliki.`, result.added ? 'success' : 'info');
+    }
     onChanged();
   };
 
@@ -166,9 +170,13 @@ export function MaterialsAlbumView({ albumId, access, run, notify, onBack, onCha
   const removeSelected = async () => {
     const ids = Array.from(selection);
     if (!ids.length || !album) return;
-    const result = await run('Usuwam z albumu', () => materialsPost<{ removed: number }>('albumRemove', { id: album.id, fileIds: ids }));
+    const result = await run('Usuwam z albumu', () => materialsPostInBatches<{ removed: number }>('albumRemove', 'fileIds', ids, { id: album.id }));
     if (!result) return;
-    notify(result.removed === 1 ? 'Usunięto z albumu — plik został w Materiałach' : `Usunięto z albumu: ${result.removed} — pliki zostały w Materiałach`, 'success');
+    if (result.interrupted) {
+      notify(`Usunięto z albumu: ${result.removed || 0}. Nie usunięto reszty: ${result.interrupted}`, 'warning');
+    } else {
+      notify(result.removed === 1 ? 'Usunięto z albumu — plik został w Materiałach' : `Usunięto z albumu: ${result.removed} — pliki zostały w Materiałach`, 'success');
+    }
     setSelection(new Set());
     await load();
     onChanged();

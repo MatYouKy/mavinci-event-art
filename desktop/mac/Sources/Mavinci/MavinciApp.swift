@@ -242,11 +242,12 @@ struct RootView: View {
         .onOpenURL { url in
             guard url.scheme == "mavinci" else { return }
             // Widżety na pulpicie (`Widgets/WidgetBridge.swift`): cały widżet — „Moje zadania” (`mavinci://tasks`), kalendarz
-            // (`mavinci://calendar`) albo Spotkania (`mavinci://meetings`); pozycja — event, spotkanie, zadanie, zapytanie
-            // albo kontakt (`mavinci://<rodzaj>/<id>`).
+            // (`mavinci://calendar`), Spotkania (`mavinci://meetings`) albo Wydarzenia (`mavinci://events`); pozycja — event,
+            // spotkanie, zadanie, zapytanie albo kontakt (`mavinci://<rodzaj>/<id>`).
             if url.host == "tasks" { state.inWindow(nav) { state.showMyTasks() }; return }
             if url.host == "calendar" { state.inWindow(nav) { state.showCalendarFromWidget() }; return }
             if url.host == "meetings" { state.inWindow(nav) { state.showMeetingsFromWidget() }; return }
+            if url.host == "events" { state.inWindow(nav) { state.showEventsFromWidget() }; return }
             guard let id=url.pathComponents.last,UUID(uuidString:id) != nil else {return}
             // Adres otwiera się w oknie, które go otrzymało.
             state.inWindow(nav) {

@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase/browser';
-import type { MaterialAccess, MaterialKind, MaterialSystemFolder } from '@/lib/materials/materialsShared';
+import { materialChunks, mergeMaterialReplies, type MaterialAccess, type MaterialKind, type MaterialSystemFolder } from '@/lib/materials/materialsShared';
 
 export type { MaterialAccess };
 
@@ -84,6 +84,33 @@ export async function materialsGet<T>(op: string, params: Record<string, string 
 
 export async function materialsPost<T>(op: string, body: Record<string, unknown> = {}): Promise<T> {
   return parse<T>(await fetch(ENDPOINT, { method: 'POST', headers: await headers(true), body: JSON.stringify({ ...body, op }) }));
+}
+
+/** Wynik operacji zbiorczej w porcjach; `interrupted` — błąd kolejnej porcji (wcześniejsze porcje są już zapisane). */
+export type MaterialBatched<T> = T & { interrupted?: string };
+
+/**
+ * Operacja na wielu elementach w porcjach po `MATERIALS_MAX_BATCH` (tyle serwer przyjmuje w jednym zapytaniu — resztę by pominął):
+ * lista z pola `key` w kolejnych zapytaniach, odpowiedzi złączone (`mergeMaterialReplies`: liczby zsumowane, listy połączone). Błąd
+ * pierwszej porcji — wyjątek (nic się nie zmieniło), dalszej — wynik dotychczasowych porcji z komunikatem `interrupted`.
+ */
+export async function materialsPostInBatches<T extends object>(
+  op: string,
+  key: string,
+  list: readonly unknown[],
+  body: Record<string, unknown> = {},
+): Promise<MaterialBatched<T>> {
+  const replies: T[] = [];
+  for (const chunk of materialChunks(list)) {
+    try {
+      replies.push(await materialsPost<T>(op, { ...body, [key]: chunk }));
+    } catch (error) {
+      if (!replies.length) throw error;
+      const message = error instanceof Error && error.message ? error.message : 'Nie udało się dokończyć operacji.';
+      return { ...mergeMaterialReplies(replies), interrupted: message };
+    }
+  }
+  return mergeMaterialReplies(replies);
 }
 
 /** Pobranie pliku przez przeglądarkę (podpisany adres z nazwą pliku). */
@@ -255,9 +282,21 @@ type PreparedUpload = {
 
 export type UploadTarget = { companyId: string; folderId: string | null } | { replaceId: string; baseContentVersion: number };
 
+/** Plik już jest w Materiałach marki (wysyłka z `skipDuplicates` — ta sama treść, a bez skrótu nazwa i rozmiar w folderze); nic nie wysłano. */
+export class MaterialDuplicateError extends Error {
+  readonly file: MaterialFile;
+
+  constructor(file: MaterialFile) {
+    super(`Ten plik już jest w Materiałach: ${file.name}`);
+    this.name = 'MaterialDuplicateError';
+    this.file = file;
+  }
+}
+
 /**
  * Wysyłka jednego pliku: miniatura i skrót w przeglądarce → wpis i podpisane adresy → plik (z postępem) i miniatura
- * do magazynu → potwierdzenie na serwerze. Błąd albo anulowanie sprząta wpis i wysłane obiekty.
+ * do magazynu → potwierdzenie na serwerze. Błąd albo anulowanie sprząta wpis i wysłane obiekty. `skipDuplicates` (nowy plik) —
+ * plik, który już jest w Materiałach marki, nie jest wysyłany (`MaterialDuplicateError` z istniejącym plikiem).
  */
 export async function uploadMaterial(
   file: File,
@@ -265,15 +304,18 @@ export async function uploadMaterial(
   target: UploadTarget,
   onProgress: (loaded: number) => void,
   signal: AbortSignal,
+  options: { skipDuplicates?: boolean } = {},
 ): Promise<MaterialFile> {
   const [thumb, sha] = await Promise.all([clientThumbnail(file, kind), sha256(file)]);
   if (signal.aborted) throw Object.assign(new Error('Anulowano wysyłkę.'), { name: 'AbortError' });
-  const prepared = await materialsPost<PreparedUpload>('prepareUpload', {
+  const reply = await materialsPost<PreparedUpload | { duplicate: true; file: MaterialFile }>('prepareUpload', {
     ...('replaceId' in target
       ? { replaceId: target.replaceId, baseContentVersion: target.baseContentVersion }
-      : { companyId: target.companyId, folderId: target.folderId }),
+      : { companyId: target.companyId, folderId: target.folderId, skipDuplicates: options.skipDuplicates === true }),
     name: file.name, size: file.size, mime: file.type || 'application/octet-stream', sha256: sha, thumbnail: !!thumb?.blob,
   });
+  if ('duplicate' in reply && reply.duplicate) throw new MaterialDuplicateError(reply.file);
+  const prepared = reply as PreparedUpload;
   let thumbPath: string | null = null;
   try {
     await putObject(prepared.uploadUrl, file, file.type || 'application/octet-stream', onProgress, signal);

@@ -8,10 +8,10 @@ import { UNSTABLE_usePreventRemove as usePreventRemove, useNavigation, useRoute 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, borderRadius, typography } from '../theme';
 import {
-  MATERIALS_MAX_BATCH, MATERIALS_TRASH_DAYS, MATERIAL_KIND_LABELS, formatMaterialBytes, formatMaterialDuration, materialKind,
+  MATERIALS_MAX_UPLOAD, MATERIALS_TRASH_DAYS, MATERIAL_KIND_LABELS, formatMaterialBytes, formatMaterialDuration, materialKind,
 } from '../lib/materialsShared';
 import {
-  MaterialPhotosPermissionError, materialDescendants, materialFolderOrder, materialPath, materialUrl, materialsErrorMessage, materialsErrorStatus,
+  MaterialDuplicateError, MaterialPhotosPermissionError, materialDescendants, materialFolderOrder, materialPath, materialUrl, materialsErrorMessage, materialsErrorStatus,
   materialsGet, materialsPost, pickMaterialDocuments, pickMaterialMedia, saveMaterialToPhotos, shareMaterial, uploadMaterial,
   type EventFileHit, type MaterialAlbum, type MaterialBatchResult, type MaterialFile, type MaterialFolder, type MaterialItemRef, type MaterialsHome,
   type MaterialsListing, type MaterialsSearch, type MaterialTrashItem, type PickedMaterial,
@@ -31,7 +31,10 @@ import { openPdf } from '../lib/driveApi';
  */
 
 type Entry = { type: 'folder'; folder: MaterialFolder } | { type: 'file'; file: MaterialFile } | { type: 'album'; album: MaterialAlbum };
-type UploadRow = { key: string; name: string; size: number; sent: number; status: 'waiting' | 'uploading' | 'done' | 'error'; error?: string };
+/** `skipped` — plik już jest w Materiałach marki (duplikat, `note` — gdzie), nie wysłano go. */
+type UploadRow = {
+  key: string; name: string; size: number; sent: number; status: 'waiting' | 'uploading' | 'done' | 'skipped' | 'error'; error?: string; note?: string;
+};
 type NameDialog = { title: string; confirm: string; initial: string; submit: (name: string) => Promise<void> };
 type FolderPicker = { title: string; confirm: string; exclude: Set<string>; initial: string | null; pick: (id: string | null) => void };
 
@@ -471,9 +474,9 @@ export default function MaterialsScreen() {
   const startUploads = async (files: PickedMaterial[]) => {
     if (!homeCompany || !home || !files.length) return;
     let list = files;
-    if (list.length > MATERIALS_MAX_BATCH) {
-      Alert.alert('Materiały', `Naraz można wgrać najwyżej ${MATERIALS_MAX_BATCH} plików — wgrywam pierwsze ${MATERIALS_MAX_BATCH}.`);
-      list = list.slice(0, MATERIALS_MAX_BATCH);
+    if (list.length > MATERIALS_MAX_UPLOAD) {
+      Alert.alert('Materiały', `Naraz można wgrać najwyżej ${MATERIALS_MAX_UPLOAD} plików — wgrywam pierwsze ${MATERIALS_MAX_UPLOAD}.`);
+      list = list.slice(0, MATERIALS_MAX_UPLOAD);
     }
     const target = { companyId: homeCompany, folderId };
     const rows: UploadRow[] = list.map((file, index) => ({
@@ -484,6 +487,7 @@ export default function MaterialsScreen() {
       setUploads((current) => current && { ...current, rows: current.rows.map((row) => (row.key === key ? { ...row, ...change } : row)) });
     setUploads({ rows, running: true });
     let done = 0;
+    let skipped = 0;
     let failed = rows.filter((row) => row.status === 'error').length;
     for (const [index, file] of list.entries()) {
       const row = rows[index];
@@ -498,13 +502,20 @@ export default function MaterialsScreen() {
         patch(row.key, { status: 'done', sent: file.size });
         done += 1;
       } catch (cause) {
+        if (cause instanceof MaterialDuplicateError) {
+          // Ten sam plik już jest w Materiałach marki — bez drugiej kopii.
+          skipped += 1;
+          const where = [home.company.name, ...materialPath(folders, cause.file.folderId).map((f) => f.name), cause.file.name].join(' / ');
+          patch(row.key, { status: 'skipped', sent: file.size, note: `Już jest: ${where}` });
+          continue;
+        }
         failed += 1;
         patch(row.key, { status: 'error', error: materialsErrorMessage(cause, 'Nie udało się wysłać pliku.') });
       }
     }
     setUploads((current) => current && { ...current, running: false });
     await refresh();
-    if (!failed) {
+    if (!failed && !skipped) {
       setUploads(null);
       Alert.alert('Materiały', done === 1 ? 'Wgrano plik.' : `Wgrano pliki: ${done}.`);
     }
@@ -956,13 +967,13 @@ export default function MaterialsScreen() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modal}>
             <Text style={styles.sheetTitle}>
-              {uploads?.running ? 'Wgrywanie' : 'Wgrywanie zakończone'} ({uploads?.rows.filter((r) => r.status === 'done').length || 0}/{uploads?.rows.length || 0})
+              {uploads?.running ? 'Wgrywanie' : 'Wgrywanie zakończone'} ({uploads?.rows.filter((r) => r.status === 'done' || r.status === 'skipped').length || 0}/{uploads?.rows.length || 0})
             </Text>
             <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ gap: spacing.sm }}>
               {uploads?.rows.map((row) => (
                 <View key={row.key} style={{ gap: 4 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Feather name={row.status === 'done' ? 'check-circle' : row.status === 'error' ? 'alert-triangle' : row.status === 'uploading' ? 'upload' : 'clock'} size={14}
+                    <Feather name={row.status === 'done' ? 'check-circle' : row.status === 'skipped' ? 'copy' : row.status === 'error' ? 'alert-triangle' : row.status === 'uploading' ? 'upload' : 'clock'} size={14}
                       color={row.status === 'done' ? colors.status.success : row.status === 'error' ? colors.status.error : colors.primary.gold} />
                     <Text style={[styles.body, { flex: 1 }]} numberOfLines={1}>{row.name}</Text>
                     <Text style={styles.muted}>{formatMaterialBytes(row.size)}</Text>
@@ -971,6 +982,7 @@ export default function MaterialsScreen() {
                     <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${row.size ? Math.min(100, (row.sent / row.size) * 100) : 0}%` }]} /></View>
                   )}
                   {!!row.error && <Text style={[styles.muted, { color: colors.status.error }]}>{row.error}</Text>}
+                  {row.status === 'skipped' && <Text style={[styles.muted, { color: colors.primary.gold }]} numberOfLines={2}>Pominięto — duplikat · {row.note}</Text>}
                 </View>
               ))}
             </ScrollView>

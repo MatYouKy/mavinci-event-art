@@ -4,7 +4,9 @@ import WidgetKit
 // MARK: Widżety Mavinci — Mac (pulpit, Centrum powiadomień) oraz iPhone i iPad (ekran główny, ekran blokady)
 //
 // „Moje zadania” (prywatne i przypisane do Ciebie — jak tablica „Moje zadania”), „Zadania prywatne”, „Kalendarz” (plan na 7 dni —
-// `WidgetCalendar.swift`) i „Spotkania” (najbliższe spotkania — `WidgetMeetings.swift`). Rozmiary: mały, średni, duży i bardzo duży;
+// `WidgetCalendar.swift`), „Spotkania” (najbliższe spotkania z przypomnieniem „za 25 min” — `WidgetMeetings.swift`) i „Wydarzenia”
+// (najbliższe eventy na 30 dni — `WidgetEvents.swift`). Rozmiary: mały, średni, duży i bardzo duży (listy pokazują tylko pozycje
+// mieszczące się w całości, z liniami podziału — `WidgetLayout`);
 // na iPhonie i iPadzie także ekran blokady (prostokątny i w linii). Kliknięcie pozycji otwiera ją w aplikacji (`mavinci://task/<id>`,
 // na telefonie `mavinci-crm://…`), kliknięcie widżetu — sekcję. Odświeżanie: co 15 minut na Macu (na telefonie według budżetu
 // systemu) i od razu po zmianach w aplikacji (Mac — `WidgetBridge.reload`, telefon — po wyjściu z aplikacji).
@@ -18,6 +20,7 @@ struct MavinciWidgetBundle: WidgetBundle {
         PrivateTasksWidget()
         CalendarWidget()
         MeetingsWidget()
+        EventsWidget()
     }
 }
 
@@ -81,14 +84,6 @@ struct TasksWidgetView: View {
 
     private var title: String { privateOnly ? "Zadania prywatne" : "Moje zadania" }
     private var icon: String { privateOnly ? "lock.fill" : "checklist" }
-    private var maxRows: Int {
-        switch family {
-        case .systemMedium: return 3
-        case .systemLarge: return 8
-        case .systemExtraLarge: return 16
-        default: return 0
-        }
-    }
     private var header: WidgetHeader { WidgetHeader(icon: icon, title: title, trailing: entry.total > 0 ? "\(entry.total)" : nil) }
 
     var body: some View {
@@ -140,66 +135,113 @@ struct TasksWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    // MARK: Średni, duży i bardzo duży — lista zadań
+    // MARK: Średni, duży i bardzo duży — zadania w całości, z liniami podziału (bardzo duży — dwie kolumny)
 
     private var list: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: WidgetLayout.headerSpacing) {
             header
             if entry.tasks.isEmpty {
                 Spacer(minLength: 0)
-                HStack(spacing: 8) {
-                    Image(systemName: entry.state == .offline ? "wifi.slash" : "checkmark.seal")
-                        .font(.system(size: 18)).foregroundStyle(WidgetPalette.gold)
-                    Text(entry.state == .offline ? "Brak połączenia z serwerem CRM." : "Brak otwartych zadań — wszystko zrobione.")
-                        .font(.system(size: 12)).foregroundStyle(WidgetPalette.ink.opacity(0.75))
-                }
+                emptyMessage
                 Spacer(minLength: 0)
             } else {
-                ForEach(Array(entry.tasks.prefix(maxRows))) { task in
-                    if let url = WidgetPlatform.link("task", task.id) {
-                        Link(destination: url) { row(task) }
-                    } else {
-                        row(task)
-                    }
+                GeometryReader { geometry in
+                    columns(height: geometry.size.height)
                 }
-                if entry.tasks.count > maxRows {
-                    Text("i \(entry.tasks.count - maxRows) więcej…").font(.system(size: 10.5)).foregroundStyle(WidgetPalette.ink.opacity(0.5))
-                }
-                Spacer(minLength: 0)
             }
             if let timer = entry.timer {
                 Label("Licznik: \(timer.title)", systemImage: "timer").font(.system(size: 10.5)).foregroundStyle(WidgetPalette.gold).lineLimit(1)
             }
             WidgetFooter(state: entry.state, updatedAt: entry.updatedAt, showUpdated: family == .systemLarge || family == .systemExtraLarge)
         }
+        .padding(WidgetLayout.inset(family))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    private var emptyMessage: some View {
+        HStack(spacing: 8) {
+            Image(systemName: entry.state == .offline ? "wifi.slash" : "checkmark.seal")
+                .font(.system(size: 18)).foregroundStyle(WidgetPalette.gold)
+            Text(entry.state == .offline ? "Brak połączenia z serwerem CRM." : "Brak otwartych zadań — wszystko zrobione.")
+                .font(.system(size: 12)).foregroundStyle(WidgetPalette.ink.opacity(0.75))
+        }
+    }
+
+    /// Zadania, które mieszczą się w `height` w całości (kolumny po tyle samo wierszy); duży i bardzo duży — „i N więcej…”
+    /// pod listą, średni — sam licznik w nagłówku.
+    private func columns(height: CGFloat) -> some View {
+        let count = WidgetLayout.columns(family)
+        let total = max(entry.total, entry.tasks.count)
+        let full = WidgetLayout.rows(in: height)
+        let showsMore = family != .systemMedium && total > full * count
+        let perColumn = showsMore ? WidgetLayout.rows(in: height - WidgetLayout.more) : full
+        let shown = Array(entry.tasks.prefix(perColumn * count))
+        let rest = total - shown.count
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: WidgetLayout.columnSpacing) {
+                ForEach(0..<count, id: \.self) { column in
+                    taskColumn(Array(shown.dropFirst(column * perColumn).prefix(perColumn)))
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            }
+            Spacer(minLength: 0)
+            if showsMore && rest > 0 {
+                WidgetMore(count: rest)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func taskColumn(_ tasks: [WidgetTask]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
+                if index > 0 {
+                    WidgetDivider()
+                }
+                linked(task)
+            }
+        }
+    }
+
+    @ViewBuilder private func linked(_ task: WidgetTask) -> some View {
+        if let url = WidgetPlatform.link("task", task.id) {
+            Link(destination: url) { row(task) }
+        } else {
+            row(task)
+        }
+    }
+
+    /// Wiersz zadania o stałej wysokości: priorytet, tytuł, termin („po terminie” na czerwono), kolumna tablicy, kłódka.
     private func row(_ task: WidgetTask) -> some View {
         let due = WidgetDue.label(task.dueDate, now: entry.date)
+        let column: String? = task.column == "in_progress" ? "W trakcie" : (task.column == "review" ? "Do sprawdzenia" : nil)
+        let locked = !privateOnly && task.isPrivate
         return HStack(alignment: .top, spacing: 8) {
             Circle().fill(WidgetPalette.priority(task.priority)).frame(width: 7, height: 7).padding(.top, 5)
             VStack(alignment: .leading, spacing: 1) {
                 Text(task.title).font(.system(size: 12.5, weight: .medium)).lineLimit(1)
-                HStack(spacing: 6) {
-                    if let due {
-                        Label(due.text, systemImage: due.overdue ? "exclamationmark.circle" : "calendar")
-                            .foregroundStyle(due.overdue ? WidgetPalette.overdue : WidgetPalette.ink.opacity(0.55))
+                if due != nil || column != nil || locked {
+                    HStack(spacing: 6) {
+                        if let due {
+                            Label(due.text, systemImage: due.overdue ? "exclamationmark.circle" : "calendar")
+                                .foregroundStyle(due.overdue ? WidgetPalette.overdue : WidgetPalette.ink.opacity(0.55))
+                        }
+                        if let column {
+                            Text(column).foregroundStyle(WidgetPalette.gold.opacity(task.column == "review" ? 0.8 : 1))
+                        }
+                        if locked {
+                            Image(systemName: "lock.fill").foregroundStyle(WidgetPalette.ink.opacity(0.4))
+                        }
                     }
-                    if task.column == "in_progress" {
-                        Text("W trakcie").foregroundStyle(WidgetPalette.gold)
-                    } else if task.column == "review" {
-                        Text("Do sprawdzenia").foregroundStyle(WidgetPalette.gold.opacity(0.8))
-                    }
-                    if !privateOnly && task.isPrivate {
-                        Image(systemName: "lock.fill").foregroundStyle(WidgetPalette.ink.opacity(0.4))
-                    }
+                    .font(.system(size: 10.5))
+                    .labelStyle(.titleAndIcon)
+                    .lineLimit(1)
                 }
-                .font(.system(size: 10.5))
-                .labelStyle(.titleAndIcon)
             }
             Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, minHeight: WidgetLayout.row, maxHeight: WidgetLayout.row, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     // MARK: Ekran blokady (iPhone, iPad)

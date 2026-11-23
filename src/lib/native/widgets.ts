@@ -1,10 +1,13 @@
 import 'server-only';
 import type { NativeContext } from './auth';
-import { taskDueIso, warsawToday } from '@/lib/CRM/tasks/taskDue';
+import { eventsAccess } from './events';
+import { taskDueIso, warsawOffsetMinutes, warsawToday } from '@/lib/CRM/tasks/taskDue';
+import { usesOperationalStages } from '@/lib/CRM/events/operationalStages';
+import { isEventAwaitingOperationalConfirmation } from '@/lib/CRM/events/eventVisibility';
 
 /*
- * Widżety „Kalendarz” i „Spotkania” — Mac (pulpit, Centrum powiadomień) oraz iPhone i iPad (ekran główny, ekran blokady):
- * `GET /bridge/native/v1/widgets?op=calendar|meetings`. Widżet działa jako osobny proces z sesją z kontenera grupy aplikacji
+ * Widżety „Kalendarz”, „Spotkania” i „Wydarzenia” — Mac (pulpit, Centrum powiadomień) oraz iPhone i iPad (ekran główny, ekran
+ * blokady): `GET /bridge/native/v1/widgets?op=calendar|meetings|events`. Widżet działa jako osobny proces z sesją z kontenera grupy aplikacji
  * (`FinderShared`; na telefonie — sesja rozszerzenia Plików), tokenem pracownika: RLS i reguły jak w CRM.
  *
  * - `calendar` — plan pracownika (`get_employee_schedule`, jak „Mój plan” na pulpicie CRM, Maca i telefonu): eventy, fazy,
@@ -12,6 +15,9 @@ import { taskDueIso, warsawToday } from '@/lib/CRM/tasks/taskDue';
  *   polski) przez 7 dni, bez pozycji już zakończonych.
  * - `meetings` — spotkania pracownika (autor albo uczestnik; bez odwołanych i bez odrzuconych przez niego): trwające i na
  *   14 dni naprzód, z jego odpowiedzią, statusem, miejscem, organizatorem i liczbą uczestników.
+ * - `events` — najbliższe eventy: widoczne dla pracownika jak na liście Eventów (RLS) i jego realizacje, trwające i zaczynające
+ *   się w ciągu 30 dni, bez anulowanych; miejsce, klient, kolor kategorii, etap sprzedaży eventów niepotwierdzonych (tylko dla
+ *   osób widzących etapy sprzedaży — jak lista Eventów) i wyróżnienie zapytań / ofert do wysłania na 72 godziny przed eventem.
  * Każda pozycja ma cel kliknięcia (`target` + `targetId`): event, spotkanie, zadanie, zapytanie albo kontakt — widżet otwiera
  * go w aplikacji (`mavinci://event/<id>` na Macu, `mavinci-crm://event/<id>` na telefonie).
  */
@@ -23,6 +29,14 @@ const CALENDAR_DAYS = 7;
 const MEETING_DAYS = 14;
 const CALENDAR_LIMIT = 150;
 const MEETINGS_LIMIT = 60;
+const EVENT_DAYS = 30;
+const EVENTS_LIMIT = 60;
+/** Etapy sprzedaży eventu jeszcze niepotwierdzonego (od „Oferta zaakceptowana” event jest potwierdzony — bez dopisku). */
+const EVENT_SALES_STAGES: Record<string, string> = {
+  inquiry: 'Zapytanie',
+  offer_to_send: 'Oferta do wysłania',
+  offer_sent: 'Oferta wysłana',
+};
 const UUID = '[\\da-f]{8}-(?:[\\da-f]{4}-){3}[\\da-f]{12}';
 const COLOR = /^#(?:[\da-f]{3}|[\da-f]{6}|[\da-f]{8})$/i;
 
@@ -168,5 +182,85 @@ export async function meetingsWidget(ctx: NativeContext) {
     total: meetings.length,
     pending: meetings.filter((m) => m.response === 'pending').length,
     generatedAt: new Date(now).toISOString(),
+  };
+}
+
+/** Godzina i minuta czasu polskiego dla chwili `ms` (np. [0, 0] — event zapisany jako sam dzień). */
+function warsawClock(ms: number): [number, number] {
+  const local = new Date(ms + warsawOffsetMinutes(ms) * MINUTE);
+  return [local.getUTCHours(), local.getUTCMinutes()];
+}
+
+/** Koniec dnia (północ czasu polskiego po dniu chwili `ms`). */
+function warsawDayEnd(ms: number): number {
+  const lastMinute = Date.parse(taskDueIso(warsawToday(ms), '23:59') ?? '');
+  return Number.isFinite(lastMinute) ? lastMinute + MINUTE : ms + 6 * HOUR;
+}
+
+/** Najbliższe eventy: trwające i zaczynające się w ciągu 30 dni (lista Eventów — RLS — i realizacje pracownika), bez anulowanych. */
+export async function eventsWidget(ctx: NativeContext) {
+  const now = Date.now();
+  const generatedAt = new Date(now).toISOString();
+  if (!eventsAccess(ctx).canView) return { events: [], total: 0, days: EVENT_DAYS, available: false, generatedAt };
+  const from = new Date(now - 7 * DAY).toISOString();
+  const to = new Date(now + EVENT_DAYS * DAY).toISOString();
+  const [list, mine] = await Promise.all([
+    ctx.supabase
+      .from('events')
+      .select(
+        `id,name,event_date,event_end_date,status,location,
+         organizations:organizations!events_organization_id_fkey(name,alias),
+         contacts(first_name,last_name),
+         event_categories(name,color),
+         locations(name)`,
+      )
+      .gte('event_date', from)
+      .lt('event_date', to)
+      .order('event_date')
+      .limit(500),
+    ctx.supabase.rpc('get_my_realizations'),
+  ]);
+  if (list.error) throw list.error;
+  const rows = new Map<string, Row>(((list.data || []) as Row[]).map((row) => [String(row.id), row]));
+  // Realizacje pracownika (kierownik realizacji) — także te, których lista Eventów nie pokazuje; bez funkcji — sama lista.
+  for (const row of (Array.isArray(mine.data) ? mine.data : []) as Row[]) {
+    const time = Date.parse(row?.event_date);
+    if (!row?.id || rows.has(String(row.id)) || !Number.isFinite(time) || time < now - 7 * DAY || time >= now + EVENT_DAYS * DAY) continue;
+    rows.set(String(row.id), { ...row, location: row.location_name });
+  }
+  // Etapy sprzedaży — jak lista Eventów: osoby bez dostępu do sprzedaży i finansów widzą etapy operacyjne (bez dopisku).
+  const sales = !usesOperationalStages({ role: ctx.employee.role, access_level: ctx.employee.accessLevel, permissions: ctx.employee.permissions });
+  const events = Array.from(rows.values())
+    .flatMap((e) => {
+      const status = String(e.status || 'inquiry');
+      if (status === 'cancelled') return [];
+      const start = Date.parse(e.event_date);
+      if (!Number.isFinite(start)) return [];
+      const rawEnd = e.event_end_date ? Date.parse(e.event_end_date) : NaN;
+      const end = Number.isFinite(rawEnd) && rawEnd > start ? rawEnd : warsawDayEnd(start);
+      if (end <= now) return [];
+      const [hour, minute] = warsawClock(start);
+      const contact = [e.contacts?.first_name, e.contacts?.last_name].filter(Boolean).join(' ');
+      return [{
+        id: String(e.id),
+        title: text(e.name) ?? 'Event',
+        start: new Date(start).toISOString(),
+        end: new Date(end).toISOString(),
+        allDay: hour === 0 && minute === 0,
+        color: typeof e.event_categories?.color === 'string' && COLOR.test(e.event_categories.color) ? e.event_categories.color : '#d3bb73',
+        location: text(e.locations?.name) ?? text(e.location),
+        client: text(e.organizations?.alias) ?? text(e.organizations?.name) ?? text(contact),
+        category: text(e.event_categories?.name),
+        stage: sales ? EVENT_SALES_STAGES[status] ?? null : null,
+        attention: sales && isEventAwaitingOperationalConfirmation({ status, event_date: e.event_date }, new Date(now)),
+      }];
+    })
+    .sort((a, b) => Date.parse(a.start) - Date.parse(b.start) || a.title.localeCompare(b.title, 'pl'));
+  return {
+    events: events.slice(0, EVENTS_LIMIT),
+    total: events.length,
+    days: EVENT_DAYS,
+    available: true,
+    generatedAt,
   };
 }

@@ -314,6 +314,48 @@ import UniformTypeIdentifiers
         }
     }
 
+    /// Odpowiedzi kolejnych porcji operacji zbiorczej i opis błędu porcji, na której przerwano (wcześniejsze porcje są zapisane).
+    private struct BatchReplies {
+        var replies: [Data] = []
+        var interrupted: String?
+    }
+
+    /// Operacja na wielu elementach w porcjach po `MaterialsText.maxBatch` (tyle serwer przyjmuje w jednym zapytaniu — resztę by
+    /// pominął) pod jednym wskaźnikiem postępu (jak `materialsPostInBatches` w CRM). Błąd pierwszej porcji — komunikat i `nil` (nic się
+    /// nie zmieniło); dalszej — dotychczasowe odpowiedzi z opisem błędu w `interrupted`.
+    private func runInBatches(_ pending: String, _ op: String, key: String, items: [JSONValue], body: [String: JSONValue],
+                              timeout: TimeInterval? = nil) async -> BatchReplies? {
+        guard let workspace else { return nil }
+        guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return nil }
+        let size = MaterialsText.maxBatch
+        let outcome = await workspace.withPending(pending) { () async -> BatchReplies in
+            var outcome = BatchReplies()
+            for start in stride(from: 0, to: items.count, by: size) {
+                var chunk = body
+                chunk[key] = .array(Array(items[start..<min(start + size, items.count)]))
+                do {
+                    outcome.replies.append(try await self.post(op, chunk, timeout: timeout))
+                } catch {
+                    outcome.interrupted = self.failureText(error, "Operacja nie powiodła się.")
+                    break
+                }
+            }
+            return outcome
+        }
+        guard !outcome.replies.isEmpty else {
+            workspace.error = outcome.interrupted ?? "Operacja nie powiodła się."
+            return nil
+        }
+        FinderDomain.signal()
+        return outcome
+    }
+
+    /// „Nie przeniesiono: a — powód; b — powód” i opis przerwanej operacji zbiorczej (jak `batchProblems` w CRM).
+    static func problems(_ label: String, _ failed: [MaterialBatchResult.Failed], interrupted: String?) -> String {
+        let list = failed.isEmpty ? nil : "\(label): " + failed.map { "\($0.name) — \($0.error)" }.joined(separator: "; ")
+        return [list, interrupted.map { "Przerwano w trakcie: \($0)" }].compactMap { $0 }.joined(separator: ". ")
+    }
+
     func createFolder(_ name: String, parent: String?) async {
         guard let company = companyID else { return }
         let body: [String: JSONValue] = ["companyId": .string(company), "parentId": parent.map { .string($0) } ?? .null, "name": .string(name)]
@@ -338,16 +380,15 @@ import UniformTypeIdentifiers
             workspace.notice = "Nie można przenieść folderu do niego samego ani do jego podfolderu."
             return false
         }
-        let body: [String: JSONValue] = [
-            "companyId": .string(company), "items": .array(refs.map(\.json)), "targetFolderId": target.map { .string($0) } ?? .null,
-        ]
-        guard let data = await run("Przenoszę", "move", body, success: nil),
-              let result = try? JSONDecoder().decode(MaterialBatchResult.self, from: data) else { return false }
-        let moved = result.moved ?? 0
-        if result.failed.isEmpty {
+        let body: [String: JSONValue] = ["companyId": .string(company), "targetFolderId": target.map { .string($0) } ?? .null]
+        guard let outcome = await runInBatches("Przenoszę", "move", key: "items", items: refs.map(\.json), body: body) else { return false }
+        let results = outcome.replies.compactMap { try? JSONDecoder().decode(MaterialBatchResult.self, from: $0) }
+        let moved = results.reduce(0) { $0 + ($1.moved ?? 0) }
+        let failed = results.flatMap(\.failed)
+        if failed.isEmpty && outcome.interrupted == nil {
             workspace.succeed(moved == 1 ? "Przeniesiono" : "Przeniesiono: \(moved)")
         } else {
-            workspace.error = (moved > 0 ? "Przeniesiono: \(moved). " : "") + "Nie przeniesiono: " + result.failed.map { "\($0.name) — \($0.error)" }.joined(separator: "; ")
+            workspace.error = (moved > 0 ? "Przeniesiono: \(moved). " : "") + Self.problems("Nie przeniesiono", failed, interrupted: outcome.interrupted)
         }
         await refresh()
         return moved > 0
@@ -358,20 +399,19 @@ import UniformTypeIdentifiers
     @discardableResult
     func copy(_ refs: [MaterialRef], to target: String?) async -> [MaterialRef] {
         guard let workspace, let company = companyID, !refs.isEmpty else { return [] }
-        let body: [String: JSONValue] = [
-            "companyId": .string(company), "items": .array(refs.map(\.json)), "targetFolderId": target.map { .string($0) } ?? .null,
-        ]
+        let body: [String: JSONValue] = ["companyId": .string(company), "targetFolderId": target.map { .string($0) } ?? .null]
         let pending = refs.count == 1 ? "Kopiuję „\(refs[0].name)”" : "Kopiuję (\(refs.count))"
-        guard let data = await run(pending, "copy", body, success: nil, timeout: 300),
-              let result = try? JSONDecoder().decode(MaterialCopyResult.self, from: data) else { return [] }
-        if result.failed.isEmpty {
-            workspace.succeed(result.copied == 1 ? "Skopiowano" : "Skopiowano: \(result.copied)")
+        guard let outcome = await runInBatches(pending, "copy", key: "items", items: refs.map(\.json), body: body, timeout: 300) else { return [] }
+        let results = outcome.replies.compactMap { try? JSONDecoder().decode(MaterialCopyResult.self, from: $0) }
+        let copied = results.reduce(0) { $0 + $1.copied }
+        let failed = results.flatMap(\.failed)
+        if failed.isEmpty && outcome.interrupted == nil {
+            workspace.succeed(copied == 1 ? "Skopiowano" : "Skopiowano: \(copied)")
         } else {
-            workspace.error = (result.copied > 0 ? "Skopiowano: \(result.copied). " : "") + "Nie skopiowano: "
-                + result.failed.map { "\($0.name) — \($0.error)" }.joined(separator: "; ")
+            workspace.error = (copied > 0 ? "Skopiowano: \(copied). " : "") + Self.problems("Nie skopiowano", failed, interrupted: outcome.interrupted)
         }
         await refresh()
-        return result.items
+        return results.flatMap(\.items)
     }
 
     /// Schowek, który można wkleić — pusty, gdy od „Kopiuj” coś innego trafiło do schowka systemu (np. kopiowanie w innej aplikacji).
@@ -406,13 +446,14 @@ import UniformTypeIdentifiers
     /// Do kosza na 30 dni (folder razem z zawartością).
     func remove(_ refs: [MaterialRef]) async {
         guard let workspace, !refs.isEmpty else { return }
-        guard let data = await run("Przenoszę do kosza", "remove", ["items": .array(refs.map(\.json))], success: nil),
-              let result = try? JSONDecoder().decode(MaterialBatchResult.self, from: data) else { return }
-        if result.failed.isEmpty {
-            workspace.succeed((result.removed ?? 0) == 1 ? "Przeniesiono do kosza" : "Przeniesiono do kosza: \(result.removed ?? 0)")
+        guard let outcome = await runInBatches("Przenoszę do kosza", "remove", key: "items", items: refs.map(\.json), body: [:]) else { return }
+        let results = outcome.replies.compactMap { try? JSONDecoder().decode(MaterialBatchResult.self, from: $0) }
+        let removed = results.reduce(0) { $0 + ($1.removed ?? 0) }
+        let failed = results.flatMap(\.failed)
+        if failed.isEmpty && outcome.interrupted == nil {
+            workspace.succeed(removed == 1 ? "Przeniesiono do kosza" : "Przeniesiono do kosza: \(removed)")
         } else {
-            let removed = result.removed ?? 0
-            workspace.error = (removed > 0 ? "Usunięto: \(removed). " : "") + "Nie usunięto: " + result.failed.map { "\($0.name) — \($0.error)" }.joined(separator: "; ")
+            workspace.error = (removed > 0 ? "Usunięto: \(removed). " : "") + Self.problems("Nie usunięto", failed, interrupted: outcome.interrupted)
         }
         for ref in refs where ref.kind == "file" { details[ref.id] = nil }
         await refresh()
@@ -596,11 +637,29 @@ import UniformTypeIdentifiers
     /// Nowy album (z zaznaczonymi plikami — odnośniki) w bieżącej marce.
     func createAlbum(_ name: String, fileIDs: [String] = []) async {
         guard let company = companyID ?? home?.company.id else { return }
-        let body: [String: JSONValue] = ["companyId": .string(company), "name": .string(name), "fileIds": .array(fileIDs.map { .string($0) })]
+        // Album z pierwszą porcją plików, reszta dokładana porcjami (serwer przyjmuje najwyżej `maxBatch` naraz).
+        let first = Array(fileIDs.prefix(MaterialsText.maxBatch))
+        let body: [String: JSONValue] = ["companyId": .string(company), "name": .string(name), "fileIds": .array(first.map { .string($0) })]
         guard let data = await run("Tworzę album", "createAlbum", body, success: nil) else { return }
         struct Reply: Decodable { let album: MaterialAlbum; let added: Int }
         if let reply = try? JSONDecoder().decode(Reply.self, from: data) {
-            workspace?.succeed(reply.added > 0 ? "Utworzono album „\(reply.album.name)” (\(reply.added)) — pliki zostały na swoich miejscach" : "Utworzono album „\(reply.album.name)”")
+            let rest = Array(fileIDs.dropFirst(first.count))
+            var added = reply.added
+            var interrupted: String?
+            if !rest.isEmpty {
+                if let outcome = await runInBatches("Dodaję do albumu", "albumAdd", key: "fileIds", items: rest.map { .string($0) },
+                                                    body: ["id": .string(reply.album.id)]) {
+                    added += outcome.replies.compactMap { try? JSONDecoder().decode(MaterialAlbumAddReply.self, from: $0) }.reduce(0) { $0 + $1.added }
+                    interrupted = outcome.interrupted
+                } else {
+                    interrupted = "nie dodano pozostałych plików"
+                }
+            }
+            if let interrupted {
+                workspace?.error = "Utworzono album „\(reply.album.name)” (\(added)), ale nie dodano wszystkich plików: \(interrupted)"
+            } else {
+                workspace?.succeed(added > 0 ? "Utworzono album „\(reply.album.name)” (\(added)) — pliki zostały na swoich miejscach" : "Utworzono album „\(reply.album.name)”")
+            }
         }
         await loadAlbums()
     }
@@ -627,11 +686,15 @@ import UniformTypeIdentifiers
     /// Pliki do albumu — odnośniki (ten sam plik może być w wielu albumach).
     func addToAlbum(_ album: MaterialAlbum, fileIDs: [String]) async {
         guard !fileIDs.isEmpty else { return }
-        let body: [String: JSONValue] = ["id": .string(album.id), "fileIds": .array(fileIDs.map { .string($0) })]
-        guard let data = await run("Dodaję do albumu", "albumAdd", body, success: nil),
-              let reply = try? JSONDecoder().decode(MaterialAlbumAddReply.self, from: data) else { return }
-        if reply.added > 0 {
-            workspace?.succeed("Dodano do albumu „\(album.name)”: \(reply.added)" + (reply.skipped > 0 ? " (pominięto: \(reply.skipped))" : "") + " — bez kopiowania plików")
+        guard let outcome = await runInBatches("Dodaję do albumu", "albumAdd", key: "fileIds", items: fileIDs.map { .string($0) },
+                                               body: ["id": .string(album.id)]) else { return }
+        let replies = outcome.replies.compactMap { try? JSONDecoder().decode(MaterialAlbumAddReply.self, from: $0) }
+        let added = replies.reduce(0) { $0 + $1.added }
+        let skipped = replies.reduce(0) { $0 + $1.skipped }
+        if let interrupted = outcome.interrupted {
+            workspace?.error = "Dodano do albumu „\(album.name)”: \(added). Nie dodano reszty: \(interrupted)"
+        } else if added > 0 {
+            workspace?.succeed("Dodano do albumu „\(album.name)”: \(added)" + (skipped > 0 ? " (pominięto: \(skipped))" : "") + " — bez kopiowania plików")
         } else {
             workspace?.notice = "Album „\(album.name)” ma już te pliki."
         }
@@ -642,8 +705,13 @@ import UniformTypeIdentifiers
     /// Usunięcie odnośników z albumu — pliki zostają w Materiałach.
     func removeFromAlbum(_ album: MaterialAlbum, fileIDs: [String]) async {
         guard !fileIDs.isEmpty else { return }
-        let body: [String: JSONValue] = ["id": .string(album.id), "fileIds": .array(fileIDs.map { .string($0) })]
-        guard await run("Usuwam z albumu", "albumRemove", body, success: fileIDs.count == 1 ? "Usunięto z albumu — plik został w Materiałach" : "Usunięto z albumu: \(fileIDs.count)") != nil else { return }
+        guard let outcome = await runInBatches("Usuwam z albumu", "albumRemove", key: "fileIds", items: fileIDs.map { .string($0) },
+                                               body: ["id": .string(album.id)]) else { return }
+        if let interrupted = outcome.interrupted {
+            workspace?.error = "Nie usunięto z albumu wszystkich plików: \(interrupted)"
+        } else {
+            workspace?.succeed(fileIDs.count == 1 ? "Usunięto z albumu — plik został w Materiałach" : "Usunięto z albumu: \(fileIDs.count)")
+        }
         await loadAlbum(album.id)
         await loadAlbums()
     }
@@ -676,16 +744,17 @@ import UniformTypeIdentifiers
 
     // MARK: Wysyłka
 
-    /// Pliki i foldery z Findera (albo okna wyboru) do folderu marki: foldery powstają jak na dysku, najwyżej 100 plików naraz.
+    /// Pliki i foldery z Findera (albo okna wyboru) do folderu marki: foldery powstają jak na dysku, najwyżej `maxUpload` plików naraz
+    /// (pliki idą po kolei, każdy osobno).
     func upload(_ urls: [URL], to parent: String?) {
         guard let workspace else { return }
         guard canManage else { workspace.notice = "Nie masz uprawnień do dodawania plików w Materiałach tej marki."; return }
         guard workspace.canWrite else { workspace.error = "Wysyłka wymaga połączenia z serwerem CRM."; return }
         guard uploadTask == nil, let company = home?.company else { return }
         var jobs = Self.jobs(from: urls, parent: parent)
-        if jobs.count > MaterialsText.maxBatch {
-            workspace.notice = "Naraz można wgrać najwyżej \(MaterialsText.maxBatch) plików — wgrywam pierwsze \(MaterialsText.maxBatch)."
-            jobs = Array(jobs.prefix(MaterialsText.maxBatch))
+        if jobs.count > MaterialsText.maxUpload {
+            workspace.notice = "Naraz można wgrać najwyżej \(MaterialsText.maxUpload) plików — wgrywam pierwsze \(MaterialsText.maxUpload)."
+            jobs = Array(jobs.prefix(MaterialsText.maxUpload))
         }
         guard !jobs.isEmpty else { workspace.notice = "Nie znaleziono plików do wysłania."; return }
         start(jobs, company: company, temporary: urls)
@@ -712,7 +781,7 @@ import UniformTypeIdentifiers
         uploadTask = Task { [weak self] in
             guard let self else { return }
             var cache: [String: String?] = [:]
-            var done = 0, failed = 0
+            var done = 0, failed = 0, skipped = 0
             for job in jobs {
                 guard let row = self.uploads?.rows.first(where: { $0.id == job.id }), row.status == .waiting else {
                     failed += 1
@@ -730,6 +799,11 @@ import UniformTypeIdentifiers
                     self.patch(job.id) { $0.status = .cancelled }
                 } catch let error as URLError where error.code == .cancelled {
                     self.patch(job.id) { $0.status = .cancelled }
+                } catch let duplicate as MaterialsDuplicate {
+                    // Ten sam plik już jest w Materiałach marki — bez drugiej kopii (w innym folderze: „Kopiuj do…” albo album).
+                    skipped += 1
+                    let place = ([company.name] + self.path(of: duplicate.file.folderId).map(\.name) + [duplicate.file.name]).joined(separator: " / ")
+                    self.patch(job.id) { $0.status = .skipped; $0.sent = $0.size; $0.note = "Już jest: \(place)" }
                 } catch {
                     failed += 1
                     let message = self.failureText(error, "Nie udało się wysłać pliku.")
@@ -744,10 +818,16 @@ import UniformTypeIdentifiers
             await self.refresh()
             for job in jobs { if let id = job.replace?.id { self.details[id] = nil; await self.loadDetail(id) } }
             guard let workspace = self.workspace else { return }
+            let duplicates = skipped > 0 ? " Pominięto duplikaty: \(skipped)." : ""
             if cancelled {
-                workspace.notice = done > 0 ? "Wysyłkę przerwano — wgrano: \(done)." : "Wysyłkę przerwano."
+                workspace.notice = done > 0 ? "Wysyłkę przerwano — wgrano: \(done).\(duplicates)" : "Wysyłkę przerwano.\(duplicates)"
             } else if failed > 0 {
-                workspace.error = "Wgrano: \(done). Nie udało się: \(failed) — szczegóły w oknie wysyłki."
+                workspace.error = "Wgrano: \(done).\(duplicates) Nie udało się: \(failed) — szczegóły w oknie wysyłki."
+            } else if skipped > 0 {
+                // Okno zostaje otwarte — widać, które pliki już były i gdzie leżą.
+                workspace.notice = done > 0
+                    ? "Wgrano: \(done). Pominięto duplikaty (już są w Materiałach): \(skipped) — szczegóły w oknie wysyłki."
+                    : "Te pliki już są w Materiałach (\(skipped)) — nic nie wgrano, szczegóły w oknie wysyłki."
             } else {
                 workspace.succeed(done == 1 ? (jobs.first?.replace != nil ? "Podmieniono plik" : "Wgrano plik") : "Wgrano pliki: \(done)")
                 self.uploads = nil
@@ -814,8 +894,15 @@ import UniformTypeIdentifiers
         } else {
             body["companyId"] = .string(company)
             body["folderId"] = folder.map { .string($0) } ?? .null
+            // Plik, który już jest w Materiałach marki (ta sama treść), serwer pomija — odpowiedź wskazuje istniejący.
+            body["skipDuplicates"] = .bool(true)
         }
-        let prepared = try JSONDecoder().decode(MaterialPrepared.self, from: try await post("prepareUpload", body))
+        let reply = try await post("prepareUpload", body)
+        if job.replace == nil, let duplicate = try? JSONDecoder().decode(MaterialDuplicateReply.self, from: reply),
+           duplicate.duplicate == true, let file = duplicate.file {
+            throw MaterialsDuplicate(file: file)
+        }
+        let prepared = try JSONDecoder().decode(MaterialPrepared.self, from: reply)
         do {
             guard let target = URL(string: prepared.uploadUrl) else { throw AppError.invalidResponse }
             try await MaterialsTransfer.put(file: url, to: target, mime: mime) { [weak self] sent in
@@ -887,7 +974,8 @@ struct MaterialsUploadJob {
 }
 
 struct MaterialsUploadRow: Identifiable {
-    enum Status { case waiting, uploading, done, failed, cancelled }
+    /// `skipped` — plik już jest w Materiałach marki (duplikat), nie wysłano go.
+    enum Status { case waiting, uploading, done, skipped, failed, cancelled }
     let id: UUID
     var name: String
     var size: Int64
@@ -895,6 +983,19 @@ struct MaterialsUploadRow: Identifiable {
     var sent: Int64 = 0
     var status: Status
     var error: String?
+    /// Gdzie jest już ten plik (pominięty duplikat).
+    var note: String?
+}
+
+/// Plik już jest w Materiałach marki (wysyłka z `skipDuplicates`) — nic nie wysłano; `file` — istniejący plik.
+struct MaterialsDuplicate: Error {
+    let file: MaterialFile
+}
+
+/// Odpowiedź `prepareUpload` dla duplikatu: `{ duplicate: true, file }`.
+struct MaterialDuplicateReply: Decodable {
+    var duplicate: Bool?
+    var file: MaterialFile?
 }
 
 struct MaterialsUploadBatch {

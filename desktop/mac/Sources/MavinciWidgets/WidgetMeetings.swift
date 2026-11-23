@@ -5,7 +5,8 @@ import WidgetKit
 //
 // Spotkania, w których pracownik jest autorem albo uczestnikiem (bez odwołanych i odrzuconych) — trwające i najbliższe, z miejscem,
 // liczbą osób i organizatorem. Zaproszenie bez odpowiedzi — złote „Odpowiedz” i licznik „… do odpowiedzi” w nagłówku; „Może”
-// (Twoja odpowiedź) i „Wstępne” (status spotkania) jak w CRM. Serwer: `GET /bridge/native/v1/widgets?op=meetings`
+// (Twoja odpowiedź) i „Wstępne” (status spotkania) jak w CRM. Przypomnienie: spotkanie w ciągu godziny ma pod godziną złote
+// „za 25 min” (mały widżet i ekran blokady — „Za 1 h 10 min · 14:00” do 2 godzin przed), odliczane co minutę. Serwer: `GET /bridge/native/v1/widgets?op=meetings`
 // (`meetingsWidget` w `src/lib/native/widgets.ts`), kopia bez sieci: `widget-meetings.json` w kontenerze grupy. Kliknięcie
 // spotkania otwiera je w aplikacji (`…://meeting/<id>`), reszty widżetu — Spotkania.
 
@@ -17,7 +18,8 @@ struct MeetingsWidget: Widget {
         emptyShort: "Brak spotkań",
         link: WidgetPlatform.link("meetings"),
         showsDate: false,
-        attention: "do odpowiedzi"
+        attention: "do odpowiedzi",
+        countdown: true
     )
 
     var body: some WidgetConfiguration {
@@ -25,7 +27,7 @@ struct MeetingsWidget: Widget {
             AgendaWidgetView(entry: entry, style: Self.style)
         }
         .configurationDisplayName("Spotkania")
-        .description("Twoje najbliższe spotkania z miejscem i uczestnikami; zaproszenia czekające na odpowiedź są wyróżnione.")
+        .description("Twoje najbliższe spotkania z przypomnieniem „za 25 min”, miejscem i uczestnikami; zaproszenia czekające na odpowiedź są wyróżnione.")
         .supportedFamilies(WidgetPlatform.families)
     }
 }

@@ -5,7 +5,8 @@ import UniformTypeIdentifiers
 // MARK: Materiały — ekran natywny 1:1 z `/crm/materials` (`MaterialsWorkspace.tsx`)
 //
 // Marka, drzewo folderów (domyślne foldery marki z ikonami), zawartość folderu jako siatka miniatur albo lista, sortowanie,
-// zaznaczanie jak w Finderze (⌘ i ⇧, ⌘A), wyszukiwanie w Materiałach i w plikach wydarzeń, karta pliku z boku, kosz.
+// zaznaczanie jak w Finderze (⌘ i ⇧, ⌘A — przy kilku elementach plakietka z liczbą, opisem i czynnościami), wyszukiwanie
+// w Materiałach i w plikach wydarzeń, karta pliku z boku, kosz.
 // Przeciąganie: pliki i całe foldery z Findera (na folder albo do bieżącego folderu — z postępem wysyłki), elementy między
 // folderami (na folder w siatce, na liście albo w drzewie; z ⌥ — kopia), plik z aplikacji do Findera i innych aplikacji. Spacja /
 // dwuklik — Quick Look, Delete — do kosza, Enter — otwórz. Schowek jak w Finderze: ⌘C kopiuj, ⌘X wytnij, ⌘V wklej (kopia albo
@@ -553,6 +554,7 @@ import UniformTypeIdentifiers
                     .padding(8).allowsHitTesting(false)
             }
         }
+        .overlay(alignment: .bottom) { selectionBadge(folders: folders, files: files) }
         .contentShape(Rectangle())
         .onDrop(of: MaterialsDropTypes.all, isTargeted: targeted(key)) { providers in drop(providers, into: store.folderID) }
         .focusable()
@@ -574,6 +576,40 @@ import UniformTypeIdentifiers
         .onDeleteCommand { if store.canManage { askDelete(selectedRefs) } }
         .onExitCommand { clearSelection() }
         .onCommand(#selector(NSResponder.selectAll(_:))) { selection = Set(folders.map { "d:" + $0.id } + files.map { "f:" + $0.id }) }
+    }
+
+    /// Plakietka zaznaczenia (⌘ / ⇧ — co najmniej dwa elementy): liczba, „10 plików · 2 foldery · 24,3 MB”, czynności jak w menu
+    /// pod prawym przyciskiem i odznaczenie. Liczy tylko elementy bieżącego folderu (jak czynności na zaznaczeniu).
+    @ViewBuilder private func selectionBadge(folders: [MaterialFolder], files: [MaterialFile]) -> some View {
+        let fileCount = files.reduce(0) { selection.contains("f:" + $1.id) ? $0 + 1 : $0 }
+        let folderCount = folders.reduce(0) { selection.contains("d:" + $1.id) ? $0 + 1 : $0 }
+        if fileCount + folderCount > 1 {
+            let size = files.reduce(0.0) { selection.contains("f:" + $1.id) ? $0 + $1.size : $0 }
+            HStack(spacing: 10) {
+                Text("\(fileCount + folderCount)")
+                    .font(.callout.weight(.semibold)).monospacedDigit()
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(theme.accent, in: Capsule())
+                    .foregroundStyle(theme.onAccent)
+                Text("Zaznaczono: \(MaterialsText.selection(fileCount: fileCount, folderCount: folderCount, size: size))")
+                    .font(.callout).lineLimit(1)
+                Menu {
+                    selectionMenu(selection, folders: folders, files: files)
+                } label: {
+                    Label("Czynności", systemImage: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                Button { clearSelection() } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Odznacz (Esc)")
+            }
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().stroke(theme.accent.opacity(0.35)))
+            .shadow(color: .black.opacity(0.25), radius: 8, y: 2)
+            .padding(.bottom, 14)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
     }
 
     private func grid(_ folders: [MaterialFolder], _ files: [MaterialFile], listing: MaterialsListing?) -> some View {

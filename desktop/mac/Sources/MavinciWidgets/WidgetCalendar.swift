@@ -16,7 +16,8 @@ struct CalendarWidget: Widget {
         emptyShort: "Nic w planie",
         link: WidgetPlatform.link("calendar"),
         showsDate: true,
-        attention: nil
+        attention: nil,
+        countdown: true
     )
 
     var body: some WidgetConfiguration {

@@ -166,18 +166,33 @@ export async function pickMaterialDocuments(): Promise<PickedMaterial[]> {
 
 type PreparedUpload = { fileId: string; name: string; path: string; uploadUrl: string; thumbPath: string | null; thumbUploadUrl: string | null };
 
+/** Plik już jest w Materiałach marki (ten sam folder, nazwa i rozmiar — telefon nie liczy skrótu treści); nic nie wysłano. */
+export class MaterialDuplicateError extends Error {
+  readonly file: MaterialFile;
+
+  constructor(file: MaterialFile) {
+    super(`Ten plik już jest w Materiałach: ${file.name}`);
+    this.name = 'MaterialDuplicateError';
+    this.file = file;
+  }
+}
+
 /**
  * Wysyłka jednego pliku: wpis i podpisany adres → plik prosto do magazynu (z postępem) → potwierdzenie; błąd sprząta wpis.
- * Miniaturę zdjęcia robi serwer CRM (jak dla plików z Findera).
+ * Miniaturę zdjęcia robi serwer CRM (jak dla plików z Findera). Plik, który już jest w Materiałach marki, serwer pomija
+ * (`MaterialDuplicateError` z istniejącym plikiem — jak w CRM i na Macu).
  */
 export async function uploadMaterial(
   file: PickedMaterial,
   target: { companyId: string; folderId: string | null },
   onProgress?: (sent: number) => void,
 ): Promise<MaterialFile> {
-  const prepared = await materialsPost<PreparedUpload>('prepareUpload', {
+  const reply = await materialsPost<PreparedUpload | { duplicate: true; file: MaterialFile }>('prepareUpload', {
     companyId: target.companyId, folderId: target.folderId, name: file.name, size: file.size, mime: file.mimeType, sha256: null, thumbnail: false,
+    skipDuplicates: true,
   });
+  if ('duplicate' in reply && reply.duplicate) throw new MaterialDuplicateError(reply.file);
+  const prepared = reply as PreparedUpload;
   try {
     const task = FileSystem.createUploadTask(prepared.uploadUrl, file.uri, {
       httpMethod: 'PUT',

@@ -1,8 +1,8 @@
 /*
  * Widżety Mavinci na iPhonie i iPadzie — rozszerzenie WidgetKit dodawane przy `expo prebuild` (EAS Build).
  *
- * Te same widżety co na pulpicie Maca: „Moje zadania”, „Zadania prywatne”, „Kalendarz” i „Spotkania” — na ekranie głównym
- * (mały, średni, duży; na iPadzie także bardzo duży) i na ekranie blokady (prostokątny, w linii). Kod Swift
+ * Te same widżety co na pulpicie Maca: „Moje zadania”, „Zadania prywatne”, „Kalendarz”, „Spotkania” i „Wydarzenia” —
+ * na ekranie głównym (mały, średni, duży; na iPadzie także bardzo duży) i na ekranie blokady (prostokątny, w linii). Kod Swift
  * z `desktop/mac/Sources/MavinciWidgets/*.swift` oraz `desktop/mac/Sources/Mavinci/Finder/FinderShared.swift` (różnice iOS —
  * `#if os(iOS)`), kopiowany do `ios/MavinciWidgets/` przy każdym prebuildzie (jedno źródło dla Maca i iOS). `FinderShared.swift`
  * trafia tu jako `WidgetsFinderShared.swift` — ta sama nazwa pliku co w rozszerzeniu Plików skleiłaby oba cele w projekcie Xcode.

@@ -236,8 +236,10 @@ enum MaterialsScope: String, CaseIterable, Identifiable {
 // MARK: Wspólne z CRM (`materialsShared.ts`)
 
 enum MaterialsText {
-    /// Najwięcej plików w jednej wysyłce (`MATERIALS_MAX_BATCH`).
+    /// Najwięcej elementów w jednym zapytaniu operacji zbiorczej (`MATERIALS_MAX_BATCH`) — większe zaznaczenie idzie porcjami.
     static let maxBatch = 100
+    /// Najwięcej plików w jednej wysyłce (`MATERIALS_MAX_UPLOAD`) — pliki idą po kolei, to tylko zabezpieczenie przed ogromnym folderem.
+    static let maxUpload = 2000
     static let trashDays = 30
 
     static let kindLabels: [String: String] = [
@@ -303,6 +305,20 @@ enum MaterialsText {
         if count == 1 { return "1 plik" }
         if (2...4).contains(ones) && !(12...14).contains(tens) { return "\(count) pliki" }
         return "\(count) plików"
+    }
+
+    /// „1 folder”, „3 foldery”, „12 folderów”.
+    static func folders(_ count: Int) -> String {
+        let tens = count % 100, ones = count % 10
+        if count == 1 { return "1 folder" }
+        if (2...4).contains(ones) && !(12...14).contains(tens) { return "\(count) foldery" }
+        return "\(count) folderów"
+    }
+
+    /// Opis zaznaczenia: „10 plików · 2 foldery · 24,3 MB” (rozmiar — samych plików; jak `materialSelectionSummary` w CRM).
+    static func selection(fileCount: Int, folderCount: Int, size: Double) -> String {
+        [fileCount > 0 ? files(fileCount) : nil, folderCount > 0 ? folders(folderCount) : nil, fileCount > 0 ? bytes(size) : nil]
+            .compactMap { $0 }.joined(separator: " · ")
     }
 
     private static let parser: ISO8601DateFormatter = {
