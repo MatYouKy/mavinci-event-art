@@ -15,6 +15,7 @@ import {
   Eye,
   FileQuestion,
   Gamepad2,
+  Layers,
   Lightbulb,
   MonitorCheck,
   Plus,
@@ -30,8 +31,9 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import MavinciQuizShowPanel from './MavinciQuizShowPanel';
+import MavinciLadderPanel from './MavinciLadderPanel';
 
-type HubTab = 'overview' | 'quizshow' | 'familiada' | 'presets' | 'users' | 'sync';
+type HubTab = 'overview' | 'quizshow' | 'ladder' | 'familiada' | 'presets' | 'users' | 'sync';
 
 type FamiliadaAnswer = { text: string; points: number };
 type FamiliadaQuestion = {
@@ -206,7 +208,7 @@ export default function MavinciLiveHubClient() {
   useEffect(() => { void loadData(); }, [loadData]);
 
   useEffect(() => {
-    if (!canUseQuizShow && tab === 'quizshow') setTab('overview');
+    if (!canUseQuizShow && (tab === 'quizshow' || tab === 'ladder')) setTab('overview');
     if (!canUseFamiliada && tab === 'familiada') setTab('overview');
   }, [canUseFamiliada, canUseQuizShow, tab]);
 
@@ -473,6 +475,7 @@ export default function MavinciLiveHubClient() {
   const tabs: Array<{ id: HubTab; label: string; icon: typeof Database; count?: number }> = [
     { id: 'overview', label: 'Przegląd', icon: Activity },
     ...(canUseQuizShow ? [{ id: 'quizshow' as const, label: 'Quiz Show', icon: BookOpenCheck }] : []),
+    ...(canUseQuizShow ? [{ id: 'ladder' as const, label: 'Baza Drabinki', icon: Layers }] : []),
     ...(canUseFamiliada ? [{ id: 'familiada' as const, label: 'Baza Familiady', icon: FileQuestion, count: questions.length + games.length }] : []),
     { id: 'presets', label: 'Presety Light Magic', icon: Lightbulb, count: presets.length },
     { id: 'users', label: 'Aktywni użytkownicy', icon: Users, count: activeSessions.length },
@@ -480,48 +483,48 @@ export default function MavinciLiveHubClient() {
   ];
 
   if (employeeLoading || loading) return <div className="flex min-h-[420px] items-center justify-center text-[#d3bb73]"><RefreshCw className="mr-3 h-5 w-5 animate-spin" /> Wczytuję Mavinci LIVE…</div>;
-  if (!canViewHub) return <div className="mx-auto mt-12 max-w-2xl rounded-2xl border border-red-400/20 bg-red-400/10 p-8 text-center text-red-100"><h1 className="text-2xl font-semibold">Brak dostępu do Mavinci LIVE</h1><p className="mt-2 text-sm text-red-100/70">Administrator musi nadać temu pracownikowi główne uprawnienie Mavinci LIVE.</p></div>;
+  if (!canViewHub) return <div className="mx-auto mt-12 max-w-2xl rounded-xl border border-red-400/20 bg-red-400/10 p-8 text-center text-red-100"><h1 className="text-2xl font-semibold">Brak dostępu do Mavinci LIVE</h1><p className="mt-2 text-sm text-red-100/70">Administrator musi nadać temu pracownikowi główne uprawnienie Mavinci LIVE.</p></div>;
 
   return (
-    <div className="w-full space-y-5 text-[#e5e4e2]">
-      <header className="overflow-hidden rounded-2xl border border-[#d3bb73]/20 bg-gradient-to-br from-[#20243a] via-[#171b2b] to-[#111522] p-6 shadow-2xl shadow-black/20">
-        <div className="flex flex-wrap items-center justify-between gap-5">
-          <div className="flex items-center gap-4">
-            <span className="rounded-2xl border border-[#d3bb73]/25 bg-[#d3bb73]/10 p-4 text-[#d3bb73]"><MonitorCheck className="h-8 w-8" /></span>
-            <div><p className="text-xs font-bold uppercase tracking-[.24em] text-[#d3bb73]">Centrum zarządzania</p><h1 className="mt-1 text-3xl font-semibold">Mavinci LIVE</h1><p className="mt-1 text-sm text-[#e5e4e2]/55">Jedno źródło pytań, presetów, dostępów i zsynchronizowanych realizacji.</p></div>
-          </div>
-          <button type="button" onClick={() => void loadData(true)} disabled={refreshing} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold hover:border-[#d3bb73]/40 hover:text-[#d3bb73] disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Odśwież dane</button>
+    <div className="w-full space-y-6 text-[#e5e4e2]">
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="flex items-center gap-3 text-3xl font-bold text-[#e5e4e2]"><MonitorCheck className="h-8 w-8 text-[#d3bb73]" /> Mavinci LIVE</h1>
+          <p className="mt-1 text-[#e5e4e2]/60">Jedno źródło pytań, presetów, dostępów i zsynchronizowanych realizacji.</p>
         </div>
+        <button type="button" data-crm-action="secondary" onClick={() => void loadData(true)} disabled={refreshing} className="flex items-center gap-2 px-4 py-2.5 text-sm disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Odśwież dane</button>
       </header>
 
       {migrationMissing && <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">Nowy magazyn danych nie jest jeszcze dostępny. Zastosuj migrację <strong>20260826090000_create_mavinci_live_hub.sql</strong> w Supabase.</div>}
 
-      <nav className="flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-[#171b2b] p-2">
-        {tabs.map((item) => { const Icon = item.icon; return <button data-crm-tab-active={tab === item.id} key={item.id} type="button" onClick={() => { setTab(item.id); setSearch(''); }} className={`flex min-w-max items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${tab === item.id ? 'bg-[#d3bb73] text-[#111522]' : 'text-[#e5e4e2]/55 hover:bg-white/5 hover:text-[#e5e4e2]'}`}><Icon className="h-4 w-4" />{item.label}{item.count !== undefined && <span className={`rounded-full px-2 py-0.5 text-xs ${tab === item.id ? 'bg-black/15' : 'bg-white/5'}`}>{item.count}</span>}</button>; })}
+      <nav className="flex gap-0 overflow-x-auto border-b border-gray-700">
+        {tabs.map((item) => { const Icon = item.icon; return <button data-crm-tab-active={tab === item.id} key={item.id} type="button" onClick={() => { setTab(item.id); setSearch(''); }} className={`flex min-w-max items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${tab === item.id ? 'border-[#d3bb73] text-[#d3bb73]' : 'border-transparent text-gray-400 hover:text-white'}`}><Icon className="h-4 w-4" />{item.label}{item.count !== undefined && <span className="rounded-full bg-[#d3bb73]/10 px-2 py-0.5 text-xs text-[#d3bb73]">{item.count}</span>}</button>; })}
       </nav>
 
       {tab === 'overview' && <div className="space-y-5">
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
             ...(canUseFamiliada ? [{ label: 'Gry Familiady', value: games.length, detail: `${questions.length} pytań w bibliotece`, icon: Gamepad2, color: 'text-amber-300' }] : []),
-            { label: 'Presety Light Magic', value: presets.length, detail: `${presets.filter((item) => item.event_id).length} przypisanych do eventów`, icon: Lightbulb, color: 'text-cyan-300' },
+            { label: 'Presety Light Magic', value: presets.length, detail: `${presets.filter((item) => item.event_id).length} przypisanych do eventów`, icon: Lightbulb, color: 'text-[#d3bb73]' },
             { label: 'Użytkownicy online', value: activeSessions.length, detail: `${onlineEmployeeIds.size} pracowników`, icon: Users, color: 'text-emerald-300' },
-            { label: 'Projekty w chmurze', value: projects.length, detail: `${projects.filter((item) => item.version > 0).length} opublikowanych`, icon: Cloud, color: 'text-violet-300' },
-          ].map((card) => { const Icon = card.icon; return <article key={card.label} className="rounded-2xl border border-white/10 bg-[#171b2b] p-5"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[.14em] text-[#e5e4e2]/40">{card.label}</p><strong className="mt-3 block text-4xl font-semibold">{card.value}</strong><span className="mt-2 block text-xs text-[#e5e4e2]/40">{card.detail}</span></div><Icon className={`h-6 w-6 ${card.color}`} /></div></article>; })}
+            { label: 'Projekty w chmurze', value: projects.length, detail: `${projects.filter((item) => item.version > 0).length} opublikowanych`, icon: Cloud, color: 'text-[#d3bb73]' },
+          ].map((card) => { const Icon = card.icon; return <article key={card.label} className="rounded-xl border border-white/10 bg-[#1c1f33] p-5"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[.14em] text-[#e5e4e2]/40">{card.label}</p><strong className="mt-3 block text-4xl font-semibold">{card.value}</strong><span className="mt-2 block text-xs text-[#e5e4e2]/40">{card.detail}</span></div><Icon className={`h-6 w-6 ${card.color}`} /></div></article>; })}
         </section>
         <section className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
-          <div className="rounded-2xl border border-white/10 bg-[#171b2b] p-5"><div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">Ostatnia aktywność</p><h2 className="mt-1 text-xl font-semibold">Uruchomione instalacje</h2></div><button onClick={() => setTab('users')} className="flex items-center gap-1 text-sm text-[#d3bb73]">Zobacz wszystkie <ChevronRight className="h-4 w-4" /></button></div><div className="space-y-2">{sessions.slice(0, 5).map((session) => { const online = now - new Date(session.last_seen_at).getTime() < 90000 && session.sync_status !== 'offline'; return <div key={session.id} className="flex items-center justify-between rounded-xl border border-white/5 bg-[#111522] px-4 py-3"><div className="flex items-center gap-3"><span className={`h-2.5 w-2.5 rounded-full ${online ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-slate-600'}`} /><div><strong className="text-sm">{session.employee_name || session.device_name}</strong><p className="text-xs text-[#e5e4e2]/40">{session.device_name} · {session.active_module ? MODULE_LABELS[session.active_module] || session.active_module : 'Pulpit'}</p></div></div><small className="text-[#e5e4e2]/35">{online ? 'teraz' : formatDate(session.last_seen_at)}</small></div>; })}{sessions.length === 0 && <EmptyState text="Żadna instalacja Mavinci LIVE nie wysłała jeszcze statusu." />}</div></div>
-          <div className="rounded-2xl border border-white/10 bg-[#171b2b] p-5"><p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">Spójność danych</p><h2 className="mt-1 text-xl font-semibold">Stan publikacji</h2><div className="mt-5 space-y-3"><StatusRow label="Projekty opublikowane" value={`${projects.filter((item) => item.version > 0).length}/${projects.length}`} ok={!projects.length || projects.every((item) => item.version > 0)} /><StatusRow label="Sesje zsynchronizowane" value={`${sessions.filter((item) => item.last_sync_at).length}/${sessions.length}`} ok={!sessions.length || sessions.every((item) => item.last_sync_at)} /><StatusRow label="Presety z opisem" value={`${presets.filter((item) => item.description.trim()).length}/${presets.length}`} ok={!presets.length || presets.every((item) => item.description.trim())} /></div></div>
+          <div className="rounded-xl border border-white/10 bg-[#1c1f33] p-5"><div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">Ostatnia aktywność</p><h2 className="mt-1 text-xl font-semibold">Uruchomione instalacje</h2></div><button onClick={() => setTab('users')} className="flex items-center gap-1 text-sm text-[#d3bb73]">Zobacz wszystkie <ChevronRight className="h-4 w-4" /></button></div><div className="space-y-2">{sessions.slice(0, 5).map((session) => { const online = now - new Date(session.last_seen_at).getTime() < 90000 && session.sync_status !== 'offline'; return <div key={session.id} className="flex items-center justify-between rounded-xl border border-white/5 bg-[#0f1119] px-4 py-3"><div className="flex items-center gap-3"><span className={`h-2.5 w-2.5 rounded-full ${online ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-slate-600'}`} /><div><strong className="text-sm">{session.employee_name || session.device_name}</strong><p className="text-xs text-[#e5e4e2]/40">{session.device_name} · {session.active_module ? MODULE_LABELS[session.active_module] || session.active_module : 'Pulpit'}</p></div></div><small className="text-[#e5e4e2]/35">{online ? 'teraz' : formatDate(session.last_seen_at)}</small></div>; })}{sessions.length === 0 && <EmptyState text="Żadna instalacja Mavinci LIVE nie wysłała jeszcze statusu." />}</div></div>
+          <div className="rounded-xl border border-white/10 bg-[#1c1f33] p-5"><p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">Spójność danych</p><h2 className="mt-1 text-xl font-semibold">Stan publikacji</h2><div className="mt-5 space-y-3"><StatusRow label="Projekty opublikowane" value={`${projects.filter((item) => item.version > 0).length}/${projects.length}`} ok={!projects.length || projects.every((item) => item.version > 0)} /><StatusRow label="Sesje zsynchronizowane" value={`${sessions.filter((item) => item.last_sync_at).length}/${sessions.length}`} ok={!sessions.length || sessions.every((item) => item.last_sync_at)} /><StatusRow label="Presety z opisem" value={`${presets.filter((item) => item.description.trim()).length}/${presets.length}`} ok={!presets.length || presets.every((item) => item.description.trim())} /></div></div>
         </section>
       </div>}
 
       {tab === 'quizshow' && <MavinciQuizShowPanel canManage={canManage && canUseQuizShow} />}
 
+      {tab === 'ladder' && <MavinciLadderPanel canManage={canManage && canUseQuizShow} />}
+
       {tab === 'familiada' && <div className="space-y-5">
-        <section className="rounded-2xl border border-white/10 bg-[#171b2b] p-5">
-          <SectionHeader eyebrow="Familiada · gry" title="Gotowe rozgrywki" description="Wybierz sześć pytań. Liczba odpowiedzi i mnożnik są pilnowane automatycznie dla każdej rundy." actions={<>{canManageFamiliada && <button onClick={() => openGameEditor()} className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-3 text-sm font-bold text-[#111522]"><Plus className="h-4 w-4" /> Nowa gra</button>}</>} />
+        <section className="rounded-xl border border-white/10 bg-[#1c1f33] p-5">
+          <SectionHeader eyebrow="Familiada · gry" title="Gotowe rozgrywki" description="Wybierz sześć pytań. Liczba odpowiedzi i mnożnik są pilnowane automatycznie dla każdej rundy." actions={<>{canManageFamiliada && <button onClick={() => openGameEditor()} className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-3 text-sm font-bold text-[#1c1f33]"><Plus className="h-4 w-4" /> Nowa gra</button>}</>} />
           <SearchBox value={search} onChange={setSearch} placeholder="Szukaj gry albo pytania…" />
-          <div className="mt-4 overflow-hidden rounded-xl border border-white/8 bg-[#111522]">
+          <div className="mt-4 overflow-hidden rounded-xl border border-white/8 bg-[#0f1119]">
             <div className="hidden grid-cols-[minmax(0,1fr)_180px_90px_130px_40px] gap-3 border-b border-white/8 bg-white/[.035] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#e5e4e2]/35 md:grid">
               <span>Rozgrywka</span>
               <span>Event</span>
@@ -573,9 +576,9 @@ export default function MavinciLiveHubClient() {
             </div>
           </div>
         </section>
-        <section className="rounded-2xl border border-white/10 bg-[#171b2b] p-5">
+        <section className="rounded-xl border border-white/10 bg-[#1c1f33] p-5">
           <SectionHeader eyebrow="Familiada · pytania" title="Centralna biblioteka pytań" description="Każde pytanie ma od 3 do 6 odpowiedzi. Mnożnik wybierasz dopiero podczas układania gry." actions={<>{canManageFamiliada && <button data-crm-action="secondary" onClick={() => openQuestionEditor()} className="flex items-center gap-2 rounded-xl border border-[#d3bb73]/30 px-4 py-3 text-sm font-bold text-[#d3bb73]"><Plus className="h-4 w-4" /> Dodaj pytanie</button>}</>} />
-          <div className="mt-4 overflow-hidden rounded-xl border border-white/8 bg-[#111522]">
+          <div className="mt-4 overflow-hidden rounded-xl border border-white/8 bg-[#0f1119]">
             <div className="hidden grid-cols-[minmax(0,1fr)_140px_125px_48px] gap-3 border-b border-white/8 bg-white/[.035] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#e5e4e2]/35 md:grid">
               <span>Pytanie</span>
               <span>Kategoria</span>
@@ -636,20 +639,20 @@ export default function MavinciLiveHubClient() {
         </section>
       </div>}
 
-      {tab === 'presets' && <section className="rounded-2xl border border-white/10 bg-[#171b2b] p-5">
-        <SectionHeader eyebrow="Light Magic" title="Baza presetów" description="Presety globalne i przypisane do eventów. Plik można bezpiecznie przenieść między macOS i Windows." actions={<>{canManage && <><input ref={importPresetRef} type="file" accept=".mvlmpreset,.json,application/json" className="hidden" onChange={(event) => void importPreset(event)} /><button onClick={() => importPresetRef.current?.click()} className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-3 text-sm font-bold text-[#111522]"><Upload className="h-4 w-4" /> Importuj preset</button></>}</>} />
+      {tab === 'presets' && <section className="rounded-xl border border-white/10 bg-[#1c1f33] p-5">
+        <SectionHeader eyebrow="Light Magic" title="Baza presetów" description="Presety globalne i przypisane do eventów. Plik można bezpiecznie przenieść między macOS i Windows." actions={<>{canManage && <><input ref={importPresetRef} type="file" accept=".mvlmpreset,.json,application/json" className="hidden" onChange={(event) => void importPreset(event)} /><button onClick={() => importPresetRef.current?.click()} className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-3 text-sm font-bold text-[#1c1f33]"><Upload className="h-4 w-4" /> Importuj preset</button></>}</>} />
         <SearchBox value={search} onChange={setSearch} placeholder="Szukaj presetu…" />
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{filteredPresets.map((preset) => <article key={preset.id} className="rounded-xl border border-white/8 bg-[#111522] p-4"><div className="flex items-start justify-between gap-3"><span className="rounded-xl bg-cyan-400/10 p-3 text-cyan-300"><Lightbulb className="h-5 w-5" /></span><div className="flex gap-2"><button onClick={() => downloadJson(`${preset.name.replace(/[^a-z0-9-_]+/gi, '-')}.mvlmpreset`, preset.snapshot)} className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/55 hover:text-cyan-300" title="Eksportuj"><Download className="h-4 w-4" /></button>{canManage && <button onClick={() => void removePreset(preset)} className="rounded-lg border border-red-400/20 p-2 text-red-300/70 hover:bg-red-400/10" title="Usuń"><Trash2 className="h-4 w-4" /></button>}</div></div><h3 className="mt-4 font-semibold">{preset.name}</h3><p className="mt-1 min-h-10 text-sm text-[#e5e4e2]/45">{preset.description || 'Bez opisu'}</p><div className="mt-4 flex items-center justify-between border-t border-white/5 pt-3 text-[11px] text-[#e5e4e2]/35"><span>{preset.event_id ? eventMap.get(preset.event_id)?.name || 'Preset eventu' : 'Preset globalny'}</span><span>v{preset.schema_version} · {formatDate(preset.updated_at)}</span></div></article>)}{filteredPresets.length === 0 && <div className="md:col-span-2 xl:col-span-3"><EmptyState text="Brak zapisanych presetów Light Magic." /></div>}</div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{filteredPresets.map((preset) => <article key={preset.id} className="rounded-xl border border-white/8 bg-[#0f1119] p-4"><div className="flex items-start justify-between gap-3"><span className="rounded-xl bg-[#d3bb73]/10 p-3 text-[#d3bb73]"><Lightbulb className="h-5 w-5" /></span><div className="flex gap-2"><button onClick={() => downloadJson(`${preset.name.replace(/[^a-z0-9-_]+/gi, '-')}.mvlmpreset`, preset.snapshot)} className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/55 hover:text-[#d3bb73]" title="Eksportuj"><Download className="h-4 w-4" /></button>{canManage && <button onClick={() => void removePreset(preset)} className="rounded-lg border border-red-400/20 p-2 text-red-300/70 hover:bg-red-400/10" title="Usuń"><Trash2 className="h-4 w-4" /></button>}</div></div><h3 className="mt-4 font-semibold">{preset.name}</h3><p className="mt-1 min-h-10 text-sm text-[#e5e4e2]/45">{preset.description || 'Bez opisu'}</p><div className="mt-4 flex items-center justify-between border-t border-white/5 pt-3 text-[11px] text-[#e5e4e2]/35"><span>{preset.event_id ? eventMap.get(preset.event_id)?.name || 'Preset eventu' : 'Preset globalny'}</span><span>v{preset.schema_version} · {formatDate(preset.updated_at)}</span></div></article>)}{filteredPresets.length === 0 && <div className="md:col-span-2 xl:col-span-3"><EmptyState text="Brak zapisanych presetów Light Magic." /></div>}</div>
       </section>}
 
-      {tab === 'users' && <section className="rounded-2xl border border-white/10 bg-[#171b2b] p-5">
+      {tab === 'users' && <section className="rounded-xl border border-white/10 bg-[#1c1f33] p-5">
         <SectionHeader eyebrow="Aplikacje desktopowe" title="Aktywni użytkownicy" description="Instalacja jest online, jeśli wysłała status w ciągu ostatnich 90 sekund." />
         <div className="mt-5 overflow-hidden rounded-xl border border-white/8"><div className="hidden grid-cols-[1.2fr_1.2fr_.7fr_1fr_.8fr] gap-3 bg-white/[.035] px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#e5e4e2]/35 md:grid"><span>Użytkownik</span><span>Komputer</span><span>Wersja</span><span>Aktywny obszar</span><span>Status</span></div>{sessions.map((session) => { const online = now - new Date(session.last_seen_at).getTime() < 90000 && session.sync_status !== 'offline'; return <div key={session.id} className="grid gap-2 border-t border-white/5 px-4 py-4 first:border-0 md:grid-cols-[1.2fr_1.2fr_.7fr_1fr_.8fr] md:items-center md:gap-3"><div><strong className="text-sm">{session.employee_name || 'Nieznany pracownik'}</strong><small className="block text-[#e5e4e2]/35">{session.employee_email || session.employee_id}</small></div><div className="text-sm">{session.device_name}<small className="block text-[#e5e4e2]/35">{session.platform}</small></div><span className="text-sm">{session.app_version || '—'}</span><div className="text-sm">{session.active_module ? MODULE_LABELS[session.active_module] || session.active_module : 'Pulpit'}<small className="block text-[#e5e4e2]/35">{session.active_event_id ? session.event_name || 'Event' : 'Bez eventu'}</small></div><div><span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${online ? 'bg-emerald-400/10 text-emerald-300' : 'bg-slate-500/10 text-slate-400'}`}><i className={`h-2 w-2 rounded-full ${online ? 'bg-emerald-400' : 'bg-slate-500'}`} />{online ? 'Online' : 'Offline'}</span><small className="mt-1 block text-[#e5e4e2]/30">{formatDate(session.last_seen_at)}</small></div></div>; })}{sessions.length === 0 && <EmptyState text="Brak zarejestrowanych instalacji Mavinci LIVE." />}</div>
       </section>}
 
-      {tab === 'sync' && <section className="rounded-2xl border border-white/10 bg-[#171b2b] p-5">
+      {tab === 'sync' && <section className="rounded-xl border border-white/10 bg-[#1c1f33] p-5">
         <SectionHeader eyebrow="Chmura eventów" title="Zsynchronizowane dane" description="Wersja jest zwiększana przy każdej publikacji projektu w evencie." />
-        <div className="mt-5 space-y-3">{projects.map((project) => <article key={project.id} className="grid gap-4 rounded-xl border border-white/8 bg-[#111522] p-4 lg:grid-cols-[1.2fr_.8fr_.8fr_auto] lg:items-center"><div><span className="text-[10px] font-bold uppercase tracking-wider text-[#d3bb73]">{project.event_name || 'Event'}</span><h3 className="mt-1 font-semibold">{project.name}</h3><small className="text-[#e5e4e2]/35">{project.event_date ? new Date(project.event_date).toLocaleDateString('pl-PL') : 'Bez daty'}</small></div><div><span className="text-xs text-[#e5e4e2]/35">Moduły</span><div className="mt-2 flex flex-wrap gap-1">{project.enabled_modules.map((module) => <span key={module} className="rounded-full bg-white/5 px-2 py-1 text-[10px]">{MODULE_LABELS[module] || module}</span>)}</div></div><div><span className="text-xs text-[#e5e4e2]/35">Ostatnia aktualizacja</span><strong className="mt-1 block text-sm">{formatDate(project.updated_at)}</strong></div><span className={`rounded-full px-3 py-2 text-center text-xs font-bold ${project.version > 0 && project.published_manifest ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}>{project.version > 0 && project.published_manifest ? `Opublikowano v${project.version}` : 'Tylko szkic'}</span></article>)}{projects.length === 0 && <EmptyState text="Brak projektów Mavinci LIVE przypisanych do eventów." />}</div>
+        <div className="mt-5 space-y-3">{projects.map((project) => <article key={project.id} className="grid gap-4 rounded-xl border border-white/8 bg-[#0f1119] p-4 lg:grid-cols-[1.2fr_.8fr_.8fr_auto] lg:items-center"><div><span className="text-[10px] font-bold uppercase tracking-wider text-[#d3bb73]">{project.event_name || 'Event'}</span><h3 className="mt-1 font-semibold">{project.name}</h3><small className="text-[#e5e4e2]/35">{project.event_date ? new Date(project.event_date).toLocaleDateString('pl-PL') : 'Bez daty'}</small></div><div><span className="text-xs text-[#e5e4e2]/35">Moduły</span><div className="mt-2 flex flex-wrap gap-1">{project.enabled_modules.map((module) => <span key={module} className="rounded-full bg-white/5 px-2 py-1 text-[10px]">{MODULE_LABELS[module] || module}</span>)}</div></div><div><span className="text-xs text-[#e5e4e2]/35">Ostatnia aktualizacja</span><strong className="mt-1 block text-sm">{formatDate(project.updated_at)}</strong></div><span className={`rounded-full px-3 py-2 text-center text-xs font-bold ${project.version > 0 && project.published_manifest ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}>{project.version > 0 && project.published_manifest ? `Opublikowano v${project.version}` : 'Tylko szkic'}</span></article>)}{projects.length === 0 && <EmptyState text="Brak projektów Mavinci LIVE przypisanych do eventów." />}</div>
       </section>}
 
       {gamePreview && (
@@ -663,11 +666,11 @@ export default function MavinciLiveHubClient() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="familiada-game-preview-title"
-            className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[#d3bb73]/25 bg-[#171b2b] shadow-2xl"
+            className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#d3bb73]/25 bg-[#1c1f33] shadow-2xl"
           >
-            <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#171b2b]/95 px-5 py-4 backdrop-blur">
+            <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#1c1f33]/95 px-5 py-4 backdrop-blur">
               <div className="min-w-0">
-                <span className="rounded-full bg-cyan-400/10 px-2.5 py-1 text-[10px] font-semibold text-cyan-200">
+                <span className="rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[10px] font-semibold text-[#e2cd8d]">
                   {gamePreview.event_id
                     ? eventMap.get(gamePreview.event_id)?.name || 'Event'
                     : 'Gra globalna'}
@@ -695,7 +698,7 @@ export default function MavinciLiveHubClient() {
                 return (
                   <div
                     key={round.id || `${gamePreview.id}-${index}`}
-                    className="flex items-start gap-3 rounded-xl border border-white/8 bg-[#111522] px-3 py-3"
+                    className="flex items-start gap-3 rounded-xl border border-white/8 bg-[#0f1119] px-3 py-3"
                   >
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-xs font-bold text-[#d3bb73]">
                       {index + 1}
@@ -760,7 +763,7 @@ export default function MavinciLiveHubClient() {
                     setGamePreview(null);
                     openGameEditor(game);
                   }}
-                  className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-2.5 text-sm font-bold text-[#111522]"
+                  className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-2.5 text-sm font-bold text-[#1c1f33]"
                 >
                   <Edit3 className="h-4 w-4" />
                   Edytuj rozgrywkę
@@ -778,8 +781,8 @@ export default function MavinciLiveHubClient() {
             if (event.target === event.currentTarget) setStructuredGameEditorOpen(false);
           }}
         >
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-[#d3bb73]/25 bg-[#171b2b] shadow-2xl">
-            <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#171b2b]/95 px-6 py-5 backdrop-blur">
+          <div role="dialog" aria-modal="true" data-crm-modal="true" className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-xl border border-[#d3bb73]/25 bg-[#1c1f33] shadow-2xl">
+            <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#1c1f33]/95 px-6 py-5 backdrop-blur">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">
                   Kompozytor Familiady
@@ -808,7 +811,7 @@ export default function MavinciLiveHubClient() {
                       setGameDraft((current) => ({ ...current, name: event.target.value }))
                     }
                     placeholder="np. Familiada weselna"
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
                   />
                 </label>
                 <label className="text-sm text-[#e5e4e2]/65">
@@ -818,7 +821,7 @@ export default function MavinciLiveHubClient() {
                     onChange={(event) =>
                       setGameDraft((current) => ({ ...current, event_id: event.target.value }))
                     }
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
                   >
                     <option value="">Gra globalna</option>
                     {events.map((event) => (
@@ -841,7 +844,7 @@ export default function MavinciLiveHubClient() {
                     setGameDraft((current) => ({ ...current, description: event.target.value }))
                   }
                   rows={2}
-                  className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                  className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
                 />
               </label>
 
@@ -896,7 +899,7 @@ export default function MavinciLiveHubClient() {
                     return (
                       <div
                         key={`${round.question_id}-${index}`}
-                        className="grid gap-2 rounded-xl border border-white/8 bg-[#111522] p-3 md:grid-cols-[48px_minmax(0,1fr)_150px_auto] md:items-center"
+                        className="grid gap-2 rounded-xl border border-white/8 bg-[#0f1119] p-3 md:grid-cols-[48px_minmax(0,1fr)_150px_auto] md:items-center"
                       >
                         <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-sm font-bold text-[#d3bb73]">
                           {index + 1}
@@ -1065,7 +1068,7 @@ export default function MavinciLiveHubClient() {
                   type="button"
                   onClick={() => void saveGame()}
                   disabled={savingGame || gameDraft.rounds.length !== FAMILIADA_ROUND_RULES.length}
-                  className="rounded-xl bg-[#d3bb73] px-5 py-3 text-sm font-bold text-[#111522] disabled:opacity-50"
+                  className="rounded-xl bg-[#d3bb73] px-5 py-3 text-sm font-bold text-[#1c1f33] disabled:opacity-50"
                 >
                   {savingGame ? 'Zapisywanie…' : 'Zapisz grę'}
                 </button>
@@ -1086,15 +1089,15 @@ export default function MavinciLiveHubClient() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="familiada-question-preview-title"
-            className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-[#d3bb73]/25 bg-[#171b2b] shadow-2xl"
+            className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#d3bb73]/25 bg-[#1c1f33] shadow-2xl"
           >
-            <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#171b2b]/95 px-5 py-4 backdrop-blur">
+            <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-[#1c1f33]/95 px-5 py-4 backdrop-blur">
               <div className="min-w-0">
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#d3bb73]">
                     {questionPreview.category}
                   </span>
-                  <span className="rounded-full bg-cyan-400/10 px-2.5 py-1 text-[10px] font-semibold text-cyan-200">
+                  <span className="rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[10px] font-semibold text-[#e2cd8d]">
                     {questionPreview.event_id
                       ? eventMap.get(questionPreview.event_id)?.name || 'Event'
                       : 'Pytanie globalne'}
@@ -1119,7 +1122,7 @@ export default function MavinciLiveHubClient() {
                 {questionPreview.answers.map((answer, index) => (
                   <div
                     key={`${answer.text}-${index}`}
-                    className="flex min-h-12 items-center gap-3 rounded-xl border border-white/8 bg-[#111522] px-3 py-2.5"
+                    className="flex min-h-12 items-center gap-3 rounded-xl border border-white/8 bg-[#0f1119] px-3 py-2.5"
                   >
                     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-xs font-bold text-[#d3bb73]">
                       {index + 1}
@@ -1171,7 +1174,7 @@ export default function MavinciLiveHubClient() {
                     setQuestionPreview(null);
                     openQuestionEditor(question);
                   }}
-                  className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-2.5 text-sm font-bold text-[#111522]"
+                  className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-2.5 text-sm font-bold text-[#1c1f33]"
                 >
                   <Edit3 className="h-4 w-4" />
                   Edytuj pytanie
@@ -1183,13 +1186,13 @@ export default function MavinciLiveHubClient() {
       )}
 
 
-      {questionEditorOpen && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setQuestionEditorOpen(false); }}><div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-[#d3bb73]/25 bg-[#171b2b] shadow-2xl"><header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#171b2b]/95 px-6 py-5 backdrop-blur"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">Baza Familiady</p><h2 className="mt-1 text-xl font-semibold">{questionDraft.id ? 'Edytuj pytanie' : 'Nowe pytanie'}</h2></div><button onClick={() => setQuestionEditorOpen(false)} className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/55"><X className="h-5 w-5" /></button></header><div className="space-y-5 p-6"><div className="grid gap-4 md:grid-cols-3"><label className="text-sm text-[#e5e4e2]/65">Event<select value={questionDraft.event_id} onChange={(event) => setQuestionDraft((current) => ({ ...current, event_id: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"><option value="">Globalne — dostępne dla wszystkich</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}{event.event_date ? ` · ${new Date(event.event_date).toLocaleDateString('pl-PL')}` : ''}</option>)}</select></label><label className="text-sm text-[#e5e4e2]/65">Kategoria<input value={questionDraft.category} onChange={(event) => setQuestionDraft((current) => ({ ...current, category: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label><label className="text-sm text-[#e5e4e2]/65">Tagi, oddzielone przecinkami<input value={questionDraft.tags} onChange={(event) => setQuestionDraft((current) => ({ ...current, tags: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label></div><label className="block text-sm text-[#e5e4e2]/65">Treść pytania<textarea value={questionDraft.question} onChange={(event) => setQuestionDraft((current) => ({ ...current, question: event.target.value }))} rows={3} className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label><div><div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold">Odpowiedzi i punkty</h3><p className="text-xs text-[#e5e4e2]/40">Od 3 do 6 odpowiedzi, suma nie większa niż 100.</p></div><button data-crm-action="secondary" onClick={distributePoints} className="rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs font-semibold text-[#d3bb73]">Rozłóż 100 pkt</button></div><div className="space-y-2">{questionDraft.answers.map((answer, index) => <div key={index} className="grid grid-cols-[auto_1fr_90px_auto] items-center gap-2"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-sm font-bold text-[#d3bb73]">{index + 1}</span><input value={answer.text} onChange={(event) => setQuestionDraft((current) => ({ ...current, answers: current.answers.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) }))} placeholder="Odpowiedź" className="rounded-lg border border-white/10 bg-[#111522] px-3 py-2.5 outline-none focus:border-[#d3bb73]" /><input type="number" min={0} max={100} value={answer.points} onChange={(event) => setQuestionDraft((current) => ({ ...current, answers: current.answers.map((item, itemIndex) => itemIndex === index ? { ...item, points: Number(event.target.value) } : item) }))} className="rounded-lg border border-white/10 bg-[#111522] px-3 py-2.5 text-center outline-none focus:border-[#d3bb73]" /><button disabled={questionDraft.answers.length <= 3} onClick={() => setQuestionDraft((current) => ({ ...current, answers: current.answers.filter((_item, itemIndex) => itemIndex !== index) }))} className="rounded-lg p-2 text-red-300/60 disabled:opacity-20"><Trash2 className="h-4 w-4" /></button></div>)}</div>{questionDraft.answers.length < 6 && <button onClick={() => setQuestionDraft((current) => ({ ...current, answers: [...current.answers, { text: '', points: 0 }] }))} className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#d3bb73]"><Plus className="h-4 w-4" /> Dodaj odpowiedź</button>}<div className="mt-4 flex items-center justify-end gap-3"><span className={`mr-auto text-sm ${questionDraft.answers.reduce((sum, answer) => sum + (Number(answer.points) || 0), 0) > 100 ? 'text-red-300' : 'text-[#e5e4e2]/45'}`}>Suma: <strong>{questionDraft.answers.reduce((sum, answer) => sum + (Number(answer.points) || 0), 0)} / 100</strong></span><button onClick={() => setQuestionEditorOpen(false)} className="rounded-xl border border-white/10 px-5 py-3 text-sm">Anuluj</button><button onClick={() => void saveQuestion()} disabled={savingQuestion} className="rounded-xl bg-[#d3bb73] px-5 py-3 text-sm font-bold text-[#111522] disabled:opacity-50">{savingQuestion ? 'Zapisywanie…' : 'Zapisz pytanie'}</button></div></div></div></div></div>}
+      {questionEditorOpen && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setQuestionEditorOpen(false); }}><div role="dialog" aria-modal="true" data-crm-modal="true" className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl border border-[#d3bb73]/25 bg-[#1c1f33] shadow-2xl"><header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#1c1f33]/95 px-6 py-5 backdrop-blur"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">Baza Familiady</p><h2 className="mt-1 text-xl font-semibold">{questionDraft.id ? 'Edytuj pytanie' : 'Nowe pytanie'}</h2></div><button onClick={() => setQuestionEditorOpen(false)} className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/55"><X className="h-5 w-5" /></button></header><div className="space-y-5 p-6"><div className="grid gap-4 md:grid-cols-3"><label className="text-sm text-[#e5e4e2]/65">Event<select value={questionDraft.event_id} onChange={(event) => setQuestionDraft((current) => ({ ...current, event_id: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"><option value="">Globalne — dostępne dla wszystkich</option>{events.map((event) => <option key={event.id} value={event.id}>{event.name}{event.event_date ? ` · ${new Date(event.event_date).toLocaleDateString('pl-PL')}` : ''}</option>)}</select></label><label className="text-sm text-[#e5e4e2]/65">Kategoria<input value={questionDraft.category} onChange={(event) => setQuestionDraft((current) => ({ ...current, category: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label><label className="text-sm text-[#e5e4e2]/65">Tagi, oddzielone przecinkami<input value={questionDraft.tags} onChange={(event) => setQuestionDraft((current) => ({ ...current, tags: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label></div><label className="block text-sm text-[#e5e4e2]/65">Treść pytania<textarea value={questionDraft.question} onChange={(event) => setQuestionDraft((current) => ({ ...current, question: event.target.value }))} rows={3} className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label><div><div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold">Odpowiedzi i punkty</h3><p className="text-xs text-[#e5e4e2]/40">Od 3 do 6 odpowiedzi, suma nie większa niż 100.</p></div><button data-crm-action="secondary" onClick={distributePoints} className="rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs font-semibold text-[#d3bb73]">Rozłóż 100 pkt</button></div><div className="space-y-2">{questionDraft.answers.map((answer, index) => <div key={index} className="grid grid-cols-[auto_1fr_90px_auto] items-center gap-2"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-sm font-bold text-[#d3bb73]">{index + 1}</span><input value={answer.text} onChange={(event) => setQuestionDraft((current) => ({ ...current, answers: current.answers.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) }))} placeholder="Odpowiedź" className="rounded-lg border border-white/10 bg-[#0f1119] px-3 py-2.5 outline-none focus:border-[#d3bb73]" /><input type="number" min={0} max={100} value={answer.points} onChange={(event) => setQuestionDraft((current) => ({ ...current, answers: current.answers.map((item, itemIndex) => itemIndex === index ? { ...item, points: Number(event.target.value) } : item) }))} className="rounded-lg border border-white/10 bg-[#0f1119] px-3 py-2.5 text-center outline-none focus:border-[#d3bb73]" /><button disabled={questionDraft.answers.length <= 3} onClick={() => setQuestionDraft((current) => ({ ...current, answers: current.answers.filter((_item, itemIndex) => itemIndex !== index) }))} className="rounded-lg p-2 text-red-300/60 disabled:opacity-20"><Trash2 className="h-4 w-4" /></button></div>)}</div>{questionDraft.answers.length < 6 && <button onClick={() => setQuestionDraft((current) => ({ ...current, answers: [...current.answers, { text: '', points: 0 }] }))} className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#d3bb73]"><Plus className="h-4 w-4" /> Dodaj odpowiedź</button>}<div className="mt-4 flex items-center justify-end gap-3"><span className={`mr-auto text-sm ${questionDraft.answers.reduce((sum, answer) => sum + (Number(answer.points) || 0), 0) > 100 ? 'text-red-300' : 'text-[#e5e4e2]/45'}`}>Suma: <strong>{questionDraft.answers.reduce((sum, answer) => sum + (Number(answer.points) || 0), 0)} / 100</strong></span><button onClick={() => setQuestionEditorOpen(false)} className="rounded-xl border border-white/10 px-5 py-3 text-sm">Anuluj</button><button onClick={() => void saveQuestion()} disabled={savingQuestion} className="rounded-xl bg-[#d3bb73] px-5 py-3 text-sm font-bold text-[#1c1f33] disabled:opacity-50">{savingQuestion ? 'Zapisywanie…' : 'Zapisz pytanie'}</button></div></div></div></div></div>}
     </div>
   );
 }
 
 function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
-  return <label className="mt-5 flex items-center gap-3 rounded-xl border border-white/10 bg-[#111522] px-4 py-3"><Search className="h-4 w-4 text-[#e5e4e2]/35" /><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="w-full bg-transparent text-sm outline-none placeholder:text-[#e5e4e2]/25" /></label>;
+  return <label className="mt-5 flex items-center gap-3 rounded-xl border border-white/10 bg-[#0f1119] px-4 py-3"><Search className="h-4 w-4 text-[#e5e4e2]/35" /><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="w-full bg-transparent text-sm outline-none placeholder:text-[#e5e4e2]/25" /></label>;
 }
 
 function SectionHeader({ eyebrow, title, description, actions }: { eyebrow: string; title: string; description: string; actions?: ReactNode }) {
@@ -1201,5 +1204,5 @@ function EmptyState({ text }: { text: string }) {
 }
 
 function StatusRow({ label, value, ok }: { label: string; value: string; ok: boolean }) {
-  return <div className="flex items-center justify-between rounded-xl border border-white/5 bg-[#111522] px-4 py-3"><span className="flex items-center gap-2 text-sm"><span className={`rounded-full p-1 ${ok ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}>{ok ? <Check className="h-3.5 w-3.5" /> : <Database className="h-3.5 w-3.5" />}</span>{label}</span><strong className="text-sm">{value}</strong></div>;
+  return <div className="flex items-center justify-between rounded-xl border border-white/5 bg-[#0f1119] px-4 py-3"><span className="flex items-center gap-2 text-sm"><span className={`rounded-full p-1 ${ok ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}>{ok ? <Check className="h-3.5 w-3.5" /> : <Database className="h-3.5 w-3.5" />}</span>{label}</span><strong className="text-sm">{value}</strong></div>;
 }
