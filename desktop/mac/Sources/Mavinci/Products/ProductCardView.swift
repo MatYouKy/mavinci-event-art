@@ -8,7 +8,7 @@ import SwiftUI
 
 /// Pola sekcji karty — te same listy co `fields` sekcji w CRM i `SECTION_FIELDS` na serwerze.
 enum ProductSectionFields {
-    static let basic = ["name", "category_id", "description", "is_active", "is_personnel_service"]
+    static let basic = ["name", "category_id", "extra_category_ids", "description", "is_active", "is_personnel_service"]
     static let presentation = ["offer_short_description", "offer_description", "public_description", "offer_compact_description",
                                "service_duration_hours", "extension_price_net_per_hour", "offer_benefits", "product_page_url", "offer_page_variant"]
     static let pricingUnits = ["unit", "min_quantity", "quantity_source"]
@@ -178,6 +178,8 @@ enum ProductSectionFields {
     @ViewBuilder func sideSections(_ detail: ProductDetail) -> some View {
         if !detail.packagePricing { pricingUnitsSection(detail) }
         pricingSection(detail).id("product-section-pricing")
+        // Ceny produktu w cennikach sezonowych marek (edycja — Oferty → Cenniki).
+        ProductSeasonPricesSection(productID: productID)
         technicalSection(detail)
         ProductPreparationSection(store: store, productID: productID)
         supplierSection(detail)
@@ -240,6 +242,10 @@ enum ProductSectionFields {
     func save(_ section: String) {
         var patch: [String: JSONValue] = [:]
         for key in ProductSectionFields.fields(section) { patch[key] = draft[key] ?? .null }
+        // Kategorie dodatkowe tylko wtedy, gdy karta je ma (po migracji 20261129120000) — inaczej serwer nie zna kolumny.
+        if section == "basic" {
+            if case .array? = draft["extra_category_ids"] {} else { patch.removeValue(forKey: "extra_category_ids") }
+        }
         if section == "presentation" {
             patch["offer_benefits"] = .array(ProductValue.text(draft, "offer_benefits").split(separator: "\n")
                 .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.map { JSONValue.string($0) })
@@ -295,6 +301,15 @@ enum ProductSectionFields {
             draft[key] = .string(limit.map { String(value.prefix($0)) } ?? value)
         })
     }
+    /// Kategoria dodatkowa produktu w edycji „Podstawowe informacje” (lista `extra_category_ids` w kopii roboczej).
+    func extraCategory(_ id: String) -> Binding<Bool> {
+        Binding(get: { ProductValue.list(draft, "extra_category_ids").contains(id) }, set: { on in
+            let current = ProductValue.list(draft, "extra_category_ids")
+            let next = on ? (current.contains(id) ? current : current + [id]) : current.filter { $0 != id }
+            draft["extra_category_ids"] = .array(next.map { .string($0) })
+        })
+    }
+
     func flag(_ key: String) -> Binding<Bool> {
         Binding(get: { ProductValue.flag(draft, key) }, set: { draft[key] = .bool($0) })
     }

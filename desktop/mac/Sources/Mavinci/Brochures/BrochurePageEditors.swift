@@ -228,6 +228,15 @@ import SwiftUI
             Picker("Marka / działalność", selection: text(\.myCompanyId)) {
                 ForEach(data.companies) { company in Text(company.name).tag(company.id) }
             }
+            if model.draft?.supportsPriceList == true, let lists = data.priceLists {
+                Picker("Cennik", selection: Binding(get: { model.draft?.priceListId ?? "" },
+                                                    set: { value in model.draft?.priceListId = value.isEmpty ? nil : value })) {
+                    Text("Bez strony cennika").tag("")
+                    ForEach(lists.filter { $0.companyId == model.draft?.myCompanyId || $0.id == model.draft?.priceListId }) { list in
+                        Text("\(list.name) · \(list.season)\(list.status == "draft" ? " (szkic)" : "")").tag(list.id)
+                    }
+                }
+            }
             Picker("Opiekun", selection: Binding(get: { model.draft?.contactEmployeeId ?? "" }, set: { value in model.draft?.contactEmployeeId = value.isEmpty ? nil : value })) {
                 Text("Bez wskazanego opiekuna").tag("")
                 ForEach(data.employees) { person in Text(person.name).tag(person.id) }
@@ -235,7 +244,7 @@ import SwiftUI
         } header: {
             Text("Broszura")
         } footer: {
-            Text("Organizacja wstawia „Przygotowano dla …” i nazwę klienta w treściach. Opiekun pojawia się na stronie kontaktu.")
+            Text("Organizacja wstawia „Przygotowano dla …” i nazwę klienta w treściach. Opiekun pojawia się na stronie kontaktu. Cennik dodaje przed zakończeniem stronę „Cennik” ze wszystkimi widocznymi usługami (bez ceny w cenniku — z katalogu).")
         }
         Section("Kolory") {
             colorRow("Kolor przewodni", path: \.brandColor, fallback: model.company?.secondaryColor ?? "#1c1f33")

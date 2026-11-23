@@ -49,7 +49,7 @@ export function useOfferWizardLogic(opts: {
   const [loading, setLoading] = useState(false);
 
   const client = useOfferWizardClient({ isOpen: opts.isOpen, step, defaults: opts.defaults });
-  const catalog = useOfferWizardCatalog({ isOpen: opts.isOpen, step });
+  const catalog = useOfferWizardCatalog({ isOpen: opts.isOpen, step, eventId: opts.eventId });
   const [offerData, setOfferData] = useState({
     guest_count: '', guests_per_table: '10', table_count: '',
     offer_number: '',
@@ -278,6 +278,7 @@ export function useOfferWizardLogic(opts: {
         equipmentSubstitutions: conflicts.equipmentSubstitutions,
         hasEquipmentShortage,
         pricing,
+        seasonPrices: catalog.seasonPrices,
       });
 
       // Invaliduj cache RTK Query aby automatycznie odświeżyć sprzęt i oferty eventu

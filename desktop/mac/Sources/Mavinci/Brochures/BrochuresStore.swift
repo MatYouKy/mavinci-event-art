@@ -175,8 +175,19 @@ struct BrochureEditorData: Decodable {
         var coverImagePath: String?
         var hasPdf: Bool
         var sellerDemo: Bool
+        /// Cennik strony „Cennik” (migracja 20261129130000); `supportsPriceList` — baza ma już tę kolumnę.
+        var priceListId: String?
+        var supportsPriceList: Bool?
         var composer: BrochureComposer
         var decorativePages: [JSONValue]
+    }
+    /// Cennik sezonowy do wyboru (bez archiwum).
+    struct PriceListOption: Decodable, Identifiable, Hashable {
+        var id: String
+        var name: String
+        var companyId: String
+        var season: String
+        var status: String
     }
     struct Variant: Decodable, Identifiable {
         var id: String
@@ -214,6 +225,8 @@ struct BrochureEditorData: Decodable {
     var organizations: [Option]
     var companies: [Company]
     var employees: [Option]
+    /// Starszy serwer — brak (wybór cennika ukryty).
+    var priceLists: [PriceListOption]?
     var library: [BrochureAsset]
     var studio: BrochureStudio
     var hotelAssets: [BrochureAsset]

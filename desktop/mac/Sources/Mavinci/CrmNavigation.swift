@@ -32,6 +32,7 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "fileText": return "doc.plaintext"
         case "fileType": return "doc.richtext"
         case "bookOpen": return "book"
+        case "tags": return "tag"
         case "contacts": return "person.crop.rectangle.stack"
         case "contracts": return "signature"
         case "equipment", "box", "package": return "shippingbox"
@@ -80,7 +81,9 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "/crm/contracts": return .contracts
         case "/crm/contract-templates": return .contractTemplates
         // Zakładki ofert: katalog produktów i szablony ofert; lista ofert to `Module.offers`.
-        case "/crm/offers": return href.contains("tab=catalog") ? .products : href.contains("tab=templates") ? .offerTemplates : nil
+        case "/crm/offers":
+            return href.contains("tab=catalog") ? .products : href.contains("tab=templates") ? .offerTemplates
+                : href.contains("tab=pricelists") ? .priceLists : nil
         // Broszury sprzedażowe (lista i edytor).
         case "/crm/brochures": return .brochures
         // Sprzedawcy zewnętrzni: kokpit opiekuna i karty sprzedawców (`Sellers/`).
@@ -117,6 +120,8 @@ struct NavItem: Codable, Identifiable, Hashable {
 enum CrmScreen: String {
     case messages, meetings, companyTasks, myTasks, team, warehouse, kits, cables, rental, connectors, warehouseCategories, contracts, contractTemplates
     case products, offerTemplates, brochures, sellers, fleet, timeTracking, databases, locations, website, campaigns, finance, socialMedia, portfolio
+    /// Cenniki sezonowe ofert (`/crm/offers?tab=pricelists`).
+    case priceLists
     case presentations, materials
     /// Ekrany Magazynu (wspólna kopia danych `WarehouseStore`).
     var isWarehouse: Bool { [.warehouse, .kits, .cables, .rental, .connectors, .warehouseCategories].contains(self) }

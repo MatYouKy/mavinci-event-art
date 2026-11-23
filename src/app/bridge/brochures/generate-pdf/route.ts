@@ -8,6 +8,7 @@ import { BROCHURE_PDF_SIZE_LIMIT, BROCHURE_IMAGE_PROFILES, installBrochureImageO
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { chromium } from 'playwright';
 import { loadPdfFont } from '@/lib/brochures/loadPdfFont.server';
+import { loadBrochurePriceList } from '@/lib/brochures/brochurePriceList';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { BrochureRequestError, requireBrochureEmployeeAccess } from '@/lib/brochures/access.server';
 import { resolveBrochureClient } from '@/lib/brochures/recipient.server';
@@ -328,6 +329,16 @@ export async function POST(request: Request) {
       },
     );
 
+    // Cennik sezonu broszury (`price_list_id`, migracja 20261129130000): strona „Cennik” przed zakończeniem — wszystkie widoczne
+    // strony usług z ceną z cennika (bez ceny w cenniku — z katalogu). Bez cennika albo przed migracją — bez tej strony.
+    const priceList = await loadBrochurePriceList(admin, typeof brochure.price_list_id === 'string' ? brochure.price_list_id : null,
+      ((itemsResult.data || []) as any[]).filter((row) => row.product).map((row) => ({
+        id: String(row.id),
+        title: row.custom_title || (row.variant?.name ? `${row.product.name} — ${row.variant.name}` : String(row.product.name || '')),
+        productId: String(row.product_id || row.product.id),
+        variantId: row.product_variant_id ? String(row.product_variant_id) : null,
+      })));
+
     if (!snapshotItems.length && !snapshotDecorations.length && composer.hiddenPages.length === 3) {
       return NextResponse.json(
         { error: 'Dodaj lub pokaż przynajmniej jedną stronę przed wygenerowaniem PDF' },
@@ -397,6 +408,7 @@ export async function POST(request: Request) {
       composer,
       items: snapshotItems as SalesBrochureSnapshot['items'],
       decorativePages: snapshotDecorations,
+      priceList,
       generatedAt: new Date().toISOString(),
     };
 

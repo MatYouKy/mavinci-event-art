@@ -15,6 +15,8 @@ export default function EventCategoriesPage() {
     icons,
     contractTemplates,
     offerTemplateCategories,
+    companies,
+    supportsCategoryCompany,
     deleteCategory,
     deleteIcon,
     upsertIcon,
@@ -37,6 +39,8 @@ export default function EventCategoriesPage() {
     icon_id: '',
     contract_template_id: '',
     default_offer_template_category_id: '',
+    default_my_company_id: '',
+    company_locked: false,
   });
   const [iconFormData, setIconFormData] = useState<ICustomIcon>({
     name: '',
@@ -56,6 +60,8 @@ export default function EventCategoriesPage() {
         contract_template_id: editingCategory.contract_template_id || '',
         default_offer_template_category_id:
           (editingCategory as any).default_offer_template_category_id || '',
+        default_my_company_id: editingCategory.default_my_company_id || '',
+        company_locked: editingCategory.company_locked === true,
       });
     }
   }, [editingCategory]);
@@ -72,6 +78,8 @@ export default function EventCategoriesPage() {
         contract_template_id: category.contract_template_id || '',
         default_offer_template_category_id:
           (category as any).default_offer_template_category_id || '',
+        default_my_company_id: category.default_my_company_id || '',
+        company_locked: category.company_locked === true,
       });
     } else {
       setEditingCategory(null);
@@ -83,6 +91,8 @@ export default function EventCategoriesPage() {
         icon_id: '',
         contract_template_id: '',
         default_offer_template_category_id: '',
+        default_my_company_id: '',
+        company_locked: false,
       });
     }
     setShowModal(true);
@@ -99,6 +109,8 @@ export default function EventCategoriesPage() {
       icon_id: '',
       contract_template_id: '',
       default_offer_template_category_id: '',
+      default_my_company_id: '',
+      company_locked: false,
     });
   };
 
@@ -144,6 +156,8 @@ export default function EventCategoriesPage() {
           icon_id: formData.icon_id || null,
           contract_template_id: formData.contract_template_id || null,
           default_offer_template_category_id: formData.default_offer_template_category_id || null,
+          default_my_company_id: formData.default_my_company_id || null,
+          company_locked: formData.company_locked,
         },
         editingCategory?.id ?? null,
       );
@@ -490,6 +504,43 @@ export default function EventCategoriesPage() {
                       ))}
                     </select>
                   </div>
+
+                  {supportsCategoryCompany && (
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-[var(--brand-platinum)]/80">
+                        Marka realizująca nowych eventów (opcjonalnie)
+                      </label>
+                      <select
+                        value={formData.default_my_company_id}
+                        onChange={(e) =>
+                          setFormData({ ...formData, default_my_company_id: e.target.value, company_locked: e.target.value ? formData.company_locked : false })
+                        }
+                        className="w-full rounded-lg border border-[var(--app-field-border)] bg-[var(--brand-burgundy-900)] px-4 py-2 text-white outline-none focus:border-[var(--app-field-border-focus)]"
+                      >
+                        <option value="">Bez domyślnej marki</option>
+                        {companies.map((company) => (
+                          <option key={company.id} value={company.id}>
+                            {company.name}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="mt-2 flex items-start gap-2 text-sm text-[var(--brand-platinum)]/80">
+                        <input
+                          type="checkbox"
+                          checked={formData.company_locked}
+                          disabled={!formData.default_my_company_id}
+                          onChange={(e) => setFormData({ ...formData, company_locked: e.target.checked })}
+                          className="mt-0.5 h-4 w-4 rounded border-[var(--app-field-border)] accent-[var(--brand-gold)] disabled:opacity-40"
+                        />
+                        <span>
+                          Zawsze ta marka
+                          <span className="block text-xs text-[var(--brand-platinum)]/50">
+                            Nowy event tej kategorii zawsze dostaje tę markę, a oferta — jej cennik sezonowy (np. Wesele → Event Rulers).
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                  )}
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-[var(--brand-platinum)]/80">

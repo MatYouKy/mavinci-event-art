@@ -33,7 +33,7 @@ import SwiftUI
     private var filtered: [OfferWizardSetup.Product] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
         return products.filter { product in
-            let inCategory = category == "all" || product.categoryId == category
+            let inCategory = category == "all" || (product.categoryIds ?? [product.categoryId].compactMap { $0 }).contains(category)
             let matches = query.isEmpty || product.name.lowercased().contains(query) || product.description.lowercased().contains(query)
             return inCategory && matches
         }
@@ -50,6 +50,7 @@ import SwiftUI
                 Label("\(model.items.count) pozycji w ofercie", systemImage: "cart").font(.callout).foregroundStyle(.secondary)
             }
             OfferWizardAudienceFields(model: model)
+            if let notice = model.setup?.priceNotice { OfferPriceNoticeBanner(notice: notice) }
             HStack(alignment: .top, spacing: 14) {
                 catalog
                 addedPanel

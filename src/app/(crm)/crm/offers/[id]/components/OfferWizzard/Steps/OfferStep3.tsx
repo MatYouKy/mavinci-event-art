@@ -26,6 +26,8 @@ import type { IOfferItem, IProduct, IProductVariant } from '@/app/(crm)/crm/offe
 import { supabase } from '@/lib/supabase/browser';
 import Popover from '@/components/UI/Tooltip';
 import { WizardReadinessLine } from '../WizardReadiness';
+import SeasonPriceNotice from '@/components/crm/offers/SeasonPriceNotice';
+import type { SeasonPrices } from '@/lib/CRM/Offers/seasonPrices';
 
 interface ProductCategory {
   id: string;
@@ -48,6 +50,8 @@ interface OfferStep3Props {
   addProductToOffer: (product: IProduct, variant?: IProductVariant, salesPackage?: ProductSalesPackage) => void;
   updateOfferItem: (itemId: string, patch: Partial<IOfferItem>) => void;
   removeOfferItem: (itemId: string) => void;
+  /** Cennik sezonowy marki eventu — ceny w katalogu już z niego pochodzą (`useOfferWizardCatalog`). */
+  seasonPrices?: SeasonPrices | null;
 }
 
 const THUMBNAIL_BUCKET = 'offer-product-pages';
@@ -216,6 +220,7 @@ export default function OfferStep3({
   addProductToOffer,
   updateOfferItem,
   removeOfferItem,
+  seasonPrices = null,
 }: OfferStep3Props) {
   const { employeeId, preferences, setPreference } = useUserPreferences();
   const savedPreference = preferences.offerWizard?.catalogViewMode;
@@ -352,6 +357,7 @@ export default function OfferStep3({
           <span>{offerItems.length} pozycji w ofercie</span>
         </div>
       </div>
+      <SeasonPriceNotice prices={seasonPrices} mode="wizard" />
 
       {/* Dodane produkty dostają więcej miejsca: ilość z dniami, cena w wierszu, wartość i ustawienia PDF nie mogą na siebie zachodzić. */}
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">

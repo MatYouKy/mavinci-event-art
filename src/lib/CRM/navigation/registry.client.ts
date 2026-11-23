@@ -37,6 +37,7 @@ import {
   Images,
   Award,
   Presentation,
+  Tags,
 } from 'lucide-react';
 
 /**
@@ -87,6 +88,7 @@ export const NavigationIcons = {
   package: Package,
   fileType: FileType,
   bookOpen: BookOpen,
+  tags: Tags,
 } as const;
 
 export type IconKey = keyof typeof NavigationIcons;

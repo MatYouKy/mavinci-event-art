@@ -31,8 +31,10 @@ import OfferWizard from '@/app/(crm)/crm/offers/[id]/components/OfferWizzard/Off
 import OfferPageTemplatesEditor from '@/components/crm/OfferPageTemplatesEditor';
 import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
 import { CatalogTab } from '@/components/crm/offers/products/CatalogTab';
+import PriceListsManager from '@/components/crm/offers/priceLists/PriceListsManager';
+import { productInCategory } from '@/lib/CRM/Offers/productCategories';
 
-type Tab = 'offers' | 'catalog' | 'templates';
+type Tab = 'offers' | 'catalog' | 'templates' | 'pricelists';
 
 interface Offer {
   client: any;
@@ -158,7 +160,7 @@ export function OfferPage({
 
   useEffect(() => {
     const tab = searchParams.get('tab') as Tab;
-    if (tab && (tab === 'offers' || tab === 'catalog' || tab === 'templates')) {
+    if (tab && (tab === 'offers' || tab === 'catalog' || tab === 'templates' || tab === 'pricelists')) {
       setActiveTab(tab);
     }
   }, [searchParams]);
@@ -218,7 +220,8 @@ export function OfferPage({
     }
 
     if (categoryFilter !== 'all') {
-      filtered = filtered.filter((product) => product.category_id === categoryFilter);
+      // Kategoria główna albo dodatkowa („Także w kategoriach eventów”).
+      filtered = filtered.filter((product) => productInCategory(product, categoryFilter));
     }
 
     setFilteredProducts(filtered);
@@ -353,14 +356,16 @@ export function OfferPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-light text-[#e5e4e2]">
-            {activeTab === 'offers' ? 'Oferty' : activeTab === 'catalog' ? 'Produkty' : 'Szablony ofert'}
+            {activeTab === 'offers' ? 'Oferty' : activeTab === 'catalog' ? 'Produkty' : activeTab === 'pricelists' ? 'Cenniki' : 'Szablony ofert'}
           </h1>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
             {activeTab === 'offers'
               ? 'Twórz, wysyłaj i kontroluj oferty dla klientów'
               : activeTab === 'catalog'
                 ? 'Zarządzaj katalogiem produktów wykorzystywanych w ofertach'
-                : 'Zarządzaj wyglądem i układem generowanych ofert PDF'}
+                : activeTab === 'pricelists'
+                  ? 'Ceny produktów według marki i sezonu eventu (np. wesela 2027 i 2028)'
+                  : 'Zarządzaj wyglądem i układem generowanych ofert PDF'}
           </p>
         </div>
       </div>
@@ -398,6 +403,8 @@ export function OfferPage({
           router={router}
         />
       )}
+
+      {activeTab === 'pricelists' && <PriceListsManager />}
 
       {activeTab === 'templates' && (
         <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50">

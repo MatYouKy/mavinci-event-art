@@ -13,7 +13,7 @@ import {
 import {
   SHOWCASE_OFFER_DISCOUNT_DISPLAYS, SHOWCASE_OFFER_LIMITS, addShowcaseOfferLine, emptyShowcaseOfferClient, emptyShowcaseOfferDraft, formatShowcaseAmount,
   formatShowcasePercent, isShowcaseOfferEmail, isShowcaseOfferPlaceholder, normalizeShowcaseOfferDraft, showcaseOfferApprovalHint, showcaseOfferDiscount,
-  showcaseOfferAssumptionsFromDraft, showcaseOfferLineFor, showcaseOfferPrice, showcaseOfferProblem,
+  showcaseOfferAssumptionsFromDraft, showcaseOfferLineFor, showcaseOfferPrice, showcaseOfferPriceListText, showcaseOfferProblem,
   type ShowcaseOfferAddResult, type ShowcaseOfferAssumption, type ShowcaseOfferAssumptionsDraft, type ShowcaseOfferDiscountDisplay, type ShowcaseOfferApproval, type ShowcaseOfferClient, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit,
   type ShowcaseOfferDraft, type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferKind, type ShowcaseOfferLine,
   type ShowcaseOfferLocation, type ShowcaseOfferPreview, type ShowcaseOfferResult, type ShowcaseOfferSetup, type ShowcaseOfferStatus,
@@ -1055,6 +1055,7 @@ export function ShowcaseOfferSheet({ offer, theme, onClose, onNotice }: {
                   )}
                   <div className="flex justify-between"><span>Netto · VAT {preview.taxPercent}% {formatShowcaseAmount(preview.tax)}</span><span className="tabular-nums">{formatShowcaseAmount(preview.net)}</span></div>
                   <div className="flex items-baseline justify-between text-[22px] font-semibold" style={accent}><span>Brutto</span><span className="tabular-nums">{formatShowcaseAmount(preview.gross)}</span></div>
+                  {preview.priceList && <p className="text-xs text-[#e5e4e2]/50">{showcaseOfferPriceListText(preview.priceList)}</p>}
                 </div>
               )}
               {problem && draft.lines.length > 0 && <p className="text-[14px] text-amber-200">{problem}</p>}

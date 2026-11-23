@@ -21,6 +21,9 @@ import { PDFDocument, rgb, pushGraphicsState, popGraphicsState, moveTo, lineTo, 
 import fontkit from "@pdf-lib/fontkit";
 
 import { drawPaginatedOfferPricingTable } from './offerPricingTable';
+import { drawWeddingPricingPages, weddingPricingRows, weddingPricingSummary, weddingSeasonLabel, weddingTerms } from './weddingPricing';
+import { WEDDING_DEPOSIT_DEFAULT, WEDDING_TERMS_DEFAULT } from './shared/weddingPricingDefaults';
+import { chapterItemIds, loadOfferChapters, renderOfferChapterPdf } from './chapterPages.server';
 
 import { createSellerDemoOffer } from './shared/sellerDemoOffer';
 import { LOCATION_BACKGROUND_BUCKET, offerVenueBackground, offerVenueIds } from '@/lib/CRM/Offers/offerVenueBackground';
@@ -657,6 +660,8 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
     let brandHeadingFontFamily = '';
     let brandLogoUrl = '';
     let brandCompanyName = 'MAVINCI';
+    /** Kolory z księgi znaku marki według roli (primary / secondary / accent) — dla kategorii z „Kolory z księgi znaku”. */
+    const brandColors: Record<string, string> = {};
 
     const cacheFontWidths = (font: any) => {
       const measure = font.widthOfTextAtSize.bind(font);
@@ -1305,7 +1310,7 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
       : await companyQuery.eq('is_default', true).maybeSingle();
 
     if (company) {
-      const [{ data: brandLogos }, { data: brandFonts }] = await Promise.all([
+      const [{ data: brandLogos }, { data: brandFonts }, { data: brandColorRows }] = await Promise.all([
         supabase
           .from('company_brandbook_logos')
           .select('url, label, variant, background, is_default, order_index')
@@ -1317,7 +1322,18 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
           .select('family, role, weight, file_url, storage_path, order_index')
           .eq('company_id', company.id)
           .order('order_index'),
+        supabase
+          .from('company_brandbook_colors')
+          .select('hex, role, order_index')
+          .eq('company_id', company.id)
+          .order('order_index'),
       ]);
+      // Pierwszy kolor danej roli, tylko pełne #rrggbb (kolor z przezroczystością nie nadaje się na tło strony).
+      for (const row of (brandColorRows || []) as any[]) {
+        const role = String(row.role || '');
+        const hex = String(row.hex || '').trim();
+        if (['primary', 'secondary', 'accent'].includes(role) && !brandColors[role] && /^#[0-9a-f]{6}$/i.test(hex)) brandColors[role] = hex.toLowerCase();
+      }
 
       const logo = (brandLogos || []).find((item: any) => item.is_default)
         || (brandLogos || []).find((item: any) => item.background === 'transparent')
@@ -1733,8 +1749,19 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
       requirements_page_subtitle: 'Wymagania niezbędne do bezpiecznego i sprawnego przygotowania realizacji.',
       technical_requirements_text: 'Dostęp do sali przed wydarzeniem w czasie uzgodnionym z realizatorem\nStabilne zasilanie 230 V oraz miejsce dla stanowiska technicznego\nDostęp do internetu przewodowego przy realizacjach online\nKontakt do osoby technicznej po stronie obiektu',
       reservation_terms_text: 'Termin rezerwujemy po akceptacji oferty i podpisaniu umowy\nZakres końcowy potwierdzamy po weryfikacji warunków technicznych\nDodatkowe usługi i zmiany wymagają potwierdzenia przed wydarzeniem',
+      brand_colors: false,
+      deposit_percent: WEDDING_DEPOSIT_DEFAULT,
+      wedding_terms_text: WEDDING_TERMS_DEFAULT,
+      chapter_item_ids: [] as string[],
       ...(selectedTemplateCategory?.design_config || defaultCategory?.design_config || {}),
     };
+    // „Kolory z księgi znaku” (`brand_colors`): strony generowane w kolorach marki wydarzenia (np. Event Rulers dla wesel);
+    // rola, której nie ma w księdze znaku, zostaje w kolorze kategorii. Sprzedawcy mają własne kolory (niżej).
+    if (categoryDesign.brand_colors === true && !sellerMode) {
+      if (brandColors.primary) Object.assign(categoryDesign, { primary_color: brandColors.primary, cover_primary_color: brandColors.primary });
+      if (brandColors.secondary) Object.assign(categoryDesign, { secondary_color: brandColors.secondary, cover_decoration_color: brandColors.secondary });
+      if (brandColors.accent) Object.assign(categoryDesign, { accent_color: brandColors.accent, cover_accent_color: brandColors.accent });
+    }
     if (sellerMode) {
       const color = (value: unknown, fallback: string) => /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : fallback;
       const primary = color(sellerBranding.brand_primary_color, '#2d0918');
@@ -2376,6 +2403,39 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
     }
     const aboutResult = await addPdfFromTemplate('about');
     if (!aboutResult.success) await addBuiltInAbout();
+
+    // Rozdziały z Prezentacji (`chapter_item_ids` kategorii szablonu, np. „Jak to robimy?”, „Zespół”): po „O nas”, przed
+    // produktami. Treść kart jest po polsku, więc wersja EN i oferty sprzedawców są bez rozdziałów.
+    const chapterIds = chapterItemIds(categoryDesign.chapter_item_ids);
+    if (chapterIds.length && !sellerMode && !english) {
+      report?.({ step: 'layout', detail: 'Dodajemy rozdziały z Prezentacji.' });
+      const chapters = await timed('chapters_data', () => loadOfferChapters(supabase, chapterIds));
+      if (chapters.length) {
+        const notoBase = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSans/hinted/ttf/';
+        const [regularBytes, boldBytes, headingBytes] = await timed('font_fetch', () => Promise.all([
+          fetchFont(notoBase + 'NotoSans-Regular.ttf', true),
+          fetchFont(notoBase + 'NotoSans-Bold.ttf', true),
+          brandHeadingFontUrl ? fetchFont(brandHeadingFontUrl, false) : Promise.resolve(null),
+        ]));
+        let chapterBytes: Uint8Array;
+        try {
+          chapterBytes = await timed('chapters_render', () => renderOfferChapterPdf({
+            chapters,
+            colors: { primary: categoryDesign.primary_color, accent: categoryDesign.accent_color, surface: categoryDesign.surface_color },
+            fonts: { heading: headingBytes, regular: regularBytes!, bold: boldBytes! },
+            eyebrow: brandCompanyName,
+            compact: compactResourceMode,
+          }));
+        } catch (error) {
+          console.error(JSON.stringify({ event: 'offer_pdf_chapters_failed', message: error instanceof Error ? error.message.slice(0, 300) : 'unknown' }));
+          throw new Error('Nie udało się przygotować rozdziałów z Prezentacji. Spróbuj ponownie za chwilę; jeśli problem wraca, sprawdź karty rozdziałów w Oferty → Szablony → kategoria.');
+        }
+        const chapterPdf = await PDFDocument.load(chapterBytes);
+        const chapterPages = await mergedPdf.copyPages(chapterPdf, chapterPdf.getPageIndices());
+        chapterPages.forEach((page) => mergedPdf.addPage(page));
+        reportStage('chapters_ready', { chapters: chapters.length, pages: chapterPages.length });
+      }
+    }
 
     const addFallbackProductPage = async (
       data: Record<string, any>,
@@ -3421,10 +3481,46 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
     // Szablon PDF może zawierać statyczne etykiety podsumowania, których nie da się usunąć.
     const demoHasPrices = demoMode && pricingItems.some((item: any) => item.demo_price_entered);
     const demoPartialPrices = demoMode && pricingItems.some((item: any) => !item.demo_price_entered);
-    const pricingResult = packageComparisonRequested || demoMode || pricingDiscountAmount > 0 || originalPricingItems.some(hasOfferAddons)
+    // Styl weselny kategorii: strona „WASZA WYCENA” (pozycje, podsumowanie, zadatek, warunki) zamiast tabeli i szablonu wyceny.
+    const weddingPricing = categoryDesign.pricing_style === 'wedding' && !sellerMode && !packageComparisonRequested && pricingItems.length > 0;
+    const pricingResult = weddingPricing || packageComparisonRequested || demoMode || pricingDiscountAmount > 0 || originalPricingItems.some(hasOfferAddons)
       ? { success: false, tableConfig: null }
       : await addPdfFromTemplate('pricing');
-    if (pricingResult.success && pricingItems.length > 0) {
+    if (weddingPricing) {
+      const { regularFont, boldFont, headingFont } = await ensureFonts(mergedPdf);
+      const rows = weddingPricingRows(pricingItems, discountDisplay === 'lines');
+      const summary = weddingPricingSummary({
+        rows,
+        totalNet: pricingTotalNet,
+        totalGross: pricingTotalGross,
+        vatRates: pricingItems.map((item: any) => Number(item.vat_rate ?? offer.tax_percent ?? 23)),
+        depositPercent: categoryDesign.deposit_percent,
+      });
+      // Sezon cennika oferty (bez migracji cenników albo bez cennika — bez tej informacji).
+      let season = '';
+      if (offer.price_list_id && !usesAcceptedCalculation) {
+        const { data: priceList } = await supabase.from('price_lists').select('season_from, season_to').eq('id', offer.price_list_id).maybeSingle();
+        if (priceList?.season_from && priceList?.season_to) season = weddingSeasonLabel(String(priceList.season_from), String(priceList.season_to), english);
+      }
+      drawWeddingPricingPages(mergedPdf, {
+        english,
+        rows,
+        summary,
+        offerNumber: String(offerData.offer_number || ''),
+        subtitle: [offerData.event_name, offerData.event_date, offerData.event_location].map((value) => String(value || '').trim()).filter(Boolean).join(' · '),
+        client: String(offerData.client_name || '').trim(),
+        notes: [
+          [
+            season ? (english ? `Prices from the price list for the ${season}` : `Ceny według cennika na ${season}`) : '',
+            offerData.offer_valid_until ? (english ? `Offer valid until ${offerData.offer_valid_until}` : `Oferta ważna do ${offerData.offer_valid_until}`) : '',
+          ].filter(Boolean).join(' · '),
+          acceptedCalculationReference,
+        ].filter(Boolean),
+        terms: weddingTerms(categoryDesign.wedding_terms_text),
+        fonts: { regular: regularFont, bold: boldFont, heading: headingFont },
+        colors: { primary: categoryDesign.primary_color, accent: categoryDesign.accent_color, surface: categoryDesign.surface_color },
+      });
+    } else if (pricingResult.success && pricingItems.length > 0) {
       const pricingPageIndex = mergedPdf.getPageCount() - 1;
       await drawOfferItemsTable(
         mergedPdf,

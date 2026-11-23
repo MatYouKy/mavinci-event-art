@@ -184,6 +184,21 @@ struct ShowcaseOfferPreview: Decodable {
     var tax: Double
     var gross: Double
     var problem: String?
+    /// Cennik sezonu marki działu (ceny pozycji z niego); `nil` — ceny z katalogu albo starszy serwer.
+    var priceList: PriceList?
+
+    struct PriceList: Decodable {
+        var name: String
+        var season: String
+        var company: String
+        var date: String
+        /// Jak `showcaseOfferPriceListText` w CRM i na iPadzie.
+        var text: String {
+            let parts = date.split(separator: "-")
+            let day = parts.count == 3 && date.count == 10 ? parts.reversed().joined(separator: ".") : ""
+            return "Ceny z cennika „\(name)”" + (company.isEmpty ? "" : " (\(company))") + (day.isEmpty ? " — bez terminu: cennik na dziś." : " — termin \(day).")
+        }
+    }
 }
 
 struct ShowcaseOfferApproval: Decodable, Equatable {
@@ -1426,6 +1441,9 @@ struct ShowcaseOfferAddButton: View {
                     Text(ShowcaseOfferRules.amount(preview.gross)).font(.title3.bold()).monospacedDigit()
                 }
                 .foregroundStyle(accent)
+                if let priceList = preview.priceList {
+                    Text(priceList.text).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
             if let problem, !draft.lines.isEmpty { Text(problem).font(.caption).foregroundStyle(.orange) }
             Button { Task { await create() } } label: {

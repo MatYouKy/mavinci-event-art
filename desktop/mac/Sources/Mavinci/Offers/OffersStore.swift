@@ -265,6 +265,8 @@ struct OfferDetail: Codable {
     var pdf: Pdf
     var amendmentSource: String?
     var draftRevision: DraftRevision?
+    /// Cennik sezonowy oferty: pasek „Cennik: …” nad pozycjami i „Przelicz według cennika…” (starszy serwer — brak).
+    var seasonPrices: OfferPriceNotice?
 }
 
 enum OfferText {

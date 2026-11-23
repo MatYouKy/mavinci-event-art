@@ -4,7 +4,8 @@ import CoreText
 
 // MARK: Szablony ofert — kategoria (`CategoryModal`): nazwa, opis, kolor, zdjęcie hero (upuść albo wybierz, zmniejszane do
 // 1800 px), opis zdjęcia, „Kreator wyglądu kategorii” z podglądem okładki, założeń, wyceny, strony „Informacje i warunki”
-// i strony wymagań, kategoria domyślna. Zapis `op=templateCategorySave`.
+// i strony wymagań, kategoria domyślna. Kolory z księgi znaku marki wydarzenia, wycena weselna „Wasza wycena” (zadatek,
+// warunki) i rozdziały z Prezentacji. Zapis `op=templateCategorySave`.
 
 @MainActor struct OfferTemplateCategorySheet: View {
     @ObservedObject var store: OfferTemplatesStore
@@ -88,6 +89,7 @@ import CoreText
                 TextField("", text: $heroAlt, prompt: Text("Np. eleganckie przyjęcie weselne w sali balowej")).textFieldStyle(.roundedBorder)
             }
             designForm
+            chaptersForm
             infoPageForm
             requirementsForm
             VStack(alignment: .leading, spacing: 2) {
@@ -164,6 +166,14 @@ import CoreText
                 Text("Kreator wyglądu kategorii").font(.headline)
                 Text("Te ustawienia sterują okładką, założeniami, dużą kartą produktu i wyceną.").font(.caption).foregroundStyle(.secondary)
             }
+            Toggle(isOn: brandColors) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Kolory z księgi znaku marki wydarzenia")
+                    Text("PDF bierze kolor główny, dodatkowy i akcent z księgi znaku marki realizującej wydarzenie (np. Event Rulers dla wesel). Kolory poniżej zostają dla ról, których marka nie ma, i dla podglądu.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.checkbox)
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
                 GridRow {
                     ProductField(label: "Kolor główny") { colorRow($design.primary_color) }
@@ -193,13 +203,121 @@ import CoreText
                     Picker("", selection: $design.pricing_style) {
                         Text("Duża kolorowa karta").tag("card")
                         Text("Minimalna linia podsumowania").tag("minimal")
+                        Text("Weselna — „Wasza wycena” z zadatkiem i warunkami").tag("wedding")
                     }
                     .labelsHidden()
                 }
             }
+            if design.pricing_style == "wedding" { weddingForm }
         }
         .padding(14)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Wycena weselna: zadatek (% kwoty do zapłaty, 0 — bez zadatku) i warunki pod wyceną.
+    private var weddingForm: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Wycena weselna „Wasza wycena”").font(.callout.weight(.medium))
+                Text("Zamiast tabeli: pozycje oferty z kwotami, rabat i VAT w podsumowaniu, razem do zapłaty, zadatek z pozostałą kwotą i warunki. Oferty z pakietami do wyboru i oferty sprzedawców zostają w zwykłym układzie.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            ProductField(label: "Zadatek (% kwoty do zapłaty)", help: "0 — bez zadatku na stronie wyceny.") {
+                HStack(spacing: 6) {
+                    TextField("", value: depositPercent, format: .number).textFieldStyle(.roundedBorder).frame(width: 70)
+                    Text("%").foregroundStyle(.secondary)
+                    Stepper("", value: depositPercent, in: 0...100, step: 5).labelsHidden()
+                }
+            }
+            ProductField(label: "Warunki", help: "Każdy warunek w nowym wierszu (np. dojazd, nocleg zespołu). Zadatek ma własny wiersz w podsumowaniu.") {
+                ProductTextArea(text: weddingTerms, lines: 3...8)
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    // MARK: Rozdziały z Prezentacji
+
+    private var chapterIDs: [String] { design.chapter_item_ids ?? [] }
+    private var chapterCards: [OfferTemplatesState.ChapterCard]? { store.state?.showcaseCards }
+    private func chapterCard(_ id: String) -> OfferTemplatesState.ChapterCard? { chapterCards?.first { $0.id == id } }
+    private var chapterSections: [String] {
+        var seen = Set<String>()
+        return (chapterCards ?? []).map(\.section).filter { seen.insert($0).inserted }
+    }
+    private static let chapterLimit = 12
+
+    private func moveChapter(_ index: Int, by offset: Int) {
+        var ids = chapterIDs
+        let target = index + offset
+        guard ids.indices.contains(index), ids.indices.contains(target) else { return }
+        ids.swapAt(index, target)
+        design.chapter_item_ids = ids
+    }
+
+    /// Wybrane karty trafiają do PDF po stronie „O nas”, przed produktami, w tej kolejności (`chapter_item_ids`).
+    private var chaptersForm: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Label("Rozdziały z Prezentacji", systemImage: "book").font(.headline)
+                Text("Wybrane karty (np. „Jak to robimy?”, „Zespół”) trafią do PDF po stronie „O nas”, przed produktami — w tej kolejności. Zmiana karty w Prezentacjach zmienia kolejne oferty. Na stronach: zdjęcie główne, tytuł, wstęp, tekst, punkty, zdjęcia, specyfikacja i pytania (bez bloków z katalogu produktów i realizacji). Wersja EN i oferty sprzedawców — bez rozdziałów.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(Array(chapterIDs.enumerated()), id: \.element) { index, id in
+                HStack(spacing: 8) {
+                    Text("\(index + 1).").font(.caption).foregroundStyle(theme.accent).frame(width: 22, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 1) {
+                        if let card = chapterCard(id) {
+                            Text(card.title).lineLimit(1)
+                            Text(card.active ? card.section : "\(card.section) · wyłączona — nie trafi do PDF")
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        } else {
+                            Text(chapterCards == nil ? "Karta z Prezentacji" : "Karta usunięta z Prezentacji — nie trafi do PDF")
+                                .foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    Spacer()
+                    Button { moveChapter(index, by: -1) } label: { Image(systemName: "arrow.up") }
+                        .buttonStyle(.borderless).disabled(index == 0).help("Wyżej")
+                    Button { moveChapter(index, by: 1) } label: { Image(systemName: "arrow.down") }
+                        .buttonStyle(.borderless).disabled(index == chapterIDs.count - 1).help("Niżej")
+                    Button { design.chapter_item_ids = chapterIDs.filter { $0 != id } } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.borderless).help("Usuń rozdział")
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+            }
+            if let cards = chapterCards {
+                Menu {
+                    ForEach(chapterSections, id: \.self) { section in
+                        Section(section) {
+                            ForEach(cards.filter { $0.section == section && !chapterIDs.contains($0.id) }) { card in
+                                Button(card.active ? card.title : "\(card.title) (wyłączona)") { design.chapter_item_ids = chapterIDs + [card.id] }
+                            }
+                        }
+                    }
+                } label: {
+                    Label(chapterIDs.count >= Self.chapterLimit ? "Najwięcej \(Self.chapterLimit) rozdziałów" : cards.isEmpty ? "Brak kart w Prezentacjach" : "Dodaj kartę z Prezentacji",
+                          systemImage: "plus")
+                }
+                .fixedSize()
+                .disabled(cards.isEmpty || chapterIDs.count >= Self.chapterLimit)
+            } else {
+                Text("Wybór kart wymaga aktualizacji serwera CRM.").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var brandColors: Binding<Bool> {
+        Binding(get: { design.brand_colors ?? false }, set: { design.brand_colors = $0 })
+    }
+    private var depositPercent: Binding<Double> {
+        Binding(get: { design.deposit_percent ?? 30 }, set: { design.deposit_percent = min(100, max(0, $0.rounded())) })
+    }
+    private var weddingTerms: Binding<String> {
+        Binding(get: { design.wedding_terms_text ?? "" }, set: { design.wedding_terms_text = $0 })
     }
 
     private var infoPageForm: some View {
@@ -272,7 +390,11 @@ import CoreText
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     previewTitle("Podgląd wyceny")
-                    OfferPricingPreview(design: design, heading: store.headingDescriptor)
+                    if design.pricing_style == "wedding" {
+                        OfferWeddingPricingPreview(design: design, heading: store.headingDescriptor)
+                    } else {
+                        OfferPricingPreview(design: design, heading: store.headingDescriptor)
+                    }
                 }
             }
             if design.info_page_enabled || design.requirements_page_enabled {
@@ -338,7 +460,8 @@ import CoreText
         assumptions_layout: "cards", visual_image_height: 285, pricing_style: "card", info_page_enabled: true,
         info_page_title: "INFORMACJE I WARUNKI", order_process_text: "", requirements_page_enabled: true,
         requirements_page_title: "WARUNKI TECHNICZNE I ORGANIZACYJNE", requirements_page_subtitle: "", technical_requirements_text: "",
-        reservation_terms_text: "")
+        reservation_terms_text: "", brand_colors: false, deposit_percent: 30,
+        wedding_terms_text: "Ubezpieczenie OC\nDojazd: 50 km gratis, dalej 1 zł/km\nPokój dla zespołu", chapter_item_ids: [])
 }
 
 // MARK: Podglądy stron (proporcje A4, jak w oknie kategorii CRM)
@@ -514,6 +637,90 @@ struct OfferPricingPreview: View {
         .background(minimal ? Color.clear : design.primary, in: RoundedRectangle(cornerRadius: 5 * scale))
         .overlay(alignment: .top) { if minimal { Rectangle().fill(design.primary).frame(height: 1) } }
         .padding(.bottom, 30 * scale)
+    }
+}
+
+/// Strona „WASZA WYCENA” (styl weselny) — układ jak w PDF (`src/lib/offer-pdf/weddingPricing.ts`), przykładowe kwoty.
+struct OfferWeddingPricingPreview: View {
+    let design: OfferTemplateDesign
+    let heading: CTFontDescriptor?
+
+    private static let total: Double = 12400
+    private static let rows: [(String, Double)] = [("Pakiet z prowadzeniem", 10800), ("Fontanny iskier — 4 szt.", 800), ("Ciężki dym", 800)]
+    private var percent: Double { min(100, max(0, (design.deposit_percent ?? 30).rounded())) }
+    private var deposit: Double { (Self.total * percent).rounded() / 100 }
+    private var terms: [String] {
+        Array((design.wedding_terms_text ?? "").components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.prefix(5))
+    }
+
+    var body: some View {
+        PreviewPage(base: 250, background: design.surface) { scale, _ in
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 3 * scale) {
+                    Text("OFERTA NR 17/2026").font(.system(size: 5 * scale)).foregroundStyle(design.accent)
+                    Text("WASZA WYCENA").font(OfferPreviewFonts.heading(heading, 16 * scale)).foregroundStyle(design.accent)
+                    Text("Wesele · 12.06.2027 · Miejsce przyjęcia").font(.system(size: 6 * scale)).foregroundStyle(design.surface)
+                }
+                .padding(.horizontal, 14 * scale).padding(.top, 14 * scale).padding(.bottom, 10 * scale)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(design.primary)
+                .overlay(alignment: .bottom) { Rectangle().fill(design.accent).frame(height: 2 * scale) }
+                VStack(alignment: .leading, spacing: 5 * scale) {
+                    Text("Ceny według cennika na sezon 2027").font(.system(size: 5 * scale)).foregroundStyle(.black.opacity(0.45))
+                    ForEach(Array(Self.rows.enumerated()), id: \.offset) { _, row in
+                        HStack { Text(row.0); Spacer(); Text(Self.money(row.1)) }
+                            .font(.system(size: 6.5 * scale, weight: .semibold)).foregroundStyle(design.primary)
+                            .padding(.bottom, 3 * scale)
+                            .overlay(alignment: .bottom) { Rectangle().fill(design.accent.opacity(0.6)).frame(height: 0.5) }
+                    }
+                    HStack {
+                        Text("RAZEM").font(OfferPreviewFonts.heading(heading, 7 * scale)).foregroundStyle(design.surface)
+                        Spacer()
+                        Text(Self.money(Self.total)).font(.system(size: 10 * scale, weight: .semibold)).foregroundStyle(design.accent)
+                    }
+                    .padding(7 * scale)
+                    .background(design.primary, in: RoundedRectangle(cornerRadius: 2 * scale))
+                    if percent > 0 {
+                        VStack(spacing: 2 * scale) {
+                            HStack { Text("Zadatek \(Int(percent))% przy podpisaniu umowy"); Spacer(); Text(Self.money(deposit)) }
+                                .font(.system(size: 6 * scale, weight: .semibold)).foregroundStyle(design.primary)
+                            HStack { Text("Pozostało do zapłaty"); Spacer(); Text(Self.money(Self.total - deposit)) }
+                                .font(.system(size: 5.5 * scale)).foregroundStyle(.black.opacity(0.55))
+                        }
+                        .padding(6 * scale)
+                        .background(.white)
+                        .overlay(Rectangle().stroke(design.accent, lineWidth: 0.8))
+                    }
+                    if !terms.isEmpty {
+                        Text("WARUNKI").font(OfferPreviewFonts.heading(heading, 9 * scale)).foregroundStyle(design.primary).padding(.top, 3 * scale)
+                        Rectangle().fill(design.accent).frame(width: 18 * scale, height: 1)
+                        ForEach(Array(terms.enumerated()), id: \.offset) { _, line in
+                            HStack(alignment: .firstTextBaseline, spacing: 4 * scale) {
+                                Text("◆").foregroundStyle(design.accent)
+                                Text(line).foregroundStyle(.black.opacity(0.65)).lineLimit(2)
+                            }
+                            .font(.system(size: 5.5 * scale))
+                        }
+                    }
+                }
+                .padding(14 * scale)
+            }
+        }
+    }
+
+    /// Kwota jak w PDF: grupy tysięcy zawsze (także 4 cyfry), grosze tylko przy niepełnej kwocie.
+    private static func money(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        formatter.groupingSeparator = " "
+        formatter.groupingSize = 3
+        formatter.decimalSeparator = ","
+        let fractional = (value * 100).rounded() != (value.rounded() * 100)
+        formatter.minimumFractionDigits = fractional ? 2 : 0
+        formatter.maximumFractionDigits = fractional ? 2 : 0
+        return "\(formatter.string(from: NSNumber(value: value)) ?? String(value)) zł"
     }
 }
 

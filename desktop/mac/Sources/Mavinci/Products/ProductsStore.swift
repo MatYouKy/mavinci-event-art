@@ -25,6 +25,8 @@ struct ProductListItem: Codable, Identifiable, Hashable {
     var id: String
     var name: String
     var categoryId: String?
+    /// Kategoria główna i dodatkowe (starszy serwer — brak, wtedy sama główna).
+    var categoryIds: [String]?
     var category: String?
     var active: Bool
     var order: Double
@@ -45,6 +47,8 @@ struct ProductListItem: Codable, Identifiable, Hashable {
     var readiness: Readiness
 
     var categoryText: String { category ?? "Bez kategorii" }
+    /// Czy produkt należy do kategorii (główna albo dodatkowa).
+    func inCategory(_ id: String) -> Bool { (categoryIds ?? [categoryId].compactMap { $0 }).contains(id) }
     var sortCategory: String { category ?? "" }
     var sortMargin: Double { margin ?? -1_000_000 }
     var sortReadiness: String { (readiness.ready ? "0" : "1") + readiness.summary }

@@ -61,6 +61,8 @@ struct OfferWizardSetup: Decodable {
         var id: String
         var name: String
         var categoryId: String?
+        /// Kategoria główna i dodatkowe (starszy serwer — brak, wtedy sama główna).
+        var categoryIds: [String]?
         var category: String?
         var description: String
         var offerDescription: String
@@ -89,6 +91,8 @@ struct OfferWizardSetup: Decodable {
     var location: String
     var hasDescription: Bool
     var taxPercent: Double
+    /// „Cennik: Wesela 2027” — ceny katalogu z cennika marki eventu na sezon daty eventu (starszy serwer — brak).
+    var priceNotice: OfferPriceNotice?
     var organizations: [Organization]
     var contacts: [Contact]
     var categories: [Category]

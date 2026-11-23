@@ -17,6 +17,9 @@ struct BrochureDraft: Equatable {
     var coverImagePath: String?
     /// „Udostępnij demo z tej broszury” (`brand_config.seller_demo_enabled`, część G4).
     var sellerDemo: Bool
+    /// Cennik strony „Cennik”; `nil` w `supportsPriceList` — baza bez kolumny (pole nie trafia do zapisu).
+    var priceListId: String?
+    var supportsPriceList: Bool
     var composer: BrochureComposer
     var pages: [JSONValue]
     var items: [BrochureItem]
@@ -33,6 +36,8 @@ struct BrochureDraft: Equatable {
         contactEmployeeId = brochure.contactEmployeeId
         coverImagePath = brochure.coverImagePath
         sellerDemo = brochure.sellerDemo
+        priceListId = brochure.priceListId
+        supportsPriceList = brochure.supportsPriceList == true
         composer = brochure.composer
         pages = brochure.decorativePages
         self.items = items
@@ -43,12 +48,14 @@ struct BrochureDraft: Equatable {
     /// Dane broszury dla zapisu i podglądu (z udostępnieniem demo; podgląd go nie używa).
     var payload: [String: JSONValue] {
         let optional = { (value: String?) -> JSONValue in value.map { JSONValue.string($0) } ?? .null }
+        var brochure: [String: JSONValue] = [
+            "name": .string(name), "title": .string(title), "subtitle": .string(subtitle), "introduction": .string(introduction),
+            "closingText": .string(closingText), "audienceType": .string(audienceType), "organizationId": optional(organizationId),
+            "myCompanyId": .string(myCompanyId), "contactEmployeeId": optional(contactEmployeeId), "coverImagePath": optional(coverImagePath),
+        ]
+        if supportsPriceList { brochure["priceListId"] = optional(priceListId) }
         return [
-            "brochure": .object([
-                "name": .string(name), "title": .string(title), "subtitle": .string(subtitle), "introduction": .string(introduction),
-                "closingText": .string(closingText), "audienceType": .string(audienceType), "organizationId": optional(organizationId),
-                "myCompanyId": .string(myCompanyId), "contactEmployeeId": optional(contactEmployeeId), "coverImagePath": optional(coverImagePath),
-            ]),
+            "brochure": .object(brochure),
             "sellerDemo": .bool(sellerDemo),
             "composer": composer.json,
             "decorativePages": .array(pages),

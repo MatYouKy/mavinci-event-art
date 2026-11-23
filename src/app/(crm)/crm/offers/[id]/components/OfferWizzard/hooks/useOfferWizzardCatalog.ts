@@ -3,9 +3,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { IProduct } from '@/app/(crm)/crm/offers/types';
+import { applySeasonPrices, loadSeasonPrices, type SeasonPrices } from '@/lib/CRM/Offers/seasonPrices';
+import { productInCategory } from '@/lib/CRM/Offers/productCategories';
 
-export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
-  const [products, setProducts] = useState<IProduct[]>([]);
+/**
+ * Katalog kreatora oferty. Ceny produktów i wariantów z cennika sezonowego marki eventu (`loadSeasonPrices`) — bez cennika
+ * (albo przed migracją) ceny z katalogu.
+ */
+export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number; eventId?: string }) {
+  const [catalogProducts, setProducts] = useState<IProduct[]>([]);
+  const [seasonPrices, setSeasonPrices] = useState<SeasonPrices | null>(null);
+  const products = useMemo(() => applySeasonPrices(catalogProducts, seasonPrices), [catalogProducts, seasonPrices]);
   const [categories, setCategories] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,11 +49,19 @@ export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
     })();
   }, [opts.isOpen, opts.step]);
 
+  useEffect(() => {
+    if (!opts.isOpen || !opts.eventId) return;
+    let active = true;
+    void loadSeasonPrices(supabase, { eventId: opts.eventId }).then((prices) => { if (active) setSeasonPrices(prices); });
+    return () => { active = false; };
+  }, [opts.isOpen, opts.eventId]);
+
   const filteredProducts = useMemo(() => {
     let filtered = products;
 
     if (selectedCategory !== 'all') {
-      filtered = filtered.filter((p) => p.category_id === selectedCategory);
+      // Kategoria główna albo dodatkowa produktu.
+      filtered = filtered.filter((p) => productInCategory(p, selectedCategory));
     }
 
     if (searchQuery) {
@@ -60,6 +76,7 @@ export function useOfferWizardCatalog(opts: { isOpen: boolean; step: number }) {
 
   return {
     products,
+    seasonPrices,
     categories,
     selectedCategory,
     searchQuery,

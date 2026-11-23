@@ -19,12 +19,18 @@ struct EventCategoriesData: Decodable {
         var icon: Icon?
         var contractTemplateId: String?
         var offerTemplateCategoryId: String?
+        /// Domyślna marka nowych eventów (np. Wesele → Event Rulers) i czy obowiązkowa; starszy serwer — brak.
+        var defaultCompanyId: String?
+        var companyLocked: Bool?
     }
     struct Option: Decodable, Identifiable { var id: String; var name: String }
     var categories: [Category]
     var icons: [Icon]
     var contractTemplates: [Option]
     var offerTemplateCategories: [Option]
+    var companies: [Option]?
+    /// Baza ma kolumny domyślnej marki (migracja cenników sezonowych).
+    var supportsCategoryCompany: Bool?
 }
 
 /// Ikona z biblioteki (`custom_icons.svg_code`) jako obraz wektorowy; `currentColor` przyjmuje kolor jak tekst w CRM.
@@ -244,6 +250,8 @@ struct CategoryDraft: Identifiable {
     var iconID = ""
     var contractTemplateID = ""
     var offerTemplateCategoryID = ""
+    var defaultCompanyID = ""
+    var companyLocked = false
 
     init() {}
     init(_ category: EventCategoriesData.Category) {
@@ -255,6 +263,8 @@ struct CategoryDraft: Identifiable {
         iconID = category.iconId ?? ""
         contractTemplateID = category.contractTemplateId ?? ""
         offerTemplateCategoryID = category.offerTemplateCategoryId ?? ""
+        defaultCompanyID = category.defaultCompanyId ?? ""
+        companyLocked = category.companyLocked == true
     }
 }
 
@@ -291,6 +301,22 @@ struct CategoryDraft: Identifiable {
                     if !draft.contractTemplateID.isEmpty && !(model.data?.contractTemplates ?? []).contains(where: { $0.id == draft.contractTemplateID }) {
                         Text("Nieaktywny szablon").tag(draft.contractTemplateID)
                     }
+                }
+                if model.data?.supportsCategoryCompany == true {
+                    Picker("Marka realizująca nowych eventów", selection: $draft.defaultCompanyID) {
+                        Text("Bez domyślnej marki").tag("")
+                        ForEach(model.data?.companies ?? []) { Text($0.name).tag($0.id) }
+                    }
+                    .onChange(of: draft.defaultCompanyID) { _, value in if value.isEmpty { draft.companyLocked = false } }
+                    Toggle(isOn: $draft.companyLocked) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Zawsze ta marka")
+                            Text("Nowy event tej kategorii zawsze dostaje tę markę, a oferta — jej cennik sezonowy (np. Wesele → Event Rulers).")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    .disabled(draft.defaultCompanyID.isEmpty)
                 }
                 Toggle("Kategoria aktywna", isOn: $draft.isActive).toggleStyle(.checkbox)
             }
@@ -381,11 +407,15 @@ struct CategoryDraft: Identifiable {
     }
 
     private func save() async {
-        let form: [String: JSONValue] = [
+        var form: [String: JSONValue] = [
             "name": .string(draft.name), "color": .string(draft.color), "description": .string(draft.description), "isActive": .bool(draft.isActive),
             "iconId": .string(draft.iconID), "contractTemplateId": .string(draft.contractTemplateID),
             "offerTemplateCategoryId": .string(draft.offerTemplateCategoryID),
         ]
+        if model.data?.supportsCategoryCompany == true {
+            form["defaultCompanyId"] = .string(draft.defaultCompanyID)
+            form["companyLocked"] = .bool(!draft.defaultCompanyID.isEmpty && draft.companyLocked)
+        }
         var body: [String: JSONValue] = ["op": .string("save"), "form": .object(form)]
         if let id = draft.categoryID { body["id"] = .string(id) }
         if await model.post(body, fallback: "Nie udało się zapisać kategorii.") { dismiss() }

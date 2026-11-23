@@ -13,6 +13,7 @@ import {
 import { compactProductBlockReason } from '@/lib/CRM/Offers/productPresentation';
 import { packageCostLineNet, staffCostItem } from '@/lib/CRM/Offers/productSalesPackages';
 import { IMAGE_CROP_LAYOUTS, imageCrop } from '@/lib/CRM/Offers/productImageCrop';
+import { productCategoryIds } from '@/lib/CRM/Offers/productCategories';
 
 /*
  * Produkty (katalog oferty) na Macu — `/crm/offers?tab=catalog` i karta produktu `/crm/offers/products/[id]`: te same dane
@@ -100,6 +101,8 @@ export async function productsState(ctx: NativeContext) {
       id: String(row.id),
       name: String(row.name || ''),
       categoryId: row.category_id ?? null,
+      /** Kategoria główna i dodatkowe („Także w kategoriach eventów”) — filtr listy. */
+      categoryIds: productCategoryIds(row),
       category: category?.name ? String(category.name) : null,
       active: row.is_active !== false,
       order: number(row.display_order),
@@ -136,7 +139,7 @@ export async function productsState(ctx: NativeContext) {
 
 /** Pola karty (część A): podstawowe, prezentacja, wycena, ceny i koszty, realizacja, podwykonawca, tagi, grafika. */
 const CARD_FIELDS = [
-  'id', 'name', 'category_id', 'description', 'is_active', 'is_personnel_service', 'display_order', 'updated_at',
+  'id', 'name', 'category_id', 'extra_category_ids', 'description', 'is_active', 'is_personnel_service', 'display_order', 'updated_at',
   'offer_short_description', 'offer_description', 'public_description', 'offer_compact_description', 'service_duration_hours',
   'extension_price_net_per_hour', 'offer_benefits', 'product_page_url', 'offer_page_variant',
   'unit', 'min_quantity', 'quantity_source',
@@ -267,7 +270,8 @@ export async function subcontractorServices(ctx: NativeContext, organizationId: 
 // MARK: Zapis sekcji karty (jak `saveProductSection` w CRM)
 
 const SECTION_FIELDS: Record<string, readonly string[]> = {
-  basic: ['name', 'category_id', 'description', 'is_active', 'is_personnel_service'],
+  // `extra_category_ids` tylko gdy przyszło (Mac wysyła je po migracji 20261129120000, gdy karta ma tę listę).
+  basic: ['name', 'category_id', 'extra_category_ids', 'description', 'is_active', 'is_personnel_service'],
   presentation: ['offer_short_description', 'offer_description', 'public_description', 'offer_compact_description', 'service_duration_hours',
     'extension_price_net_per_hour', 'offer_benefits', 'product_page_url', 'offer_page_variant'],
   pricing_units: ['unit', 'min_quantity', 'quantity_source'],
@@ -317,6 +321,11 @@ function imageCrops(value: unknown) {
 
 function coerce(key: string, value: unknown) {
   if (key === 'offer_image_crops') return imageCrops(value);
+  // Kategorie dodatkowe: identyfikatory bez powtórzeń (porządek i kategorię główną poprawia wyzwalacz w bazie).
+  if (key === 'extra_category_ids') {
+    if (!Array.isArray(value)) return [];
+    return Array.from(new Set(value.map((item) => String(item ?? '')).filter((item) => PRODUCT_UUID.test(item)))).slice(0, 30);
+  }
   if (BOOLEAN_FIELDS.has(key)) return value === true;
   if (NUMBER_FIELDS.has(key)) {
     if ((value === null || value === '') && NULLABLE_NUMBERS.has(key)) return null;

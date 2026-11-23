@@ -39,6 +39,7 @@ import { eventStatusLabels } from '@/app/(crm)/crm/events/[id]/components/tabs/E
 import { OrganizationSearchSelect } from './events/wizard/OrganizationSearchSelect';
 import { SearchSelect } from './events/wizard/SearchSelect';
 import CompanySelector from './CompanySelector';
+import { categoryCompanyHint, categoryCompanyRule, type EventCategoryCompanyRow } from '@/lib/CRM/events/categoryCompany';
 import SpecialDayNotice from './SpecialDayNotice';
 import {
   eventWizardSchema, eventContactSchema, getValidationErrors, eventSaveError,
@@ -131,7 +132,7 @@ interface Contact {
   organization_ids: string[];
 }
 
-interface EventCategory {
+interface EventCategory extends EventCategoryCompanyRow {
   id: string;
   name: string;
   color: string;
@@ -188,6 +189,8 @@ export default function EventWizard({
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [categories, setCategories] = useState<EventCategory[]>([]);
+  /** Nazwy marek do podpowiedzi „Eventy z kategorii … zawsze realizuje …”. */
+  const [categoryCompanyNames, setCategoryCompanyNames] = useState<Record<string, string>>({});
   const [showNewContactForm, setShowNewContactForm] = useState(false);
   const [newContact, setNewContact] = useState({
     first_name: '',
@@ -394,8 +397,12 @@ export default function EventWizard({
   };
 
   const fetchCategories = async () => {
-    const { data } = await supabase.from('event_categories').select('*').order('name');
+    const [{ data }, { data: companies }] = await Promise.all([
+      supabase.from('event_categories').select('*').order('name'),
+      supabase.from('my_companies').select('id, name'),
+    ]);
     if (data) setCategories(data);
+    if (companies) setCategoryCompanyNames(Object.fromEntries(companies.map((company) => [String(company.id), String(company.name)])));
   };
 
   const fetchEquipment = async () => {
@@ -1316,7 +1323,12 @@ export default function EventWizard({
                 <select
                   {...inputProps('category_id', 'Kategoria')}
                   value={eventData.category_id}
-                  onChange={(e) => setEventData({ ...eventData, category_id: e.target.value })}
+                  onChange={(e) => {
+                    // Kategoria z marką (Wesele → Event Rulers) ustawia firmę realizującą (baza i tak ją zapisze).
+                    const categoryId = e.target.value;
+                    const rule = categoryCompanyRule(categories, categoryId);
+                    setEventData({ ...eventData, category_id: categoryId, ...(rule ? { my_company_id: rule.companyId } : {}) });
+                  }}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                 >
                   <option value="">Wybierz kategorię</option>
@@ -1327,6 +1339,10 @@ export default function EventWizard({
                   ))}
                 </select>
                 {fieldError('category_id')}
+                {(() => {
+                  const rule = categoryCompanyRule(categories, eventData.category_id);
+                  return rule ? <p className="mt-1.5 text-xs text-[#d3bb73]/80">{categoryCompanyHint(rule, categoryCompanyNames[rule.companyId])}</p> : null;
+                })()}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

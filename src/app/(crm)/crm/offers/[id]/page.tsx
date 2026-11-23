@@ -31,6 +31,7 @@ import OfferRecommendationsEditor from './components/OfferRecommendationsEditor'
 import OfferRequirementsEditor from './components/OfferRequirementsEditor';
 import SellerOfferWorkflow from '@/components/seller/SellerOfferWorkflow';
 import OfferApprovalBanner from '@/components/crm/offers/OfferApprovalBanner';
+import OfferSeasonPricePanel from '@/components/crm/offers/OfferSeasonPricePanel';
 import { useDispatch } from 'react-redux';
 import { eventsApi } from '@/app/(crm)/crm/events/store/api/eventsApi';
 
@@ -291,6 +292,7 @@ export default function OfferDetailPage() {
 
   const offerContent = <>
     <OfferBasicInfo key={offerLanguage.language} offer={contentOffer} canEdit={canEditCrmContent} onUpdate={handleOfferUpdated} />
+    <OfferSeasonPricePanel offerId={offer.id} revision={(offer as any).content_revision ?? null} canEdit={canEditCrmContent} onApplied={refetch} />
     <OfferItems
       items={contentOffer.offer_items || []}
       canEdit={canEditCrmContent}

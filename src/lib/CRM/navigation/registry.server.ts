@@ -245,6 +245,15 @@ export const allNavigation: NavigationItemDTO[] = [
         permissions: ['offers_view'],
       },
       {
+        // Cenniki sezonowe marek (cena oferty według roku eventu) — `PriceListsManager`, Mac `PriceListsView`.
+        key: 'offers',
+        name: 'Cenniki',
+        href: '/crm/offers?tab=pricelists',
+        iconKey: 'tags',
+        module: 'offers',
+        permissions: ['offers_view'],
+      },
+      {
         key: 'offers',
         name: 'Broszury',
         href: '/crm/brochures',

@@ -72,10 +72,8 @@ struct ContactActions {
             ContactEditorHost(store: store, mode: mode)
                 .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
-        .sheet(item: $composing) { draft in
-            ComposeSheet(store: state.messages, draft: draft)
-                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
-        }
+        // „Napisz e-mail” — wiadomość w osobnym oknie (skalowanie, przesuwanie, przeciąganie załączników).
+        .formWindow(item: $composing, kind: .compose) { draft in ComposeSheet(store: state.messages, draft: draft) }
         .sheet(item: $meeting) { request in
             MeetingEditorSheet(store: state.meetings, request: request)
                 .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)

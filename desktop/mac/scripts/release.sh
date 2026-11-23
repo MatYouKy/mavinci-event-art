@@ -1,5 +1,8 @@
 #!/bin/bash
-# Wydanie aplikacji Mavinci na Maca — `yarn dmg` z głównego katalogu projektu:
+# Wydanie aplikacji Mavinci na Maca — `yarn release` z głównego katalogu projektu:
+#  0. numer wersji o jeden wyżej niż ostatnie wydanie (plik VERSION): `yarn release` — drobna zmiana, 0.23.0 → 0.23.1;
+#     `yarn release minor` (albo `kluczowa`) — kluczowa zmiana, 0.23.4 → 0.24.0; `yarn release major` — 0.24.0 → 1.0.0;
+#     `yarn release none` — bez zmiany numeru. Po publikacji plik VERSION dostaje nowy numer (do commita),
 #  1. kompilacja release z podpisem zespołu Mavinci (scripts/build-app.sh), numer kompilacji = data i godzina (RRRRMMDDGGMM),
 #  2. notaryzacja Apple, gdy jest certyfikat „Developer ID Application” i profil notarytool w pęku kluczy (README → „Instalator
 #     i aktualizacje”), inaczej bez notaryzacji (instalator działa, macOS przy pierwszym otwarciu pyta o zgodę),
@@ -9,15 +12,39 @@
 #     aplikacje na Macach pokazują „Nowa wersja …” w stopce paska bocznego (kliknięcie: Ustawienia → Oprogramowanie — co nowego
 #     i kroki instalacji), a CRM (Dysk → Programy, Ustawienia → Ogólne) wydaje nowy instalator.
 # Połączenie z serwerem jest wbudowane w program z Resources/Configuration.json (scripts/build-app.sh — bez niego wydanie nie powstaje).
-# Zmienne: VERSION (domyślnie plik desktop/mac/VERSION), NOTES (co nowego — Ustawienia → Oprogramowanie), PUBLISH=0 (tylko pliki lokalnie, bez serwera),
-# NOTARY_PROFILE (profil notarytool, domyślnie „mavinci-notary”), MAVINCI_DEPLOY_REMOTE, DESKTOP_RELEASES_DIR.
+# Zmienne: VERSION (wersja podana wprost, bez podnoszenia numeru), BUMP (jak argument: patch, minor, major, none), NOTES (co nowego —
+# Ustawienia → Oprogramowanie), PUBLISH=0 (tylko pliki lokalnie, bez serwera i bez zmiany pliku VERSION), NOTARY_PROFILE (profil
+# notarytool, domyślnie „mavinci-notary”), MAVINCI_DEPLOY_REMOTE, DESKTOP_RELEASES_DIR.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Numer wersji: plik VERSION to ostatnie opublikowane wydanie; nowe wydanie podnosi go według rodzaju zmiany.
+BUMP="${1:-${BUMP:-patch}}"
+case "$BUMP" in
+  patch|drobna) BUMP=patch ;;
+  minor|kluczowa) BUMP=minor ;;
+  major) BUMP=major ;;
+  none|bez) BUMP=none ;;
+  *) echo "❌ Nieznany rodzaj wydania: $BUMP (patch — domyślnie, minor albo kluczowa, major, none)."; exit 1 ;;
+esac
+PREVIOUS=""
+if [ -f VERSION ]; then PREVIOUS="$(tr -d '[:space:]' < VERSION)"; fi
+PREVIOUS="${PREVIOUS:-0.22.0}"
 VERSION="${VERSION:-}"
-if [ -z "$VERSION" ] && [ -f VERSION ]; then VERSION="$(tr -d '[:space:]' < VERSION)"; fi
-VERSION="${VERSION:-0.22.0}"
+if [ -z "$VERSION" ]; then
+  [[ "$PREVIOUS" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "❌ Nieprawidłowa wersja w pliku VERSION: $PREVIOUS (oczekiwano np. 0.23.0)."; exit 1; }
+  IFS=. read -r V_MAJOR V_MINOR V_PATCH <<<"$PREVIOUS"
+  V_MAJOR=$((10#$V_MAJOR)); V_MINOR=$((10#$V_MINOR)); V_PATCH=$((10#${V_PATCH:-0}))
+  case "$BUMP" in
+    patch) V_PATCH=$((V_PATCH + 1)) ;;
+    minor) V_MINOR=$((V_MINOR + 1)); V_PATCH=0 ;;
+    major) V_MAJOR=$((V_MAJOR + 1)); V_MINOR=0; V_PATCH=0 ;;
+    none) ;;
+  esac
+  VERSION="$V_MAJOR.$V_MINOR.$V_PATCH"
+fi
 [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]] || { echo "❌ Nieprawidłowa wersja: $VERSION (oczekiwano np. 0.23.0)."; exit 1; }
+echo "🏷️  Wersja $VERSION (poprzednie wydanie: $PREVIOUS)."
 BUILD="$(date +%Y%m%d%H%M)"
 NOTES="${NOTES:-Nowa wersja aplikacji Mavinci.}"
 PUBLISH="${PUBLISH:-1}"
@@ -120,6 +147,8 @@ cd "$1"
 mv -f latest.json.tmp latest.json
 ls -1t Mavinci-*.zip 2>/dev/null | tail -n +6 | while read -r zip; do rm -f -- "$zip" "${zip%.zip}.dmg"; done || true
 REMOTE_SCRIPT
+  # Numer opublikowanego wydania — następne `yarn release` zacznie od niego.
+  printf '%s\n' "$VERSION" > VERSION
 fi
 
 echo ""
@@ -131,6 +160,9 @@ if [ "$PUBLISH" != "0" ]; then
   echo "   Opublikowano: aplikacje na Macach pokażą nową wersję w stopce paska bocznego w ciągu godziny"
   echo "   (od razu: Ustawienia → Oprogramowanie → Sprawdź teraz albo Mavinci → Sprawdź aktualizacje…);"
   echo "   instalator do pierwszej instalacji: CRM → Dysk → Programy (także Finder i aplikacja) albo Ustawienia → Ogólne."
+  if [ "$VERSION" != "$PREVIOUS" ]; then
+    echo "   Numer wersji: desktop/mac/VERSION $PREVIOUS → $VERSION — dołącz plik do commita."
+  fi
 else
   echo "   Bez publikacji (PUBLISH=0) — aplikacje na Macach nie zobaczą tej wersji."
 fi

@@ -1,6 +1,7 @@
 import { composeBrochureContent, orderedBrochureKeys, parseComposer, type BrochureComposer, type BrochureDecorativePage } from './decorativePages';
 import { creativePageCss, renderCreativePage } from './renderCreativePage';
 import type { BrochureClient } from './recipient';
+import { brochurePrice, brochurePricePages, type BrochurePriceListSnapshot } from './brochurePriceList';
 
 export type SalesBrochureSnapshot = {
   recipientEmail?: string;
@@ -54,6 +55,8 @@ export type SalesBrochureSnapshot = {
   }>;
   decorativePages?: Array<BrochureDecorativePage & { imageUrl?: string | null }>;
   composer?: BrochureComposer;
+  /** Strona „Cennik” (cennik sezonowy broszury) — przed stroną końcową. */
+  priceList?: BrochurePriceListSnapshot | null;
   generatedAt: string;
 };
 
@@ -203,13 +206,28 @@ export function buildSalesBrochureHtml(snapshot: SalesBrochureSnapshot) {
       <footer class="cover-footer"><span>${escapeHtml(company.name)}</span><span>${String(lastPageNumber).padStart(2, '0')}</span></footer>
     </section>`);
 
+  // Cennik sezonu (wszystkie pozycje broszury z cenami) — strony przed stroną końcową, poza kolejnością ze Studio stron.
+  const priceList = snapshot.priceList;
+  const pricePages = brochurePricePages(priceList).map((rows, index) => `
+    <section data-page-key="pricelist:${index + 1}" class="page price-page">
+      <div class="top-rule"></div>
+      <div class="section-label">${escapeHtml(`Cennik · ${priceList!.season}`)}</div>
+      <h2>${index ? 'Cennik — ciąg dalszy' : 'Cennik'}</h2>
+      <div class="price-rows" data-fit-box>
+        ${rows.map((row) => `<div class="price-row"><div class="price-name">${escapeHtml(row.title)}</div><div class="price-value">${row.options.map((option) => `<span>${option.label ? `<em>${escapeHtml(option.label)}</em> ` : ''}${escapeHtml(brochurePrice(option.price))}</span>`).join('')}</div></div>`).join('')}
+      </div>
+      <footer class="page-footer"><span>${escapeHtml(company.name)}</span><span>00</span></footer>
+    </section>`);
+
   const byKey = new Map(keys.map((key, index) => [key, pages[index]]));
   const ordered = orderedKeys.filter((key) => !composer.hiddenPages.includes(key));
-  const htmlPages = ordered.map((key, index) => {
-    const html = byKey.get(key) || '';
-    return html.replace(/<section class="page /, `<section data-page-key="${escapeHtml(key)}" class="page `)
-      .replace(/(<footer[^>]*>[\s\S]*?<span>)[0-9]+(<\/span>\s*<\/footer>)/, (_, before, after) => `${before}${String(index + 1).padStart(2, '0')}${after}`);
-  });
+  const keyed = ordered.map((key) => (byKey.get(key) || '').replace(/<section class="page /, `<section data-page-key="${escapeHtml(key)}" class="page `));
+  if (pricePages.length) {
+    const closing = ordered.indexOf('closing');
+    keyed.splice(closing >= 0 ? closing : keyed.length, 0, ...pricePages);
+  }
+  const htmlPages = keyed.map((html, index) => html
+    .replace(/(<footer[^>]*>[\s\S]*?<span>)[0-9]+(<\/span>\s*<\/footer>)/, (_, before, after) => `${before}${String(index + 1).padStart(2, '0')}${after}`));
   return `<!doctype html>
   <html lang="pl"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width" />
   <style>
@@ -291,6 +309,14 @@ export function buildSalesBrochureHtml(snapshot: SalesBrochureSnapshot) {
     .decorative-frame { position: absolute; left: 20mm; right: 20mm; top: 108mm; height: 133mm; border-radius: 6mm; background: ${secondary}; padding: 2mm; overflow: hidden; }
     .decorative-frame img { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: 4.5mm; }
     .decorative-caption { overflow-wrap: anywhere; position: absolute; top: 249mm; left: 20mm; right: 20mm; margin: 0; font-size: 13px; line-height: 1.6; color: #665c5e; }
+    .price-page .top-rule { margin-bottom: 12mm; }
+    .price-page h2 { margin: 4mm 0 6mm; font-size: 34px; line-height: 1.12; }
+    .price-rows { height: 196mm; overflow: hidden; border-top: 1px solid ${primary}; }
+    .price-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8mm; align-items: baseline; padding: 2.6mm 0; border-bottom: 1px solid rgba(0,0,0,.1); }
+    .price-name { font-size: 12.5px; font-weight: 600; line-height: 1.35; color: #171924; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .price-value { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 1.2mm 5mm; max-width: 100mm; font-size: 12.5px; line-height: 1.35; font-weight: 600; color: ${secondary}; text-align: right; }
+    .price-value span { white-space: nowrap; }
+    .price-value em { font-style: normal; font-weight: 400; color: #6f6a64; }
     ${creativePageCss}
   </style></head><body>${htmlPages.join('')}</body></html>`;
 }

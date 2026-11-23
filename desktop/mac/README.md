@@ -1,6 +1,6 @@
 # Mavinci na macOS
 
-Aktualna wersja: **0.23.0** (instalator i aktualizacje w aplikacji — sekcja „Instalator i aktualizacje”; wersja w pliku `VERSION`). Bieżący zakres natywny i aktualna lista tego, co zostaje w CRM — sekcja „Aktualizacja 0.19 — aktualny zakres natywny” poniżej, uzupełniona o „Aktualizację 0.20” (Flota, Czas pracy, Bazy danych, Lokalizacje, Strona, Kampanie e-mail), „Aktualizację 0.21” (Finanse) i „Aktualizację 0.22” (Finanse: wyciągi, uzgodnienie, deklaracje, przekazanie księgowej, faktury, KSeF, koszty i wypłaty; rozliczenie i prowizje wydarzenia w panelu bocznym karty; prowizje i rozliczenie przy wypłacie na karcie pracownika). Pozostałe sekcje „Aktualizacja …” opisują kolejne etapy jako historię zakresu (to, co w starszej sekcji było „w CRM”, mogło już przejść na Maca). Szczegóły techniczne każdej zmiany: wpisy „Mac: …” w `docs/mobile-parity.md`.
+Aktualna wersja: numer w pliku `VERSION` — ostatnie opublikowane wydanie; każde `yarn release` podnosi go o jeden, kluczowa zmiana — `yarn release minor` (instalator i aktualizacje w aplikacji — sekcja „Instalator i aktualizacje”). Bieżący zakres natywny i aktualna lista tego, co zostaje w CRM — sekcja „Aktualizacja 0.19 — aktualny zakres natywny” poniżej, uzupełniona o „Aktualizację 0.20” (Flota, Czas pracy, Bazy danych, Lokalizacje, Strona, Kampanie e-mail), „Aktualizację 0.21” (Finanse) i „Aktualizację 0.22” (Finanse: wyciągi, uzgodnienie, deklaracje, przekazanie księgowej, faktury, KSeF, koszty i wypłaty; rozliczenie i prowizje wydarzenia w panelu bocznym karty; prowizje i rozliczenie przy wypłacie na karcie pracownika). Pozostałe sekcje „Aktualizacja …” opisują kolejne etapy jako historię zakresu (to, co w starszej sekcji było „w CRM”, mogło już przejść na Maca). Szczegóły techniczne każdej zmiany: wpisy „Mac: …” w `docs/mobile-parity.md`.
 
 Natywna aplikacja SwiftUI, macOS 14 lub nowszy, Swift 5.9+. Katalog `desktop/mac` jest równorzędny z `mobile`. Bez osadzonego panelu WWW i zewnętrznych bibliotek Swift.
 
@@ -17,7 +17,7 @@ open build/Mavinci.app
 
 Import czyta `.env`, `mobile/.env` i `mobile/.env.local`, ostatnie wartości mają pierwszeństwo. Zapisuje **wyłącznie publiczny adres i klucz anon/publishable Supabase** w ignorowanym `Resources/Configuration.json`. Nie kopiuje żadnego pliku `.env`, klucza `service_role`, haseł SMTP ani sekretów integracji. Nie wypisuje wartości do terminala.
 
-**Połączenie wbudowane w program.** `scripts/build-app.sh` (także `yarn build:mac` i `yarn dmg`) przed kompilacją uruchamia `scripts/embed-connection.cjs`: z `Resources/Configuration.json` bierze tylko źródło danych, adres serwera, publiczny klucz aplikacji i (opcjonalnie) adres CRM, sprawdza je (HTTPS, wyłącznie klucz anon/publishable) i zapisuje do ignorowanego `Sources/Mavinci/EmbeddedConnection.generated.swift` jako bajty zamaskowane losowym kluczem (flaga kompilacji `MAVINCI_EMBEDDED_CONNECTION`, `EmbeddedConnection.swift`). W pakiecie `.app` nie ma już pliku konfiguracji. Zainstalowana aplikacja (kompilacja release) łączy się wyłącznie z wbudowanym połączeniem — nie ma zakładki „Połączenie”, a połączenie zapisane dawniej w pęku kluczy usuwa przy uruchomieniu; bez `Resources/Configuration.json` kompilacja release (i `yarn dmg`) się nie wykona. Zmiana serwera = nowe `Configuration.json` (`import-env.cjs`) i nowe wydanie. Klucz publiczny jest z natury jawny dla aplikacji (dane chronią logowanie pracownika i uprawnienia w bazie) — maskowanie tylko nie wystawia go na widok w programie i pakiecie.
+**Połączenie wbudowane w program.** `scripts/build-app.sh` (także `yarn build:mac` i `yarn release`) przed kompilacją uruchamia `scripts/embed-connection.cjs`: z `Resources/Configuration.json` bierze tylko źródło danych, adres serwera, publiczny klucz aplikacji i (opcjonalnie) adres CRM, sprawdza je (HTTPS, wyłącznie klucz anon/publishable) i zapisuje do ignorowanego `Sources/Mavinci/EmbeddedConnection.generated.swift` jako bajty zamaskowane losowym kluczem (flaga kompilacji `MAVINCI_EMBEDDED_CONNECTION`, `EmbeddedConnection.swift`). W pakiecie `.app` nie ma już pliku konfiguracji. Zainstalowana aplikacja (kompilacja release) łączy się wyłącznie z wbudowanym połączeniem — nie ma zakładki „Połączenie”, a połączenie zapisane dawniej w pęku kluczy usuwa przy uruchomieniu; bez `Resources/Configuration.json` kompilacja release (i `yarn release`) się nie wykona. Zmiana serwera = nowe `Configuration.json` (`import-env.cjs`) i nowe wydanie. Klucz publiczny jest z natury jawny dla aplikacji (dane chronią logowanie pracownika i uprawnienia w bazie) — maskowanie tylko nie wystawia go na widok w programie i pakiecie.
 
 Kompilacja deweloperska (`CONFIGURATION=debug`, `scripts/dev-app.sh` → Mavinci-Dev.app) ma w Ustawieniach zakładkę „Połączenie” do testów z innym serwerem: połączenie zapisane tam w pęku kluczy → wbudowane → `MAVINCI_CONFIGURATION_FILE` (pełna ścieżka do pliku JSON, np. przy `swift run`) → zmienne `SUPABASE_URL` / `SUPABASE_ANON_KEY`. Xcode (`Package.swift` → schemat Mavinci → My Mac) buduje bez wbudowanego połączenia — wtedy `MAVINCI_CONFIGURATION_FILE` albo zakładka „Połączenie”.
 
@@ -82,26 +82,27 @@ Warstwa `WorkspaceBackend` oddziela UI i lokalną kopię od dostawcy. W ustawien
 ./scripts/make-dmg.sh
 ```
 
-Wynik: `build/Mavinci.dmg` z ostatniego `build-app.sh` (bez publikacji). Instalator do rozdania i aktualizacje w aplikacji — `yarn dmg` (sekcja niżej).
+Wynik: `build/Mavinci.dmg` z ostatniego `build-app.sh` (bez publikacji). Instalator do rozdania i aktualizacje w aplikacji — `yarn release` (sekcja niżej).
 
 ## Instalator i aktualizacje (0.23)
 
-**`yarn dmg`** (z głównego katalogu projektu, `scripts/release.sh`):
+**`yarn release`** (z głównego katalogu projektu, `scripts/release.sh`):
 
+0. Numer wersji o jeden wyżej niż ostatnie wydanie (plik `VERSION`): `yarn release` — drobna zmiana, `0.23.0 → 0.23.1`; `yarn release minor` (albo `yarn release kluczowa`) — kluczowa zmiana, `0.23.4 → 0.24.0`; `yarn release major` — `0.24.0 → 1.0.0`; `yarn release none` — bez zmiany numeru; `VERSION=1.2.0 yarn release` — numer podany wprost. Po publikacji plik `VERSION` dostaje nowy numer (dołącz go do commita); `PUBLISH=0` (bez publikacji) pliku nie zmienia.
 1. Kompilacja release z podpisem zespołu Mavinci (Team ID 5DC8P5M489). Numer kompilacji to data i godzina (`RRRRMMDDGGMM`), więc każda kolejna kompilacja jest nowsza. Wersję pokazywaną pracownikom ustawia plik `VERSION` (albo zmienna `VERSION`).
 2. Notaryzacja Apple — tylko z certyfikatem „Developer ID Application” i profilem notarytool w pęku kluczy. Profil zakłada się raz, w Terminalu: `xcrun notarytool store-credentials mavinci-notary --apple-id <Apple ID> --team-id 5DC8P5M489` (hasło aplikacji z appleid.apple.com wpisujesz sam, w Terminalu). Bez notaryzacji instalator działa, ale pierwsze otwarcie pobranego z sieci pliku wymaga zgody w macOS (prawy przycisk → Otwórz).
 3. W `build/release/`: instalator `Mavinci-<wersja>-<kompilacja>.dmg`, paczka aktualizacji `….zip` (podpisana aplikacja) i opis wydania `latest.json` (wersja, sumy SHA-256, rozmiary, „Co nowego” ze zmiennej `NOTES`).
-4. Publikacja przez ssh (ten sam serwer co `yarn deploy`) do `/var/www/mavinci/desktop-releases/mac/` (poza katalogiem aplikacji Next — `yarn deploy` jej nie usuwa). Opis wydania podmieniany jest na końcu, zostaje 5 najnowszych wersji. `PUBLISH=0 yarn dmg` — tylko pliki lokalnie.
+4. Publikacja przez ssh (ten sam serwer co `yarn deploy`) do `/var/www/mavinci/desktop-releases/mac/` (poza katalogiem aplikacji Next — `yarn deploy` jej nie usuwa). Opis wydania podmieniany jest na końcu, zostaje 5 najnowszych wersji. `PUBLISH=0 yarn release` — tylko pliki lokalnie.
 
-Przykład: `NOTES="Finanse w Dysku, czas pracy zespołu w telefonie." yarn dmg`.
+Przykład: `NOTES="Finanse w Dysku, czas pracy zespołu w telefonie." yarn release`.
 
 ### Instalator dla innych Maców — certyfikat Developer ID
 
-Kompilacja z podpisem **„Apple Development”** (tak podpisane jest wydanie, gdy w pęku kluczy nie ma „Developer ID Application”) działa w pełni na Macu, na którym ją zbudowano. Na innych Macach macOS może nie uruchomić z niej rozszerzenia Findera — aplikacja działa, ale **„Mavinci” nie pojawia się w pasku bocznym Findera**. `yarn dmg` ostrzega przed publikacją takiego wydania i pyta o zgodę (`ALLOW_DEVELOPMENT_RELEASE=1` — bez pytania), a pasek menu aplikacji pokazuje przy wersji „kompilacja deweloperska”. Instalator dla zespołu:
+Kompilacja z podpisem **„Apple Development”** (tak podpisane jest wydanie, gdy w pęku kluczy nie ma „Developer ID Application”) działa w pełni na Macu, na którym ją zbudowano. Na innych Macach macOS może nie uruchomić z niej rozszerzenia Findera — aplikacja działa, ale **„Mavinci” nie pojawia się w pasku bocznym Findera**. `yarn release` ostrzega przed publikacją takiego wydania i pyta o zgodę (`ALLOW_DEVELOPMENT_RELEASE=1` — bez pytania), a pasek menu aplikacji pokazuje przy wersji „kompilacja deweloperska”. Instalator dla zespołu:
 
 1. **Certyfikat** (raz; zakłada właściciel konta Apple Developer): Dostęp do pęku kluczy → Asystent certyfikatów → „Poproś o certyfikat w urzędzie certyfikacji…” → zapisz na dysku; developer.apple.com → Certificates, IDs & Profiles → Certificates → „+” → **Developer ID Application** → wgraj plik prośby → pobierz certyfikat i otwórz go dwuklikiem (pęk „Logowanie”). `security find-identity -v -p codesigning` pokazuje „Developer ID Application: … (5DC8P5M489)”.
 2. **Notaryzacja** (raz): `xcrun notarytool store-credentials mavinci-notary --apple-id <Apple ID> --team-id 5DC8P5M489` — hasło aplikacji z appleid.apple.com wpisujesz sam, w Terminalu.
-3. `yarn dmg` — skrypt sam wybierze „Developer ID Application”, podpisze rozszerzenie Findera, wyśle aplikację i instalator do notaryzacji Apple i opublikuje wydanie. Na innych Macach instalator otwiera się bez ostrzeżeń, a „Mavinci” pojawia się w Finderze po zalogowaniu w aplikacji.
+3. `yarn release` — skrypt sam wybierze „Developer ID Application”, podpisze rozszerzenie Findera, wyśle aplikację i instalator do notaryzacji Apple i opublikuje wydanie. Na innych Macach instalator otwiera się bez ostrzeżeń, a „Mavinci” pojawia się w Finderze po zalogowaniu w aplikacji.
 
 Gdy na którymś Macu „Mavinci” nie ma w Finderze: aplikacja powinna być w folderze **Aplikacje** (nie uruchomiona prosto z instalatora); po zalogowaniu aplikacja rejestruje „Mavinci” w Finderze, a gdy macOS nie zna jeszcze rozszerzenia — zgłasza je sama (`pluginkit -a`) i próbuje drugi raz. Nieudana rejestracja: pasek menu → „Dlaczego nie ma „Mavinci” w Finderze?…” (przyczyna: uruchomienie z instalatora, kompilacja deweloperska albo komunikat systemu) i „Spróbuj ponownie dodać „Mavinci” do Findera”. Rozszerzenie musi być włączone: Ustawienia systemowe → Ogólne → Rzeczy otwierane podczas logowania i rozszerzenia → Dostawcy plików; w Finderze: Ustawienia → Pasek boczny → „Mavinci”.
 
@@ -111,7 +112,7 @@ Pierwsze okno po uruchomieniu aplikacji przechodzi od razu na pełny ekran (osob
 
 **Serwer** (`src/app/bridge/native/v1/desktop/route.ts`, `src/lib/native/desktopRelease.ts`): `op=latest` (wydanie i czy jest nowsze od kompilacji aplikacji), `op=download&kind=zip|dmg` (strumień pliku). Tylko zalogowani pracownicy (token sesji) — albo `op=file` z podpisanym adresem (HMAC, ważny godzinę, tylko dla bieżącego wydania), który Dysk wydaje zalogowanemu pracownikowi. Katalog wydań można zmienić zmienną `DESKTOP_RELEASES_DIR`.
 
-**Dysk → Programy** (CRM, Mac, Finder — dział na poziomie Eventów, Materiałów i Pracowników, dla każdego pracownika; w aplikacji na telefon i tablet ukryty): plik `Mavinci <wersja> — macOS.dmg`, zawsze najnowsze wydanie z `yarn dmg`. W przeglądarce pobiera się zwykłym linkiem, na Macu dwuklik zapisuje instalator w „Pobranych”, w Finderze (Mavinci → Programy) plik otwiera się jak każdy inny. Nowe wydanie zmienia wersję pliku, więc Finder i Mac pobierają je od nowa.
+**Dysk → Programy** (CRM, Mac, Finder — dział na poziomie Eventów, Materiałów i Pracowników, dla każdego pracownika; w aplikacji na telefon i tablet ukryty): plik `Mavinci <wersja> — macOS.dmg`, zawsze najnowsze wydanie z `yarn release`. W przeglądarce pobiera się zwykłym linkiem, na Macu dwuklik zapisuje instalator w „Pobranych”, w Finderze (Mavinci → Programy) plik otwiera się jak każdy inny. Nowe wydanie zmienia wersję pliku, więc Finder i Mac pobierają je od nowa.
 
 **Pierwsza instalacja**: CRM → Dysk → Programy albo Ustawienia → Ogólne → „Aplikacja Mavinci na Maca” → „Pobierz instalator (DMG)”, albo plik z `build/release/`. Otwórz instalator, przeciągnij Mavinci do folderu Aplikacje i uruchom stamtąd.
 
@@ -119,7 +120,7 @@ Pierwsze okno po uruchomieniu aplikacji przechodzi od razu na pełny ekran (osob
 
 - Sprawdzenie po zalogowaniu i co godzinę, przy otwarciu Ustawienia → Oprogramowanie (gdy ostatnie było ponad 10 minut temu); od razu — „Sprawdź teraz” w tej zakładce, Mavinci → „Sprawdź aktualizacje…” albo pasek menu (oba otwierają zakładkę „Oprogramowanie”).
 - Nowsza kompilacja → w stopce paska bocznego, pod nazwiskiem pracownika (przy „Połączono” / „Odświeżanie…”), „Nowa wersja …” — „Zobacz i zainstaluj” (w trakcie: „Pobieranie… %”, „Aktualizacja gotowa — Zainstaluj i uruchom ponownie”) — oraz pozycja na pasku menu. Kliknięcie otwiera okno Ustawień na zakładce **„Oprogramowanie”** (`Updates/AppUpdateViews.swift`, `SettingsWindow.swift`). Dawny pasek nad treścią okna nachodził na nagłówki sekcji (np. przełącznik widoku Spotkań) — usunięty.
-- **Ustawienia → Oprogramowanie**: wersja zainstalowana (i numer kompilacji), nowa wersja z datą wydania i rozmiarem, „Co nowego” (`NOTES` z `yarn dmg`), instalacja z postępem i kroki instalacji — w aplikacji (zalecane) oraz z instalatora DMG (pobierz, zamknij Mavinci, przeciągnij do Aplikacji → „Zastąp”, uruchom, wysuń instalator). Bez nowej wersji: „Masz najnowszą wersję · sprawdzono …”.
+- **Ustawienia → Oprogramowanie**: wersja zainstalowana (i numer kompilacji), nowa wersja z datą wydania i rozmiarem, „Co nowego” (`NOTES` z `yarn release`), instalacja z postępem i kroki instalacji — w aplikacji (zalecane) oraz z instalatora DMG (pobierz, zamknij Mavinci, przeciągnij do Aplikacji → „Zastąp”, uruchom, wysuń instalator). Bez nowej wersji: „Masz najnowszą wersję · sprawdzono …”.
 - „Pobierz aktualizację” pobiera paczkę (postęp), sprawdza sumę SHA-256, rozpakowuje ją (`ditto`) i sprawdza podpis zespołu Mavinci, identyfikator pakietu i numer kompilacji.
 - „Zainstaluj i uruchom ponownie”: aplikacja się zamyka, skrypt podmienia pakiet w miejscu bieżącego (przy błędzie przywraca poprzedni) i uruchamia nową wersję. Po uruchomieniu komunikat „Zainstalowano Mavinci …”, a katalog aktualizacji (`~/Library/Caches/pl.mavinci.desktop/Updates`) jest sprzątany.
 - Pliki pobrane przez aplikację nie mają kwarantanny, więc po aktualizacji macOS nie pyta ponownie o zgodę.
@@ -163,6 +164,115 @@ i uruchamia ponownie usługę widżetów `chronod` (widżety na pulpicie zostaj�
 - **Miejsce na Dysku** (`Drive/DriveStorageViews.swift`, tylko administrator): na dole paska bocznego Dysku (także w Materiałach) zajętość plików względem pakietu; kliknięcie — pakiet, pliki według rodzaju, baza danych i „Zmień pakiet…” (`op=storage`, `op=storagePlan`, migracja `20261126120000_drive_storage_usage.sql`). Domyślnie Supabase Pro: 100 GB plików, 8 GB bazy.
 - **Paski edytorów Prezentacji i Realizacji** (`AdaptiveToolbar.swift`): pełne etykiety → same ikony (opis w podpowiedzi) → tytuł w osobnym wierszu, zależnie od szerokości okna; etykiety się nie łamią, ⌘S działa w każdym wariancie.
 
+
+## Formularze w arkuszach: płynne pisanie i przewijanie
+
+Duży arkusz (nowy event, spotkanie, zadanie, „Edytuj klienta” eventu) po każdej literze przeliczał się w całości, gdy jego treść
+czytała wpisywany tekst — filtr listy wyboru, podpowiedź w pustym opisie, `.task(id:)` wyszukiwania, warunek przycisku zapisu.
+SwiftUI odświeżał wtedy wszystkie pola, listy, wybory dat i menu (w formularzu `.grouped` — każdy wiersz), więc litery pojawiały się
+z opóźnieniem. Zasada: **treść arkusza nie czyta pól, w które się pisze** — czytają je małe widoki, którym arkusz przekazuje
+`Binding` (`$tekst`): `FormPickList` / `FormPickRows` i `PlaceholderTextEditor` (`FormPickList.swift`), `EventNewContactForm`,
+`MeetingPlaceField`, `MeetingContactSearch`, `MeetingSaveButton`, `TaskAssigneeSearch`, `TaskSaveButton`. Po literze przelicza się
+tylko taki widok.
+
+Listy wyboru (organizacja, osoba kontaktowa, lokalizacja) nie przewijają się wewnątrz przewijanego formularza: zagnieżdżona lista
+przejmowała przewijanie, gdy kursor znalazł się nad nią, i arkusz „stawał”. Pokazują pierwsze wyniki (8, lokalizacje 5)
+i „Pokaż więcej”; wyszukiwanie bez rozróżniania wielkości liter i znaków diakrytycznych.
+
+
+## Okna formularzy: wiadomość e-mail i faktura
+
+Nowa wiadomość, odpowiedź i przekazanie (Wiadomości, „Napisz e-mail” w Kontaktach) oraz wystawianie faktury (Finanse, rozliczenie
+eventu, faktura końcowa) otwierają się w **osobnych oknach** zamiast arkusza przyklejonego do okna: okno można skalować i przesuwać,
+otworzyć kilka naraz i pracować obok — np. przewijać skrzynkę przy pisaniu odpowiedzi. Każdy rodzaj okna pamięta rozmiar i położenie.
+Mechanizm: `FormWindows.swift` (`.formWindow(item:kind:)` zamiast `.sheet(item:)`, sceny `form-compose` i `form-invoice`
+w `MavinciApp`); `dismiss()` w formularzu zamyka okno. Okno przywrócone po ponownym uruchomieniu aplikacji pokazuje tylko „Zamknij okno”.
+
+Okno wiadomości (`ComposeSheet` w `Messages/MessageSheets.swift`): u góry nadawca, adresy i temat, niżej treść, a w odpowiedzi pod
+treścią **cała wiadomość, na którą odpowiadasz** (z jej wcześniejszą korespondencją — jak w Thunderbirdzie; podział przesuwany).
+Cytat do wysyłanej wiadomości dołącza serwer, jak dotąd. **Przeciąganie plików**: pliki upuszczone w oknie — także na treść
+(`MailTextEditor`) — trafiają do załączników (foldery są pomijane z informacją).
+
+Faktura (`Finance/InvoiceFormParts.swift`): kolumny pozycji rozdzielone pionowymi liniami, nazwa pozycji od lewej (ze spacjami).
+
+## Zapisy podczas odświeżania w tle
+
+Odświeżanie danych (co minutę, po powrocie do aplikacji, ⌘R) nie blokuje już zapisów — wcześniej przez cały czas odświeżania
+przyciski zapisu odpowiadały „Zapis wymaga połączenia z serwerem CRM.”. `Workspace.canWrite` = zalogowany pracownik i połączenie
+potwierdzone profilem; serwer sprawdza sesję i uprawnienia przy każdym zapisie. Odświeżenie zamówione po zapisie w trakcie trwającego
+wykonuje się zaraz po nim. Przekroczony czas odpowiedzi jednej sekcji nie wyłącza zapisów (tylko brak sieci), a po powrocie sieci
+połączenie jest potwierdzane od razu, bez czekania na kolejne odświeżenie.
+
+## Cenniki sezonowe w ofertach (oferta weselna, etap 1)
+
+Cena zależy od roku eventu: marka realizująca ma cenniki na sezony (np. „Wesela 2027”, „Wesela 2028”), a kreator oferty
+(`OfferWizardCatalog.swift`) i okno pozycji (`OfferItemSheet.swift`) dostają z serwera katalog z cenami z cennika marki eventu
+na sezon daty eventu — pasek „Cennik: …” mówi, skąd są ceny. Nowa oferta zapamiętuje cennik (gwarancja ceny: zapisane pozycje
+nie zmieniają cen same). Na stronie oferty (`OfferSeasonPrices.swift`, nad pozycjami) — opis cennika, ostrzeżenie, gdy event
+przeniesiono na inny sezon, i „Przelicz według cennika…”: podgląd różnic (`op=priceListPreview`), potem świadome zastosowanie
+(`op=priceListApply`; zmienia się cena bazowa pozycji, dodatki, ilości i rabaty zostają). Wesele zawsze realizuje Event Rulers
+(kategoria z marką obowiązkową — baza ustawia markę nowego eventu). Logika i teksty wspólne z CRM: `src/lib/CRM/Offers/seasonPrices.ts`.
+
+## Cenniki (Oferty → Cenniki)
+
+Ekran natywny `PriceLists/` (`/crm/offers?tab=pricelists`, serwer `src/lib/native/priceLists.ts`, trasa `/bridge/native/v1/price-lists`):
+lista cenników według marek (szkic, aktywny, archiwum; liczba cen i ofert), edytor cen produktów i wariantów (cena katalogowa obok ceny
+w cenniku, różnica w %, filtr kategorii, „Tylko pozycje w cenniku”; pole ceny zatwierdza Enter albo wyjście z pola, puste pole usuwa
+produkt z cennika), nowy cennik z cenami z katalogu, „Kopiuj na kolejny sezon…” (np. +8%, zaokrąglenie do 10 zł), „Uzupełnij z katalogu…”,
+„Zmień ceny o %…”, aktywacja (aktywne cenniki jednej marki nie mogą obejmować tych samych dat), archiwum i usunięcie nieużytego cennika.
+Zmiany — admin albo `offers_manage` (jak w CRM). Karta produktu ma sekcję „Ceny w cennikach sezonowych” (`ProductSeasonPricesSection`),
+a „Nowy event” po wyborze kategorii z marką ustawia firmę realizującą (Wesele — Event Rulers, wybór zablokowany); w edytorze kategorii
+eventów: „Marka realizująca nowych eventów” i „Zawsze ta marka”.
+
+## Szablon oferty weselnej (oferta weselna, etap 2)
+
+PDF liczy serwer, więc Mac, CRM i telefon dostają ten sam dokument. Kategoria szablonu (Oferty → Szablony → kategoria,
+`OfferTemplateCategorySheet`) ma dwie nowe opcje: „Kolory z księgi znaku marki wydarzenia” (`brand_colors` — kolor główny, dodatkowy
+i akcent stron generowanych z księgi znaku marki realizującej, np. Event Rulers) i kartę wyceny „Weselna — „Wasza wycena”…”
+(`pricing_style = wedding`, z polami „Zadatek (% kwoty do zapłaty)” i „Warunki”) z podglądem strony. Zamiast tabeli kalkulacji PDF
+ma stronę „WASZA WYCENA” (`src/lib/offer-pdf/weddingPricing.ts`): pozycje oferty z kwotami (dodatki pakietu pod pozycją, ilość × cena,
+rabat pozycji), rabat i VAT w podsumowaniu, razem do zapłaty, zadatek z pozostałą kwotą, warunki, sezon cennika i ważność oferty;
+przy wielu pozycjach kolejne strony. Oferty z pakietami do wyboru i oferty sprzedawców zostają w zwykłym układzie. Migracja
+`20261129110000_wedding_offer_template.sql` włącza oba ustawienia w kategorii szablonu wesel (Wesela-PDF).
+
+„Rozdziały z Prezentacji” w tym samym oknie kategorii (`chapter_item_ids`; lista kart z serwera — `showcaseCards` w stanie szablonów):
+wybrane karty Prezentacji (np. „Jak to robimy?”, „Zespół”) w ustalonej kolejności (strzałki, usuwanie, „Dodaj kartę z Prezentacji”
+według działów). PDF dostaje je po stronie „O nas”, przed produktami — strony generowane z treści karty (zdjęcie główne, tytuł,
+wstęp, tekst, punkty, zdjęcia, specyfikacja, pytania; `src/lib/offer-pdf/chapterHtml.ts`, Chromium jak przy broszurach —
+`chapterPages.server.ts`), więc podmiana zdjęcia lub osoby w karcie zmienia kolejne oferty. Bez wersji EN i ofert sprzedawców.
+
+## Produkt w kilku kategoriach eventów (oferta weselna, etap 3)
+
+Karta produktu → „Podstawowe informacje” → „Także w kategoriach eventów” (`extra_category_ids`, migracja
+`20261129120000_product_extra_categories.sql`): ten sam produkt (cena, zdjęcia, sprzęt, obsada, strona PDF) pokazuje się w kilku
+kategoriach — np. Fotolustro w „Dodatki”, „Wesele” i „EVENT” — zamiast kopii. Filtry kategorii na liście produktów, w kreatorze
+oferty i w edytorze cennika (oraz „Uzupełnij z katalogu”) biorą kategorię główną i dodatkowe (`categoryIds` z serwera; starszy
+serwer — sama główna). Przed migracją pola nie ma i nic się nie zmienia.
+
+## Broszura z cennikiem sezonu (oferta weselna, etap 3)
+
+Edytor broszury → ustawienia → „Cennik” (`price_list_id`, migracja `20261129130000_brochure_price_list.sql`; cenniki marki broszury
+bez archiwum): PDF dostaje przed zakończeniem stronę „Cennik” ze wszystkimi widocznymi usługami — warianty w jednym wierszu
+(„2 szt. 500 zł · 4 szt. 800 zł”), bez ceny w cenniku cena z katalogu, konfigurator albo cena 0 — „wycena indywidualna”
+(`src/lib/brochures/brochurePriceList.ts`). Podgląd na Macu (serwer) i w CRM pokazuje tę samą stronę.
+
+## Marka działu Prezentacji i ceny sezonu w ofercie ze spotkania (oferta weselna, etap 3)
+
+Dział Prezentacji → „Marka działu” (`ShowcaseSectionSheet`, `companyId`; migracja `20261129140000_showcase_section_company.sql`):
+oferta ze spotkania z kart działu z marką (np. Wesela → Event Rulers) dostaje tę markę i ceny z jej aktywnego cennika sezonu
+dla terminu z rozmowy (bez terminu — cennik na dziś); oferta pamięta cennik, pozycje — ceny wariantów. Pod wyceną w „Ofercie ze
+spotkania” opis „Ceny z cennika „…” (marka) — termin …” (`ShowcaseOfferPreview.priceList`). Ta sama migracja dokłada termin
+z zapytania (`inquiry_details.termin`) do wyboru sezonu ofert bez eventu.
+
+## „Do sprawdzenia” w cennikach (oferta weselna, etap 4)
+
+Pod listą cenników (`PriceListsView`, pole `attention` w `op=state`; migracja `20261129150000_price_list_attention.sql`, funkcja
+`price_list_attention`, opisy wspólne z CRM w `src/lib/CRM/Offers/priceListAttention.ts`): lata, w których marka z cennikami ma przyszłe
+eventy bez aktywnego cennika (np. „Event Rulers — 2028: 3 eventy bez aktywnego cennika”), oraz oferty w toku (szkic, wysłana) do
+sprawdzenia — cennik oferty inny niż cennik sezonu jej terminu (event przeniesiony na inny rok) albo szkic bez cennika, choć sezon
+terminu ma już cennik. Kliknięcie otwiera ofertę na ekranie Ofert, gdzie „Przelicz według cennika…” pokazuje różnice przed zmianą —
+ceny nie zmieniają się same. Lista odświeża się z listą cenników (nowy, skopiowany, aktywowany cennik). Starszy serwer albo baza
+bez migracji — sekcji nie ma.
 
 ## Weryfikacja pierwszej wersji
 
@@ -272,7 +382,7 @@ Kierunek: aplikacja jest **odpowiednikiem 1:1 CRM w przeglądarce** (te same sek
 2. **Dashboard jak `/crm`** — `GET /bridge/native/v1/dashboard` liczy dane funkcjami `dashboardData.ts` (te same co strona), tokenem pracownika. Kafelki, szybkie akcje, podsumowanie i aktywność są filtrowane na serwerze (`canView` / `canCreate`). Widok: „Mój plan” (oś czasu dziś / 3 dni z `get_employee_schedule`), trend sprzedażowy i lejek (Swift Charts), wpływy / wydatki / wynik kasowy, „Wymaga działania”, ostatnia aktywność, szybkie akcje i „Pozostałe wskaźniki”. Sprzedawca: oś czasu i „Mój dzień” jak w CRM. Dashboard odświeża się co 5 minut i na ⌘R.
 3. **Motywy** — burgund, granat, ciemny i jasny jak w CRM (`employees.crm_theme`); Ustawienia → Wygląd. Zmiana zapisuje się w profilu i obowiązuje także w przeglądarce.
 
-Budowanie z głównego katalogu projektu: `yarn build:mac` (→ `desktop/mac/build/Mavinci.app`), instalator do rozdania z publikacją aktualizacji: `yarn dmg` (sekcja „Instalator i aktualizacje”), sam DMG z ostatniego budowania: `yarn dmg:mac` (→ `desktop/mac/build/Mavinci.dmg`), uruchomienie: `yarn open mac` (zamyka działającą wersję i otwiera nowo zbudowaną).
+Budowanie z głównego katalogu projektu: `yarn build:mac` (→ `desktop/mac/build/Mavinci.app`), instalator do rozdania z publikacją aktualizacji: `yarn release` (sekcja „Instalator i aktualizacje”), sam DMG z ostatniego budowania: `yarn dmg:mac` (→ `desktop/mac/build/Mavinci.dmg`), uruchomienie: `yarn open mac` (zamyka działającą wersję i otwiera nowo zbudowaną).
 
 Serwer: `src/app/bridge/native/v1/*` (Bearer — token Supabase z aplikacji, `src/lib/native/auth.ts`); bez klucza serwisowego. `dashboardData.ts` przyjmuje klienta z tokenem przez `withNativeDashboardClient` (AsyncLocalStorage, tylko na czas żądania). Mobile: nie dotyczy — zmiany dotyczą aplikacji na Maca i jej API.
 

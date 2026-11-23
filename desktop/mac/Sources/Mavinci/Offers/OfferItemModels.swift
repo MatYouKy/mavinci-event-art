@@ -128,6 +128,8 @@ struct OfferCatalogProduct: Decodable, Identifiable, Hashable {
 struct OfferItemCatalog: Decodable {
     var audience: OfferAudience
     var vatRate: Double
+    /// Skąd są ceny katalogu (cennik sezonowy oferty albo ceny z katalogu); starszy serwer — brak.
+    var priceNotice: OfferPriceNotice?
     var products: [OfferCatalogProduct]
 }
 

@@ -4,7 +4,8 @@ import UniformTypeIdentifiers
 /// Nowe zadanie i edycja — jak formularz w CRM: tytuł, opis, załączniki (każda tablica, jak w aplikacji na telefonie), priorytet,
 /// kolumna, termin wykonania (dzień i opcjonalnie godzina — bez godziny cały dzień, jak w CRM i w aplikacji) i przypisani pracownicy
 /// (tablica firmowa). Tablica prywatna zapisuje zadanie prywatne z identyfikatorem nadanym raz na formularz, więc ponowienie po
-/// zerwanym połączeniu nie tworzy duplikatu.
+/// zerwanym połączeniu nie tworzy duplikatu. Treść arkusza nie czyta wpisywanego tytułu ani wyszukiwania pracownika — czytają
+/// je `TaskSaveButton` i `TaskAssigneeSearch`, więc litera nie przelicza całego formularza.
 @MainActor struct TaskEditorSheet: View {
     @ObservedObject var store: TasksStore
     let request: TaskEditRequest
@@ -22,7 +23,6 @@ import UniformTypeIdentifiers
     /// Termin z godziną (bez niej — cały dzień, do 23:59).
     @State private var hasTime = false
     @State private var assignees: [String] = []
-    @State private var personQuery = ""
     @State private var files: [AttachmentFile] = []
     @State private var importing = false
     @State private var saving = false
@@ -35,11 +35,6 @@ import UniformTypeIdentifiers
     /// Tablica firmowa i tablica wydarzenia: przypisania (tablica prywatna — tylko własne zadania). Załączniki — na każdej tablicy.
     private var company: Bool { store.board != .mine }
     private var valid: Bool { !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    private var matches: [MeetingPerson] {
-        let q = personQuery.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return [] }
-        return Array(store.employees.filter { !assignees.contains($0.id) && ($0.name.lowercased().contains(q) || ($0.nickname ?? "").lowercased().contains(q)) }.prefix(5))
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -103,15 +98,7 @@ import UniformTypeIdentifiers
                                 }
                             }
                         }
-                        TextField("Dodaj pracownika", text: $personQuery, prompt: Text("Wpisz imię, nazwisko lub email..."))
-                        ForEach(matches) { person in
-                            Button {
-                                assignees.append(person.id); personQuery = ""
-                            } label: {
-                                HStack { Text(person.name); Spacer(); Text(person.nickname ?? "").font(.caption).foregroundStyle(.secondary) }
-                                    .contentShape(Rectangle())
-                            }.buttonStyle(.plain)
-                        }
+                        TaskAssigneeSearch(store: store, assignees: $assignees)
                     }
                     .disabled(savedID != nil)
                 }
@@ -129,8 +116,9 @@ import UniformTypeIdentifiers
                 Spacer()
                 Button(savedID != nil ? "Zamknij" : "Anuluj") { if savedID != nil { store.finishSave() }; dismiss() }
                     .keyboardShortcut(.cancelAction).disabled(saving)
-                Button(savedID != nil ? "Ponów przesyłanie" : editing == nil ? "Utwórz" : "Zapisz") { Task { await save() } }
-                    .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(!valid || saving)
+                TaskSaveButton(title: $title, saving: saving, label: savedID != nil ? "Ponów przesyłanie" : editing == nil ? "Utwórz" : "Zapisz") {
+                    Task { await save() }
+                }
             }.padding(16)
         }
         .frame(minWidth: 560, idealWidth: 600, minHeight: 520, idealHeight: company ? 700 : 600)
@@ -204,6 +192,46 @@ import UniformTypeIdentifiers
         } catch {
             let message = store.failureText(error, "Błąd podczas zapisywania zadania")
             problem = savedID != nil ? "Zadanie zapisane. \(message) Ponów przesyłanie pozostałych plików." : message
+        }
+    }
+}
+
+/// Przycisk zapisu zadania — sam sprawdza tytuł, więc wpisywanie tytułu nie przelicza całego formularza.
+@MainActor struct TaskSaveButton: View {
+    @Binding var title: String
+    let saving: Bool
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(label, action: action)
+            .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+            .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || saving)
+    }
+}
+
+/// „Dodaj pracownika” do zadania: wyszukiwanie wśród pracowników (bez już przypisanych, do 5 wyników) — zapytanie w tym
+/// widoku, więc wpisywanie nie przelicza całego formularza.
+@MainActor struct TaskAssigneeSearch: View {
+    @ObservedObject var store: TasksStore
+    @Binding var assignees: [String]
+    @State private var query = ""
+
+    private var matches: [MeetingPerson] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return [] }
+        return Array(store.employees.filter { !assignees.contains($0.id) && ($0.name.lowercased().contains(q) || ($0.nickname ?? "").lowercased().contains(q)) }.prefix(5))
+    }
+
+    var body: some View {
+        TextField("Dodaj pracownika", text: $query, prompt: Text("Wpisz imię, nazwisko lub email..."))
+        ForEach(matches) { person in
+            Button {
+                assignees.append(person.id); query = ""
+            } label: {
+                HStack { Text(person.name); Spacer(); Text(person.nickname ?? "").font(.caption).foregroundStyle(.secondary) }
+                    .contentShape(Rectangle())
+            }.buttonStyle(.plain)
         }
     }
 }

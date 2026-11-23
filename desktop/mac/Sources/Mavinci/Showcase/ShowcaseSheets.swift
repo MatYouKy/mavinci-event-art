@@ -617,6 +617,14 @@ private enum ShowcasePickerDrag {
                 .textFieldStyle(.roundedBorder)
             TextField("Opis na kafelku (opcjonalnie)", text: Binding(get: { draft.subtitle }, set: { draft.subtitle = String($0.prefix(ShowcaseLimits.sectionSubtitle)) }))
                 .textFieldStyle(.roundedBorder)
+            if let companies = store.home?.companies {
+                Picker("Marka działu", selection: Binding(get: { draft.companyId ?? "" }, set: { draft.companyId = $0.isEmpty ? nil : $0 })) {
+                    Text("Bez marki — ceny z katalogu").tag("")
+                    ForEach(companies) { company in Text(company.name).tag(company.id) }
+                }
+                Text("Oferta ze spotkania z kart tego działu dostaje tę markę i ceny z jej cennika sezonu dla terminu z rozmowy (np. Wesela → Event Rulers).")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             Text("Ikona").font(.caption).foregroundStyle(.secondary)
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(44), spacing: 6), count: 9), spacing: 6) {
                 ForEach(ShowcaseIconInfo.all) { icon in

@@ -459,9 +459,14 @@ struct InvoicePartyComparison: View {
     var body: some View {
         let values = InvoiceMath.values(item)
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .bottom, spacing: 8) {
-                labeled("Nazwa *") { TextField("", text: binding(\.name)).textFieldStyle(.roundedBorder) }
-                    .frame(minWidth: 180)
+            // Kolumny pozycji rozdzielone pionowymi liniami. Nazwa — tekst od lewej, ze spacjami (w formularzu macOS pole bez
+            // etykiety wyrównuje się do prawej); pola bez pustej etykiety formularza (`labelsHidden`), więc stoją równo.
+            HStack(alignment: .bottom, spacing: 10) {
+                labeled("Nazwa *") {
+                    TextField("", text: binding(\.name)).textFieldStyle(.roundedBorder).labelsHidden().multilineTextAlignment(.leading)
+                }
+                .frame(minWidth: 180)
+                columnDivider
                 labeled("J.m.") {
                     Picker("", selection: binding(\.unit)) {
                         ForEach(InvoiceFormText.units, id: \.self) { Text($0).tag($0) }
@@ -470,9 +475,13 @@ struct InvoicePartyComparison: View {
                     .labelsHidden()
                 }
                 .frame(width: 80)
-                labeled("Ilość *") { InvoiceNumberField(title: "", value: binding(\.quantity)).textFieldStyle(.roundedBorder) }.frame(width: 80)
-                labeled("Cena netto *") { InvoiceNumberField(title: "", value: binding(\.priceNet)).textFieldStyle(.roundedBorder) }.frame(width: 100)
-                labeled("Cena brutto *") { InvoiceNumberField(title: "", value: gross).textFieldStyle(.roundedBorder) }.frame(width: 100)
+                columnDivider
+                labeled("Ilość *") { InvoiceNumberField(title: "", value: binding(\.quantity)).textFieldStyle(.roundedBorder).labelsHidden() }.frame(width: 80)
+                columnDivider
+                labeled("Cena netto *") { InvoiceNumberField(title: "", value: binding(\.priceNet)).textFieldStyle(.roundedBorder).labelsHidden() }.frame(width: 100)
+                columnDivider
+                labeled("Cena brutto *") { InvoiceNumberField(title: "", value: gross).textFieldStyle(.roundedBorder).labelsHidden() }.frame(width: 100)
+                columnDivider
                 labeled("Stawka VAT") {
                     Picker("", selection: Binding(get: { item.vatCode }, set: { model.changeVat(item.id, $0) })) {
                         // „0%” i „np.” bez rodzaju tylko jako podpowiedź (gdy przyszły ze źródła) — trzeba wybrać właściwy rodzaj.
@@ -483,12 +492,14 @@ struct InvoicePartyComparison: View {
                     .labelsHidden()
                 }
                 .frame(width: 170)
+                columnDivider
                 Button { model.removeItem(item.id) } label: { Image(systemName: "trash") }
                     .buttonStyle(.borderless).foregroundStyle(.red).help("Usuń pozycję")
             }
             if item.vatCode == "zw" {
                 labeled("Podstawa prawna zwolnienia z VAT *") {
                     TextField("Np. art. 43 ust. 1 pkt … ustawy o VAT", text: binding(\.exemption)).textFieldStyle(.roundedBorder)
+                        .labelsHidden().multilineTextAlignment(.leading)
                 }
             }
             HStack(spacing: 16) {
@@ -508,6 +519,11 @@ struct InvoicePartyComparison: View {
             Text(title).font(.caption2).foregroundStyle(.secondary)
             content()
         }
+    }
+
+    /// Pionowa linia między kolumnami pozycji (wysokość etykiety i pola).
+    private var columnDivider: some View {
+        Rectangle().fill(Color.primary.opacity(0.14)).frame(width: 1, height: 38)
     }
 }
 
@@ -589,7 +605,7 @@ struct InvoicePartyComparison: View {
         HStack { Text(label).font(.caption).foregroundStyle(.secondary); Spacer(); Text(text).font(.caption).monospacedDigit() }
     }
     private func edit<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack { Text(label).font(.caption).foregroundStyle(.secondary); Spacer(); content().textFieldStyle(.roundedBorder).frame(width: 110) }
+        HStack { Text(label).font(.caption).foregroundStyle(.secondary); Spacer(); content().textFieldStyle(.roundedBorder).labelsHidden().frame(width: 110) }
     }
     private func deltaValue(_ label: String, _ amount: Double) -> some View {
         HStack {

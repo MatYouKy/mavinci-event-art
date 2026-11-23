@@ -36,7 +36,11 @@ import {
 
 const BUCKET = 'sales-showcase';
 const PRODUCT_BUCKET = 'offer-product-pages';
-const SECTION_FIELDS = 'id, title, subtitle, icon, cover, sort_order, is_active, version, updated_at';
+/**
+ * Wszystkie kolumny działu — także marka działu `my_company_id` (migracja 20261129140000), gdy już jest: bez migracji odczyt działa
+ * dalej, a wyboru marki działu po prostu nie ma (`companyId` pominięte w odpowiedzi).
+ */
+const SECTION_FIELDS = '*';
 /**
  * Wszystkie kolumny karty — także `show_on_product_page` (migracja 20261128100000), gdy już jest: bez migracji odczyt działa dalej,
  * a przełącznika „Pokazuj na stronie produktu” po prostu nie ma (`showOnProductPage` pominięte w odpowiedzi).
@@ -223,7 +227,7 @@ function paletteOf(colors: Array<{ hex: string; role: string }>) {
 
 // Działy i karty ----------------------------------------------------------------------------------------------------------------
 
-function sectionView(row: Row, itemCount: number): ShowcaseSectionView {
+function sectionView(row: Row, itemCount: number, companies: Map<string, string> = new Map()): ShowcaseSectionView {
   return {
     id: String(row.id),
     title: text(row.title),
@@ -234,7 +238,17 @@ function sectionView(row: Row, itemCount: number): ShowcaseSectionView {
     sortOrder: Number(row.sort_order) || 0,
     version: Number(row.version) || 1,
     itemCount,
+    ...('my_company_id' in row ? {
+      companyId: isUuid(row.my_company_id) ? String(row.my_company_id) : null,
+      companyName: isUuid(row.my_company_id) ? companies.get(String(row.my_company_id)) || null : null,
+    } : {}),
   };
+}
+
+/** Marki (działalności) do wyboru w dziale. */
+async function showcaseCompanies(ctx: NativeContext): Promise<Array<{ id: string; name: string }>> {
+  const { data } = await ctx.supabase.from('my_companies').select('id, name').eq('is_active', true).order('name');
+  return ((data || []) as Row[]).map((row) => ({ id: String(row.id), name: text(row.name) }));
 }
 
 async function productBasics(ctx: NativeContext, ids: string[]) {
@@ -291,10 +305,11 @@ export async function showcaseResetLayout(ctx: NativeContext) {
 /** Strona startowa: działy, karty (skrót) w układzie pracownika, adresy miniatur, marka i zakres pracownika. */
 export async function showcaseHome(ctx: NativeContext): Promise<ShowcaseHome> {
   const access = await requireView(ctx);
-  const [sections, items, brand] = await Promise.all([
+  const [sections, items, brand, companies] = await Promise.all([
     ctx.supabase.from('sales_showcase_sections').select(SECTION_FIELDS).order('sort_order').order('title'),
     ctx.supabase.from('sales_showcase_items').select(ITEM_FIELDS).order('sort_order').order('title'),
     showcaseBrand(ctx),
+    showcaseCompanies(ctx),
   ]);
   check(sections.error, 'Nie udało się pobrać działów prezentacji.');
   check(items.error, 'Nie udało się pobrać prezentacji.');
@@ -321,10 +336,17 @@ export async function showcaseHome(ctx: NativeContext): Promise<ShowcaseHome> {
       updatedAt: text(row.updated_at),
     };
   });
-  const sectionViews = ((sections.data || []) as Row[]).map((row) => sectionView(row, summaries.filter((item) => item.sectionId === String(row.id)).length));
+  const sectionRows = (sections.data || []) as Row[];
+  const companyNames = new Map(companies.map((company) => [company.id, company.name]));
+  const sectionViews = sectionRows.map((row) => sectionView(row, summaries.filter((item) => item.sectionId === String(row.id)).length, companyNames));
+  // Wybór marki działu tylko z kolumną w bazie (po migracji); bez działów — sprawdzenie niemożliwe, lista i tak niepotrzebna.
+  const supportsCompany = sectionRows.some((row) => 'my_company_id' in row);
   const [urls, mine] = await Promise.all([mediaUrls(ctx, [...thumbs, ...sectionViews.map((section) => section.cover)]), readLayout(ctx)]);
   const arranged = applyShowcaseLayout(sectionViews, summaries, mine.layout);
-  return { access, sections: arranged.sections, items: arranged.items, urls, brand, layout: mine.layout, personal: mine.available };
+  return {
+    access, sections: arranged.sections, items: arranged.items, urls, brand, layout: mine.layout, personal: mine.available,
+    ...(supportsCompany ? { companies } : {}),
+  };
 }
 
 async function itemRow(ctx: NativeContext, id: unknown): Promise<Row> {
@@ -549,6 +571,9 @@ export async function showcaseSaveSection(ctx: NativeContext, body: Row) {
     const cover = normalizeShowcaseMedia(body.cover);
     patch.cover = cover && (cover.source !== 'site' || isOwnPublicStorageUrl(cover.path)) ? cover : null;
   }
+  // Marka działu — tylko gdy aplikacja ją wysyła (po migracji 20261129140000).
+  if ('companyId' in body) patch.my_company_id = isUuid(body.companyId) ? body.companyId : null;
+  const companies = 'companyId' in body ? new Map((await showcaseCompanies(ctx)).map((company) => [company.id, company.name])) : new Map<string, string>();
   if (body.id) {
     const row = await sectionRow(ctx, body.id);
     const version = Number(body.version);
@@ -558,13 +583,13 @@ export async function showcaseSaveSection(ctx: NativeContext, body: Row) {
     if (!data?.length) fail('Dział zmieniono w innym oknie. Odśwież widok — zmiany nie zostały zapisane.', 409);
     const oldCover = normalizeShowcaseMedia(row.cover);
     if (oldCover && 'cover' in patch && showcaseMediaKey(oldCover) !== (patch.cover ? showcaseMediaKey(patch.cover) : '')) await removeUnused(ctx, [oldCover]);
-    return { section: sectionView(data[0] as Row, 0) };
+    return { section: sectionView(data[0] as Row, 0, companies) };
   }
   const { data: last } = await ctx.supabase.from('sales_showcase_sections').select('sort_order').order('sort_order', { ascending: false }).limit(1);
   patch.sort_order = (Number((last as Row[] | null)?.[0]?.sort_order) || 0) + 1;
   const { data, error } = await ctx.supabase.from('sales_showcase_sections').insert(patch).select(SECTION_FIELDS).single();
   check(error, 'Nie udało się utworzyć działu.');
-  return { section: sectionView(data as Row, 0) };
+  return { section: sectionView(data as Row, 0, companies) };
 }
 
 /** Usunięcie działu razem z kartami (potwierdzenie w aplikacji), zdjęcia — gdy nikt ich już nie używa. */

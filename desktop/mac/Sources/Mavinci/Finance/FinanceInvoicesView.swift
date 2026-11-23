@@ -239,17 +239,14 @@ enum FinInvoiceText {
             }
         }
         .task { await store.loadInvoices() }
-        .sheet(item: $invoiceForm) { request in
-            InvoiceFormSheet(request: request)
-                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
-        }
-        .sheet(item: $finalInvoice) { request in
+        // Faktura w osobnym oknie (skalowanie, przesuwanie) — `formWindow`.
+        .formWindow(item: $invoiceForm, kind: .invoice) { request in InvoiceFormSheet(request: request) }
+        .formWindow(item: $finalInvoice, kind: .invoice) { request in
             // „Faktura końcowa” (jak `FinalInvoiceWizardModal`): po wystawieniu — karta nowej faktury.
             FinalInvoiceSheet(advanceID: request.advanceID, eventID: request.eventID, organizationID: request.organizationID) { newID in
                 store.selectedInvoice = newID
                 Task { await store.loadInvoices(force: true) }
             }
-            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
     }
 
@@ -385,10 +382,8 @@ enum FinInvoiceText {
         .sheet(item: $preview) { item in BankPreviewSheet(item: item, store: store) }
         .sheet(isPresented: $markingPaid) { if let detail { InvoicePaidSheet(store: store, detail: detail) { Task { await load() } } } }
         .sheet(isPresented: $cancelling) { if let detail { InvoiceCancelSheet(store: store, detail: detail) { Task { await load() } } } }
-        .sheet(item: $invoiceForm) { request in
-            InvoiceFormSheet(request: request)
-                .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
-        }
+        // Faktura w osobnym oknie (skalowanie, przesuwanie) — `formWindow`.
+        .formWindow(item: $invoiceForm, kind: .invoice) { request in InvoiceFormSheet(request: request) }
         .sheet(isPresented: $emailing) {
             if let detail {
                 // „Wyślij email” z karty (jak `SendInvoiceEmailModal` w trybie faktury).
@@ -423,14 +418,13 @@ enum FinInvoiceText {
                 .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
             }
         }
-        .sheet(item: $finalInvoice) { request in
+        .formWindow(item: $finalInvoice, kind: .invoice) { request in
             // „Faktura końcowa” z karty zaliczki (jak `FinalInvoiceWizardModal` z `initialAdvanceInvoiceId`): po wystawieniu —
             // karta nowej faktury.
             FinalInvoiceSheet(advanceID: request.advanceID) { newID in
                 store.selectedInvoice = newID
                 Task { await store.loadInvoices(force: true) }
             }
-            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
         .sheet(isPresented: $editing) {
             // „Edytuj” (jak `/crm/invoices/[id]/edit`): szkic i pro forma; wystawiony dokument — przejście do korekty.

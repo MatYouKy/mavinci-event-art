@@ -7,6 +7,7 @@ import {
 } from '@/lib/brochures/decorativePages';
 import { BROCHURE_ICONS } from '@/lib/brochures/brochureIcons';
 import { buildSalesBrochureHtml, type SalesBrochureSnapshot } from '@/lib/brochures/buildSalesBrochureHtml';
+import { brochurePricePages, brochureSeasonLabel, loadBrochurePriceList } from '@/lib/brochures/brochurePriceList';
 import { createHotelBrochureTemplate, HOTEL_TEMPLATE_PRODUCT_IDS } from '@/lib/brochures/hotelTemplate';
 
 /*
@@ -341,6 +342,10 @@ export async function brochureEditor(ctx: NativeContext, rawId: string) {
 
   const hotel = await brochureHotelAssets(ctx, brochure!.organization_id || null, brochure!.my_company_id || null);
 
+  // Cenniki sezonowe do strony „Cennik” (bez archiwum); bez migracji cenników albo bez dostępu — pusta lista.
+  const { data: priceListRows } = await ctx.supabase.from('price_lists')
+    .select('id, name, my_company_id, season_from, season_to, status').neq('status', 'archived').order('season_from', { ascending: false });
+
   // Ostatni własny PDF (jak menu „Ostatni PDF vN — odbiorca” w CRM); sam plik — `op=ownPdf`.
   let ownPdf: { version: number; recipient: string } | null = null;
   const { data: currentEmployeeId } = await ctx.supabase.rpc('current_brochure_employee_id');
@@ -374,6 +379,9 @@ export async function brochureEditor(ctx: NativeContext, rawId: string) {
       coverImagePath: brochure!.cover_image_path || null,
       hasPdf: Boolean(brochure!.current_pdf_path),
       sellerDemo: config.seller_demo_enabled === true,
+      // Cennik strony „Cennik” (migracja 20261129130000); `supportsPriceList` — kolumna już jest w bazie.
+      priceListId: typeof brochure!.price_list_id === 'string' ? brochure!.price_list_id : null,
+      supportsPriceList: 'price_list_id' in brochure!,
       composer: parseComposer(config.composer),
       decorativePages: parseDecorativePages(config.decorative_pages),
     },
@@ -391,6 +399,13 @@ export async function brochureEditor(ctx: NativeContext, rawId: string) {
     employees: (employeesRes.data || []).map((row: Row) => ({
       id: String(row.id),
       name: [row.name, row.surname].filter(Boolean).join(' ') || text(row.email),
+    })),
+    priceLists: ((priceListRows || []) as Row[]).map((row) => ({
+      id: String(row.id),
+      name: text(row.name),
+      companyId: text(row.my_company_id),
+      season: brochureSeasonLabel(text(row.season_from), text(row.season_to)),
+      status: text(row.status),
     })),
     library: [...library.values()],
     studio: brochureStudio(id),
@@ -453,8 +468,11 @@ export async function saveBrochure(ctx: NativeContext, body: Row) {
     composer: body.composer && typeof body.composer === 'object' ? parseComposer(body.composer) : parseComposer(config.composer),
   };
   if (typeof body.sellerDemo === 'boolean') brandConfig.seller_demo_enabled = body.sellerDemo;
+  // Cennik strony „Cennik” — tylko gdy Mac go wysyła (po migracji 20261129130000); pusty — bez strony.
+  const raw = record(body.brochure);
+  const priceList = 'priceListId' in raw ? { price_list_id: UUID.test(text(raw.priceListId)) ? text(raw.priceListId) : null } : {};
   const { data: saved, error } = await ctx.supabase.from('sales_brochures').update({
-    ...draft, brand_config: brandConfig, updated_by: ctx.employee.id,
+    ...draft, ...priceList, brand_config: brandConfig, updated_by: ctx.employee.id,
   }).eq('id', id).select('id').maybeSingle();
   if (error) fail(error.message || 'Nie udało się zapisać broszury');
   if (!saved) fail('Nie masz uprawnień do zapisania tej broszury.');
@@ -572,6 +590,8 @@ export async function brochurePreview(ctx: NativeContext, body: Row, origin: str
     { bucket: coverBucket, path: coverPath },
   ]);
   const contact = contactRes.data as Row | null;
+  const priceList = await loadBrochurePriceList(ctx.supabase, UUID.test(text(raw.priceListId)) ? text(raw.priceListId) : null,
+    items.map((item) => ({ id: item.id, title: item.customTitle || item.base.title, productId: item.productId, variantId: item.variantId })));
   const snapshot: SalesBrochureSnapshot = {
     brochure: {
       id, name: text(raw.name), title: text(raw.title), subtitle: text(raw.subtitle) || null,
@@ -596,11 +616,13 @@ export async function brochurePreview(ctx: NativeContext, body: Row, origin: str
       };
     }),
     decorativePages: decorations.map((page) => ({ ...page, imageUrl: page.imagePath ? urls[brochureAssetKey(page.imageBucket, page.imagePath)] : undefined })),
+    priceList,
     generatedAt: '',
   };
   const background = /^#[0-9a-f]{6}$/i.test(text(body.background)) ? text(body.background) : 'transparent';
   const html = buildSalesBrochureHtml(snapshot).replace('</style>', `.page{margin-bottom:16px}html,body{background:${background}}</style>`);
-  const totalPages = items.length + decorations.filter((page) => page.isVisible).length + 3 - composer.hiddenPages.length;
+  const totalPages = items.length + decorations.filter((page) => page.isVisible).length + 3 - composer.hiddenPages.length
+    + brochurePricePages(priceList).length;
   return { html, totalPages };
 }
 

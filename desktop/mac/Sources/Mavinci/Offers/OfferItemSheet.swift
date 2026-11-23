@@ -127,6 +127,7 @@ import SwiftUI
         let needle = SearchText.fold(search)
         let rows = (catalog?.products ?? []).filter { needle.isEmpty || SearchText.fold($0.name + " " + $0.description).contains(needle) }
         return VStack(alignment: .leading, spacing: 8) {
+            if let notice = catalog?.priceNotice { OfferPriceNoticeBanner(notice: notice) }
             TextField("", text: $search, prompt: Text("Nazwa produktu...")).textFieldStyle(.roundedBorder)
             List(rows, selection: Binding(get: { productID }, set: { choose($0) })) { item in
                 HStack(spacing: 8) {

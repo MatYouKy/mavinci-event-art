@@ -7,6 +7,7 @@ import { fetchEventByIdWith } from '@/lib/CRM/events/eventsIdData.server';
 import { eventMoney } from '@/lib/CRM/events/eventFinancials';
 import { eventContactSchema, eventSaveError, eventWizardSchema, getValidationErrors } from '@/lib/CRM/events/eventWizardValidation';
 import { fetchPublicHolidays, indexHolidays, specialDaysInRange } from '@/lib/CRM/calendar/publicHolidays';
+import { categoryCompanyRule, type EventCategoryCompanyRow } from '@/lib/CRM/events/categoryCompany';
 
 /*
  * Nowe wydarzenie i edycja danych wydarzenia dla Maca — jak kreator „Nowy event” (`EventWizard`, krok „Szczegóły”:
@@ -71,9 +72,17 @@ async function accessibleCompanies(ctx: NativeContext) {
   }));
 }
 
+/**
+ * Kategorie z domyślną marką (po migracji cenników: Wesele → Event Rulers, obowiązkowo) — Mac ustawia firmę realizującą po wyborze
+ * kategorii, a baza i tak zapisuje markę obowiązkową (`a_event_category_company`). Bez migracji — `companyId: null`.
+ */
 async function categories(ctx: NativeContext) {
-  const { data } = await ctx.supabase.from('event_categories').select('id, name').order('name');
-  return ((data || []) as Row[]).map((row) => ({ id: String(row.id), name: String(row.name || '') }));
+  const { data } = await ctx.supabase.from('event_categories').select('*').order('name');
+  const rows = (data || []) as Row[];
+  return rows.map((row) => {
+    const rule = categoryCompanyRule(rows as EventCategoryCompanyRow[], String(row.id));
+    return { id: String(row.id), name: String(row.name || ''), companyId: rule?.companyId ?? null, companyLocked: rule?.locked === true };
+  });
 }
 
 /** Kreator „Nowy event”: organizacje, kontakty z bieżącymi organizacjami, kategorie, działalności i lokalizacje. */

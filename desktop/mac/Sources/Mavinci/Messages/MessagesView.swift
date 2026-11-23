@@ -45,15 +45,15 @@ struct MessageWindow: View {
     }
 }
 
-/// Akcja wymagająca arkusza (przypisanie, zapytanie, zadanie, wysyłka).
+/// Akcja wymagająca arkusza (przypisanie, zapytanie, zadanie). Wysyłka (nowa wiadomość, odpowiedź, przekazanie) — w osobnym
+/// oknie (`ComposeSheet` przez `formWindow`).
 enum MessageSheet: Identifiable {
-    case assign(MessageItem), inquiry(MessageItem), task(MessageItem, MessageDetail?), compose(ComposeDraft)
+    case assign(MessageItem), inquiry(MessageItem), task(MessageItem, MessageDetail?)
     var id: String {
         switch self {
         case .assign(let m): return "assign:\(m.key)"
         case .inquiry(let m): return "inquiry:\(m.key)"
         case .task(let m, _): return "task:\(m.key)"
-        case .compose(let d): return "compose:\(d.id)"
         }
     }
 }
@@ -99,6 +99,8 @@ enum MessageAddresses {
     @ObservedObject var store: MessagesStore
     @ViewBuilder let content: (MessageActions) -> Content
     @State private var sheet: MessageSheet?
+    /// Nowa wiadomość, odpowiedź albo przekazanie — otwierane w osobnym oknie.
+    @State private var composing: ComposeDraft?
     @State private var trashTarget: (message: MessageItem, restore: Bool)?
     @Environment(\.openWindow) private var openWindow
     var body: some View {
@@ -108,9 +110,9 @@ enum MessageAddresses {
                 case .assign(let message): AssignMessageSheet(store: store, message: message)
                 case .inquiry(let message): InquiryFromMessageSheet(store: store, message: message)
                 case .task(let message, let detail): TaskFromMessageSheet(store: store, message: message, detail: detail)
-                case .compose(let draft): ComposeSheet(store: store, draft: draft)
                 }
             }
+            .formWindow(item: $composing, kind: .compose) { draft in ComposeSheet(store: store, draft: draft) }
             .confirmationDialog(trashTarget?.restore == true ? "Przywróć wiadomość" : "Przenieś wiadomość do kosza",
                                 isPresented: Binding(get: { trashTarget != nil }, set: { if !$0 { trashTarget = nil } }), titleVisibility: .visible) {
                 if let target = trashTarget {
@@ -126,9 +128,9 @@ enum MessageAddresses {
     }
     private var actions: MessageActions {
         MessageActions(
-            compose: { sheet = .compose(store.newDraft()) },
-            reply: { m in Task { if let draft = await store.replyDraft(m) { sheet = .compose(draft) } } },
-            forward: { m in Task { if let draft = await store.forwardDraft(m) { sheet = .compose(draft) } } },
+            compose: { composing = store.newDraft() },
+            reply: { m in Task { if let draft = await store.replyDraft(m) { composing = draft } } },
+            forward: { m in Task { if let draft = await store.forwardDraft(m) { composing = draft } } },
             assign: { m in
                 if let linked = m.sales?.inquiries.first, m.sales?.hasInquiry == true { store.openInquiry(linked.id) } else { sheet = .assign(m) }
             },

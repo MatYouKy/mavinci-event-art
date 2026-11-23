@@ -22,6 +22,9 @@ struct EventCreateSetup: Decodable {
     struct Category: Decodable, Identifiable, Hashable {
         var id: String
         var name: String
+        /// Domyślna marka kategorii (np. Wesele → Event Rulers) i czy obowiązkowa; starszy serwer — brak.
+        var companyId: String?
+        var companyLocked: Bool?
     }
     struct Company: Decodable, Identifiable, Hashable {
         var id: String
@@ -62,12 +65,10 @@ struct EventSpecialDays: Decodable {
 
 /// Data w formacie dnia (do nietypowych dni).
 enum EventFormDates {
+    /// `yyyy-MM-dd` w czasie polskim — z kalendarza, bez tworzenia formatera (klucz `dateKey` liczy się przy przeliczeniu kreatora).
     static func day(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = MeetingDates.zone
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        let parts = MeetingDates.calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
     /// Domyślny początek nowego terminu: jutro 18:00 (pole w CRM jest puste — na Macu ustawiamy po kliknięciu).
     static var suggestedStart: Date {
@@ -191,7 +192,8 @@ struct EventSpecialDaysNotice: View {
     }
 }
 
-/// Wybór zapisanej lokalizacji z wyszukiwaniem (jak `LocationSelector`) i „Dodaj nową”.
+/// Wybór zapisanej lokalizacji z wyszukiwaniem (jak `LocationSelector`) i „Dodaj nową”. Lista bez własnego przewijania
+/// (`FormPickRows`): zagnieżdżona przewijana lista w przewijanym formularzu przejmowała przewijanie kreatora.
 struct EventLocationPicker: View {
     let locations: [EventLocationOption]
     let selectedID: String?
@@ -202,6 +204,8 @@ struct EventLocationPicker: View {
 
     var body: some View {
         let filtered = locations.filter { $0.matches(query) }
+        let accent = theme.accent
+        let selected = selectedID
         VStack(alignment: .leading, spacing: 6) {
             TextField("Wybierz z listy lub wyszukaj nową lokalizację...", text: $query).textFieldStyle(.roundedBorder)
             HStack {
@@ -210,35 +214,27 @@ struct EventLocationPicker: View {
                 Button("Dodaj nową", systemImage: "plus", action: add).buttonStyle(.link).font(.caption)
                     .help("Nowa lokalizacja (wyszukiwanie w Mapach Google)")
             }
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    if filtered.isEmpty {
-                        Text(query.isEmpty ? "Brak zapisanych lokalizacji" : "Nie znaleziono lokalizacji „\(query)” w Twojej liście")
-                            .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    ForEach(filtered) { location in
-                        Button { pick(location) } label: {
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "mappin").foregroundStyle(theme.accent)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(location.name).font(.callout.weight(.medium))
-                                    let line = [location.address ?? "", [location.city ?? "", location.postal_code ?? ""].filter { !$0.isEmpty }.joined(separator: " ")]
-                                        .filter { !$0.isEmpty }.joined(separator: ", ")
-                                    if !line.isEmpty { Text(line).font(.caption).foregroundStyle(.secondary) }
-                                }
-                                Spacer()
-                                if selectedID == location.id { Image(systemName: "checkmark").foregroundStyle(theme.accent) }
-                            }
-                            .padding(6)
-                            .background(selectedID == location.id ? theme.accent.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
-                            .contentShape(Rectangle())
+            FormPickRows(items: filtered,
+                         empty: query.isEmpty ? "Brak zapisanych lokalizacji" : "Nie znaleziono lokalizacji „\(query)” w Twojej liście",
+                         pageSize: 5, resetKey: query) { location in
+                Button { pick(location) } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "mappin").foregroundStyle(accent)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(location.name).font(.callout.weight(.medium))
+                            let line = [location.address ?? "", [location.city ?? "", location.postal_code ?? ""].filter { !$0.isEmpty }.joined(separator: " ")]
+                                .filter { !$0.isEmpty }.joined(separator: ", ")
+                            if !line.isEmpty { Text(line).font(.caption).foregroundStyle(.secondary) }
                         }
-                        .buttonStyle(.plain)
+                        Spacer()
+                        if selected == location.id { Image(systemName: "checkmark").foregroundStyle(accent) }
                     }
+                    .padding(6)
+                    .background(selected == location.id ? accent.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
-            .frame(height: 170)
-            .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 }
@@ -302,13 +298,9 @@ struct EventFormField<Content: View>: View {
     @State private var status = "inquiry"
     @State private var description = ""
     @State private var specialDays: EventSpecialDays?
-    // Nowa osoba kontaktowa
+    // Nowa osoba kontaktowa (pola w `EventNewContactForm`; tu tylko informacja, że coś w nich wpisano)
     @State private var showNewContact = false
-    @State private var newFirst = ""
-    @State private var newLast = ""
-    @State private var newEmail = ""
-    @State private var newPhone = ""
-    @State private var contactErrors: [String: String] = [:]
+    @State private var contactDraftPending = false
     @State private var addingLocation = false
     // Walidacja i zapis
     @State private var errors: [String: String] = [:]
@@ -329,9 +321,8 @@ struct EventFormField<Content: View>: View {
         return setup.contacts
     }
 
-    private var pendingContact: Bool {
-        showNewContact && [newFirst, newLast, newEmail, newPhone].contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-    }
+    /// Wpisana, niezapisana osoba kontaktowa — kreator nie zapisze eventu (jak w CRM).
+    private var pendingContact: Bool { showNewContact && contactDraftPending }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -451,6 +442,8 @@ struct EventFormField<Content: View>: View {
                         ForEach(setup.companies) { Text($0.name + ($0.nip.map { " · NIP \($0)" } ?? "")).tag($0.id) }
                     }
                     .labelsHidden()
+                    // Kategoria z marką obowiązkową (Wesele → Event Rulers) — markę ustawia kategoria.
+                    .disabled(lockedCategory(setup) != nil)
                 }
                 EventFormField("Nazwa eventu *", error: errors["name"]) {
                     TextField("np. Konferencja Tech Summit 2025", text: $name).textFieldStyle(.roundedBorder)
@@ -462,6 +455,14 @@ struct EventFormField<Content: View>: View {
                         ForEach(setup.categories) { Text($0.name).tag($0.id) }
                     }
                     .labelsHidden()
+                    .onChange(of: categoryID) { _, id in
+                        // Kategoria z domyślną marką ustawia firmę realizującą (jak w CRM).
+                        if let company = setup.categories.first(where: { $0.id == id })?.companyId,
+                           setup.companies.contains(where: { $0.id == company }) { companyID = company }
+                    }
+                    if let hint = categoryCompanyHint(setup) {
+                        Text(hint).font(.caption).foregroundStyle(theme.accent).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 datesSection
                 EventFormField("Lokalizacja *", error: errors["location"] ?? errors["location_id"]) {
@@ -485,13 +486,7 @@ struct EventFormField<Content: View>: View {
                     }
                 }
                 EventFormField("Opis") {
-                    ZStack(alignment: .topLeading) {
-                        TextEditor(text: $description).font(.body).frame(minHeight: 90)
-                        if description.isEmpty {
-                            Text("Dodatkowe informacje o evencie...").foregroundStyle(.tertiary).padding(.horizontal, 5).padding(.vertical, 1).allowsHitTesting(false)
-                        }
-                    }
-                    .padding(4).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                    PlaceholderTextEditor(text: $description, placeholder: "Dodatkowe informacje o evencie...")
                 }
             }
             .padding(20)
@@ -540,24 +535,15 @@ struct EventFormField<Content: View>: View {
                     }
                 } else {
                     TextField("Wyszukaj organizację…", text: $organizationQuery).textFieldStyle(.roundedBorder)
-                    let query = organizationQuery.trimmingCharacters(in: .whitespaces).lowercased()
-                    let matches = setup.organizations.filter {
-                        query.isEmpty || $0.name.lowercased().contains(query) || ($0.alias ?? "").lowercased().contains(query)
-                    }
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(matches.prefix(60)) { organization in
-                                Button { pickOrganization(organization.id) } label: {
-                                    Text(organization.name + (organization.alias.map { $0.isEmpty ? "" : " (\($0))" } ?? ""))
-                                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8).padding(.vertical, 4).contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            if matches.isEmpty { Text("Brak pasujących organizacji").font(.callout).foregroundStyle(.secondary).padding(8) }
+                    FormPickList(query: $organizationQuery, items: setup.organizations,
+                                 searchText: { [$0.name, $0.alias ?? ""].joined(separator: "\n") },
+                                 empty: "Brak pasujących organizacji") { organization in
+                        Button { pickOrganization(organization.id) } label: {
+                            Text(organization.name + (organization.alias.map { $0.isEmpty ? "" : " (\($0))" } ?? ""))
+                                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8).padding(.vertical, 4).contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
-                    .frame(height: 130)
-                    .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
                 }
             }
             if !organizationID.isEmpty {
@@ -568,7 +554,7 @@ struct EventFormField<Content: View>: View {
                             ForEach(filteredContacts) { Text($0.name).tag($0.id) }
                         }
                         .labelsHidden()
-                        Button("Dodaj nową", systemImage: "plus") { contactErrors = [:]; showNewContact = true }.buttonStyle(.link)
+                        Button("Dodaj nową", systemImage: "plus") { showNewContact = true }.buttonStyle(.link)
                     }
                     if filteredContacts.count == 1 && !contactID.isEmpty {
                         Text("✓ Automatycznie wybrano jedyną osobę kontaktową").font(.caption).foregroundStyle(.green)
@@ -586,49 +572,24 @@ struct EventFormField<Content: View>: View {
                     } else {
                         TextField("Wybierz lub dodaj nową osobę", text: $contactQuery).textFieldStyle(.roundedBorder)
                     }
-                    Button("Dodaj nową", systemImage: "plus") { contactErrors = [:]; showNewContact = true }.buttonStyle(.link)
+                    Button("Dodaj nową", systemImage: "plus") { showNewContact = true }.buttonStyle(.link)
                 }
                 if selected == nil {
-                    let query = contactQuery.trimmingCharacters(in: .whitespaces).lowercased()
-                    let matches = filteredContacts.filter { query.isEmpty || $0.name.lowercased().contains(query) }
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(matches.prefix(60)) { contact in
-                                Button { contactID = contact.id } label: {
-                                    Text(contact.name).frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 8).padding(.vertical, 4).contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            if matches.isEmpty { Text("Brak pasujących kontaktów").font(.callout).foregroundStyle(.secondary).padding(8) }
+                    FormPickList(query: $contactQuery, items: filteredContacts, searchText: { $0.name }, empty: "Brak pasujących kontaktów") { contact in
+                        Button { contactID = contact.id } label: {
+                            Text(contact.name).frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 8).padding(.vertical, 4).contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
-                    .frame(height: 130)
-                    .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
                 }
             }
         }
-        if showNewContact { newContactForm }
-    }
-
-    private var newContactForm: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Nowa osoba kontaktowa").font(.callout.weight(.medium))
-                Spacer()
-                Button { showNewContact = false } label: { Image(systemName: "xmark") }.buttonStyle(.borderless)
+        if showNewContact {
+            EventNewContactForm(pending: $contactDraftPending, working: working, close: { showNewContact = false }) { draft in
+                await createContact(draft)
             }
-            HStack(alignment: .top, spacing: 8) {
-                EventFormField("Imię *", error: contactErrors["first_name"]) { TextField("Imię *", text: $newFirst).textFieldStyle(.roundedBorder) }
-                EventFormField("Nazwisko *", error: contactErrors["last_name"]) { TextField("Nazwisko *", text: $newLast).textFieldStyle(.roundedBorder) }
-            }
-            EventFormField("E-mail", error: contactErrors["email"]) { TextField("Email", text: $newEmail).textFieldStyle(.roundedBorder) }
-            EventFormField("Telefon", error: contactErrors["phone"]) { TextField("Telefon", text: $newPhone).textFieldStyle(.roundedBorder) }
-            Button(working ? "Zapisywanie osoby…" : "Dodaj osobę kontaktową") { Task { await createContact() } }
-                .buttonStyle(.borderedProminent).disabled(working)
         }
-        .padding(12)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private var datesSection: some View {
@@ -783,6 +744,25 @@ struct EventFormField<Content: View>: View {
         if contacts.count == 1 { contactID = contacts[0].id }
     }
 
+    /// Wybrana kategoria z marką obowiązkową (np. Wesele → Event Rulers).
+    private func lockedCategory(_ setup: EventCreateSetup) -> EventCreateSetup.Category? {
+        guard let category = setup.categories.first(where: { $0.id == categoryID }), category.companyLocked == true, category.companyId != nil else { return nil }
+        return category
+    }
+
+    /// Podpowiedź pod kategorią: marka kategorii (jak `categoryCompanyHint` w CRM).
+    private func categoryCompanyHint(_ setup: EventCreateSetup) -> String? {
+        guard let category = setup.categories.first(where: { $0.id == categoryID }), let companyID = category.companyId else { return nil }
+        guard let company = setup.companies.first(where: { $0.id == companyID }) else {
+            return category.companyLocked == true
+                ? "Eventy z kategorii „\(category.name)” realizuje marka, do której nie masz dostępu — poproś administratora o dostęp."
+                : nil
+        }
+        return category.companyLocked == true
+            ? "Eventy z kategorii „\(category.name)” zawsze realizuje \(company.name) — ta marka zostanie zapisana."
+            : "Domyślna marka kategorii „\(category.name)”: \(company.name)."
+    }
+
     private func pickLocation(_ location: EventLocationOption) {
         let changed = locationID != location.id
         locationText = location.label
@@ -805,32 +785,30 @@ struct EventFormField<Content: View>: View {
         specialDays = try? await store.specialDays(from: start, to: hasEnd ? end : nil)
     }
 
-    private func createContact() async {
-        var local: [String: String] = [:]
-        if newFirst.trimmingCharacters(in: .whitespaces).isEmpty { local["first_name"] = "Wpisz imię osoby kontaktowej." }
-        if newLast.trimmingCharacters(in: .whitespaces).isEmpty { local["last_name"] = "Wpisz nazwisko osoby kontaktowej." }
-        contactErrors = local
-        guard local.isEmpty else { return }
+    /// „Dodaj osobę kontaktową” (`handleCreateContact`): `nil` — zapisana i wybrana (formularz znika), inaczej błędy pól
+    /// (dane zostają w formularzu).
+    private func createContact(_ draft: EventContactDraft) async -> [String: String]? {
         working = true
         defer { working = false }
         do {
             let contact = try await store.createEventContact([
-                "first_name": .string(newFirst), "last_name": .string(newLast), "email": .string(newEmail), "phone": .string(newPhone),
+                "first_name": .string(draft.first), "last_name": .string(draft.last), "email": .string(draft.email), "phone": .string(draft.phone),
                 "clientType": .string(clientType), "organization_id": .string(organizationID),
             ])
             setup?.contacts.append(contact)
             setup?.contacts.sort { $0.name.localizedCompare($1.name) == .orderedAscending }
             contactID = contact.id
             showNewContact = false
-            newFirst = ""; newLast = ""; newEmail = ""; newPhone = ""
-            contactErrors = [:]
+            contactDraftPending = false
             errors["contact_person_id"] = nil
             state.succeed("Osoba kontaktowa dodana!")
+            return nil
         } catch let failure as NativeFailure {
-            contactErrors = failure.fieldErrors
-            if failure.fieldErrors.isEmpty { contactErrors["first_name"] = failure.message }
+            var fields = failure.fieldErrors
+            if fields.isEmpty { fields["first_name"] = failure.message }
+            return fields
         } catch {
-            contactErrors["first_name"] = store.failureText(error, "Nie udało się zapisać osoby kontaktowej. Dane pozostają w formularzu.")
+            return ["first_name": store.failureText(error, "Nie udało się zapisać osoby kontaktowej. Dane pozostają w formularzu.")]
         }
     }
 
@@ -904,5 +882,62 @@ struct EventFormField<Content: View>: View {
         Task { await store.sync(force: true) }
         dismiss()
         state.showEvent(createdID)
+    }
+}
+
+/// Dane nowej osoby kontaktowej z kreatora.
+struct EventContactDraft: Sendable {
+    var first: String
+    var last: String
+    var email: String
+    var phone: String
+}
+
+/// „Nowa osoba kontaktowa” w kreatorze — osobny widok z własnymi polami: wpisywanie przelicza tylko ten formularz, nie cały
+/// kreator. `pending` — w polach jest tekst (kreator nie zapisze eventu z niezapisaną osobą); `save` zwraca `nil` po zapisie
+/// albo błędy pól.
+@MainActor struct EventNewContactForm: View {
+    @Binding var pending: Bool
+    let working: Bool
+    let close: () -> Void
+    let save: (EventContactDraft) async -> [String: String]?
+    @State private var first = ""
+    @State private var last = ""
+    @State private var email = ""
+    @State private var phone = ""
+    @State private var errors: [String: String] = [:]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Nowa osoba kontaktowa").font(.callout.weight(.medium))
+                Spacer()
+                Button { close() } label: { Image(systemName: "xmark") }.buttonStyle(.borderless)
+            }
+            HStack(alignment: .top, spacing: 8) {
+                EventFormField("Imię *", error: errors["first_name"]) { TextField("Imię *", text: $first).textFieldStyle(.roundedBorder) }
+                EventFormField("Nazwisko *", error: errors["last_name"]) { TextField("Nazwisko *", text: $last).textFieldStyle(.roundedBorder) }
+            }
+            EventFormField("E-mail", error: errors["email"]) { TextField("Email", text: $email).textFieldStyle(.roundedBorder) }
+            EventFormField("Telefon", error: errors["phone"]) { TextField("Telefon", text: $phone).textFieldStyle(.roundedBorder) }
+            Button(working ? "Zapisywanie osoby…" : "Dodaj osobę kontaktową") { Task { await submit() } }
+                .buttonStyle(.borderedProminent).disabled(working)
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        .onChange(of: [first, last, email, phone]) { _, values in
+            let filled = values.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            if pending != filled { pending = filled }
+        }
+        .onDisappear { if pending { pending = false } }
+    }
+
+    private func submit() async {
+        var local: [String: String] = [:]
+        if first.trimmingCharacters(in: .whitespaces).isEmpty { local["first_name"] = "Wpisz imię osoby kontaktowej." }
+        if last.trimmingCharacters(in: .whitespaces).isEmpty { local["last_name"] = "Wpisz nazwisko osoby kontaktowej." }
+        errors = local
+        guard local.isEmpty else { return }
+        if let failed = await save(EventContactDraft(first: first, last: last, email: email, phone: phone)) { errors = failed }
     }
 }

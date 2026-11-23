@@ -49,6 +49,8 @@ struct ShowcaseSectionDraft: Identifiable, Equatable {
     var icon: String
     var isActive: Bool
     var cover: ShowcaseMedia?
+    /// Marka działu (zapis tylko, gdy serwer ją obsługuje — `home.companies`).
+    var companyId: String?
     var id: String { sectionID ?? "new" }
 
     init(_ section: ShowcaseSection?) {
@@ -59,6 +61,7 @@ struct ShowcaseSectionDraft: Identifiable, Equatable {
         icon = section?.icon ?? "sparkles"
         isActive = section?.isActive ?? true
         cover = section?.cover
+        companyId = section?.companyId
     }
 }
 
@@ -497,6 +500,7 @@ enum ShowcaseUploadTarget {
             "cover": draft.cover.map { cover in (try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(cover))) ?? .null } ?? .null,
         ]
         if let id = draft.sectionID { body["id"] = .string(id); body["version"] = .number(Double(draft.version)) }
+        if home?.companies != nil { body["companyId"] = draft.companyId.map { JSONValue.string($0) } ?? .null }
         struct Reply: Decodable { let section: ShowcaseSection }
         do {
             let data = try await workspace.withPending(draft.sectionID == nil ? "Tworzę dział" : "Zapisuję dział") { try await post("saveSection", body) }

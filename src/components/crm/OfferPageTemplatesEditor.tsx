@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, CreditCard as Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon, Settings, Move, Type, ChevronDown, ChevronRight, Tag, Table2, Package, Layers3, Loader2 } from 'lucide-react';
+import { Plus, CreditCard as Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon, Settings, Move, Type, ChevronDown, ChevronRight, Tag, Table2, Package, Layers3, Loader2, ArrowUp, ArrowDown, BookOpen } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -10,6 +10,7 @@ import dynamic from 'next/dynamic';
 import Draggable from 'react-draggable';
 import PricingTableConfigEditor from './PricingTableConfigEditor';
 import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
+import { WEDDING_DEPOSIT_DEFAULT, WEDDING_TERMS_DEFAULT } from '@/lib/offer-pdf/shared/weddingPricingDefaults';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
@@ -39,7 +40,7 @@ interface CategoryDesignConfig {
   logo_scale: number;
   assumptions_layout: 'cards' | 'simple';
   visual_image_height: number;
-  pricing_style: 'card' | 'minimal';
+  pricing_style: 'card' | 'minimal' | 'wedding';
   info_page_enabled: boolean;
   info_page_title: string;
   order_process_text: string;
@@ -48,6 +49,13 @@ interface CategoryDesignConfig {
   requirements_page_subtitle: string;
   technical_requirements_text: string;
   reservation_terms_text: string;
+  /** Kolory stron PDF z księgi znaku marki wydarzenia zamiast kolorów kategorii. */
+  brand_colors: boolean;
+  /** Wycena weselna: zadatek w % kwoty do zapłaty i warunki (wiersz = warunek). */
+  deposit_percent: number;
+  wedding_terms_text: string;
+  /** Rozdziały z Prezentacji (karty `sales_showcase_items`) po stronie „O nas”, w tej kolejności. */
+  chapter_item_ids: string[];
 }
 
 const DEFAULT_CATEGORY_DESIGN: CategoryDesignConfig = {
@@ -71,6 +79,10 @@ const DEFAULT_CATEGORY_DESIGN: CategoryDesignConfig = {
   requirements_page_subtitle: 'Wymagania niezbędne do bezpiecznego i sprawnego przygotowania realizacji.',
   technical_requirements_text: 'Dostęp do sali przed wydarzeniem w czasie uzgodnionym z realizatorem\nStabilne zasilanie 230 V oraz miejsce dla stanowiska technicznego\nDostęp do internetu przewodowego przy realizacjach online\nKontakt do osoby technicznej po stronie obiektu',
   reservation_terms_text: 'Termin rezerwujemy po akceptacji oferty i podpisaniu umowy\nZakres końcowy potwierdzamy po weryfikacji warunków technicznych\nDodatkowe usługi i zmiany wymagają potwierdzenia przed wydarzeniem',
+  brand_colors: false,
+  deposit_percent: WEDDING_DEPOSIT_DEFAULT,
+  wedding_terms_text: WEDDING_TERMS_DEFAULT,
+  chapter_item_ids: [],
 };
 
 interface EventCategoryAssignment {
@@ -1182,6 +1194,151 @@ const AVAILABLE_FIELDS = [
   { value: 'seller_nip', label: 'NIP sprzedawcy', type: 'text' },
 ];
 
+/** Najwięcej rozdziałów z Prezentacji (jak w PDF — `CHAPTER_LIMITS.chapters`). */
+const CHAPTER_LIMIT = 12;
+
+/**
+ * Rozdziały z Prezentacji: wybrane karty (np. „Jak to robimy?”, „Zespół”) trafiają do PDF po stronie „O nas”, przed produktami,
+ * w tej kolejności (`src/lib/offer-pdf/chapterHtml.ts`). Lista kart z Prezentacji według działów.
+ */
+function ChapterCardsPicker({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) {
+  const [cards, setCards] = useState<Array<{ id: string; title: string; section: string; active: boolean }> | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const [items, sections] = await Promise.all([
+        supabase.from('sales_showcase_items').select('id, title, section_id, is_active, sort_order').order('sort_order').order('title'),
+        supabase.from('sales_showcase_sections').select('id, title, sort_order').order('sort_order').order('title'),
+      ]);
+      if (!active) return;
+      if (items.error || sections.error) { setUnavailable(true); setCards([]); return; }
+      const order = new Map((sections.data || []).map((row: any, index: number) => [String(row.id), { index, title: String(row.title || '') }]));
+      setCards((items.data || [])
+        .map((row: any) => ({
+          id: String(row.id),
+          title: String(row.title || '') || 'Karta bez tytułu',
+          section: order.get(String(row.section_id))?.title || 'Bez działu',
+          active: row.is_active !== false,
+          index: order.get(String(row.section_id))?.index ?? Number.MAX_SAFE_INTEGER,
+        }))
+        .sort((a, b) => a.index - b.index)
+        .map((card) => ({ id: card.id, title: card.title, section: card.section, active: card.active })));
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const byId = new Map((cards || []).map((card) => [card.id, card]));
+  const sections = Array.from(new Set((cards || []).map((card) => card.section)));
+  const move = (index: number, offset: number) => {
+    const next = [...value];
+    const target = index + offset;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
+
+  return (
+    <div className="mt-4 rounded-xl border border-[#d3bb73]/15 bg-[#121625] p-4">
+      <p className="flex items-center gap-2 text-sm text-[#e5e4e2]"><BookOpen className="h-4 w-4 text-[#d3bb73]" />Rozdziały z Prezentacji</p>
+      <p className="mt-0.5 text-xs text-[#e5e4e2]/40">
+        Wybrane karty (np. „Jak to robimy?”, „Zespół”) trafią do PDF po stronie „O nas”, przed produktami — w tej kolejności. Zmiana karty
+        w Prezentacjach zmienia kolejne oferty. Na stronach: zdjęcie główne, tytuł, wstęp, tekst, punkty, zdjęcia, specyfikacja i pytania
+        (bez bloków z katalogu produktów i realizacji). Wersja EN i oferty sprzedawców — bez rozdziałów.
+      </p>
+      {value.length > 0 && (
+        <ol className="mt-3 space-y-1.5">
+          {value.map((id, index) => {
+            const card = byId.get(id);
+            return (
+              <li key={id} className="flex items-center gap-2 rounded-lg bg-[#0a0d1a] px-3 py-2 text-sm">
+                <span className="w-5 text-xs text-[#d3bb73]">{index + 1}.</span>
+                <span className="min-w-0 flex-1 truncate text-[#e5e4e2]">
+                  {card ? card.title : cards ? 'Karta usunięta z Prezentacji — nie trafi do PDF' : 'Wczytywanie…'}
+                  {card && <span className="ml-2 text-xs text-[#e5e4e2]/40">{card.section}{card.active ? '' : ' · wyłączona — nie trafi do PDF'}</span>}
+                </span>
+                <button type="button" onClick={() => move(index, -1)} disabled={index === 0} className="rounded p-1 text-[#e5e4e2]/60 hover:text-[#d3bb73] disabled:opacity-30" aria-label="Wyżej"><ArrowUp className="h-4 w-4" /></button>
+                <button type="button" onClick={() => move(index, 1)} disabled={index === value.length - 1} className="rounded p-1 text-[#e5e4e2]/60 hover:text-[#d3bb73] disabled:opacity-30" aria-label="Niżej"><ArrowDown className="h-4 w-4" /></button>
+                <button type="button" onClick={() => onChange(value.filter((item) => item !== id))} className="rounded p-1 text-[#e5e4e2]/60 hover:text-red-400" aria-label="Usuń rozdział"><X className="h-4 w-4" /></button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {unavailable ? (
+        <p className="mt-3 text-xs text-[#e5e4e2]/40">Nie udało się wczytać kart z Prezentacji (brak dostępu albo Prezentacje nie są włączone).</p>
+      ) : (
+        <select
+          value=""
+          disabled={!cards || value.length >= CHAPTER_LIMIT}
+          onChange={(event) => { if (event.target.value) onChange([...value, event.target.value]); }}
+          className="mt-3 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
+        >
+          <option value="">{!cards ? 'Wczytywanie kart…' : value.length >= CHAPTER_LIMIT ? `Najwięcej ${CHAPTER_LIMIT} rozdziałów` : cards.length ? 'Dodaj kartę z Prezentacji…' : 'Brak kart w Prezentacjach'}</option>
+          {sections.map((section) => (
+            <optgroup key={section} label={section}>
+              {(cards || []).filter((card) => card.section === section && !value.includes(card.id)).map((card) => (
+                <option key={card.id} value={card.id}>{card.title}{card.active ? '' : ' (wyłączona)'}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+/** Podgląd strony „WASZA WYCENA” (styl weselny) — układ jak w PDF (`src/lib/offer-pdf/weddingPricing.ts`), przykładowe kwoty. */
+function WeddingPricingPreview({ design, headingFont }: { design: CategoryDesignConfig; headingFont?: string }) {
+  const total = 12400;
+  const percent = Math.min(100, Math.max(0, Math.round(Number(design.deposit_percent) || 0)));
+  const deposit = Math.round(total * percent) / 100;
+  // Grupy tysięcy także dla 4 cyfr i grosze tylko przy niepełnej kwocie — jak w PDF.
+  const money = (value: number) => {
+    const rounded = Math.round(value * 100) / 100;
+    const [whole, fraction] = rounded.toFixed(Number.isInteger(rounded) ? 0 : 2).split('.');
+    return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}${fraction ? `,${fraction}` : ''} zł`;
+  };
+  const terms = String(design.wedding_terms_text || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean).slice(0, 5);
+  return (
+    <div className="aspect-[1/1.414] overflow-hidden rounded-lg shadow-xl" style={{ backgroundColor: design.surface_color }}>
+      <div className="px-4 pb-3 pt-4" style={{ backgroundColor: design.primary_color, borderBottom: `2px solid ${design.accent_color}` }}>
+        <p className="text-[6px] uppercase" style={{ color: design.accent_color }}>Oferta nr 17/2026</p>
+        <p className="mt-1 text-lg leading-none" style={{ color: design.accent_color, fontFamily: headingFont }}>WASZA WYCENA</p>
+        <p className="mt-2 text-[7px]" style={{ color: design.surface_color }}>Wesele · 12.06.2027 · Miejsce przyjęcia</p>
+      </div>
+      <div className="space-y-1.5 px-4 pt-3 text-[7px]" style={{ color: design.primary_color }}>
+        <p className="text-[6px] text-black/45">Ceny według cennika na sezon 2027</p>
+        {[['Pakiet z prowadzeniem', 10800], ['Fontanny iskier — 4 szt.', 800], ['Ciężki dym', 800]].map(([name, value]) => (
+          <div key={String(name)} className="flex justify-between border-b pb-1 font-semibold" style={{ borderColor: `${design.accent_color}99` }}>
+            <span>{name}</span><span>{money(Number(value))}</span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between rounded-sm px-2 py-2" style={{ backgroundColor: design.primary_color }}>
+          <span style={{ color: design.surface_color, fontFamily: headingFont }}>RAZEM</span>
+          <span className="text-xs font-semibold" style={{ color: design.accent_color }}>{money(total)}</span>
+        </div>
+        {percent > 0 && (
+          <div className="space-y-0.5 border bg-white px-2 py-1.5" style={{ borderColor: design.accent_color }}>
+            <div className="flex justify-between font-semibold"><span>Zadatek {percent}% przy podpisaniu umowy</span><span>{money(deposit)}</span></div>
+            <div className="flex justify-between text-black/55"><span>Pozostało do zapłaty</span><span>{money(total - deposit)}</span></div>
+          </div>
+        )}
+        {terms.length > 0 && (
+          <div className="pt-1">
+            <p className="text-[9px]" style={{ fontFamily: headingFont }}>WARUNKI</p>
+            <div className="mb-1 mt-0.5 h-px w-6" style={{ backgroundColor: design.accent_color }} />
+            {terms.map((line, index) => (
+              <p key={index} className="flex gap-1.5 text-[6px] text-black/65"><span style={{ color: design.accent_color }}>◆</span>{line}</p>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CategoryModal({
   category,
   onClose,
@@ -1546,6 +1703,13 @@ function CategoryModal({
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
+              <label className="flex cursor-pointer items-start gap-3 text-sm md:col-span-2">
+                <input type="checkbox" checked={formData.design_config.brand_colors} onChange={(event) => updateDesign('brand_colors', event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#b94b69]" />
+                <span>
+                  <span className="block text-[#e5e4e2]">Kolory z księgi znaku marki wydarzenia</span>
+                  <span className="mt-0.5 block text-xs text-[#e5e4e2]/40">PDF bierze kolor główny, dodatkowy i akcent z księgi znaku marki realizującej wydarzenie (np. Event Rulers dla wesel). Kolory poniżej zostają dla ról, których marka nie ma, i dla podglądu.</span>
+                </span>
+              </label>
               {([
                 ['primary_color', 'Kolor główny'],
                 ['secondary_color', 'Kolor dodatkowy'],
@@ -1599,6 +1763,7 @@ function CategoryModal({
                 <select value={formData.design_config.pricing_style} onChange={(event) => updateDesign('pricing_style', event.target.value as CategoryDesignConfig['pricing_style'])} className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-[#e5e4e2]">
                   <option value="card">Duża kolorowa karta</option>
                   <option value="minimal">Minimalna linia podsumowania</option>
+                  <option value="wedding">Weselna — „Wasza wycena” z zadatkiem i warunkami</option>
                 </select>
               </label>
             </div>
@@ -1647,6 +1812,9 @@ function CategoryModal({
               </div>
               <div>
                 <p className="mb-2 text-xs uppercase tracking-wide text-[#e5e4e2]/45">Podgląd wyceny</p>
+                {formData.design_config.pricing_style === 'wedding' ? (
+                  <WeddingPricingPreview design={formData.design_config} headingFont={brandHeadingPreviewUrl ? "'CategoryOfferHeading', sans-serif" : undefined} />
+                ) : (
                 <div className="aspect-[1/1.414] overflow-hidden rounded-lg p-4 shadow-xl" style={{ backgroundColor: formData.design_config.surface_color }}>
                   <p className="text-lg" style={{ color: formData.design_config.primary_color, fontFamily: brandHeadingPreviewUrl ? "'CategoryOfferHeading', sans-serif" : undefined }}>WYCENA</p>
                   <div className="mt-2 h-px" style={{ backgroundColor: formData.design_config.primary_color }} />
@@ -1660,8 +1828,49 @@ function CategoryModal({
                     <p className="mt-2 text-base">7 500 PLN</p>
                   </div>
                 </div>
+                )}
               </div>
             </div>
+
+            {formData.design_config.pricing_style === 'wedding' && (
+              <div className="mt-6 rounded-xl border border-[#d3bb73]/15 bg-[#121625] p-4">
+                <p className="text-sm text-[#e5e4e2]">Wycena weselna „Wasza wycena”</p>
+                <p className="mt-0.5 text-xs text-[#e5e4e2]/40">
+                  Zamiast tabeli: pozycje oferty z kwotami, rabat i VAT w podsumowaniu, razem do zapłaty, zadatek z pozostałą kwotą i warunki.
+                  Oferty z pakietami do wyboru i oferty sprzedawców zostają w zwykłym układzie.
+                </p>
+                <div className="mt-4 grid gap-4 md:grid-cols-[200px_1fr]">
+                  <label className="block text-sm text-[#e5e4e2]/70">
+                    Zadatek (% kwoty do zapłaty)
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={formData.design_config.deposit_percent}
+                      onChange={(event) => updateDesign('deposit_percent', Math.min(100, Math.max(0, Math.round(Number(event.target.value) || 0))))}
+                      className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                    />
+                    <span className="mt-1 block text-xs text-[#e5e4e2]/35">0 — bez zadatku na stronie wyceny.</span>
+                  </label>
+                  <label className="block text-sm text-[#e5e4e2]/70">
+                    Warunki
+                    <textarea
+                      rows={4}
+                      value={formData.design_config.wedding_terms_text}
+                      onChange={(event) => updateDesign('wedding_terms_text', event.target.value)}
+                      className="mt-2 w-full resize-y rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                    />
+                    <span className="mt-1 block text-xs text-[#e5e4e2]/35">Każdy warunek w nowym wierszu (np. dojazd, nocleg zespołu). Zadatek ma własny wiersz w podsumowaniu.</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            <ChapterCardsPicker
+              value={Array.isArray(formData.design_config.chapter_item_ids) ? formData.design_config.chapter_item_ids : []}
+              onChange={(ids) => updateDesign('chapter_item_ids', ids)}
+            />
 
             <div className="mt-6 rounded-xl border border-[#d3bb73]/15 bg-[#121625] p-4">
               <label className="flex cursor-pointer items-center gap-3">

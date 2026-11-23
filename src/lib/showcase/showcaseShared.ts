@@ -172,6 +172,12 @@ export type ShowcaseSectionView = {
   itemCount: number;
   /** Ukryty w układzie tego pracownika (nie pokazuje się u niego na spotkaniach; u innych — bez zmian). */
   hiddenForMe?: boolean;
+  /**
+   * Marka działu (np. Wesela → Event Rulers; migracja 20261129140000): oferta ze spotkania z kart tego działu dostaje tę markę
+   * i ceny z jej cennika sezonu dla terminu eventu. `null` — bez marki; brak pola — starszy serwer.
+   */
+  companyId?: string | null;
+  companyName?: string | null;
 };
 
 export type ShowcaseItemSummary = {
@@ -202,6 +208,8 @@ export type ShowcaseHome = {
   layout?: ShowcaseLayout | null;
   /** Czy serwer zapisuje własny układ (po aktualizacji bazy); starszy serwer — brak pola. */
   personal?: boolean;
+  /** Marki do wyboru w dziale (po migracji 20261129140000); brak — wybór marki działu niedostępny. */
+  companies?: Array<{ id: string; name: string }>;
 };
 
 export type ShowcasePoint = { title: string; text: string };
@@ -907,7 +915,16 @@ export type ShowcaseOfferPreview = {
   gross: number;
   /** Pierwszy problem, który blokuje utworzenie oferty. */
   problem: string | null;
+  /** Cennik sezonu marki działu dla terminu eventu (ceny pozycji z niego); `null` — ceny z katalogu; brak — starszy serwer. */
+  priceList?: { name: string; season: string; company: string; date: string } | null;
 };
+
+/** Opis cennika oferty ze spotkania pod wyceną (marka działu, cennik sezonu, termin). */
+export function showcaseOfferPriceListText(priceList: NonNullable<ShowcaseOfferPreview['priceList']>): string {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(priceList.date) ? priceList.date.split('-').reverse().join('.') : '';
+  return `Ceny z cennika „${priceList.name}”${priceList.company ? ` (${priceList.company})` : ''}`
+    + (date ? ` — termin ${date}.` : ' — bez terminu: cennik na dziś.');
+}
 
 export type ShowcaseOfferApproval = { required: boolean; canSend: boolean; status: string | null; reasons: string[]; canApprove: boolean };
 

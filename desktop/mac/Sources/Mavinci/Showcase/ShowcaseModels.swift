@@ -307,6 +307,15 @@ struct ShowcaseSection: Codable, Hashable, Identifiable {
     var itemCount: Int
     /// Ukryty w układzie tego pracownika (u innych bez zmian).
     var hiddenForMe: Bool?
+    /// Marka działu (oferta ze spotkania dostaje tę markę i ceny z jej cennika sezonu); starszy serwer — brak.
+    var companyId: String?
+    var companyName: String?
+}
+
+/// Marka do wyboru w dziale.
+struct ShowcaseCompany: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String
 }
 
 struct ShowcaseItemSummary: Codable, Hashable, Identifiable {
@@ -347,6 +356,8 @@ struct ShowcaseHome: Codable {
     var layout: ShowcaseLayout?
     /// Czy serwer zapisuje własny układ (po aktualizacji bazy).
     var personal: Bool?
+    /// Marki do wyboru w dziale (po migracji 20261129140000); brak — wybór marki działu niedostępny.
+    var companies: [ShowcaseCompany]?
 }
 
 struct ShowcasePoint: Codable, Hashable {

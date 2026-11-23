@@ -28,7 +28,8 @@ import { SectionIcon, Toggle, hasFiles, imageFiles, useDragList } from './showca
  * `/crm/presentations?section=<dział>&id=<karta>`. To samo API co Mac i iPad (`/bridge/native/v1/showcase`).
  */
 
-type SectionDraft = { id: string | null; version: number; title: string; subtitle: string; icon: ShowcaseIcon; isActive: boolean; cover: ShowcaseMedia | null };
+/** `companyId` — marka działu; `undefined` — serwer bez marki działu (pole nie trafia do zapisu). */
+type SectionDraft = { id: string | null; version: number; title: string; subtitle: string; icon: ShowcaseIcon; isActive: boolean; cover: ShowcaseMedia | null; companyId?: string | null };
 type PresenterState = { start: { sectionId?: string | null; itemId?: string | null }; draft: ShowcaseItemDetail | null };
 const ITEM_DRAG = 'application/x-mavinci-showcase-item';
 /** Liczby w pasku działów (font marki w nawigacji): cyfry fontem systemowym — w foncie nagłówków „0” wygląda jak „O”. */
@@ -166,14 +167,16 @@ export default function ShowcaseWorkspace() {
   });
 
   const editSection = (section: ShowcaseSectionView | null) => setSectionDraft(section
-    ? { id: section.id, version: section.version, title: section.title, subtitle: section.subtitle, icon: section.icon, isActive: section.isActive, cover: section.cover }
-    : { id: null, version: 1, title: '', subtitle: '', icon: 'sparkles', isActive: true, cover: null });
+    ? { id: section.id, version: section.version, title: section.title, subtitle: section.subtitle, icon: section.icon, isActive: section.isActive, cover: section.cover,
+      ...(home?.companies && section.companyId !== undefined ? { companyId: section.companyId } : {}) }
+    : { id: null, version: 1, title: '', subtitle: '', icon: 'sparkles', isActive: true, cover: null, ...(home?.companies ? { companyId: null } : {}) });
 
   const saveSection = async () => {
     if (!sectionDraft) return;
     const result = await run(sectionDraft.id ? 'Zapisuję dział' : 'Tworzę dział', () => showcasePost<{ section: ShowcaseSectionView }>('saveSection', {
       id: sectionDraft.id, version: sectionDraft.version, title: sectionDraft.title, subtitle: sectionDraft.subtitle, icon: sectionDraft.icon,
       isActive: sectionDraft.isActive, cover: sectionDraft.cover,
+      ...(sectionDraft.companyId !== undefined ? { companyId: sectionDraft.companyId } : {}),
     }), sectionDraft.id ? 'Zapisano dział' : 'Utworzono dział — dodaj okładkę i karty');
     if (!result) return;
     if (!sectionDraft.id) {
@@ -516,6 +519,16 @@ export default function ShowcaseWorkspace() {
               <input value={sectionDraft.subtitle} maxLength={SHOWCASE_LIMITS.sectionSubtitle} placeholder="np. Ekrany na scenę, do sal i na zewnątrz"
                 onChange={(event) => setSectionDraft({ ...sectionDraft, subtitle: event.target.value })} className={inputClass} />
             </label>
+            {home?.companies && sectionDraft.companyId !== undefined && (
+              <label className="block space-y-1">
+                <span className="text-xs text-[#e5e4e2]/60">Marka działu (oferta ze spotkania)</span>
+                <select value={sectionDraft.companyId || ''} onChange={(event) => setSectionDraft({ ...sectionDraft, companyId: event.target.value || null })} className={inputClass}>
+                  <option value="">Bez marki — ceny z katalogu</option>
+                  {home.companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                </select>
+                <span className="block text-xs text-[#e5e4e2]/40">Oferta ze spotkania z kart tego działu dostaje tę markę i ceny z jej cennika sezonu dla terminu z rozmowy (np. Wesela → Event Rulers).</span>
+              </label>
+            )}
             <div className="space-y-1">
               <span className="text-xs text-[#e5e4e2]/60">Ikona</span>
               <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-9">

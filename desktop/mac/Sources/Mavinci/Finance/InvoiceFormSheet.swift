@@ -33,8 +33,10 @@ import SwiftUI
             content
             footer
         }
-        .frame(minWidth: 860, idealWidth: 1000, minHeight: 720, idealHeight: 920)
+        // W osobnym oknie (`formWindow`) — okno można powiększać; treść wypełnia całe okno.
+        .frame(minWidth: 860, idealWidth: 1000, maxWidth: .infinity, minHeight: 720, idealHeight: 920, maxHeight: .infinity)
         .background(theme.page)
+        .navigationTitle(InvoiceFormText.title(model.type, nextAdvance: model.isNextAdvance))
         .overlay { if model.saving { PendingOverlay(text: "Wystawianie faktury…") } }
         .interactiveDismissDisabled(model.saving)
         .task {

@@ -39,6 +39,7 @@ import { brochurePageReferences, validateBrochureContent, BrochureValidationErro
 import { readBrochureResponse } from '@/components/crm/brochures/delivery';
 import styles from './BrochureEditor.module.css';
 import { buildSalesBrochureHtml, type SalesBrochureSnapshot } from '@/lib/brochures/buildSalesBrochureHtml';
+import { brochurePricePages, brochureSeasonLabel, loadBrochurePriceList, type BrochurePriceListSnapshot } from '@/lib/brochures/brochurePriceList';
 import { brochureAssetKey, brochurePalette, parseDecorativePages, parseComposer, orderedBrochureKeys, resolvedBenefits, BROCHURE_LAYOUTS, type BrochureComposer, type BrochureDecorativePage, type BrochureImageAsset } from '@/lib/brochures/decorativePages';
 
 type Brochure = {
@@ -60,6 +61,8 @@ type Brochure = {
   modified_after_generation: boolean;
   generated_at: string | null;
   brand_config: Record<string, unknown>;
+  /** Cennik strony „Cennik” (migracja 20261129130000; bez niej pola nie ma). */
+  price_list_id?: string | null;
 };
 
 type Variant = {
@@ -103,6 +106,7 @@ type BrochureItem = {
 
 type Organization = { id: string; name: string; email: string | null; business_type: string };
 type Company = { id: string; name: string };
+type PriceListOption = { id: string; name: string; companyId: string; season: string; status: string };
 type Employee = { id: string; name: string | null; surname: string | null; email: string | null; phone_number?: string | null };
 
 const inputClass = `${styles.field} w-full rounded-lg bg-[#0f1119] px-3 py-2.5 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/25 focus:border-[#d3bb73]/45 disabled:opacity-50`;
@@ -128,6 +132,8 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
   const [products, setProducts] = useState<Product[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [priceLists, setPriceLists] = useState<PriceListOption[]>([]);
+  const [priceList, setPriceList] = useState<BrochurePriceListSnapshot | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [recipientEmail, setRecipientEmail] = useState('');
@@ -459,6 +465,35 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
     panel?.focus({ preventScroll: true });
   });
 
+  // Cenniki sezonowe do strony „Cennik” (bez archiwum); bez migracji cenników — pusta lista.
+  useEffect(() => {
+    let active = true;
+    void supabase.from('price_lists').select('id, name, my_company_id, season_from, season_to, status').neq('status', 'archived')
+      .order('season_from', { ascending: false })
+      .then(({ data }) => {
+        if (!active) return;
+        setPriceLists(((data || []) as Array<Record<string, string>>).map((row) => ({
+          id: String(row.id), name: String(row.name || ''), companyId: String(row.my_company_id || ''),
+          season: brochureSeasonLabel(String(row.season_from), String(row.season_to)), status: String(row.status || ''),
+        })));
+      });
+    return () => { active = false; };
+  }, []);
+
+  // Strona „Cennik” w podglądzie — te same ceny co w PDF (wszystkie widoczne strony usług). Ceny wczytuje zmiana cennika albo
+  // listy usług; tytuły (personalizacja w trakcie pisania) podstawia podgląd bez ponownego odczytu.
+  const priceListId = brochure?.price_list_id || null;
+  const priceItemsKey = items.filter((item) => item.is_visible).map((item) => `${item.id}:${item.product_id}:${item.product_variant_id || ''}`).join('|');
+  useEffect(() => {
+    let active = true;
+    const visible = items.filter((item) => item.is_visible);
+    void loadBrochurePriceList(supabase, priceListId, visible.map((item) => ({
+      id: item.id, title: itemTitle(item), productId: item.product_id, variantId: item.product_variant_id,
+    }))).then((value) => { if (active) setPriceList(value); });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceListId, priceItemsKey]);
+
   const save = async (notify = true): Promise<boolean> => {
     if (!brochure || !canManage || busy) return false;
     if (!brochure.name.trim() || !brochure.title.trim()) { showSnackbar('Uzupełnij nazwę broszury i tytuł okładki.', 'error'); return false; }
@@ -469,6 +504,7 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
         introduction: brochure.introduction?.trim() || null, closing_text: brochure.closing_text?.trim() || null,
         audience_type: brochure.audience_type, organization_id: brochure.organization_id || null, cover_image_path: brochure.cover_image_path || null,
         my_company_id: brochure.my_company_id, contact_employee_id: brochure.contact_employee_id || null,
+        ...('price_list_id' in brochure ? { price_list_id: brochure.price_list_id || null } : {}),
         brand_config: { ...(brochure.brand_config || {}), decorative_pages: decorationPages, composer },
         updated_by: employee?.id || null,
       }).eq('id', brochure.id);
@@ -679,6 +715,7 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
                 <Field label="Odbiorca"><select value={brochure.audience_type} disabled={!canManage || Boolean(busy)} onChange={(event) => updateBrochure('audience_type', event.target.value)} className={inputClass}><option value="hotel">Hotel</option><option value="venue">Sala / obiekt</option><option value="agency">Agencja</option><option value="corporate">Klient biznesowy</option><option value="wedding">Branża weselna</option><option value="general">Ogólna</option></select></Field>
                 <Field label="Personalizacja dla organizacji"><select value={brochure.organization_id || ''} disabled={!canManage || Boolean(busy)} onChange={(event) => updateBrochure('organization_id', event.target.value || null)} className={inputClass}><option value="">Broszura ogólna</option>{organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}</select></Field>
                 <Field label="Marka / działalność"><select value={brochure.my_company_id} disabled={!canManage || Boolean(busy)} onChange={(event) => updateBrochure('my_company_id', event.target.value)} className={inputClass}>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></Field>
+                {'price_list_id' in brochure && <Field label="Cennik — strona „Cennik” przed zakończeniem"><select value={brochure.price_list_id || ''} disabled={!canManage || Boolean(busy)} onChange={(event) => updateBrochure('price_list_id', event.target.value || null)} className={inputClass}><option value="">Bez strony cennika</option>{priceLists.filter((list) => list.companyId === brochure.my_company_id || list.id === brochure.price_list_id).map((list) => <option key={list.id} value={list.id}>{list.name} · {list.season}{list.status === 'draft' ? ' (szkic)' : ''}</option>)}</select><span className="mt-1 block text-xs text-[#e5e4e2]/40">Wszystkie widoczne usługi broszury z cenami z cennika (bez ceny w cenniku — z katalogu).</span></Field>}
                 <Field label="Opiekun"><select value={brochure.contact_employee_id || ''} disabled={!canManage || Boolean(busy)} onChange={(event) => updateBrochure('contact_employee_id', event.target.value || null)} className={inputClass}><option value="">Bez wskazanego opiekuna</option>{employees.map((person) => <option key={person.id} value={person.id}>{[person.name, person.surname].filter(Boolean).join(' ') || person.email}</option>)}</select></Field>
                 <div className="grid grid-cols-2 gap-3"><Field label="Kolor przewodni"><input type="color" value={composer.brandColor || previewCompany.secondaryColor} disabled={!canManage || Boolean(busy)} onChange={(e) => updateComposer({ brandColor: e.target.value })} className="h-10 w-full rounded bg-transparent" /></Field><Field label="Kolor akcentów"><input type="color" value={composer.accentColor || previewCompany.primaryColor} disabled={!canManage || Boolean(busy)} onChange={(e) => updateComposer({ accentColor: e.target.value })} className="h-10 w-full rounded bg-transparent" /></Field></div>
                 <button type="button" disabled={!canManage || Boolean(busy)} className="text-xs text-[#d3bb73]" onClick={() => updateComposer({ brandColor: '#650026', accentColor: '#d3bb73' })}>Burgund i złoto Mavinci</button>
@@ -738,6 +775,13 @@ export default function BrochureEditorClient({ brochureId }: { brochureId: strin
               items={items}
               imageUrls={imageUrls}
               organizationName={organizations.find((item) => item.id === brochure.organization_id)?.name || null}
+              priceList={priceList && {
+                ...priceList,
+                rows: priceList.rows.map((row) => {
+                  const item = items.find((entry) => entry.id === row.id);
+                  return item ? { ...row, title: itemTitle(item) } : row;
+                }),
+              }}
             />
           </aside>
         </section>
@@ -751,8 +795,9 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block"><span className="mb-1.5 block text-xs text-[#e5e4e2]/45">{label}</span>{children}</label>;
 }
 
-function BrochureQuickPreview({ brochure, company, contact, items, imageUrls, organizationName }: {
+function BrochureQuickPreview({ brochure, company, contact, items, imageUrls, organizationName, priceList }: {
   brochure: Brochure;
+  priceList: BrochurePriceListSnapshot | null;
   company: SalesBrochureSnapshot['company'];
   contact: Employee | null;
   items: BrochureItem[];
@@ -771,7 +816,8 @@ function BrochureQuickPreview({ brochure, company, contact, items, imageUrls, or
   const visibleItems = items.filter((item) => item.is_visible);
   const decorations = parseDecorativePages(brochure.brand_config?.decorative_pages);
   const composer = parseComposer(brochure.brand_config?.composer);
-  const totalPages = visibleItems.length + decorations.filter((page) => page.isVisible).length + 3 - composer.hiddenPages.length;
+  const totalPages = visibleItems.length + decorations.filter((page) => page.isVisible).length + 3 - composer.hiddenPages.length
+    + brochurePricePages(priceList).length;
   const snapshot: SalesBrochureSnapshot = {
     brochure: { id: brochure.id, name: brochure.name, title: brochure.title, subtitle: brochure.subtitle, introduction: brochure.introduction, closingText: brochure.closing_text, audienceType: brochure.audience_type },
     company,
@@ -784,6 +830,7 @@ function BrochureQuickPreview({ brochure, company, contact, items, imageUrls, or
       return { id: item.id, title: itemTitle(item), shortDescription: itemShort(item), description: itemDescription(item), benefits: itemBenefits(item), category: item.product.category?.name, layout: item.page_layout, imageUrl: imageUrls[brochureAssetKey('offer-product-pages', path)] || imageUrls[path] };
     }),
     decorativePages: decorations.map((page) => ({ ...page, imageUrl: imageUrls[brochureAssetKey(page.imageBucket, page.imagePath)] })),
+    priceList,
     generatedAt: '',
   };
   const html = buildSalesBrochureHtml(snapshot).replace('</style>', '.page{margin-bottom:16px}html,body{background:transparent}</style>');

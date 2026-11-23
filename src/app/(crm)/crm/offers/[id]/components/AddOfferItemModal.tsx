@@ -26,6 +26,8 @@ import type { OfferRecommendation } from './offerRecommendation';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import type { IProductVariant } from '@/app/(crm)/crm/offers/types';
+import { applySeasonPrices, loadSeasonPrices, seasonVariantPrices, type SeasonPrices } from '@/lib/CRM/Offers/seasonPrices';
+import SeasonPriceNotice from '@/components/crm/offers/SeasonPriceNotice';
 
 interface Product {
   configuration_schema?: import('@/lib/CRM/Offers/modularProduct').ProductConfigurator | null;
@@ -120,6 +122,8 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, onAddRe
   const blockedProductIds = useMemo(()=>new Set([...mainProductIds,...Array.from(excludedProductIds || []),...(onAddRecommendation ? recommendations.map(r=>r.product_id) : [])]),[mainProductIds,excludedProductIds,recommendations,onAddRecommendation]);
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
+  // Cennik sezonowy oferty (marka i data eventu albo cennik zapamiętany w ofercie) — ceny katalogu w tym oknie.
+  const [seasonPrices, setSeasonPrices] = useState<SeasonPrices | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<IProductVariant | null>(null);
@@ -199,15 +203,17 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, onAddRe
   const fetchProducts = async (refresh = false) => {
     setCatalogLoading(true); setCatalogError(false);
     try {
-      const [main, extras] = await Promise.all([
+      const [main, extras, season] = await Promise.all([
         supabase.from('offer_items').select('product_id').eq('offer_id',offerId),
         supabase.from('offers').select('recommended_items').eq('id',offerId).single(),
+        loadSeasonPrices(supabase, { offerId }),
       ]);
       if(main.error) throw main.error;
       if(extras.error) throw extras.error;
       setMainProductIds((main.data||[]).map(row=>row.product_id).filter(Boolean));
       setRecommendations(extras.data.recommended_items||[]);
-      setProducts(await loadOfferPickerCatalog(refresh));
+      setSeasonPrices(season);
+      setProducts(applySeasonPrices(await loadOfferPickerCatalog(refresh), season));
     } catch (error) {
       setCatalogError(true);
       console.error('Error fetching products:', error);
@@ -282,7 +288,7 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, onAddRe
         offer_id: offerId,
         product_id: selectedProduct.id,
         product_variant_id: selectedVariant?.id || null,
-        variant_prices_net: { ...variantPrices, ...(selectedVariant ? { [selectedVariant.id]: unitPrice } : {}) },
+        variant_prices_net: { ...seasonVariantPrices(seasonPrices, selectedProduct.id), ...variantPrices, ...(selectedVariant ? { [selectedVariant.id]: unitPrice } : {}) },
         show_variant_prices_in_pdf: modular ? false : showVariantPricesInPdf,
         show_product_variants_in_pdf: modular ? false : showProductVariantsInPdf,
         name: modular ? modularTitle(modular) : selectedPackage ? `${selectedProduct.name} — ${selectedPackage.name}` : proposal && proposal.product_variant_id === (selectedVariant?.id || null) ? proposal.name : selectedVariant ? `${selectedProduct.name} — ${selectedVariant.name}` : selectedProduct.name,
@@ -471,6 +477,7 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, onAddRe
         </div>
 
         <div className="shrink-0 px-6 pt-4 pb-3">
+          <SeasonPriceNotice prices={seasonPrices} mode="item" className="mb-3" />
           <div>
             <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Wyszukaj produkt

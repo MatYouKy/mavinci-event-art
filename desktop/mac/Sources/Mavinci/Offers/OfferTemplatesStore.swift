@@ -27,6 +27,13 @@ struct OfferTemplateDesign: Codable, Equatable {
     var requirements_page_subtitle: String
     var technical_requirements_text: String
     var reservation_terms_text: String
+    /// Kolory stron PDF z księgi znaku marki wydarzenia (np. Event Rulers dla wesel) zamiast kolorów kategorii.
+    var brand_colors: Bool?
+    /// Wycena weselna (`pricing_style == "wedding"`): zadatek w % kwoty do zapłaty i warunki (wiersz = warunek).
+    var deposit_percent: Double?
+    var wedding_terms_text: String?
+    /// Rozdziały z Prezentacji (karty po stronie „O nas”, w tej kolejności).
+    var chapter_item_ids: [String]?
 
     var json: JSONValue {
         guard let data = try? JSONEncoder().encode(self), let value = try? JSONDecoder().decode(JSONValue.self, from: data) else { return .object([:]) }
@@ -43,6 +50,13 @@ struct OfferTemplatesState: Decodable {
     struct Brand: Decodable {
         var logoUrl: String?
         var headingFontUrl: String?
+    }
+    /// Karta Prezentacji do wyboru jako rozdział oferty.
+    struct ChapterCard: Decodable, Identifiable, Hashable {
+        var id: String
+        var title: String
+        var section: String
+        var active: Bool
     }
     struct Category: Decodable, Identifiable, Equatable {
         var id: String
@@ -75,6 +89,8 @@ struct OfferTemplatesState: Decodable {
     var canDeleteTemplates: Bool
     var defaults: OfferTemplateDesign
     var brand: Brand
+    /// Starszy serwer nie wysyła listy kart — wybór rozdziałów jest wtedy niedostępny.
+    var showcaseCards: [ChapterCard]?
     var categories: [Category]
     var templates: [Template]
 }

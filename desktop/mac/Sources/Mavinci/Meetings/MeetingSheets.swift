@@ -3,6 +3,8 @@ import AppKit
 
 /// Nowe spotkanie i edycja — pola jak w CRM (`NewMeetingModal`, `/crm/calendar/meeting/[id]`): rodzaj (firmowe / prywatne),
 /// status, termin, cykl, miejsce, kolor, uczestnicy (pracownicy i kontakty), trzy przypomnienia i notatki.
+/// Treść arkusza nie czyta wpisywanego tekstu (tytuł, lokalizacja, wyszukiwanie kontaktu, notatki) — czytają go pola
+/// (`MeetingPlaceField`, `MeetingContactSearch`, `MeetingSaveButton`), więc litera nie przelicza całego formularza.
 @MainActor struct MeetingEditorSheet: View {
     @ObservedObject var store: MeetingsStore
     let request: MeetingEditorRequest
@@ -28,11 +30,8 @@ import AppKit
     @State private var scope = "single"
     @State private var locationText = ""
     @State private var locationId: String?
-    @State private var places: [MeetingPlace] = []
     @State private var color = CrmTheme.rgb(0xd3bb73)
     @State private var guests: [Guest] = []
-    @State private var contactQuery = ""
-    @State private var contactResults: [MeetingPerson] = []
     @State private var alerts = [Reminder(on: true, minutes: 1440), Reminder(on: true, minutes: 120), Reminder(on: true, minutes: 30)]
     @State private var notes = ""
     @State private var saving = false
@@ -45,7 +44,7 @@ import AppKit
 
     private var editing: Meeting? { request.meeting }
     private var calendar: Calendar { MeetingDates.calendar }
-    private var valid: Bool { !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && end >= start }
+    private var valid: Bool { MeetingSaveButton.valid(title: title, start: start, end: end) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -97,23 +96,7 @@ import AppKit
                 .environment(\.timeZone, MeetingDates.zone)
 
                 Section("Miejsce") {
-                    MeetingTextField("Lokalizacja", text: $locationText, prompt: "Wybierz lub wpisz lokalizację")
-                        .onChange(of: locationText) { _, text in if text != pickedPlace { locationId = nil } }
-                    ForEach(places) { place in
-                        Button {
-                            pickedPlace = place.name; locationId = place.id; places = []
-                            locationText = place.name
-                        } label: {
-                            HStack {
-                                Image(systemName: "mappin.and.ellipse").foregroundStyle(theme.accent)
-                                VStack(alignment: .leading) {
-                                    Text(place.name)
-                                    if let detail = place.detail, !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.secondary) }
-                                }
-                                Spacer()
-                            }.contentShape(Rectangle())
-                        }.buttonStyle(.plain)
-                    }
+                    MeetingPlaceField(store: store, text: $locationText, locationId: $locationId, pickedPlace: $pickedPlace)
                     ColorPicker("Kolor", selection: $color, supportsOpacity: false)
                 }
 
@@ -146,15 +129,7 @@ import AppKit
                         Label("Dodaj pracownika", systemImage: "person.badge.plus")
                     }
                     .disabled(store.employees.isEmpty)
-                    MeetingTextField("Dodaj kontakt", text: $contactQuery, prompt: "Wpisz imię lub nazwę kontaktu")
-                    ForEach(contactResults.filter { c in !guests.contains { $0.contactId == c.id } }) { contact in
-                        Button {
-                            guests.append(Guest(employeeId: nil, contactId: contact.id, name: contact.name))
-                            contactQuery = ""; contactResults = []
-                        } label: {
-                            Label(contact.name, systemImage: "plus.circle").frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                        }.buttonStyle(.plain)
-                    }
+                    MeetingContactSearch(store: store, guests: $guests)
                     if editing != nil && !guests.isEmpty {
                         Text("Zmiana terminu poprosi uczestników o ponowną odpowiedź.").font(.caption).foregroundStyle(.secondary)
                     }
@@ -177,11 +152,12 @@ import AppKit
             .formStyle(.grouped)
 
             HStack {
-                if !valid && end < start { Text("Koniec nie może być przed początkiem.").font(.caption).foregroundStyle(.red) }
+                if end < start { Text("Koniec nie może być przed początkiem.").font(.caption).foregroundStyle(.red) }
                 Spacer()
                 Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(editing == nil ? "Utwórz spotkanie" : "Zapisz") { Task { await save() } }
-                    .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(!valid || saving)
+                MeetingSaveButton(title: $title, start: start, end: end, saving: saving, label: editing == nil ? "Utwórz spotkanie" : "Zapisz") {
+                    Task { await save() }
+                }
             }.padding(16)
         }
         .frame(minWidth: 600, idealWidth: 640, minHeight: 640, idealHeight: 760)
@@ -193,20 +169,6 @@ import AppKit
             prepare()
             DispatchQueue.main.async { ready = true }
             await store.loadEmployees()
-        }
-        .task(id: locationText) {
-            guard locationId == nil, locationText.count >= 2 else { places = []; return }
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            let found = await store.searchLocations(locationText)
-            if !Task.isCancelled && locationId == nil { places = Array(found.prefix(6)) }
-        }
-        .task(id: contactQuery) {
-            guard contactQuery.count >= 2 else { contactResults = []; return }
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            let found = await store.searchContacts(contactQuery)
-            if !Task.isCancelled { contactResults = Array(found.prefix(8)) }
         }
     }
 
@@ -308,6 +270,92 @@ import AppKit
         } catch {
             problem = error is URLError ? "Brak połączenia z serwerem CRM. Spróbuj ponownie." : "Nie udało się zapisać spotkania."
         }
+    }
+}
+
+/// „Lokalizacja” spotkania z podpowiedziami z bazy (od 2 znaków, po 300 ms) — osobny widok: wpisywanie przelicza pole
+/// i podpowiedzi, nie cały formularz. Zmiana tekstu po wyborze z listy odpina wybraną lokalizację.
+@MainActor struct MeetingPlaceField: View {
+    let store: MeetingsStore
+    @Binding var text: String
+    @Binding var locationId: String?
+    @Binding var pickedPlace: String
+    @Environment(\.crmTheme) private var theme
+    @State private var places: [MeetingPlace] = []
+
+    var body: some View {
+        MeetingTextField("Lokalizacja", text: $text, prompt: "Wybierz lub wpisz lokalizację")
+            .onChange(of: text) { _, value in if value != pickedPlace { locationId = nil } }
+            .task(id: text) {
+                guard locationId == nil, text.count >= 2 else { places = []; return }
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                let found = await store.searchLocations(text)
+                if !Task.isCancelled && locationId == nil { places = Array(found.prefix(6)) }
+            }
+        ForEach(places) { place in
+            Button {
+                pickedPlace = place.name; locationId = place.id; places = []
+                text = place.name
+            } label: {
+                HStack {
+                    Image(systemName: "mappin.and.ellipse").foregroundStyle(theme.accent)
+                    VStack(alignment: .leading) {
+                        Text(place.name)
+                        if let detail = place.detail, !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.secondary) }
+                    }
+                    Spacer()
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain)
+        }
+    }
+}
+
+/// „Dodaj kontakt” do spotkania: wyszukiwanie w kontaktach CRM (od 2 znaków, po 300 ms) — zapytanie i wyniki w tym widoku,
+/// więc wpisywanie nie przelicza całego formularza.
+@MainActor struct MeetingContactSearch: View {
+    let store: MeetingsStore
+    @Binding var guests: [MeetingEditorSheet.Guest]
+    @State private var query = ""
+    @State private var results: [MeetingPerson] = []
+
+    var body: some View {
+        MeetingTextField("Dodaj kontakt", text: $query, prompt: "Wpisz imię lub nazwę kontaktu")
+            .task(id: query) {
+                guard query.count >= 2 else { results = []; return }
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                let found = await store.searchContacts(query)
+                if !Task.isCancelled { results = Array(found.prefix(8)) }
+            }
+        ForEach(results.filter { contact in !guests.contains { $0.contactId == contact.id } }) { contact in
+            Button {
+                guests.append(MeetingEditorSheet.Guest(employeeId: nil, contactId: contact.id, name: contact.name))
+                query = ""; results = []
+            } label: {
+                Label(contact.name, systemImage: "plus.circle").frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+        }
+    }
+}
+
+/// Przycisk zapisu spotkania — sam sprawdza tytuł i termin, więc wpisywanie tytułu nie przelicza całego formularza.
+@MainActor struct MeetingSaveButton: View {
+    @Binding var title: String
+    let start: Date
+    let end: Date
+    let saving: Bool
+    let label: String
+    let action: () -> Void
+
+    static func valid(title: String, start: Date, end: Date) -> Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && end >= start
+    }
+
+    var body: some View {
+        Button(label, action: action)
+            .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+            .disabled(!Self.valid(title: title, start: start, end: end) || saving)
     }
 }
 

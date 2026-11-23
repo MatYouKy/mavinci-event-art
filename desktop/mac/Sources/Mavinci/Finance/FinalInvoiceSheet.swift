@@ -805,8 +805,10 @@ enum FinalFormat {
             .formStyle(.grouped)
             footer
         }
-        .frame(minWidth: 860, idealWidth: 980, minHeight: 680, idealHeight: 900)
+        // W osobnym oknie (`formWindow`) — okno można powiększać; treść wypełnia całe okno.
+        .frame(minWidth: 860, idealWidth: 980, maxWidth: .infinity, minHeight: 680, idealHeight: 900, maxHeight: .infinity)
         .background(theme.page)
+        .navigationTitle("Faktura końcowa")
         .overlay { if model.creating { PendingOverlay(text: "Tworzenie...") } }
         .interactiveDismissDisabled(model.creating)
         .task {
@@ -1211,8 +1213,9 @@ enum FinalFormat {
             .font(.caption).foregroundStyle(.secondary)
             ForEach(Array(model.items.indices), id: \.self) { index in
                 GridRow {
-                    TextField("", text: text(index, \.name), prompt: Text("Nazwa pozycji")).frame(minWidth: 220)
-                    TextField("", text: text(index, \.unit)).frame(width: 60)
+                    // Tekst od lewej, ze spacjami (w formularzu macOS pole bez etykiety wyrównuje się do prawej).
+                    TextField("", text: text(index, \.name), prompt: Text("Nazwa pozycji")).labelsHidden().multilineTextAlignment(.leading).frame(minWidth: 220)
+                    TextField("", text: text(index, \.unit)).labelsHidden().multilineTextAlignment(.leading).frame(width: 60)
                     InvoiceNumberField(title: "", value: number(index, \.quantity), width: 70)
                     InvoiceNumberField(title: "", value: number(index, \.priceNet), width: 100)
                     InvoiceNumberField(title: "", value: number(index, \.vatRate), width: 56)

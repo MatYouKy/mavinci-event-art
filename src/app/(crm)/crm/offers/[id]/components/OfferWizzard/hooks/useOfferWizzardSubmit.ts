@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { buildSubstitutionsForInsert, getRentalEquipmentFromSelectedAlt } from '../utils';
 import { EquipmentConflictRow, SelectedAltMap } from '../types';
 import { IOfferItem } from '@/app/(crm)/crm/offers/types';
+import { seasonVariantPrices, type SeasonPrices } from '@/lib/CRM/Offers/seasonPrices';
 import {
   EventAssumptionItem,
   formatEventAssumptionItems,
@@ -45,7 +46,10 @@ export async function submitOfferWizard(params: {
     taxAmount: number;
     gross: number;
   };
+  /** Cennik sezonowy kreatora — oferta go zapamiętuje (gwarancja ceny), pozycje dostają ceny wariantów z cennika. */
+  seasonPrices?: SeasonPrices | null;
 }) {
+  const priceList = params.seasonPrices?.price_list || null;
   const audience={guest_count:params.offerData.guest_count?Number(params.offerData.guest_count):null,guests_per_table:Number(params.offerData.guests_per_table || 10),table_count:params.offerData.table_count?Number(params.offerData.table_count):null};
   if(audience.guest_count != null && audienceTables(audience)==null)throw new Error('Podaj poprawną liczbę osób i ustawienia stołów.');
   for (const item of params.offerItems) {
@@ -83,6 +87,7 @@ export async function submitOfferWizard(params: {
     offer_number: params.offerData.offer_number?.trim()
       ? params.offerData.offer_number.trim()
       : null,
+    ...(priceList ? { price_list_id: priceList.id } : {}),
   };
 
   const { data: offerResult, error: offerError } = await supabase
@@ -97,7 +102,13 @@ export async function submitOfferWizard(params: {
     offer_id: offerResult.id,
     product_id: item.product_id?.trim() ? item.product_id : null,
     product_variant_id: item.product_variant_id || null,
-    variant_prices_net: item.variant_prices_net || {},
+    variant_prices_net: priceList && item.product_id
+      ? {
+        ...seasonVariantPrices(params.seasonPrices, item.product_id),
+        ...(item.variant_prices_net || {}),
+        ...(item.product_variant_id ? { [item.product_variant_id]: Number(item.pricing_configuration?.base_unit_price ?? item.unit_price ?? 0) } : {}),
+      }
+      : item.variant_prices_net || {},
     show_variant_prices_in_pdf: item.show_variant_prices_in_pdf !== false,
     show_product_variants_in_pdf: item.show_product_variants_in_pdf !== false,
     name: item.name,

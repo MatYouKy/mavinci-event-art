@@ -7,6 +7,8 @@ import { validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
 import { formatEventAssumptionItems, normalizeEventAssumptionItems } from '@/lib/CRM/Offers/eventAssumptions';
 import { productConfigurationSnapshot } from '@/lib/CRM/Offers/modularProduct';
 import { productReadiness, READINESS_CHECK_SHORT, type ProductReadiness } from '@/lib/CRM/Offers/productReadiness';
+import { applySeasonPrices, loadSeasonPrices, seasonPriceNotice, seasonVariantPrices } from '@/lib/CRM/Offers/seasonPrices';
+import { productCategoryIds } from '@/lib/CRM/Offers/productCategories';
 
 /*
  * Oferty na Macu, część E — kreator nowej oferty jak `OfferWizard` w CRM: wybór wydarzenia (lista „Wybierz event dla oferty”),
@@ -16,6 +18,8 @@ import { productReadiness, READINESS_CHECK_SHORT, type ProductReadiness } from '
  * kreatora; wycenę pozycji liczą funkcje z `offerItems.ts` (`evaluate`, jak okna pozycji CRM), a zapis odtwarza
  * `submitOfferWizard` (oferta, pozycje, podsumowanie z dokładnym rabatem, znacznik braków sprzętu w wydarzeniu).
  * Produkty z konfiguratorem (scena, LED): pozycja niesie konfigurację z `op=modular` (`modularConfigurator.ts`).
+ * Cennik sezonowy (`seasonPrices.ts`): katalog kreatora ma ceny z cennika marki eventu na sezon daty eventu; nowa oferta
+ * zapamiętuje cennik (`price_list_id`, gwarancja ceny), a pozycje — ceny wariantów z cennika.
  */
 
 type Row = Record<string, any>;
@@ -127,6 +131,8 @@ const productView = (row: Row, imageUrl: string | null) => {
     id: String(row.id),
     name: text(row.name),
     categoryId: row.category_id ?? null,
+    /** Kategoria główna i dodatkowe — filtr kategorii katalogu kreatora. */
+    categoryIds: productCategoryIds(row),
     category: text(category?.name) || null,
     description: text(row.description),
     offerDescription: text(row.offer_description || row.description),
@@ -183,14 +189,15 @@ export async function offerWizardSetup(ctx: NativeContext, eventId: string) {
   const clientType = row.client_type || (row.organization_id ? 'business' : row.contact_person_id ? 'individual' : 'business');
   const initialStep = (clientType === 'business' ? row.organization_id : clientType === 'individual' ? row.contact_person_id : null) ? 2 : 1;
 
-  const [orgs, contacts, categories, products] = await Promise.all([
+  const [orgs, contacts, categories, products, season] = await Promise.all([
     ctx.supabase.from('organizations').select('id, name, nip, email, phone').order('name'),
     ctx.supabase.from('contacts').select('id, first_name, last_name, full_name, email, phone').eq('contact_type', 'individual').order('last_name'),
     ctx.supabase.from('event_categories').select('id, name').eq('is_active', true).order('order_index'),
     ctx.supabase.from('offer_products').select(WIZARD_PRODUCT_SELECT).eq('is_active', true).order('display_order'),
+    loadSeasonPrices(ctx.supabase, { eventId: id }),
   ]);
   if (products.error) fail('Błąd podczas ładowania produktów');
-  const productRows = (products.data || []) as Row[];
+  const productRows = applySeasonPrices((products.data || []) as Array<Row & { id: string }>, season);
   const imageOf = await signedThumbnails(ctx, productRows);
   const description = text(row.description);
   return {
@@ -208,6 +215,8 @@ export async function offerWizardSetup(ctx: NativeContext, eventId: string) {
     location: location || (typeof row.location === 'string' ? row.location : ''),
     hasDescription: description.trim().length > 0,
     taxPercent: TAX_PERCENT,
+    /** „Cennik: Wesela 2027” nad katalogiem (ceny produktów już z cennika) — `null`, gdy cennik nie dotyczy. */
+    priceNotice: seasonPriceNotice(season, 'wizard'),
     organizations: ((orgs.data || []) as Row[]).map((org) => ({
       id: String(org.id), name: text(org.name), nip: text(org.nip), email: text(org.email), phone: text(org.phone),
     })),
@@ -462,9 +471,13 @@ export async function createOfferFromWizard(ctx: NativeContext, body: Row) {
   const audience = audienceFrom(body);
   if (audience.guest_count != null && audienceTables(audience) == null) fail('Podaj poprawną liczbę osób i ustawienia stołów.');
 
-  const { data: eventRow, error: eventError } = await ctx.supabase.from('events').select('id, name, description').eq('id', eventId).maybeSingle();
+  const [{ data: eventRow, error: eventError }, season] = await Promise.all([
+    ctx.supabase.from('events').select('id, name, description').eq('id', eventId).maybeSingle(),
+    loadSeasonPrices(ctx.supabase, { eventId }),
+  ]);
   if (eventError || !eventRow) fail('Nie znaleziono eventu.');
   const event = eventRow as Row;
+  const priceList = season?.price_list || null;
 
   const items = await evaluateItems(ctx, body, audience);
   const invalid = items.find((item) => item.submitError);
@@ -511,6 +524,7 @@ export async function createOfferFromWizard(ctx: NativeContext, body: Row) {
     ...totals,
     created_by: ctx.employee.id,
     offer_number: number || null,
+    ...(priceList ? { price_list_id: priceList.id } : {}),
   }]).select('id, offer_number').single();
   if (offerError || !created) fail(offerError?.message || 'Błąd podczas tworzenia oferty');
   const offer = created as Row;
@@ -519,7 +533,10 @@ export async function createOfferFromWizard(ctx: NativeContext, body: Row) {
     offer_id: offer.id,
     product_id: item.productId,
     product_variant_id: item.variantId,
-    variant_prices_net: {},
+    // Ceny wariantów z cennika (gwarancja ceny w PDF); wybrany wariant — cena tej pozycji.
+    variant_prices_net: priceList && item.productId
+      ? { ...seasonVariantPrices(season, item.productId), ...(item.variantId ? { [item.variantId]: item.baseUnitPrice } : {}) }
+      : {},
     show_variant_prices_in_pdf: item.showVariantPrices,
     show_product_variants_in_pdf: item.showVariants,
     name: item.name,

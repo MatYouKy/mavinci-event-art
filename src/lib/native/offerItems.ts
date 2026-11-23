@@ -18,6 +18,9 @@ import {
   type QuantitySource,
 } from '@/lib/CRM/Offers/audiencePricing';
 import { pricedPackageSelection, type ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
+import {
+  applySeasonPrice, applySeasonPrices, loadSeasonPrices, seasonPriceIndex, seasonPriceNotice, seasonVariantPrices,
+} from '@/lib/CRM/Offers/seasonPrices';
 
 /*
  * Oferty na Macu, część B2 — dodawanie i edycja pozycji oferty jak `AddOfferItemModal` / `EditOfferItemModal`: wybór produktu
@@ -28,6 +31,8 @@ import { pricedPackageSelection, type ProductSalesPackage } from '@/lib/CRM/Offe
  * `createModularConfiguration` — z kalkulatora albo własna (`modularManual`), jak `ModularPriceHint` w CRM.
  * Pakiety w tej ofercie (`ProductPackagePicker`): szkic może nieść `packageOptions` — cena, zakres, cena z liczby osób,
  * sprzęt i obsada oraz koszty pakietów tylko w tej ofercie; serwer przenosi wyłącznie te pola na zapisane pakiety.
+ * Cennik sezonowy (`seasonPrices.ts`): katalog i edycja pozycji mają ceny produktów i wariantów z cennika oferty (marka i data
+ * eventu albo cennik zapamiętany w ofercie); nowa pozycja zapisuje ceny wariantów z cennika (`variant_prices_net`).
  */
 
 type Row = Record<string, any>;
@@ -308,13 +313,14 @@ export function initialDraft(product: Row, proposal: Row | undefined) {
 export async function offerItemCatalog(ctx: NativeContext, id: string, exclude: string[] | null = null) {
   const key = uuid(id);
   const offer = await editable(ctx, key);
-  const [items, products] = await Promise.all([
+  const [items, products, season] = await Promise.all([
     ctx.supabase.from('offer_items').select('product_id').eq('offer_id', key),
     ctx.supabase.from('offer_products').select(PRODUCT_SELECT).eq('is_active', true).order('name'),
+    loadSeasonPrices(ctx.supabase, { offerId: key }),
   ]);
   if (items.error || products.error) fail('Błąd podczas ładowania produktów');
   const proposals = (Array.isArray(offer.recommended_items) ? offer.recommended_items : []) as Row[];
-  const rows = (products.data || []) as Row[];
+  const rows = applySeasonPrices((products.data || []) as Array<Row & { id: string }>, season);
   const paths = Array.from(new Set(rows.map((row) => row.pdf_thumbnail_url || row.offer_image_path).filter((path) => path && !/^https?:\/\//i.test(path))));
   const urls = new Map<string, string>();
   if (paths.length) {
@@ -326,6 +332,8 @@ export async function offerItemCatalog(ctx: NativeContext, id: string, exclude: 
   return {
     audience: audienceOf(offer),
     vatRate: Number(offer.tax_percent ?? 23),
+    /** Skąd są ceny katalogu („Cennik: Wesela 2027” albo ceny z katalogu) — `null`, gdy cennik nie dotyczy oferty. */
+    priceNotice: seasonPriceNotice(season, 'item'),
     products: rows.filter((row) => !used.has(row.id)).map((row) => {
       const proposal = exclude ? undefined : proposals.find((item) => item.product_id === row.id);
       const start = initialDraft(row, proposal);
@@ -370,9 +378,11 @@ const itemPackages = (item: Row): ProductSalesPackage[] =>
 export async function offerItemEditor(ctx: NativeContext, id: string, itemId: string) {
   const key = uuid(id);
   const offer = await editable(ctx, key);
-  const item = await offerItem(ctx, key, itemId);
+  const [item, season] = await Promise.all([offerItem(ctx, key, itemId), loadSeasonPrices(ctx.supabase, { offerId: key })]);
   const config = (item.pricing_configuration || null) as Row | null;
-  const product = (item.product || {}) as Row;
+  // Ceny wariantów i cena bazowa z cennika oferty (zmiana wariantu podpowiada cenę z cennika; zapisane ceny pozycji zostają).
+  const catalogProduct = (item.product || {}) as Row;
+  const product: Row = catalogProduct.id ? applySeasonPrice(catalogProduct as Row & { id: string }, seasonPriceIndex(season)) : catalogProduct;
   const packages = itemPackages(item);
   const variantPrices: Record<string, number> = { ...(item.variant_prices_net || {}) };
   if (item.product_variant_id) variantPrices[item.product_variant_id] = Number(config?.base_unit_price ?? item.unit_price ?? 0);
@@ -448,7 +458,10 @@ export async function addOfferItem(ctx: NativeContext, body: Row) {
   const draft = draftOf(body.draft);
   if (product.configuration_schema && !draft.modular) fail('Skonfiguruj produkt przed dodaniem do oferty.');
   if (!product.configuration_schema && draft.modular) fail('Ten produkt nie ma konfiguratora.');
-  const { data: existing } = await ctx.supabase.from('offer_items').select('id').eq('offer_id', id).eq('product_id', productId).limit(1);
+  const [{ data: existing }, season] = await Promise.all([
+    ctx.supabase.from('offer_items').select('id').eq('offer_id', id).eq('product_id', productId).limit(1),
+    loadSeasonPrices(ctx.supabase, { offerId: id }),
+  ]);
   if (existing?.length) fail('Ten produkt jest już dodany. Wybierz inną pozycję.');
   const recommendations = (Array.isArray(offer.recommended_items) ? offer.recommended_items : []) as Row[];
   const proposal = recommendations.find((item) => item.product_id === productId);
@@ -467,7 +480,8 @@ export async function addOfferItem(ctx: NativeContext, body: Row) {
     offer_id: id,
     product_id: productId,
     product_variant_id: variant?.id || null,
-    variant_prices_net: { ...draft.variantPrices, ...(variant ? { [variant.id]: draft.unitPrice } : {}) },
+    // Ceny wariantów z cennika oferty (gwarancja ceny w PDF), nadpisane cenami ustawionymi w tej pozycji.
+    variant_prices_net: { ...seasonVariantPrices(season, productId), ...draft.variantPrices, ...(variant ? { [variant.id]: draft.unitPrice } : {}) },
     show_variant_prices_in_pdf: modular ? false : draft.showVariantPrices,
     show_product_variants_in_pdf: modular ? false : draft.showVariants,
     name: modular ? modular.name : selectedPackage ? `${product.name} — ${selectedPackage.name}` : sameProposal ? proposal!.name

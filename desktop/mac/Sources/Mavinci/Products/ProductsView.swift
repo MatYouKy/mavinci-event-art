@@ -30,7 +30,7 @@ import SwiftUI
     private var base: [ProductListItem] {
         let needle = SearchText.fold(search)
         return store.products.filter { item in
-            if category != "all" && item.categoryId != category { return false }
+            if category != "all" && !item.inCategory(category) { return false }
             return needle.isEmpty || SearchText.fold(item.searchText).contains(needle)
         }
     }

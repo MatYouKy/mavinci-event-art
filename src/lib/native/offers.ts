@@ -13,6 +13,9 @@ import {
   LOCATION_BACKGROUND_BUCKET, locationSelectorLabel, offerUsesVenueBackground, offerVenue, offerVenueHint, offerVenueIds, offerVenueLabel,
   venueOutdatedOffers,
 } from '@/lib/CRM/Offers/offerVenueBackground';
+import {
+  applyPriceListToOffer, loadSeasonPrices, priceListSeason, seasonPriceNotice, type PriceListApplyResult, type SeasonPrices,
+} from '@/lib/CRM/Offers/seasonPrices';
 
 /*
  * Oferty na Macu — lista `/crm/offers` i strona oferty `/crm/offers/[id]` (część A: odczyt, status, usuwanie, PDF do podglądu).
@@ -313,7 +316,7 @@ export async function offerDetail(ctx: NativeContext, id: string) {
   if (error) fail(error.message || 'Nie udało się pobrać oferty.');
   if (!data) fail('Nie znaleziono oferty');
   const offer = data as Row;
-  const [permission, history, amendment, calculation, english, draftRevision] = await Promise.all([
+  const [permission, history, amendment, calculation, english, draftRevision, season] = await Promise.all([
     ctx.supabase.rpc('sales_can_manage_offer', { p_offer: key }),
     ctx.supabase.from('offer_history').select('id, change_type, change_description, created_at, new_values, changed_by_employee:employees!changed_by(name, surname)')
       .eq('offer_id', key).order('created_at', { ascending: false }),
@@ -326,6 +329,8 @@ export async function offerDetail(ctx: NativeContext, id: string) {
       .order('created_at', { ascending: false }).limit(1).maybeSingle(),
     // Szkic wcześniej zaakceptowanej oferty (`OfferDraftRevisionActions`).
     ctx.supabase.from('offer_draft_revisions').select('saved_revision').eq('offer_id', key).maybeSingle(),
+    // Cennik sezonowy (marka i data eventu, gwarancja ceny) — bez migracji `null`.
+    loadSeasonPrices(ctx.supabase, { offerId: key }),
   ]);
   // Rabat w PDF — osobno: bez migracji 20261124120000 kolumny nie ma (wtedy rabat przy pozycjach), a strona oferty działa dalej.
   const displayRow = await ctx.supabase.from('offers').select('discount_display').eq('id', key).maybeSingle();
@@ -491,7 +496,65 @@ export async function offerDetail(ctx: NativeContext, id: string) {
     },
     amendmentSource: amendment.data?.source_offer_id || null,
     draftRevision: draftRevision.data ? { savedRevision: (draftRevision.data as Row).saved_revision ?? null } : null,
+    // Pasek „Cennik: …” nad pozycjami i „Przelicz według cennika…” (jak `OfferSeasonPricePanel` w CRM).
+    seasonPrices: seasonPricesView(season),
   };
+}
+
+/** Opis cennika oferty dla Maca (ten sam tekst co CRM) i cennik, według którego „Przelicz” porówna ceny. */
+function seasonPricesView(prices: SeasonPrices | null) {
+  const notice = seasonPriceNotice(prices, 'offer');
+  if (!prices || !notice) return null;
+  return {
+    tone: notice.tone,
+    title: notice.title,
+    detail: notice.detail,
+    canReprice: notice.canReprice,
+    priceListId: prices.suggested?.id || prices.price_list?.id || null,
+  };
+}
+
+const applyView = (result: PriceListApplyResult) => ({
+  priceList: result.price_list ? {
+    id: result.price_list.id,
+    name: result.price_list.name,
+    company: result.price_list.company_name,
+    season: priceListSeason(result.price_list),
+  } : null,
+  changes: result.changes.map((change) => ({
+    itemId: change.item_id, name: change.name, quantity: change.quantity, days: change.days,
+    oldPrice: change.old_price, newPrice: change.new_price, oldSubtotal: change.old_subtotal, newSubtotal: change.new_subtotal,
+  })),
+  unchanged: result.unchanged,
+  skipped: result.skipped.map((row) => ({ itemId: row.item_id, name: row.name, reason: row.reason })),
+  deltaNet: result.delta_net,
+  linked: result.linked,
+});
+
+/** „Przelicz według cennika…” — podgląd różnic (nic nie zmienia). */
+export async function previewOfferPriceList(ctx: NativeContext, body: Row) {
+  const key = offerId(body.id);
+  await requireManage(ctx, key);
+  const listId = typeof body.priceListId === 'string' && OFFER_UUID.test(body.priceListId) ? body.priceListId : null;
+  try {
+    return applyView(await applyPriceListToOffer(ctx.supabase, key, { priceListId: listId, dryRun: true }));
+  } catch (error) {
+    fail(error instanceof Error ? error.message : 'Nie udało się porównać cen z cennikiem.');
+  }
+}
+
+/** Zastosowanie cennika (świadoma zmiana cen pozycji; oferta zapamiętuje cennik). Zwraca odświeżoną ofertę. */
+export async function applyOfferPriceList(ctx: NativeContext, body: Row) {
+  const key = offerId(body.id);
+  await requireManage(ctx, key);
+  if (typeof body.priceListId !== 'string' || !OFFER_UUID.test(body.priceListId)) fail('Wybierz cennik.');
+  let changed = 0;
+  try {
+    changed = (await applyPriceListToOffer(ctx.supabase, key, { priceListId: body.priceListId, dryRun: false })).changes.length;
+  } catch (error) {
+    fail(error instanceof Error ? error.message : 'Nie udało się przeliczyć oferty według cennika.');
+  }
+  return { ...(await offerDetail(ctx, key)), message: changed ? `Zmieniono ceny pozycji: ${changed}.` : 'Oferta jest powiązana z cennikiem.' };
 }
 
 // MARK: Zmiany (część A): status, usunięcie, PDF do podglądu

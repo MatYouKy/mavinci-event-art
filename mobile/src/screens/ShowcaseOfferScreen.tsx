@@ -22,7 +22,7 @@ import { presetShowcaseOfferDraft, useShowcaseOffer, type ShowcaseOfferChoice } 
 import {
   SHOWCASE_OFFER_DISCOUNT_DISPLAYS, SHOWCASE_OFFER_LIMITS, emptyShowcaseOfferClient, formatShowcaseAmount, formatShowcasePercent, isShowcaseOfferEmail,
   isShowcaseOfferPlaceholder, normalizeShowcaseOfferDraft, showcaseMediaKey, showcaseOfferApprovalHint, showcaseOfferConfiguredLine, showcaseOfferDiscount,
-  showcaseOfferLineFor, showcaseOfferPrice, showcaseOfferProblem,
+  showcaseOfferLineFor, showcaseOfferPrice, showcaseOfferPriceListText, showcaseOfferProblem,
   type ShowcaseMedia, type ShowcaseOfferDiscountDisplay, type ShowcaseOfferApproval, type ShowcaseOfferClient, type ShowcaseOfferClientContext, type ShowcaseOfferClientHit, type ShowcaseOfferConfiguration,
   type ShowcaseOfferEmailSetup, type ShowcaseOfferInquiry, type ShowcaseOfferLine, type ShowcaseOfferLocation, type ShowcaseOfferPreview,
   type ShowcaseOfferResult, type ShowcaseProductView, type ShowcaseUrls,
@@ -871,6 +871,7 @@ export default function ShowcaseOfferScreen() {
                   ) : null}
                   <View style={styles.totalRow}><Text style={styles.text}>Netto · VAT {preview.taxPercent}% {formatShowcaseAmount(preview.tax)}</Text><Text style={styles.text}>{formatShowcaseAmount(preview.net)}</Text></View>
                   <View style={styles.totalRow}><Text style={[styles.total, { color: accent }]}>Brutto</Text><Text style={[styles.total, { color: accent }]}>{formatShowcaseAmount(preview.gross)}</Text></View>
+                  {preview.priceList ? <Text style={styles.muted}>{showcaseOfferPriceListText(preview.priceList)}</Text> : null}
                 </View>
               ) : null}
               {problem && draft.lines.length ? <Text style={styles.hint}>{problem}</Text> : null}

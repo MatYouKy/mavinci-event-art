@@ -1,12 +1,15 @@
 import 'server-only';
 import type { NativeContext } from './auth';
 import { fail } from './offers';
+import { WEDDING_DEPOSIT_DEFAULT, WEDDING_TERMS_DEFAULT } from '@/lib/offer-pdf/shared/weddingPricingDefaults';
 
 /*
  * Oferty na Macu — „Szablony ofert” (`/crm/offers?tab=templates`, `OfferPageTemplatesEditor`), część F1: kategorie szablonów
  * (nazwa, opis, kolor, domyślna, zdjęcie hero, kreator wyglądu: kolory, hero, logo, układ założeń i wyceny, strony „Informacje
  * i warunki” oraz wymagań), przypisania kategorii wydarzeń, szablony stron (5 etapów dokumentu, wariant karty produktu),
  * własne tło PDF i powrót do gotowego układu Mavinci; część F2: pola danych na tle PDF („Rozmieść dane”) i wygląd tabeli wyceny.
+ * Kolory z księgi znaku marki wydarzenia (`brand_colors`), wycena weselna (`pricing_style: 'wedding'`: zadatek, warunki)
+ * i rozdziały z Prezentacji (`chapter_item_ids` — karty w kolejności; lista kart do wyboru w `showcaseCards`).
  * Te same tabele i ten sam magazyn plików co CRM (RLS tokenem pracownika).
  */
 
@@ -55,8 +58,17 @@ export const DEFAULT_CATEGORY_DESIGN = {
   requirements_page_subtitle: 'Wymagania niezbędne do bezpiecznego i sprawnego przygotowania realizacji.',
   technical_requirements_text: 'Dostęp do sali przed wydarzeniem w czasie uzgodnionym z realizatorem\nStabilne zasilanie 230 V oraz miejsce dla stanowiska technicznego\nDostęp do internetu przewodowego przy realizacjach online\nKontakt do osoby technicznej po stronie obiektu',
   reservation_terms_text: 'Termin rezerwujemy po akceptacji oferty i podpisaniu umowy\nZakres końcowy potwierdzamy po weryfikacji warunków technicznych\nDodatkowe usługi i zmiany wymagają potwierdzenia przed wydarzeniem',
+  brand_colors: false,
+  deposit_percent: WEDDING_DEPOSIT_DEFAULT,
+  wedding_terms_text: WEDDING_TERMS_DEFAULT,
+  chapter_item_ids: [] as string[],
 };
 type Design = typeof DEFAULT_CATEGORY_DESIGN;
+/** Najwięcej rozdziałów z Prezentacji w kategorii (jak `CHAPTER_LIMITS.chapters` w PDF). */
+const CHAPTER_LIMIT = 12;
+const chapterIds = (value: unknown): string[] | null => (Array.isArray(value)
+  ? Array.from(new Set(value.map((item) => text(item).toLowerCase()).filter((item) => UUID.test(item)))).slice(0, CHAPTER_LIMIT)
+  : null);
 
 /** Uprawnienia dokładnie jak polityki tabel: kategorie — admin / strona / oferty; szablony — admin / strona; usuwanie — admin. */
 function access(ctx: NativeContext) {
@@ -94,7 +106,7 @@ function normalizeDesign(input: unknown, current: unknown) {
     logo_scale: Math.round(clamp(raw.logo_scale, 0.7, 1.5, base.logo_scale) * 100) / 100,
     assumptions_layout: ['cards', 'simple'].includes(raw.assumptions_layout) ? raw.assumptions_layout : base.assumptions_layout,
     visual_image_height: Math.round(clamp(raw.visual_image_height, 220, 330, base.visual_image_height)),
-    pricing_style: ['card', 'minimal'].includes(raw.pricing_style) ? raw.pricing_style : base.pricing_style,
+    pricing_style: ['card', 'minimal', 'wedding'].includes(raw.pricing_style) ? raw.pricing_style : base.pricing_style,
     info_page_enabled: raw.info_page_enabled == null ? base.info_page_enabled : raw.info_page_enabled === true,
     info_page_title: line('info_page_title', 120),
     order_process_text: line('order_process_text', 4000),
@@ -103,6 +115,10 @@ function normalizeDesign(input: unknown, current: unknown) {
     requirements_page_subtitle: line('requirements_page_subtitle', 500),
     technical_requirements_text: line('technical_requirements_text', 6000),
     reservation_terms_text: line('reservation_terms_text', 4000),
+    brand_colors: raw.brand_colors == null ? base.brand_colors === true : raw.brand_colors === true,
+    deposit_percent: Math.round(clamp(raw.deposit_percent ?? base.deposit_percent, 0, 100, WEDDING_DEPOSIT_DEFAULT)),
+    wedding_terms_text: line('wedding_terms_text', 4000),
+    chapter_item_ids: chapterIds(raw.chapter_item_ids) ?? chapterIds(base.chapter_item_ids) ?? [],
   };
 }
 
@@ -126,15 +142,39 @@ async function brandPreview(ctx: NativeContext) {
   };
 }
 
+/**
+ * Karty Prezentacji do wyboru jako rozdziały oferty (dział, tytuł, czy włączona) — według kolejności działów i kart.
+ * Bez dostępu do Prezentacji albo bez migracji — pusta lista (rozdziały wybrane wcześniej zostają w kategorii).
+ */
+async function showcaseChapterCards(ctx: NativeContext) {
+  const [items, sections] = await Promise.all([
+    ctx.supabase.from('sales_showcase_items').select('id, title, section_id, is_active, sort_order').order('sort_order').order('title'),
+    ctx.supabase.from('sales_showcase_sections').select('id, title, sort_order').order('sort_order').order('title'),
+  ]);
+  if (items.error || sections.error) return [];
+  const order = new Map(((sections.data || []) as Row[]).map((row, index) => [String(row.id), { index, title: text(row.title) }]));
+  return ((items.data || []) as Row[])
+    .map((row) => ({
+      id: String(row.id),
+      title: text(row.title) || 'Karta bez tytułu',
+      section: order.get(String(row.section_id))?.title || 'Bez działu',
+      active: row.is_active !== false,
+      sectionIndex: order.get(String(row.section_id))?.index ?? Number.MAX_SAFE_INTEGER,
+    }))
+    .sort((a, b) => a.sectionIndex - b.sectionIndex)
+    .map((card) => ({ id: card.id, title: card.title, section: card.section, active: card.active }));
+}
+
 /** Lista „Projekt oferty PDF”: kategorie z wyglądem i zdjęciem hero, przypisania kategorii wydarzeń, szablony stron. */
 export async function offerTemplatesState(ctx: NativeContext) {
-  const [categoriesRes, templatesRes, eventCategoriesRes, brand] = await Promise.all([
+  const [categoriesRes, templatesRes, eventCategoriesRes, brand, showcaseCards] = await Promise.all([
     ctx.supabase.from('offer_template_categories').select('*').order('is_default', { ascending: false }).order('name'),
     ctx.supabase.from('offer_page_templates')
       .select('id, type, name, description, is_default, is_active, pdf_url, pdf_width, pdf_height, template_category_id, variant_key, text_fields_config, table_config, created_at')
       .order('is_default', { ascending: false }).order('name'),
     ctx.supabase.from('event_categories').select('id, name, default_offer_template_category_id').eq('is_active', true).order('name'),
     brandPreview(ctx),
+    showcaseChapterCards(ctx),
   ]);
   if (categoriesRes.error) fail('Błąd podczas ładowania kategorii');
   if (templatesRes.error) fail(templatesRes.error.message || 'Błąd pobierania szablonów');
@@ -150,6 +190,7 @@ export async function offerTemplatesState(ctx: NativeContext) {
     ...access(ctx),
     defaults: DEFAULT_CATEGORY_DESIGN,
     brand,
+    showcaseCards,
     categories: categories.map((row) => ({
       id: String(row.id),
       name: text(row.name),

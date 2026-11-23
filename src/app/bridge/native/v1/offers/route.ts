@@ -1,6 +1,7 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
 import {
-  deleteOffer, deleteOfferPdf, linkOfferLocation, offerDetail, offerEnglish, offerPdf, offersAccess, offersState, setOfferStatus,
+  applyOfferPriceList, deleteOffer, deleteOfferPdf, linkOfferLocation, offerDetail, offerEnglish, offerPdf, offersAccess, offersState,
+  previewOfferPriceList, setOfferStatus,
 } from '@/lib/native/offers';
 import {
   deleteOfferItem,
@@ -91,7 +92,9 @@ export const maxDuration = 300;
  * wizardSetup&event=…; POST op=wizardPreview | wizardCreate | wizardContact. Szablony ofert (`src/lib/native/offerTemplates.ts`):
  * GET op=templates | templateEditor&id=…; POST op=templateCategorySave | templateCreate | templateDelete | templateBackground |
  * templateBackgroundDelete | templateFieldsSave | templateTableSave. Konfigurator produktów modułowych — scena, LED
- * (`src/lib/native/modularConfigurator.ts`): POST op=modular (konfiguracja po zmianach z widokiem dla Maca).
+ * (`src/lib/native/modularConfigurator.ts`): POST op=modular (konfiguracja po zmianach z widokiem dla Maca). Cennik sezonowy
+ * (`src/lib/native/offers.ts`, `seasonPrices.ts`): POST op=priceListPreview {id, priceListId?} (różnice cen, nic nie zmienia) |
+ * priceListApply {id, priceListId} (zmiana cen pozycji według cennika; oferta pamięta cennik).
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -158,6 +161,8 @@ export async function POST(request: Request) {
       case 'english': return nativeJson(await offerEnglish(ctx, body));
       case 'basicSave': return nativeJson(await saveOfferBasic(ctx, body));
       case 'linkLocation': return nativeJson(await linkOfferLocation(ctx, body));
+      case 'priceListPreview': return nativeJson(await previewOfferPriceList(ctx, body));
+      case 'priceListApply': return nativeJson(await applyOfferPriceList(ctx, body));
       case 'assumptionsSave': return nativeJson(await saveOfferAssumptions(ctx, body));
       case 'assumptionsAI': return nativeJson(await draftOfferAssumptions(ctx, body));
       case 'discountSave': return nativeJson(await saveOfferDiscount(ctx, body));

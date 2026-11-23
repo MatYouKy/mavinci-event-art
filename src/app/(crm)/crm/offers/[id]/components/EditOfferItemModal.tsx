@@ -14,13 +14,14 @@ import { pricedPackageSelection, type ProductSalesPackage } from '@/lib/CRM/Offe
 import ProductAddonsEditor from '@/components/crm/offers/ProductAddonsEditor';
 import { createConfiguration, configurationPrice, validateConfiguration, type ProductAddon } from '@/lib/CRM/Offers/offerAddons';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { IOfferItem } from '../../types';
 
 import { VariantPricesEditor } from './VariantPricesEditor';
+import { applySeasonPrice, loadSeasonPrices, seasonPriceIndex, type SeasonPrices } from '@/lib/CRM/Offers/seasonPrices';
 
 const VAT_RATES = [0, 5, 8, 23] as const;
 
@@ -72,9 +73,18 @@ export default function EditOfferItemModal({
   const [selectedVariantId, setSelectedVariantId] = useState(item?.product_variant_id || '');
   const [showVariantPricesInPdf, setShowVariantPricesInPdf] = useState(item?.show_variant_prices_in_pdf !== false);
   const [showProductVariantsInPdf, setShowProductVariantsInPdf] = useState(item?.show_product_variants_in_pdf !== false);
+  // Cennik sezonowy oferty: zmiana wariantu albo powrót z pakietu podpowiada cenę z cennika (zapisane ceny pozycji zostają).
+  const [seasonPrices, setSeasonPrices] = useState<SeasonPrices | null>(null);
+  useEffect(() => {
+    if (!offerId) return;
+    let active = true;
+    void loadSeasonPrices(supabase, { offerId }).then((prices) => { if (active) setSeasonPrices(prices); });
+    return () => { active = false; };
+  }, [offerId]);
   if (!item) return null;
 
-  const productVariants = (item.product?.variants || []).filter((variant) => variant.is_active !== false);
+  const seasonProduct = item.product ? applySeasonPrice(item.product, seasonPriceIndex(seasonPrices)) : undefined;
+  const productVariants = (seasonProduct?.variants || []).filter((variant) => variant.is_active !== false);
   const missingPackageResources = selectedPackage && (!Array.isArray(selectedPackage.resources?.equipment) || !Array.isArray(selectedPackage.resources?.staff));
   const catalogPackage = item.product?.sales_packages?.find(p => p.id === selectedPackageId);
   const catalogResources = catalogPackage?.resources;
@@ -96,7 +106,7 @@ export default function EditOfferItemModal({
     const variant = productVariants[0];
     setSelectedVariantId(variant?.id || '');
     setQuantitySource(variant?.quantity_source || item.product?.quantity_source || 'manual');
-    setUnitPrice(Number(variant?.price_net ?? item.product?.base_price ?? 0));
+    setUnitPrice(Number(variant?.price_net ?? seasonProduct?.base_price ?? 0));
     setAddons((item.product?.pricing_addons || []).map(addon => ({ ...addon })));
     setName(variant
       ? `${item.product?.name || item.name} — ${variant.name}`

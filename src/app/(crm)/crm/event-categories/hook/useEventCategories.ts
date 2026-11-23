@@ -16,6 +16,9 @@ type UpsertCategoryPayload = {
   icon_id?: string | null;
   contract_template_id?: string | null;
   default_offer_template_category_id?: string | null;
+  /** Tylko po migracji cenników (kolumny istnieją) — inaczej pola nie są wysyłane. */
+  default_my_company_id?: string | null;
+  company_locked?: boolean;
 };
 
 type UpsertIconPayload = {
@@ -33,6 +36,8 @@ export function useEventCategories() {
   const [offerTemplateCategories, setOfferTemplateCategories] = useState<
     OfferTemplateCategoryRow[]
   >([]);
+  /** Marki do wyboru domyślnej marki kategorii. */
+  const [companies, setCompanies] = useState<SimpleRow[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingCategory, setIsSavingCategory] = useState(false);
@@ -70,6 +75,15 @@ export function useEventCategories() {
     if (error) throw error;
     setCategories((data ?? []) as IEventCategory[]);
   }, []);
+
+  const fetchCompanies = useCallback(async () => {
+    const { data, error } = await supabase.from('my_companies').select('id, name').eq('is_active', true).order('name');
+    if (error) throw error;
+    setCompanies((data ?? []) as SimpleRow[]);
+  }, []);
+
+  // Kolumny domyślnej marki istnieją dopiero po migracji 20261129100000 (wiersze kategorii mają wtedy `company_locked`).
+  const supportsCategoryCompany = useMemo(() => categories.some((category) => 'company_locked' in category), [categories]);
 
   const fetchIcons = useCallback(async () => {
     const { data, error } = await supabase.from('custom_icons').select('*').order('name');
@@ -131,8 +145,9 @@ export function useEventCategories() {
       fetchIcons(),
       fetchContractTemplates(),
       fetchOfferTemplateCategories(),
+      fetchCompanies(),
     ]);
-  }, [fetchCategories, fetchIcons, fetchContractTemplates, fetchOfferTemplateCategories]);
+  }, [fetchCategories, fetchIcons, fetchContractTemplates, fetchOfferTemplateCategories, fetchCompanies]);
 
   useEffect(() => {
     (async () => {
@@ -152,11 +167,14 @@ export function useEventCategories() {
       setIsSavingCategory(true);
 
       try {
+        const { default_my_company_id: companyId, company_locked: companyLocked, ...rest } = payload;
         const dataToSave = {
-          ...payload,
+          ...rest,
           icon_id: payload.icon_id || null,
           contract_template_id: payload.contract_template_id || null,
           default_offer_template_category_id: payload.default_offer_template_category_id || null,
+          // Marka obowiązkowa wymaga wybranej marki.
+          ...(supportsCategoryCompany ? { default_my_company_id: companyId || null, company_locked: Boolean(companyId) && companyLocked === true } : {}),
           updated_at: new Date().toISOString(),
         };
 
@@ -177,7 +195,7 @@ export function useEventCategories() {
         setIsSavingCategory(false);
       }
     },
-    [fetchCategories, requireManagePermission],
+    [fetchCategories, requireManagePermission, supportsCategoryCompany],
   );
 
   const deleteCategory = useCallback(
@@ -263,6 +281,8 @@ export function useEventCategories() {
     icons,
     contractTemplates,
     offerTemplateCategories,
+    companies,
+    supportsCategoryCompany,
 
     // state
     isLoading,

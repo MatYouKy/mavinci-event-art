@@ -7,7 +7,8 @@ import { invalidateEvents } from './events';
  * Kategorie wydarzeń i ikony dla Maca — jak strona `/crm/event-categories` (`useEventCategories`): lista kategorii z ikoną,
  * kategoria (nazwa, ikona, kolor, opis, domyślny szablon oferty, szablon umowy, aktywna), biblioteka ikon SVG (`custom_icons`).
  * Strona CRM wymaga `event_categories_manage` (PermissionGuard) — tak samo tutaj. Tokenem pracownika: zapis rozstrzyga RLS,
- * a brak zmienionego wiersza to brak uprawnień.
+ * a brak zmienionego wiersza to brak uprawnień. Domyślna marka kategorii (`default_my_company_id`, `company_locked` — np. Wesele
+ * → Event Rulers) po migracji cenników sezonowych; bez niej pola nie ma i nie są zapisywane.
  */
 
 type Row = Record<string, any>;
@@ -69,6 +70,8 @@ function categoryOut(row: Row) {
     icon: iconOut(icon),
     contractTemplateId: str(row.contract_template_id) || null,
     offerTemplateCategoryId: str(row.default_offer_template_category_id) || null,
+    defaultCompanyId: str(row.default_my_company_id) || null,
+    companyLocked: row.company_locked === true,
   };
 }
 
@@ -76,11 +79,12 @@ function categoryOut(row: Row) {
 export async function eventCategoriesData(ctx: NativeContext) {
   requireManage(ctx);
   const s = ctx.supabase;
-  const [categories, icons, contracts, offers] = await Promise.all([
+  const [categories, icons, contracts, offers, companies] = await Promise.all([
     s.from('event_categories').select(ICON_SELECT).order('name'),
     s.from('custom_icons').select('*').order('name'),
     s.from('contract_templates').select('id, name').eq('is_active', true).order('name'),
     s.from('offer_template_categories').select('id, name, color').order('is_default', { ascending: false }).order('name'),
+    s.from('my_companies').select('id, name').eq('is_active', true).order('name'),
   ]);
   if (categories.error) fail('Nie udało się pobrać kategorii eventów.', 500);
   if (icons.error) fail('Nie udało się pobrać ikon.', 500);
@@ -89,6 +93,9 @@ export async function eventCategoriesData(ctx: NativeContext) {
     icons: rows(icons.data).map((icon) => iconOut(icon)!),
     contractTemplates: rows(contracts.data).map((row) => ({ id: str(row.id), name: str(row.name) })),
     offerTemplateCategories: rows(offers.data).map((row) => ({ id: str(row.id), name: str(row.name), color: str(row.color) })),
+    companies: rows(companies.data).map((row) => ({ id: str(row.id), name: str(row.name) })),
+    // Kolumny domyślnej marki istnieją po migracji 20261129100000 (wiersze kategorii mają `company_locked`).
+    supportsCategoryCompany: rows(categories.data).some((row) => 'company_locked' in row),
   };
 }
 
@@ -109,6 +116,11 @@ export async function saveEventCategory(ctx: NativeContext, body: Row) {
     icon_id: optionalId(form.iconId),
     contract_template_id: optionalId(form.contractTemplateId),
     default_offer_template_category_id: optionalId(form.offerTemplateCategoryId),
+    // Tylko gdy Mac wysyła markę (zna kolumny); marka obowiązkowa wymaga wybranej marki.
+    ...(form.defaultCompanyId !== undefined ? {
+      default_my_company_id: optionalId(form.defaultCompanyId),
+      company_locked: Boolean(optionalId(form.defaultCompanyId)) && form.companyLocked === true,
+    } : {}),
     updated_at: new Date().toISOString(),
   };
   if (id) {

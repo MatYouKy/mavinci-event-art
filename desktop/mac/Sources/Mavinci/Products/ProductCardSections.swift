@@ -26,6 +26,10 @@ extension ProductCardView {
                         .foregroundStyle(detail.active ? Color.green : Color.secondary)
                 }
                 Text(detail.categoryName ?? "Bez kategorii").font(.callout).foregroundStyle(.secondary)
+                let extra = ProductValue.list(product, "extra_category_ids").compactMap { id in detail.categories.first { $0.id == id }?.name }
+                if !extra.isEmpty {
+                    Text("Także w: \(extra.joined(separator: ", "))").font(.caption).foregroundStyle(.secondary)
+                }
                 let description = ProductValue.text(product, "description")
                 Text(description.isEmpty ? "Brak opisu produktu." : description)
                     .foregroundStyle(description.isEmpty ? .secondary : .primary).textSelection(.enabled)
@@ -50,6 +54,16 @@ extension ProductCardView {
                         ForEach(detail.categories) { item in Text(item.name).tag(item.id) }
                     }
                     .labelsHidden().fixedSize()
+                }
+                if case .array? = draft["extra_category_ids"] {
+                    ProductField(label: "Także w kategoriach eventów",
+                                 help: "Produkt pokaże się też w tych kategoriach — w katalogu, kreatorze oferty i cennikach — bez kopii (ta sama cena, zdjęcia, sprzęt i obsada).") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(detail.categories.filter { $0.id != ProductValue.text(draft, "category_id") }) { item in
+                                Toggle(item.name, isOn: extraCategory(item.id)).toggleStyle(.checkbox)
+                            }
+                        }
+                    }
                 }
                 ProductField(label: "Opis produktu") { ProductTextArea(text: text("description"), lines: 4...10) }
                 Toggle("Produkt aktywny", isOn: flag("is_active"))

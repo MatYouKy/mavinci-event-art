@@ -122,6 +122,7 @@ import SwiftUI
         let editAssumptions: (() -> Void)? = editable(detail) ? { assumptionsSheet = true } : nil
         OfferAssumptionsCard(assumptions: detail.assumptions, onEdit: editAssumptions)
         if !detail.offer.seller {
+            if let notice = detail.seasonPrices { OfferSeasonPriceBar(store: store, detail: detail, notice: notice) }
             OfferItemsCard(store: store, detail: detail)
             OfferRequirementsCard(store: store, detail: detail)
             OfferPackagesCard(store: store, detail: detail)

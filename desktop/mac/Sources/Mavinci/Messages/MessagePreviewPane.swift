@@ -251,16 +251,20 @@ import QuickLook
 }
 
 /// Treść e-maila w `WKWebView`: bez JavaScriptu i bez zapisu danych witryn; linki otwierają się w przeglądarce systemowej.
+/// Upuszczony plik nie otwiera się w podglądzie (nawigacja do plików lokalnych jest blokowana).
 struct EmailWebView: NSViewRepresentable {
     let html: String
     /// Tło poza treścią (np. przy przewijaniu poza krawędź) — dla wiadomości w ciemnym motywie.
     var background: Int?
+    /// `false` — podgląd nie przyjmuje przeciąganych plików; trafiają do okna wokół (np. jako załączniki nowej wiadomości).
+    var acceptsDrops = true
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         configuration.websiteDataStore = .nonPersistent()
-        let view = WKWebView(frame: .zero, configuration: configuration)
+        let view: WKWebView = acceptsDrops ? WKWebView(frame: .zero, configuration: configuration) : NoDropWebView(frame: .zero, configuration: configuration)
+        if !acceptsDrops { view.unregisterDraggedTypes() }
         view.navigationDelegate = context.coordinator
         view.allowsBackForwardNavigationGestures = false
         return view
@@ -276,6 +280,8 @@ struct EmailWebView: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate {
         var html: String?
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            // Plik upuszczony na podgląd — bez otwierania go w miejscu wiadomości.
+            if action.request.url?.isFileURL == true { decisionHandler(.cancel); return }
             if action.navigationType == .linkActivated || action.targetFrame == nil {
                 if let url = action.request.url, ["http", "https", "mailto", "tel"].contains(url.scheme?.lowercased() ?? "") { NSWorkspace.shared.open(url) }
                 decisionHandler(.cancel); return
@@ -283,6 +289,11 @@ struct EmailWebView: NSViewRepresentable {
             decisionHandler(action.request.url?.scheme == "about" || action.navigationType == .other ? .allow : .cancel)
         }
     }
+}
+
+/// Podgląd wiadomości bez przyjmowania przeciąganych plików (WebKit nie rejestruje się jako cel upuszczania).
+final class NoDropWebView: WKWebView {
+    override func registerForDraggedTypes(_ newTypes: [NSPasteboard.PasteboardType]) {}
 }
 
 extension CrmTheme {

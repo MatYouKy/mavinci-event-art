@@ -133,22 +133,21 @@ enum FinanceText {
         }
         .task(id: eventID) { await store.loadTab(eventID, "finances") }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in Task { await store.loadTab(eventID, "finances") } }
-        .sheet(item: $invoiceForm) { request in
-            // Faktura dla wydarzenia (jak `/crm/invoices/new?event=`): po wystawieniu — świeże finanse wydarzenia i karta faktury.
+        .formWindow(item: $invoiceForm, kind: .invoice) { request in
+            // Faktura dla wydarzenia (jak `/crm/invoices/new?event=`) w osobnym oknie: po wystawieniu — świeże finanse wydarzenia
+            // i karta faktury.
             InvoiceFormSheet(request: request) { id in
                 Task { await store.loadTab(eventID, "finances") }
                 state.showInvoice(id)
             }
-            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
-        .sheet(item: $finalInvoice) { request in
+        .formWindow(item: $finalInvoice, kind: .invoice) { request in
             // „Wystaw fakturę końcową” (jak `FinalInvoiceWizardModal` z `initialEventId`): po wystawieniu — świeże finanse
             // wydarzenia i karta nowej faktury.
             FinalInvoiceSheet(eventID: request.eventID) { id in
                 Task { await store.loadTab(eventID, "finances") }
                 state.showInvoice(id)
             }
-            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
         }
         .confirmationDialog("Czy na pewno chcesz usunąć ten koszt?", isPresented: Binding(get: { deletingCost != nil }, set: { if !$0 { deletingCost = nil } }), titleVisibility: .visible) {
             if let cost = deletingCost {

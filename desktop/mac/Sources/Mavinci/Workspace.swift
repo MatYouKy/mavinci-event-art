@@ -129,10 +129,18 @@ import Network
     private var generation = UUID()
     private let monitor = NWPathMonitor()
     private var pathAvailable = true
-    private var verifiedConnection = false
+    /// Połączenie potwierdzone profilem pracownika (publikowane — od niego zależy `canWrite`, czyli dostępność przycisków zapisu).
+    @Published private var verifiedConnection = false
+    /// Ponowne potwierdzenie połączenia w toku (`reverifyConnection`).
+    private var reverifying = false
+    /// Odświeżenie zamówione w trakcie trwającego (np. po zapisie) — wykonywane zaraz po nim, żeby dane pokazały zapisane zmiany.
+    private var refreshQueued = false
     var employee: Employee? { snapshot?.employee }
     var modules: [Module] { Module.allCases.filter { employee?.canView($0) == true } }
-    var canWrite: Bool { employee != nil && verifiedConnection && !offline && !syncing && !acting && !loading }
+    /// Zapis możliwy: zalogowany pracownik i potwierdzone połączenie z serwerem CRM. Odświeżanie danych w tle (`syncing`, co minutę
+    /// i po powrocie do aplikacji) ani inna trwająca czynność nie blokują zapisów — serwer sprawdza sesję i uprawnienia przy każdym
+    /// zapisie, a sekcje pobierają zmiany po zapisie (odświeżenie zamówione w trakcie trwającego wykonuje się zaraz po nim).
+    var canWrite: Bool { employee != nil && verifiedConnection && !offline }
     #if DEBUG
     var canConfigure: Bool { employee?.isAdmin == true || (!connection.valid && employee == nil) }
     #else
@@ -171,8 +179,11 @@ import Network
         updater.workspace = self
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
-                self?.pathAvailable = path.status == .satisfied
-                if path.status != .satisfied { self?.offline = true; self?.verifiedConnection = false }
+                guard let self else { return }
+                self.pathAvailable = path.status == .satisfied
+                if path.status != .satisfied { self.offline = true; self.verifiedConnection = false }
+                // Sieć wróciła — połączenie potwierdzamy od razu (zapisy działają bez czekania na odświeżenie co minutę).
+                else if self.offline || !self.verifiedConnection { await self.reverifyConnection() }
             }
         }
         monitor.start(queue: DispatchQueue(label: "pl.mavinci.network"))
@@ -272,11 +283,22 @@ import Network
         }
     }
     func refresh(force: Bool = false) async {
-        guard let backend, !syncing, !acting, !editing || force else { return }
+        guard let backend else { return }
+        // Wymuszone odświeżenie (np. po zapisie) w trakcie trwającego — zaraz po nim, inaczej lista pokazałaby dane sprzed zapisu.
+        if syncing { if force { refreshQueued = true }; return }
+        guard !acting, !editing || force else { return }
         let ticket = generation
         syncing = true
         lastRefreshStarted = Date()
-        defer { if ticket == generation { syncing = false } }
+        defer {
+            if ticket == generation {
+                syncing = false
+                if refreshQueued {
+                    refreshQueued = false
+                    Task { await self.refresh(force: true) }
+                }
+            }
+        }
         do {
             let current = try await backend.profile()
             guard ticket == generation else { return }
@@ -324,7 +346,8 @@ import Network
                     guard ticket == generation else { return }
                     // Fail closed for server/schema/access failures; retain last good data only on transport failure.
                     if !(error is URLError) { snapshot?.collections.removeValue(forKey: module.rawValue) }
-                    if error is URLError { offline = true; verifiedConnection = false }
+                    // Brak sieci wyłącza zapisy; przekroczony czas odpowiedzi jednej sekcji (profil przed chwilą się wczytał) — nie.
+                    if Self.isConnectionLoss(error) { offline = true; verifiedConnection = false }
                     moduleErrors[module.rawValue] = friendlyError(error)
                 }
             }
@@ -396,7 +419,7 @@ import Network
         }
     }
     @discardableResult func perform(_ name: String, row: Row? = nil, payload: [String: JSONValue] = [:]) async -> Bool {
-        guard canWrite, allowed(name, row: row), let backend else { return false }
+        guard canWrite, !acting, allowed(name, row: row), let backend else { return false }
         acting = true; error = nil; notice = nil
         let ticket = generation
         var succeeded = false
@@ -419,19 +442,18 @@ import Network
         if succeeded { await refresh(force: true) }
         return succeeded
     }
-    /// Zapis z okna (np. „Nowe zapytanie”, formularz kontaktu): `canWrite` jest fałszywe także wtedy, gdy w tle trwa zwykłe
-    /// odświeżanie danych (co minutę i po powrocie do aplikacji) — wtedy czekamy na jego koniec (do 20 s) zamiast odmawiać.
-    /// Niepotwierdzone połączenie (np. po chwilowej przerwie sieci) sprawdzamy od razu profilem pracownika.
-    /// Zwraca komunikat dla użytkownika albo `nil`, gdy można zapisać.
+    /// Zapis z okna (np. „Nowe zapytanie”, formularz kontaktu): odświeżanie danych w tle nie blokuje zapisu. Trwające logowanie
+    /// (`loading`) — czekamy na jego koniec (do 20 s). Niepotwierdzone połączenie (np. po chwilowej przerwie sieci) sprawdzamy od razu
+    /// profilem pracownika. Zwraca komunikat dla użytkownika albo `nil`, gdy można zapisać.
     func prepareWrite() async -> String? {
         guard let employee else { return "Brak aktywnej sesji. Zaloguj się ponownie." }
         let ticket = generation
         let deadline = Date().addingTimeInterval(20)
-        while (syncing || loading || acting) && Date() < deadline {
+        while loading && Date() < deadline {
             try? await Task.sleep(nanoseconds: 150_000_000)
         }
         guard ticket == generation else { return "Sesja zmieniła się. Zaloguj się ponownie." }
-        if syncing || loading || acting { return "Trwa odświeżanie danych z serwera CRM. Spróbuj ponownie za chwilę." }
+        if loading { return "Trwa łączenie z serwerem CRM. Spróbuj ponownie za chwilę." }
         if !verifiedConnection || offline {
             guard pathAvailable else { return "Brak połączenia z internetem. Zapis będzie możliwy po przywróceniu połączenia." }
             guard let backend else { return "Zapis wymaga połączenia z serwerem CRM." }
@@ -446,6 +468,28 @@ import Network
         }
         return canWrite ? nil : "Zapis wymaga połączenia z serwerem CRM."
     }
+    /// Brak połączenia z siecią lub serwerem (a nie np. przekroczony czas jednej odpowiedzi przy wolnej sekcji).
+    nonisolated static func isConnectionLoss(_ error: Error) -> Bool {
+        guard let error = error as? URLError else { return false }
+        switch error.code {
+        case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
+             .dataNotAllowed, .internationalRoamingOff, .callIsActive:
+            return true
+        default:
+            return false
+        }
+    }
+    /// Ponowne potwierdzenie połączenia profilem pracownika (po powrocie sieci) — bez pełnego odświeżania danych.
+    private func reverifyConnection() async {
+        guard let backend, let employee, !reverifying, !loading else { return }
+        reverifying = true
+        defer { reverifying = false }
+        let ticket = generation
+        guard let current = try? await backend.profile(), ticket == generation else { return }
+        guard current.is_active, current == employee else { return }
+        verifiedConnection = true
+        offline = false
+    }
     func logout() async {
         let old = backend
         generation = UUID()
@@ -458,7 +502,7 @@ import Network
         for nav in allNavigations { nav.reset() }
         // Po wylogowaniu zostaje jedno okno (logowanie) — pozostałe okna i karty są zamykane.
         for nav in windowNavigations where nav !== activeNavigation { nav.window?.close() }
-        verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false
+        verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false; refreshQueued = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
         native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); chat.reset(); appleCalendar.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); social.reset(); portfolio.reset(); showcase.reset(); materials.reset(); drive.reset(); finance.reset()
         navigation = []; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
@@ -569,6 +613,7 @@ import Network
     /// Czynność z karty: zapis na serwerze CRM, potem synchronizacja kart (i danych obszaru roboczego); `record` z odpowiedzi otwiera wskazaną kartę.
     func runNative(_ action: DocAction, record: DocRecord?, set: String, data: [String: JSONValue], key: String) async -> Result<Void, NativeFailure> {
         guard canWrite, let api = nativeAPI() else { return .failure(NativeFailure(status: 0, message: "Zapis wymaga połączenia z serwerem.", fieldErrors: [:])) }
+        guard !acting else { return .failure(NativeFailure(status: 0, message: "Trwa poprzedni zapis — spróbuj ponownie za chwilę.", fieldErrors: [:])) }
         acting = true; error = nil; notice = nil
         defer { acting = false }
         do {

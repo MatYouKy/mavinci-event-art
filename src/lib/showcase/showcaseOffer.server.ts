@@ -11,6 +11,9 @@ import {
   eventAssumptionsAiSources, eventAssumptionsFromAi, formatEventAssumptionItems, normalizeEventAssumptionItems, syncGuestCountAssumptions,
 } from '@/lib/CRM/Offers/eventAssumptions';
 import { validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
+import {
+  applySeasonPrice, loadCompanySeasonPrices, priceListSeason, seasonPriceIndex, seasonVariantPrices, type SeasonPrices,
+} from '@/lib/CRM/Offers/seasonPrices';
 import type { ProductConfigurationSnapshot } from '@/lib/CRM/Offers/modularProduct';
 import { fail, isObject, isUuid, text, type Row } from '@/lib/social/socialCommon.server';
 import { inquiryTitleLabel, systemLabel } from '@/lib/ui/systemLabels';
@@ -391,16 +394,47 @@ type Evaluation = {
   lines: ShowcaseOfferPreviewLine[];
   pricing: ReturnType<typeof pricingOf>;
   problem: string | null;
+  /** Marka działu kart (oferta dostaje tę markę) i ceny jej cennika sezonu dla terminu (`null` — ceny z katalogu). */
+  companyId: string | null;
+  seasonPrices: SeasonPrices | null;
 };
+
+/** Dzisiejsza data w Polsce (`YYYY-MM-DD`). */
+const warsawToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw' }).format(new Date());
+
+/**
+ * Marka i cennik oferty ze spotkania (oferta weselna, etap 3): marka działu kart, z których dodano pozycje (np. Wesela → Event
+ * Rulers; dokładnie jedna marka wśród działów z marką), i aktywny cennik tej marki dla terminu z rozmowy — bez terminu dla
+ * dzisiejszej daty. Bez marki, bez cennika albo przed migracjami — ceny z katalogu jak dotąd.
+ */
+async function offerSeason(ctx: NativeContext, draft: ShowcaseOfferDraft): Promise<{ companyId: string | null; seasonPrices: SeasonPrices | null }> {
+  const none = { companyId: null, seasonPrices: null };
+  const itemIds = Array.from(new Set(draft.lines.map((line) => line.itemId).filter((id): id is string => isUuid(id))));
+  if (!itemIds.length) return none;
+  const { data: items, error: itemsError } = await ctx.supabase.from('sales_showcase_items').select('id, section_id').in('id', itemIds);
+  if (itemsError) return none;
+  const sectionIds = Array.from(new Set(((items || []) as Row[]).map((row) => text(row.section_id)).filter(isUuid)));
+  if (!sectionIds.length) return none;
+  const { data: sections, error: sectionsError } = await ctx.supabase.from('sales_showcase_sections').select('*').in('id', sectionIds);
+  if (sectionsError) return none;
+  const companies = Array.from(new Set(((sections || []) as Row[]).map((row) => (isUuid(row.my_company_id) ? String(row.my_company_id) : '')).filter(Boolean)));
+  if (companies.length !== 1) return none;
+  const date = /^\d{4}-\d{2}-\d{2}/.test(draft.event.date) ? draft.event.date.slice(0, 10) : '';
+  const seasonPrices = await loadCompanySeasonPrices(ctx.supabase, companies[0], date || warsawToday(), date ? 'event' : 'today');
+  return { companyId: companies[0], seasonPrices };
+}
 
 /** `thumbs` — miniatury zdjęć produktów do pozycji (podgląd na ekranie; przy tworzeniu oferty niepotrzebne). */
 async function evaluateDraft(ctx: NativeContext, draft: ShowcaseOfferDraft, thumbs = false): Promise<Evaluation> {
   const ids = Array.from(new Set(draft.lines.map((line) => line.productId)));
   const products = new Map<string, Row>();
+  const season = await offerSeason(ctx, draft);
+  // Ceny z cennika sezonu marki działu (cena bazowa i warianty); bez ceny w cenniku zostaje cena z katalogu.
+  const seasonIndex = seasonPriceIndex(season.seasonPrices);
   if (ids.length) {
     const { data, error } = await ctx.supabase.from('offer_products').select(WIZARD_PRODUCT_SELECT).in('id', ids);
     if (error) fail('Nie udało się pobrać produktów z katalogu.', 400);
-    for (const row of (data || []) as Row[]) products.set(String(row.id), row);
+    for (const row of (data || []) as Row[]) products.set(String(row.id), applySeasonPrice(row as Row & { id: string }, seasonIndex));
   }
   const thumbnails = thumbs && products.size
     ? await showcaseProductThumbs(ctx, Array.from(products.values())).catch(() => new Map<string, string>())
@@ -450,7 +484,7 @@ async function evaluateDraft(ctx: NativeContext, draft: ShowcaseOfferDraft, thum
   const pricing = pricingOf(items, Math.max(0, target));
   const failed = pairs.find((entry) => entry.error || entry.item?.error);
   const problem = failed ? `${failed.item?.name || failed.line.label}: ${failed.error || failed.item?.error}` : null;
-  return { draft, audience, items, lines, pricing, problem };
+  return { draft, audience, items, lines, pricing, problem, ...season };
 }
 
 /** Rabaty pozycji (od ich wartości przed rabatem) i rabat łączny z rabatem całej oferty — jak próg akceptacji w bazie. */
@@ -473,9 +507,15 @@ const previewOf = (evaluation: Evaluation): ShowcaseOfferPreview => ({
   gross: evaluation.pricing.gross,
   // Tylko problemy pozycji i cen — dane klienta sprawdza na bieżąco urządzenie (`showcaseOfferProblem`), a przy tworzeniu serwer.
   problem: evaluation.problem || (evaluation.items.length && evaluation.pricing.listNet <= 0 ? 'Oferta ma wartość 0 zł — sprawdź ceny pozycji w katalogu.' : null),
+  priceList: evaluation.seasonPrices?.price_list ? {
+    name: evaluation.seasonPrices.price_list.name,
+    season: priceListSeason(evaluation.seasonPrices.price_list),
+    company: evaluation.seasonPrices.price_list.company_name || evaluation.seasonPrices.context.company_name || '',
+    date: evaluation.seasonPrices.context.date_source === 'event' ? evaluation.seasonPrices.context.date : '',
+  } : null,
 });
 
-/** Podgląd: pozycje z cenami z katalogu, rabat, VAT i problem blokujący utworzenie. */
+/** Podgląd: pozycje z cenami z katalogu (albo z cennika sezonu marki działu), rabat, VAT i problem blokujący utworzenie. */
 export async function showcaseOfferPreview(ctx: NativeContext, body: Row): Promise<ShowcaseOfferPreview> {
   await requireOffer(ctx);
   return previewOf(await evaluateDraft(ctx, normalizeShowcaseOfferDraft(body.draft), true));
@@ -749,6 +789,9 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
     // Cel ze spotkania (sprzedawca, także z pomocą AI) albo z zapytania.
     event_goal: (draft.goal.trim() || text(details.event_goal)).slice(0, EVENT_GOAL_MAX_LENGTH) || null,
     ...totals,
+    // Marka działu kart i cennik sezonu (gwarancja ceny — oferta pamięta cennik, pozycje ceny wariantów).
+    ...(evaluation.companyId ? { my_company_id: evaluation.companyId } : {}),
+    ...(evaluation.seasonPrices?.price_list ? { price_list_id: evaluation.seasonPrices.price_list.id } : {}),
     created_by: ctx.employee.id,
   }]).select('id, offer_number').single();
   dbFail(offerError, 'Nie udało się utworzyć oferty. Zapytanie zostało zapisane — spróbuj ponownie.', keep);
@@ -760,7 +803,7 @@ export async function showcaseOfferCreate(ctx: NativeContext, body: Row): Promis
     offer_id: offer.id,
     product_id: item.productId,
     product_variant_id: item.variantId,
-    variant_prices_net: {},
+    variant_prices_net: seasonVariantPrices(evaluation.seasonPrices, item.productId),
     show_variant_prices_in_pdf: item.showVariantPrices,
     show_product_variants_in_pdf: item.showVariants,
     name: item.name,

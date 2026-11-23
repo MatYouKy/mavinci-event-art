@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/browser';
 import LocationSelector from './LocationSelector';
 import { EventRoomSelector } from './locations/EventRoomSelector';
 import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
+import { categoryCompanyHint, categoryCompanyRule, type EventCategoryCompanyRow } from '@/lib/CRM/events/categoryCompany';
 
 interface MyCompany {
   id: string;
@@ -34,7 +35,7 @@ interface Contact {
   contact_type: 'individual' | 'contact';
 }
 
-interface EventCategory {
+interface EventCategory extends EventCategoryCompanyRow {
   id: string;
   name: string;
   color: string;
@@ -164,7 +165,8 @@ export default function NewEventModal({
     try {
       const { data, error } = await supabase
         .from('event_categories')
-        .select('id, name, color')
+        // Wszystkie kolumny: po migracji cenników także domyślna marka kategorii (Wesele → Event Rulers).
+        .select('*')
         .eq('is_active', true)
         .order('name', { ascending: true });
 
@@ -330,6 +332,7 @@ export default function NewEventModal({
   };
 
   if (!isOpen) return null;
+  const companyRule = categoryCompanyRule(categories, formData.category_id);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -544,7 +547,11 @@ export default function NewEventModal({
               <label className="mb-2 block text-sm text-[#e5e4e2]/70">Kategoria</label>
               <select
                 value={formData.category_id}
-                onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                onChange={(e) => {
+                  const categoryId = e.target.value;
+                  const rule = categoryCompanyRule(categories, categoryId);
+                  setFormData({ ...formData, category_id: categoryId, ...(rule ? { my_company_id: rule.companyId } : {}) });
+                }}
                 className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
               >
                 <option value="">Wybierz kategorię</option>
@@ -554,6 +561,11 @@ export default function NewEventModal({
                   </option>
                 ))}
               </select>
+              {companyRule && (
+                <p className="mt-1.5 text-xs text-[#d3bb73]/80">
+                  {categoryCompanyHint(companyRule, myCompanies.find((company) => company.id === companyRule.companyId)?.name)}
+                </p>
+              )}
             </div>
 
             {myCompanies.length > 1 && (
@@ -564,6 +576,7 @@ export default function NewEventModal({
                 </label>
                 <select
                   value={formData.my_company_id}
+                  disabled={companyRule?.locked === true}
                   onChange={(e) => setFormData({ ...formData, my_company_id: e.target.value })}
                   className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 >

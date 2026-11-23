@@ -100,13 +100,18 @@ private struct EventBusinessContacts: Decodable { var contacts: [EventClientPers
 
     // MARK: Klient indywidualny
 
+    // Wyszukiwanie: zapytania czytają listy wyboru (`FormPickList`), nie treść arkusza — litera przelicza tylko listę.
+
     private func individual(_ data: EventClientEditorData) -> some View {
-        let query = individualQuery.trimmingCharacters(in: .whitespaces).lowercased()
-        let matches = data.individuals.filter { query.isEmpty || $0.searchText.contains(query) }
+        let selected = individualID
+        let accent = theme.accent
         return VStack(alignment: .leading, spacing: 10) {
             Text("Osoba kontaktowa / Klient indywidualny").font(.callout).foregroundStyle(.secondary)
             TextField("Szukaj klienta po nazwisku, e-mailu lub telefonie…", text: $individualQuery).textFieldStyle(.roundedBorder)
-            pickList(matches.map { ($0.id, $0.name, [$0.email ?? "", $0.phone ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")) }, selected: individualID) { individualID = $0 }
+            FormPickList(query: $individualQuery, items: data.individuals, searchText: { $0.searchText }, empty: "Brak pasujących klientów") { person in
+                pickRow(person.id, person.name, [person.email ?? "", person.phone ?? ""].filter { !$0.isEmpty }.joined(separator: " · "),
+                        selected: selected, accent: accent) { individualID = $0 }
+            }
             Button(newIndividual ? "Anuluj" : "Dodaj nowego klienta", systemImage: newIndividual ? "xmark" : "plus") { newIndividual.toggle(); resetForm() }
                 .buttonStyle(.link).linkCursor()
             if newIndividual {
@@ -132,15 +137,18 @@ private struct EventBusinessContacts: Decodable { var contacts: [EventClientPers
     // MARK: Firma
 
     private func business(_ data: EventClientEditorData) -> some View {
-        let query = organizationQuery.trimmingCharacters(in: .whitespaces).lowercased()
-        let organizations = data.organizations.filter { query.isEmpty || ($0.name + " " + ($0.alias ?? "")).lowercased().contains(query) }
         let assignedIDs = Set(data.persons.map(\.contactId))
-        let contactNeedle = contactQuery.trimmingCharacters(in: .whitespaces).lowercased()
-        let available = businessContacts.filter { !assignedIDs.contains($0.id) && (contactNeedle.isEmpty || $0.searchText.contains(contactNeedle)) }
+        let available = businessContacts.filter { !assignedIDs.contains($0.id) }
+        let selected = organizationID
+        let accent = theme.accent
         return VStack(alignment: .leading, spacing: 10) {
             Text("Organizacja").font(.callout).foregroundStyle(.secondary)
             TextField("Szukaj firmy po nazwie lub aliasie…", text: $organizationQuery).textFieldStyle(.roundedBorder)
-            pickList(organizations.map { ($0.id, $0.alias?.nonEmpty ?? $0.name, $0.alias?.nonEmpty != nil ? $0.name : "") }, selected: organizationID) { organizationID = $0 }
+            FormPickList(query: $organizationQuery, items: data.organizations, searchText: { [$0.name, $0.alias ?? ""].joined(separator: "\n") },
+                         empty: "Brak pasujących firm") { organization in
+                pickRow(organization.id, organization.alias?.nonEmpty ?? organization.name, organization.alias?.nonEmpty != nil ? organization.name : "",
+                        selected: selected, accent: accent) { organizationID = $0 }
+            }
             Text("Osoby kontaktowe").font(.headline).padding(.top, 6)
             if data.persons.isEmpty {
                 Text("Brak przypisanych osób kontaktowych").font(.callout).foregroundStyle(.secondary)
@@ -193,7 +201,7 @@ private struct EventBusinessContacts: Decodable { var contacts: [EventClientPers
                 }
                 if !businessContacts.isEmpty {
                     TextField("Szukaj osoby kontaktowej…", text: $contactQuery).textFieldStyle(.roundedBorder)
-                    ForEach(available) { contact in
+                    FormPickList(query: $contactQuery, items: available, searchText: { $0.searchText }, empty: "Brak pasujących osób", framed: false) { contact in
                         HStack {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(contact.name)
@@ -211,29 +219,22 @@ private struct EventBusinessContacts: Decodable { var contacts: [EventClientPers
         }
     }
 
-    private func pickList(_ rows: [(String, String, String)], selected: String, pick: @escaping (String) -> Void) -> some View {
-        ScrollView {
-            LazyVStack(spacing: 2) {
-                ForEach(rows, id: \.0) { row in
-                    Button { pick(row.0) } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(row.1)
-                                if !row.2.isEmpty { Text(row.2).font(.caption).foregroundStyle(.secondary) }
-                            }
-                            Spacer()
-                            if row.0 == selected { Image(systemName: "checkmark").foregroundStyle(theme.accent) }
-                        }
-                        .padding(.horizontal, 8).padding(.vertical, 5)
-                        .background(row.0 == selected ? theme.accent.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+    /// Wiersz listy wyboru: nazwa, opis i znacznik wybranego (lista bez własnego przewijania — `FormPickList`).
+    private func pickRow(_ id: String, _ title: String, _ detail: String, selected: String, accent: Color, pick: @escaping (String) -> Void) -> some View {
+        Button { pick(id) } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                    if !detail.isEmpty { Text(detail).font(.caption).foregroundStyle(.secondary) }
                 }
+                Spacer()
+                if id == selected { Image(systemName: "checkmark").foregroundStyle(accent) }
             }
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(id == selected ? accent.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
         }
-        .frame(height: 170)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .buttonStyle(.plain)
     }
 
     // MARK: Dane

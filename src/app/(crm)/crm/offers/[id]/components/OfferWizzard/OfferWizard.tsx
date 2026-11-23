@@ -133,6 +133,7 @@ function OfferWizardContent({
       filteredProducts,
       categories,
       products,
+      seasonPrices,
       searchQuery,
       selectedCategory,
       setSearchQuery,
@@ -321,6 +322,7 @@ function OfferWizardContent({
               addProductToOffer={addProductToOffer}
               updateOfferItem={updateOfferItem}
               removeOfferItem={removeOfferItem}
+              seasonPrices={seasonPrices}
             />
           )}
 

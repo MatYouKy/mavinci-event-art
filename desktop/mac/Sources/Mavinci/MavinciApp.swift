@@ -40,6 +40,16 @@ import AppKit
             MessageWindow(key: key ?? "").environmentObject(workspace).crmThemed(workspace.theme)
         }
         .defaultSize(width: 900, height: 780)
+        // Formularze w osobnych oknach (`FormWindows.swift`): nowa wiadomość / odpowiedź / przekazanie i faktura — zwykłe okna
+        // macOS (skalowanie, przesuwanie, praca obok głównego okna); każdy rodzaj pamięta swój rozmiar i położenie.
+        WindowGroup("Wiadomość e-mail", id: FormWindowKind.compose.rawValue, for: UUID.self) { $id in
+            FormWindowHost(id: id).environmentObject(workspace).environmentObject(workspace.native).crmThemed(workspace.theme)
+        }
+        .defaultSize(width: 900, height: 880)
+        WindowGroup("Faktura", id: FormWindowKind.invoice.rawValue, for: UUID.self) { $id in
+            FormWindowHost(id: id).environmentObject(workspace).environmentObject(workspace.native).crmThemed(workspace.theme)
+        }
+        .defaultSize(width: 1120, height: 940)
         // Sygnet na pasku menu (jak dawne „Mavinci Reminders”): stan, wersja, pliki w Finderze, synchronizacja.
         MenuBarExtra {
             MenuBarStatusMenu(workspace: workspace)
@@ -142,6 +152,7 @@ struct RootView: View {
                         else if nav.screen == .contractTemplates { ContractTemplatesView(store: state.contracts) }
                         else if nav.screen == .products { ProductsView(store: state.products) }
                         else if nav.screen == .offerTemplates { OfferTemplatesView() }
+                        else if nav.screen == .priceLists { PriceListsView() }
                         else if nav.screen == .brochures { BrochuresView() }
                         else if nav.screen == .sellers { SellersView(store: state.sellers) }
                         else if nav.screen == .fleet { FleetView(store: state.fleet) }
