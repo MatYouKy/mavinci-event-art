@@ -5,8 +5,10 @@ import Security
 
 // MARK: Aktualizacje aplikacji — wersje publikowane przez `yarn dmg` na serwerze CRM (`/bridge/native/v1/desktop`)
 //
-// Sprawdzenie po zalogowaniu i co 4 godziny, a także „Sprawdź aktualizacje…” (menu Mavinci i pasek menu). Nowsza kompilacja →
-// pasek „Dostępna nowa wersja” w oknie i pozycja na pasku menu. „Pobierz aktualizację”: paczka ZIP z podpisaną aplikacją (z
+// Sprawdzenie po zalogowaniu i co godzinę, przy otwarciu Ustawienia → Oprogramowanie, a także „Sprawdź aktualizacje…” (menu
+// Mavinci i pasek menu — otwierają zakładkę „Oprogramowanie”). Nowsza kompilacja → „Nowa wersja …” w stopce paska bocznego
+// (pod nazwiskiem pracownika) i pozycja na pasku menu; kliknięcie otwiera Ustawienia → Oprogramowanie (wersje, co nowego,
+// kroki instalacji — `AppUpdateViews.swift`). „Pobierz aktualizację”: paczka ZIP z podpisaną aplikacją (z
 // postępem), suma SHA-256 z opisu wydania, rozpakowanie (`ditto`), sprawdzenie podpisu zespołu Mavinci (Team ID 5DC8P5M489,
 // ten sam identyfikator pakietu, ta sama kompilacja co w opisie). „Zainstaluj i uruchom ponownie”: po zamknięciu aplikacji
 // skrypt podmienia pakiet w miejscu bieżącego i uruchamia nową wersję; poprzednia zostaje w katalogu aktualizacji do
@@ -239,16 +241,12 @@ private final class UpdateDownload: NSObject, URLSessionDownloadDelegate, @unche
     @Published private(set) var available: AppRelease?
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var lastCheck: Date?
-    /// Wersja odłożona przyciskiem „Później” — pasek w oknie wraca przy następnej wersji (menu pokazuje ją dalej).
-    @Published private(set) var dismissedBuild = UserDefaults.standard.string(forKey: "updates.dismissedBuild")
+    /// Błąd ostatniego sprawdzenia na żądanie (Ustawienia → Oprogramowanie); `nil` po udanym sprawdzeniu.
+    @Published private(set) var checkError: String?
     private var prepared: (release: AppRelease, app: URL, work: URL)?
     private var schedule: Task<Void, Never>?
-    private static let interval: TimeInterval = 4 * 60 * 60
-
-    var bannerVisible: Bool {
-        guard let available else { return false }
-        return phase == .ready || available.build != dismissedBuild
-    }
+    /// Co ile sprawdzać wersję w tle — nowe wydanie z `yarn dmg` widać w stopce paska bocznego najpóźniej po godzinie.
+    private static let interval: TimeInterval = 60 * 60
 
     var busy: Bool {
         switch phase {
@@ -288,27 +286,26 @@ private final class UpdateDownload: NSObject, URLSessionDownloadDelegate, @unche
             try? await Task.sleep(for: .seconds(8))
             while !Task.isCancelled {
                 guard let self else { return }
-                let due = self.lastCheck.map { Date().timeIntervalSince($0) >= Self.interval } ?? true
-                if due, self.workspace?.employee != nil, !self.busy, self.phase != .ready { await self.check() }
-                try? await Task.sleep(for: .seconds(10 * 60))
+                if self.stale(after: Self.interval), self.workspace?.employee != nil, !self.busy, self.phase != .ready { await self.check() }
+                try? await Task.sleep(for: .seconds(5 * 60))
             }
         }
     }
 
-    func dismiss() {
-        guard let build = available?.build else { return }
-        dismissedBuild = build
-        UserDefaults.standard.set(build, forKey: "updates.dismissedBuild")
+    /// Czy sprawdzenie jest potrzebne (Ustawienia → Oprogramowanie sprawdza przy otwarciu, gdy ostatnie było dawniej).
+    func stale(after seconds: TimeInterval) -> Bool {
+        lastCheck.map { Date().timeIntervalSince($0) >= seconds } ?? true
     }
 
-    /// Najnowsze wydanie z serwera; `manual` — komunikat także, gdy wersja jest aktualna albo serwer nie odpowiada.
+    /// Najnowsze wydanie z serwera; `manual` — postęp i wynik (także błąd) w Ustawieniach → Oprogramowanie.
     func check(manual: Bool = false) async {
         guard let api = workspace?.nativeAPI() else {
-            if manual { workspace?.error = "Zaloguj się, aby sprawdzić aktualizacje." }
+            if manual { checkError = "Zaloguj się, aby sprawdzić aktualizacje." }
             return
         }
         guard !busy else { return }
-        if manual { phase = .checking }
+        // Pobrana aktualizacja czeka na instalację — sprawdzenie jej nie chowa (zmieni ją dopiero inna wersja na serwerze).
+        if manual && phase != .ready { phase = .checking }
         defer { if phase == .checking { phase = .idle } }
         do {
             let data = try await api.get("/desktop?op=latest&build=\(AppUpdateSupport.currentBuild)")
@@ -322,12 +319,9 @@ private final class UpdateDownload: NSObject, URLSessionDownloadDelegate, @unche
                 if phase == .ready { phase = .idle }
             }
             available = release
-            if manual {
-                if release == nil { workspace?.succeed("Masz najnowszą wersję Mavinci (\(AppUpdateSupport.currentVersion)).") }
-                else { workspace?.activeNavigation.updateShown = true }
-            }
+            checkError = nil
         } catch {
-            if manual { workspace?.error = "Nie udało się sprawdzić aktualizacji: \(friendlyError(error))" }
+            if manual { checkError = "Nie udało się sprawdzić aktualizacji: \(friendlyError(error))" }
         }
     }
 

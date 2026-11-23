@@ -154,6 +154,8 @@ struct MeetingIndex: Codable {
                 index.width = state.width
                 index.hash = dirty.isEmpty ? state.hash : ""
                 publish()
+                // Spotkania się zmieniły (także w CRM albo u innego uczestnika) — widżety „Spotkania” i „Kalendarz” od razu.
+                WidgetBridge.reload()
             }
             index.syncedAt = Date(); lastSync = index.syncedAt; loadError = nil
             scheduleSave()
@@ -217,6 +219,7 @@ struct MeetingIndex: Codable {
                     }
                 }
                 workspace?.succeed("Twoja odpowiedź: \(response.action)")
+                WidgetBridge.reload()
             } catch { report(error, "Nie udało się zapisać odpowiedzi.") }
         }
     }
@@ -227,6 +230,7 @@ struct MeetingIndex: Codable {
                 try await save(meeting, patch: ["status": .string(status.rawValue)])
                 mutate(meeting.id) { $0.status = status.rawValue }
                 workspace?.succeed("Status spotkania: \(status.label)")
+                WidgetBridge.reload()
             } catch { report(error, "Nie udało się zmienić statusu spotkania.") }
         }
     }

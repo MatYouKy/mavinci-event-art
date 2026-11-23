@@ -216,6 +216,16 @@ Aplikacja na iOS zawiera rozszerzenie File Provider **MavinciFiles** (`com.mavin
 - Pierwszy build po dodaniu rozszerzenia uruchom interaktywnie i zaloguj się do konta Apple, gdy EAS zapyta — EAS zarejestruje identyfikator `com.mavinci.crm.Files`, grupę aplikacji i profile dla aplikacji i rozszerzenia.
 - EAS buduje z repozytorium — źródła rozszerzenia z `desktop/mac/Sources` muszą być w commicie. Expo Go nie zawiera rozszerzenia.
 
+### Widżety Mavinci (iPhone, iPad)
+
+Rozszerzenie WidgetKit **MavinciWidgets** (`com.mavinci.crm.Widgets`, iOS 17+) — te same widżety co na pulpicie Maca: **„Moje zadania”**, **„Zadania prywatne”**, **„Kalendarz”** (plan na 7 dni jak „Mój plan”: eventy, spotkania, zadania z terminem, kontakty z zapytań, nieobecności) i **„Spotkania”** (najbliższe spotkania; zaproszenia bez odpowiedzi wyróżnione). Rozmiary: mały, średni, duży (iPad także bardzo duży) oraz ekran blokady — prostokątny i w linii. Kod Swift z `desktop/mac/Sources/MavinciWidgets` (+ `FinderShared.swift`), kopiowany przy `expo prebuild` przez plugin `plugins/withMavinciWidgets.js`.
+
+- Dane: `GET /bridge/native/v1/tasks?op=widget` i `/bridge/native/v1/widgets?op=calendar|meetings` z sesją rozszerzenia Plików (grupa `group.com.mavinci.crm`), więc widżety działają przy zamkniętej aplikacji; bez internetu — ostatnie dane z dopiskiem „bez połączenia”. Bez zalogowania — „Otwórz aplikację Mavinci i zaloguj się”.
+- Odświeżanie: według budżetu systemu (około co 30 minut) i od razu po wyjściu z aplikacji, zalogowaniu i wylogowaniu (`reloadWidgets` w `src/lib/filesProvider.ts`, moduł `modules/mavinci-files`).
+- Kliknięcie: pozycja otwiera zadanie, event, spotkanie albo zapytanie, reszta widżetu — sekcję (`mavinci-crm://…`, `src/lib/widgetLinks.ts`).
+- Dodanie: przytrzymaj ekran główny (albo ekran blokady → Dostosuj) → „+” / „Dodaj widżety” → wyszukaj „Mavinci”.
+- Widżety dochodzą tylko z nowym buildem (EAS) — aktualizacja OTA ich nie doda. Pierwszy build po ich dodaniu uruchom interaktywnie, żeby EAS zarejestrował identyfikator `com.mavinci.crm.Widgets` z grupą aplikacji i profil.
+
 ## 🎯 Następne kroki
 
 1. **Zaimplementuj pełne ekrany**:

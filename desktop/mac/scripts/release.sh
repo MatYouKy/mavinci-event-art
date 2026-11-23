@@ -6,8 +6,10 @@
 #  3. instalator DMG i paczka aktualizacji ZIP w desktop/mac/build/release/ oraz opis wydania latest.json (wersja, sumy SHA-256,
 #     co nowego),
 #  4. publikacja na serwerze CRM (ssh, jak `yarn deploy`): pliki do katalogu wydań, na końcu latest.json — od tej chwili
-#     aplikacje na Macach pokazują „Dostępna nowa wersja”, a CRM (Dysk → Programy, Ustawienia → Ogólne) wydaje nowy instalator.
-# Zmienne: VERSION (domyślnie plik desktop/mac/VERSION), NOTES (co nowego), PUBLISH=0 (tylko pliki lokalnie, bez serwera),
+#     aplikacje na Macach pokazują „Nowa wersja …” w stopce paska bocznego (kliknięcie: Ustawienia → Oprogramowanie — co nowego
+#     i kroki instalacji), a CRM (Dysk → Programy, Ustawienia → Ogólne) wydaje nowy instalator.
+# Połączenie z serwerem jest wbudowane w program z Resources/Configuration.json (scripts/build-app.sh — bez niego wydanie nie powstaje).
+# Zmienne: VERSION (domyślnie plik desktop/mac/VERSION), NOTES (co nowego — Ustawienia → Oprogramowanie), PUBLISH=0 (tylko pliki lokalnie, bez serwera),
 # NOTARY_PROFILE (profil notarytool, domyślnie „mavinci-notary”), MAVINCI_DEPLOY_REMOTE, DESKTOP_RELEASES_DIR.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -126,7 +128,8 @@ echo "   Instalator:          desktop/mac/$OUT/$NAME.dmg"
 echo "   Paczka aktualizacji: desktop/mac/$OUT/$NAME.zip"
 echo "   Notaryzacja Apple:   $([ "$NOTARIZED" = true ] && echo tak || echo nie)"
 if [ "$PUBLISH" != "0" ]; then
-  echo "   Opublikowano: aplikacje na Macach pokażą nową wersję w ciągu 4 godzin (od razu: Mavinci → Sprawdź aktualizacje…);"
+  echo "   Opublikowano: aplikacje na Macach pokażą nową wersję w stopce paska bocznego w ciągu godziny"
+  echo "   (od razu: Ustawienia → Oprogramowanie → Sprawdź teraz albo Mavinci → Sprawdź aktualizacje…);"
   echo "   instalator do pierwszej instalacji: CRM → Dysk → Programy (także Finder i aplikacja) albo Ustawienia → Ogólne."
 else
   echo "   Bez publikacji (PUBLISH=0) — aplikacje na Macach nie zobaczą tej wersji."

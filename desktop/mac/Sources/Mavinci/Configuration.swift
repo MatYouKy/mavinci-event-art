@@ -30,14 +30,21 @@ struct Connection: Codable, Equatable {
         return json["role"] as? String == "anon"
     }
     var identity: String { digest("\(provider.rawValue)|\(url)|\(publicKey)") }
+    /// Połączenie aplikacji. Zainstalowana aplikacja (release): wyłącznie wbudowane w program (`EmbeddedConnection.swift`) —
+    /// połączenie zapisane dawniej z zakładki „Połączenie” jest usuwane z pęku kluczy. Kompilacja deweloperska: zapisane
+    /// z zakładki „Połączenie” → wbudowane → plik `MAVINCI_CONFIGURATION_FILE` → zmienne SUPABASE_URL / SUPABASE_ANON_KEY.
     static func load() -> Connection {
+        #if DEBUG
         if let data = try? Vault.read("connection"), let c = try? JSONDecoder().decode(Connection.self, from: data) { return c }
-        if let u = Bundle.main.url(forResource: "Configuration", withExtension: "json"),
-           let data = try? Data(contentsOf: u), let c = try? JSONDecoder().decode(Connection.self, from: data) { return c }
+        if let embedded { return embedded }
         let e = ProcessInfo.processInfo.environment
         if let file = e["MAVINCI_CONFIGURATION_FILE"], let data = try? Data(contentsOf: URL(fileURLWithPath: file)),
            let c = try? JSONDecoder().decode(Connection.self, from: data) { return c }
         return Connection(url: e["SUPABASE_URL"] ?? "", publicKey: e["SUPABASE_ANON_KEY"] ?? "")
+        #else
+        try? Vault.delete("connection")
+        return embedded ?? Connection()
+        #endif
     }
     func save() throws { try Vault.write("connection", JSONEncoder().encode(self)) }
 }

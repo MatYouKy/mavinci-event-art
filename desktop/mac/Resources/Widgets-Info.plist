@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleName</key><string>Mavinci</string>
+<key>CFBundleDisplayName</key><string>Mavinci</string>
+<key>CFBundleIdentifier</key><string>pl.mavinci.desktop.Widgets</string>
+<key>CFBundleExecutable</key><string>MavinciWidgets</string>
+<key>CFBundlePackageType</key><string>XPC!</string>
+<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+<key>CFBundleShortVersionString</key><string>__VERSION__</string>
+<key>CFBundleVersion</key><string>__BUILD__</string>
+<key>CFBundleDevelopmentRegion</key><string>pl</string>
+<key>CFBundleSupportedPlatforms</key><array><string>MacOSX</string></array>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>NSExtension</key><dict>
+<key>NSExtensionPointIdentifier</key><string>com.apple.widgetkit-extension</string>
+</dict>
+</dict></plist>

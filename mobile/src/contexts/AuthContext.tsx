@@ -3,7 +3,7 @@ import { supabase, Employee } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
 import { removeSyncedCrmContactsFromDevice } from '../services/crmContactSync';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
-import { disableFilesProvider, ensureFilesProvider, signalFilesProvider } from '../lib/filesProvider';
+import { disableFilesProvider, ensureFilesProvider, reloadWidgets, signalFilesProvider } from '../lib/filesProvider';
 
 interface AuthContextType {
   session: Session | null;
@@ -101,6 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // „Mavinci” w aplikacji Pliki (iPhone, iPad): lokalizacja zarejestrowana dla tego konta, prośba o sprawdzenie zmian przy
   // powrocie na pierwszy plan i co 5 minut, dopóki aplikacja jest otwarta (rozszerzenie samo sprawdza je przy przeglądaniu).
+  // Po wyjściu z aplikacji widżety Mavinci (ta sama sesja) pobierają dane od razu — z tym, co zmieniło się w aplikacji.
   useForegroundEffect((signal) => {
     if (!employee?.id || !userId) return;
     const owner = userId;
@@ -109,7 +110,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return ensureFilesProvider(data.session).then(() => { if (!signal.aborted) signalFilesProvider(); });
     }).catch(() => undefined);
     const timer = setInterval(() => signalFilesProvider(), 5 * 60_000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      reloadWidgets();
+    };
   }, [employee?.id, userId]);
 
   // Bez sesji (wylogowanie, także wymuszone) — sesja rozszerzenia unieważniona, lokalizacja usunięta.

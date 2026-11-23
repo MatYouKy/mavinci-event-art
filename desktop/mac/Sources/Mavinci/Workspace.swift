@@ -133,7 +133,12 @@ import Network
     var employee: Employee? { snapshot?.employee }
     var modules: [Module] { Module.allCases.filter { employee?.canView($0) == true } }
     var canWrite: Bool { employee != nil && verifiedConnection && !offline && !syncing && !acting && !loading }
+    #if DEBUG
     var canConfigure: Bool { employee?.isAdmin == true || (!connection.valid && employee == nil) }
+    #else
+    /// Zainstalowana aplikacja: połączenie wbudowane w program (`EmbeddedConnection.swift`) — bez zmiany z poziomu aplikacji.
+    var canConfigure: Bool { false }
+    #endif
     var unread: Int { rows(.notifications).filter { $0.fields["is_read"]?.flag != true }.count }
     init() {
         messages.workspace = self
@@ -655,7 +660,10 @@ extension Workspace {
             let data = try await backend.request("/rest/v1/rpc/get_employee_schedule", body: [
                 "p_employee_ids": .array([.string(employeeID)]), "p_from": .string(iso.string(from: from)), "p_to": .string(iso.string(from: to)),
             ])
-            scheduleRows = try JSONDecoder().decode([Row].self, from: data)
+            let rows = try JSONDecoder().decode([Row].self, from: data)
+            // Plan się zmienił (event, spotkanie, termin zadania — także zmiany z CRM) — widżet „Kalendarz” pobiera go od razu.
+            if rows != scheduleRows { WidgetBridge.reload() }
+            scheduleRows = rows
             scheduleFailed = false
             if let cacheNamespace { try? SealedFile<Data>(namespace: "schedule-\(cacheNamespace)").save(data) }
         } catch {

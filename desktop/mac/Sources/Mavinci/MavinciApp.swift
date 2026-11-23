@@ -30,8 +30,8 @@ import AppKit
                 Button("Powiadomienia") {workspace.notificationsVisible.toggle()}.keyboardShortcut("9")
                 Button("Komunikator") { workspace.toggleChat() }.keyboardShortcut("k", modifiers: [.command, .option]).disabled(workspace.employee == nil)
                 Divider()
-                Button("Sprawdź aktualizacje…") { Task { await workspace.updater.check(manual: true) } }
-                    .disabled(workspace.employee == nil || workspace.updater.busy)
+                // Ustawienia → Oprogramowanie (wersja, co nowego, instalacja) i sprawdzenie wersji.
+                CheckUpdatesCommand(updater: workspace.updater, signedIn: workspace.employee != nil)
                 Divider()
                 Button("Wyloguj") { Task { await workspace.logout() } }.disabled(workspace.loading || workspace.acting)
             }
@@ -49,11 +49,10 @@ import AppKit
                 .accessibilityLabel("Mavinci")
         }
         .menuBarExtraStyle(.menu)
+        // Ustawienia (⌘,): Wygląd, Oprogramowanie, a w kompilacji deweloperskiej także Połączenie (`SettingsWindow.swift`).
         Settings {
-            TabView {
-                AppearanceSettings().tabItem { Label("Wygląd", systemImage: "paintpalette") }
-                ConnectionView().tabItem { Label("Połączenie", systemImage: "network") }
-            }.environmentObject(workspace).frame(width: 600, height: 460).crmThemed(workspace.theme)
+            SettingsTabs(updater: workspace.updater)
+                .environmentObject(workspace).frame(width: 600, height: 460).crmThemed(workspace.theme)
         }
     }
 }
@@ -104,6 +103,8 @@ struct RootView: View {
                             Text(state.employee?.displayName ?? "").font(.headline)
                             Label(state.offline ? "Kopia lokalna · tylko odczyt" : (state.syncing ? "Odświeżanie…" : "Połączono"), systemImage: state.offline ? "wifi.slash" : "checkmark.icloud")
                                 .font(.caption).foregroundStyle(state.offline ? .orange : .secondary)
+                            // Nowa wersja z `yarn dmg` — kliknięcie otwiera Ustawienia → Oprogramowanie (kroki instalacji).
+                            SidebarUpdateBadge(updater: state.updater)
                             if state.compatibilityMode { Text("Pełne odświeżanie danych").font(.caption2).foregroundStyle(.secondary) }
                             HStack {
                                 SettingsLink { Label("Ustawienia", systemImage: "gearshape") }.labelStyle(.iconOnly)
@@ -156,8 +157,6 @@ struct RootView: View {
                         else if nav.screen == .finance { FinanceView(store: state.finance, bank: state.finance.bank) }
                         else { ContentUnavailableView("Wybierz sekcję", systemImage: "sidebar.left") }
                     }
-                    // Nowa wersja aplikacji (`yarn dmg`) — pasek nad treścią okna.
-                    .safeAreaInset(edge: .top, spacing: 0) { AppUpdateBanner(updater: state.updater) { nav.updateShown = true } }
                     // `minHeight: 0` — minimalna wysokość ekranu sekcji nie wymusza wysokości okna (`.contentMinSize`): treść wyższa od okna
                     // zostaje przycięta u dołu, zamiast powiększać okno ponad ekran i przesuwać w górę całą zawartość z paskiem bocznym.
                     .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
@@ -191,11 +190,6 @@ struct RootView: View {
                     .sheet(isPresented: $nav.systemHealthShown) {
                         SystemHealthView()
                             .environmentObject(state).environmentObject(nav).environment(\.crmTheme, state.theme).tint(state.theme.accent)
-                    }
-                    // „Aktualizacja Mavinci” — wersje, co nowego, pobranie i instalacja (pasek w oknie, menu Mavinci, pasek menu).
-                    .sheet(isPresented: $nav.updateShown) {
-                        AppUpdateSheet(updater: state.updater)
-                            .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
                     }
                     // „Mianuj sprzedawcą” (karta i lista kontaktów, osoby organizacji) — kreator w tym oknie.
                     .sheet(item: $nav.sellerAppointment) { preset in
@@ -235,11 +229,21 @@ struct RootView: View {
             if let route = nav.eventRoute, next != route.origin { nav.eventRoute = nil }
         }
         .onOpenURL { url in
-            guard url.scheme == "mavinci",let id=url.pathComponents.last,UUID(uuidString:id) != nil else {return}
+            guard url.scheme == "mavinci" else { return }
+            // Widżety na pulpicie (`Widgets/WidgetBridge.swift`): cały widżet — „Moje zadania” (`mavinci://tasks`), kalendarz
+            // (`mavinci://calendar`) albo Spotkania (`mavinci://meetings`); pozycja — event, spotkanie, zadanie, zapytanie
+            // albo kontakt (`mavinci://<rodzaj>/<id>`).
+            if url.host == "tasks" { state.inWindow(nav) { state.showMyTasks() }; return }
+            if url.host == "calendar" { state.inWindow(nav) { state.showCalendarFromWidget() }; return }
+            if url.host == "meetings" { state.inWindow(nav) { state.showMeetingsFromWidget() }; return }
+            guard let id=url.pathComponents.last,UUID(uuidString:id) != nil else {return}
             // Adres otwiera się w oknie, które go otrzymało.
             state.inWindow(nav) {
                 if url.host == "event" {state.showEvent(id)}
                 else if url.host == "meeting" {state.showMeeting(id)}
+                else if url.host == "task" {state.showTask(id)}
+                else if url.host == "inquiry" {state.showInquiryWorkspace(id)}
+                else if url.host == "contact" {state.showContact(id)}
             }
         }
         .onChange(of: phase) { _, next in
@@ -279,8 +283,14 @@ struct LoginView: View {
             Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high).frame(width: 96, height: 96).accessibilityHidden(true)
             Text("Mavinci").font(.largeTitle.bold())
             Text("Twoje miejsce pracy").foregroundStyle(.secondary)
-            if !state.connection.valid { ConnectionView() }
-            else {
+            if !state.connection.valid {
+                #if DEBUG
+                ConnectionView()
+                #else
+                Text("Ta kopia Mavinci nie ma wbudowanego połączenia z serwerem. Pobierz aktualny instalator: CRM → Dysk → Programy.")
+                    .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                #endif
+            } else {
                 Form {
                     TextField("Adres e-mail", text: $email).textContentType(.username)
                     SecureField("Hasło", text: $password).textContentType(.password)
@@ -297,6 +307,9 @@ struct LoginView: View {
     }
 }
 
+#if DEBUG
+/// Połączenie — tylko kompilacja deweloperska (Mavinci-Dev): zainstalowana aplikacja ma je wbudowane w program
+/// (`EmbeddedConnection.swift`) i nie pokazuje go nigdzie.
 struct ConnectionView: View {
     @EnvironmentObject var state: Workspace
     @State private var draft = Connection()
@@ -326,6 +339,7 @@ struct ConnectionView: View {
         }.formStyle(.grouped).padding().onAppear { draft = state.connection }
     }
 }
+#endif
 
 struct HelpView: View {
     @Environment(\.dismiss) private var dismiss

@@ -65,7 +65,8 @@
         }
       ],
       "expo-video",
-      "./plugins/withMavinciFiles"
+      "./plugins/withMavinciFiles",
+      "./plugins/withMavinciWidgets"
     ],
     "ios": {
       "supportsTablet": true,

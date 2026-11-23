@@ -147,3 +147,12 @@ export function signalFilesProvider(driveChanged = false): void {
   if (!native) return;
   native.signal(driveChanged).catch(() => undefined);
 }
+
+/**
+ * Widżety Mavinci na ekranie głównym i blokady (zadania, kalendarz, spotkania — ta sama sesja co rozszerzenie Plików):
+ * pobranie danych od razu, np. po wyjściu z aplikacji, w której coś się zmieniło. W wersji aplikacji bez widżetów nic nie robi.
+ */
+export function reloadWidgets(): void {
+  if (!native || typeof native.reloadWidgets !== 'function') return;
+  native.reloadWidgets().catch(() => undefined);
+}

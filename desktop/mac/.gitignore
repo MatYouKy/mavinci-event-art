@@ -2,6 +2,7 @@
 .swiftpm/
 build/
 Resources/Configuration.json
+Sources/Mavinci/EmbeddedConnection.generated.swift
 .env
 .env.*
 !.env.example

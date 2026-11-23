@@ -9,7 +9,8 @@ case "$CONFIGURATION" in debug|release) ;; *) echo "Nieznany wariant kompilacji"
 BUILD="${BUILD:-$(date +%Y%m%d%H%M)}"
 # Podpis zespołu Mavinci (Team ID 5DC8P5M489): „Developer ID Application” (do rozdania), a bez niego „Apple Development”
 # (testy na tym Macu). Tylko z nim w pakiecie jest rozszerzenie Findera („Mavinci” w pasku bocznym, grupa aplikacji
-# 5DC8P5M489.pl.mavinci). FINDER=0 — budowanie bez rozszerzenia.
+# 5DC8P5M489.pl.mavinci) i widżety zadań na pulpit („Moje zadania”, „Zadania prywatne” — ta sama sesja z kontenera grupy).
+# FINDER=0 — budowanie bez rozszerzeń; WIDGETS=0 — bez widżetów.
 TEAM_ID="5DC8P5M489"
 TEAM_IDENTITY=""
 if [ "${FINDER:-1}" != "0" ] && [ "$CONFIGURATION" = "release" ]; then
@@ -32,8 +33,30 @@ if [ -z "$IDENTITY" ] && [[ "$IDENTITIES" == *"\"$LOCAL_IDENTITY\""* ]]; then ID
 IDENTITY="${IDENTITY:--}"
 WITH_FINDER=0
 if [ -n "$TEAM_IDENTITY" ] && [ "$IDENTITY" = "$TEAM_IDENTITY" ]; then WITH_FINDER=1; fi
-swift build -c "$CONFIGURATION"
-BIN="$(swift build -c "$CONFIGURATION" --show-bin-path)/Mavinci"
+# Połączenie wbudowane w program (źródło danych, adres serwera, publiczny klucz aplikacji — `EmbeddedConnection.swift`):
+# z ignorowanego Resources/Configuration.json (`node desktop/mac/scripts/import-env.cjs`) do ignorowanego
+# Sources/Mavinci/EmbeddedConnection.generated.swift. Zainstalowana aplikacja (release) nie ma zakładki „Połączenie” ani pliku
+# konfiguracji w pakiecie, więc bez połączenia nie powstaje; kompilacja deweloperska — z zakładką „Połączenie” do testów.
+SWIFT_FLAGS=()
+EMBED_STATUS=0
+node scripts/embed-connection.cjs || EMBED_STATUS=$?
+if [ "$EMBED_STATUS" = 0 ]; then
+  SWIFT_FLAGS=(-Xswiftc -DMAVINCI_EMBEDDED_CONNECTION)
+elif [ "$CONFIGURATION" = "release" ]; then
+  if [ "$EMBED_STATUS" = 2 ]; then
+    echo "Brak desktop/mac/Resources/Configuration.json — zainstalowana aplikacja ma połączenie wbudowane w program." >&2
+    echo "Utwórz go z .env: node desktop/mac/scripts/import-env.cjs (zapisuje tylko publiczny adres i klucz aplikacji)." >&2
+  else
+    echo "Nie udało się wbudować połączenia w program (kod $EMBED_STATUS) — aplikacja nie została zbudowana." >&2
+  fi
+  exit 1
+elif [ "$EMBED_STATUS" = 2 ]; then
+  echo "Uwaga: brak Resources/Configuration.json — kompilacja deweloperska bez wbudowanego połączenia (Ustawienia → Połączenie)."
+else
+  echo "Uwaga: nie udało się wbudować połączenia (kod $EMBED_STATUS) — kompilacja deweloperska bez niego (Ustawienia → Połączenie)."
+fi
+swift build -c "$CONFIGURATION" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"}
+BIN="$(swift build -c "$CONFIGURATION" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"} --show-bin-path)/Mavinci"
 # Rozszerzenie Findera — osobny program (punkt wejścia NSExtensionMain), kompilowany z plikami wspólnymi z aplikacją
 # (sesja i adresy serwera — FinderShared, miniatury i skróty plików Materiałów — MaterialMedia).
 if [ "$WITH_FINDER" = 1 ]; then
@@ -44,6 +67,19 @@ if [ "$WITH_FINDER" = 1 ]; then
     -Xlinker -e -Xlinker _NSExtensionMain \
     -o "$EXT_BUILD/MavinciFileProvider" \
     Sources/MavinciFileProvider/*.swift Sources/Mavinci/Finder/FinderShared.swift Sources/Mavinci/Finder/MaterialMedia.swift
+fi
+# Widżety zadań (WidgetKit) — osobny program w piaskownicy jak rozszerzenie Findera: punkt wejścia NSExtensionMain (jak Xcode
+# dla rozszerzeń), widżety z `@main WidgetBundle`; sesja i adresy serwera z kontenera grupy (FinderShared).
+WITH_WIDGETS=0
+if [ "$WITH_FINDER" = 1 ] && [ "${WIDGETS:-1}" != "0" ]; then
+  WITH_WIDGETS=1
+  WIDGET_BUILD="build/widgets-$CONFIGURATION"
+  mkdir -p "$WIDGET_BUILD"
+  swiftc -O -module-name MavinciWidgets -parse-as-library -application-extension \
+    -target "$(uname -m)-apple-macos14.0" \
+    -Xlinker -e -Xlinker _NSExtensionMain \
+    -o "$WIDGET_BUILD/MavinciWidgets" \
+    Sources/MavinciWidgets/*.swift Sources/Mavinci/Finder/FinderShared.swift
 fi
 mkdir -p build
 if [ "$CONFIGURATION" = "debug" ]; then
@@ -69,7 +105,7 @@ trap cleanup EXIT
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Mavinci"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Info.plist > "$APP/Contents/Info.plist"
-if [ -f Resources/Configuration.json ]; then cp Resources/Configuration.json "$APP/Contents/Resources/Configuration.json"; fi
+# Bez Resources/Configuration.json w pakiecie — połączenie jest wbudowane w program (EmbeddedConnection.swift).
 # Fonty wydruków (Inter) — te same pliki co na serwerze (`public/fonts/invoice`): lokalny silnik PDF wstawia je do HTML
 # identycznie jak `loadPrintFontCss`, więc dokument z Maca jest taki sam jak z serwera.
 mkdir -p "$APP/Contents/Resources/PrintFonts"
@@ -104,8 +140,19 @@ if [ "$WITH_FINDER" = 1 ]; then
   TIMESTAMP="--timestamp=none"
   case "$IDENTITY" in "Developer ID Application:"*) TIMESTAMP="--timestamp";; esac
   codesign --force --options runtime "$TIMESTAMP" --entitlements Resources/MavinciFileProvider.entitlements --sign "$IDENTITY" "$EXT"
+  if [ "$WITH_WIDGETS" = 1 ]; then
+    WIDGETS_EXT="$APP/Contents/PlugIns/MavinciWidgets.appex"
+    mkdir -p "$WIDGETS_EXT/Contents/MacOS"
+    cp "$WIDGET_BUILD/MavinciWidgets" "$WIDGETS_EXT/Contents/MacOS/MavinciWidgets"
+    sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Resources/Widgets-Info.plist > "$WIDGETS_EXT/Contents/Info.plist"
+    codesign --force --options runtime "$TIMESTAMP" --entitlements Resources/MavinciWidgets.entitlements --sign "$IDENTITY" "$WIDGETS_EXT"
+  fi
   codesign --force --options runtime "$TIMESTAMP" --entitlements Resources/Mavinci.entitlements --sign "$IDENTITY" "$APP"
-  echo "Podpis: $IDENTITY — z rozszerzeniem Findera („Mavinci” w pasku bocznym)."
+  if [ "$WITH_WIDGETS" = 1 ]; then
+    echo "Podpis: $IDENTITY — z rozszerzeniem Findera („Mavinci” w pasku bocznym) i widżetami zadań na pulpit."
+  else
+    echo "Podpis: $IDENTITY — z rozszerzeniem Findera („Mavinci” w pasku bocznym)."
+  fi
 elif [ "$IDENTITY" = "-" ] || [ "$IDENTITY" = "$LOCAL_IDENTITY" ]; then
   codesign --force --options runtime --timestamp=none --sign "$IDENTITY" "$APP"
   if [ "$IDENTITY" = "-" ]; then

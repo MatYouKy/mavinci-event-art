@@ -164,6 +164,8 @@ struct TaskBoardIndex: Codable {
     /// Po zmianie na jednej tablicy druga też się odświeża (to samo zadanie bywa na obu).
     private func refreshBoth() {
         Task { await sync(force: true) }
+        // Widżety „Moje zadania” na pulpicie — od razu po zmianie, bez czekania na ich harmonogram.
+        WidgetBridge.reload()
         guard let workspace else { return }
         let other = board == .mine ? workspace.companyTasks : workspace.myTasks
         if other !== self { Task { await other.sync(force: true) } }
@@ -219,6 +221,7 @@ struct TaskBoardIndex: Codable {
                 if let task { body["id"] = .string(task.id) }
                 let reply = try await post(body)
                 setTimer(timerFrom(reply))
+                WidgetBridge.reload()
                 workspace?.succeed(action == "stop" ? "Licznik czasu zatrzymany" : "Timer rozpoczęty dla: \(task?.titleLabel ?? "")")
             } catch { report(error, "Błąd podczas uruchamiania timera") }
         }
@@ -317,9 +320,15 @@ extension Workspace {
             openHref("/crm/tasks")
             companyTasks.focusID = id
         } else {
-            if hrefs.contains("/crm/tasks/mine") { openHref("/crm/tasks/mine") }
-            else { eventRoute = nil; webItem = nil; nativeSet = nil; selection = nil; screen = .myTasks }
+            showMyTasks()
             myTasks.focusID = id
         }
+    }
+
+    /// Tablica „Moje zadania” (widżet na pulpicie — `mavinci://tasks`).
+    func showMyTasks() {
+        let hrefs = Set(navigation.flatMap(\.flattened).map(\.href))
+        if hrefs.contains("/crm/tasks/mine") { openHref("/crm/tasks/mine") }
+        else { eventRoute = nil; webItem = nil; nativeSet = nil; selection = nil; screen = .myTasks }
     }
 }

@@ -190,6 +190,61 @@ export async function activeTimer(ctx: NativeContext) {
   };
 }
 
+/**
+ * Widżet „Moje zadania” na Macu (pulpit, Centrum powiadomień — `desktop/mac/Sources/MavinciWidgets`): otwarte zadania z tablicy
+ * „Moje zadania” — prywatne i te, do których pracownik jest przypisany (bez zapytań), krótka lista bez przypisań, komentarzy
+ * i koszyków synchronizacji — oraz działający licznik czasu. Kolejność jak na tablicy: priorytet, termin, ostatnia zmiana.
+ * Tokenem pracownika (RLS).
+ */
+export async function tasksWidget(ctx: NativeContext) {
+  const s = ctx.supabase;
+  const fields = 'id,title,priority,status,board_column,due_date,is_private,updated_at';
+  const [own, assigned, timer] = await Promise.all([
+    s.from('tasks').select(fields).eq('is_private', true).eq('owner_id', ctx.employee.id).limit(500),
+    s.from('tasks').select(`${fields},task_assignees!inner(employee_id)`)
+      .eq('task_assignees.employee_id', ctx.employee.id).eq('is_private', false).eq('is_inquiry', false).limit(500),
+    activeTimer(ctx),
+  ]);
+  if (own.error) throw own.error;
+  if (assigned.error) throw assigned.error;
+  const byId = new Map<string, Row>();
+  for (const task of [...(own.data || []), ...(assigned.data || [])]) byId.set(String((task as Row).id), task as Row);
+  const rank: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+  const moment = (value: unknown) => {
+    const time = typeof value === 'string' ? Date.parse(value) : NaN;
+    return Number.isFinite(time) ? time : null;
+  };
+  const open = [...byId.values()]
+    .map((t) => ({
+      id: String(t.id),
+      title: formatSystemSubject(t.title) || String(t.title || '') || 'Zadanie',
+      priority: String(t.priority || 'medium'),
+      column: String(t.board_column || t.status || 'todo'),
+      dueDate: typeof t.due_date === 'string' ? t.due_date : null,
+      isPrivate: !!t.is_private,
+      status: String(t.status || ''),
+      updated: moment(t.updated_at) ?? 0,
+    }))
+    .filter((t) => t.column !== 'completed' && t.status !== 'completed' && t.status !== 'cancelled')
+    .sort((a, b) => {
+      const priority = (rank[b.priority] ?? 2) - (rank[a.priority] ?? 2);
+      if (priority) return priority;
+      const x = moment(a.dueDate);
+      const y = moment(b.dueDate);
+      if (x !== null && y !== null && x !== y) return x - y;
+      if (x !== null && y === null) return -1;
+      if (x === null && y !== null) return 1;
+      return b.updated - a.updated;
+    });
+  return {
+    tasks: open.slice(0, 200).map(({ id, title, priority, column, dueDate, isPrivate }) => ({ id, title, priority, column, dueDate, isPrivate })),
+    total: open.length,
+    privateTotal: open.filter((t) => t.isPrivate).length,
+    timer,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 export const tasksState = (ctx: NativeContext, board: TaskBoard, hash?: string, eventId?: string | null) =>
   collectionState(ctx, taskSet(board, eventId), (c) => loadBoard(c, board, eventId), hash);
 export const tasksItems = (ctx: NativeContext, board: TaskBoard, buckets: unknown[], eventId?: string | null) =>

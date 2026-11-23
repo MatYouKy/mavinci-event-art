@@ -15,11 +15,13 @@ cd desktop/mac
 open build/Mavinci.app
 ```
 
-Import czyta `.env`, `mobile/.env` i `mobile/.env.local`, ostatnie wartości mają pierwszeństwo. Zapisuje **wyłącznie publiczny adres i klucz anon/publishable Supabase** w ignorowanym `Resources/Configuration.json`. Nie kopiuje żadnego pliku `.env`, klucza `service_role`, haseł SMTP ani sekretów integracji. Nie wypisuje wartości do terminala. Konfiguracja publiczna trafia do pakietu `.app`.
+Import czyta `.env`, `mobile/.env` i `mobile/.env.local`, ostatnie wartości mają pierwszeństwo. Zapisuje **wyłącznie publiczny adres i klucz anon/publishable Supabase** w ignorowanym `Resources/Configuration.json`. Nie kopiuje żadnego pliku `.env`, klucza `service_role`, haseł SMTP ani sekretów integracji. Nie wypisuje wartości do terminala.
 
-Alternatywnie otwórz `Package.swift` w Xcode i wybierz schemat Mavinci → My Mac. Do uruchomienia przez `swift run` ustaw `MAVINCI_CONFIGURATION_FILE` na pełną ścieżkę do `Resources/Configuration.json`, albo wpisz publiczną konfigurację w ekranie pierwszego uruchomienia. Ustawienia zapisane wcześniej w pęku kluczy mają pierwszeństwo przed konfiguracją pakietu.
+**Połączenie wbudowane w program.** `scripts/build-app.sh` (także `yarn build:mac` i `yarn dmg`) przed kompilacją uruchamia `scripts/embed-connection.cjs`: z `Resources/Configuration.json` bierze tylko źródło danych, adres serwera, publiczny klucz aplikacji i (opcjonalnie) adres CRM, sprawdza je (HTTPS, wyłącznie klucz anon/publishable) i zapisuje do ignorowanego `Sources/Mavinci/EmbeddedConnection.generated.swift` jako bajty zamaskowane losowym kluczem (flaga kompilacji `MAVINCI_EMBEDDED_CONNECTION`, `EmbeddedConnection.swift`). W pakiecie `.app` nie ma już pliku konfiguracji. Zainstalowana aplikacja (kompilacja release) łączy się wyłącznie z wbudowanym połączeniem — nie ma zakładki „Połączenie”, a połączenie zapisane dawniej w pęku kluczy usuwa przy uruchomieniu; bez `Resources/Configuration.json` kompilacja release (i `yarn dmg`) się nie wykona. Zmiana serwera = nowe `Configuration.json` (`import-env.cjs`) i nowe wydanie. Klucz publiczny jest z natury jawny dla aplikacji (dane chronią logowanie pracownika i uprawnienia w bazie) — maskowanie tylko nie wystawia go na widok w programie i pakiecie.
 
-Logowanie: konto pracownika z CRM, e-mail i hasło. Nie wpisano na stałe identyfikatora sprzedawcy ani jego sesji. Profil jest potwierdzany przez `auth_user_id` i `is_active`, analogicznie do aplikacji mobilnej. Ustawienia połączenia po konfiguracji początkowej może zmieniać zalogowany administrator; są to ustawienia **danego Maca**, nie globalny panel sekretów serwera.
+Kompilacja deweloperska (`CONFIGURATION=debug`, `scripts/dev-app.sh` → Mavinci-Dev.app) ma w Ustawieniach zakładkę „Połączenie” do testów z innym serwerem: połączenie zapisane tam w pęku kluczy → wbudowane → `MAVINCI_CONFIGURATION_FILE` (pełna ścieżka do pliku JSON, np. przy `swift run`) → zmienne `SUPABASE_URL` / `SUPABASE_ANON_KEY`. Xcode (`Package.swift` → schemat Mavinci → My Mac) buduje bez wbudowanego połączenia — wtedy `MAVINCI_CONFIGURATION_FILE` albo zakładka „Połączenie”.
+
+Logowanie: konto pracownika z CRM, e-mail i hasło. Nie wpisano na stałe identyfikatora sprzedawcy ani jego sesji. Profil jest potwierdzany przez `auth_user_id` i `is_active`, analogicznie do aplikacji mobilnej.
 
 ## Działający zakres pierwszego etapu
 
@@ -115,12 +117,40 @@ Pierwsze okno po uruchomieniu aplikacji przechodzi od razu na pełny ekran (osob
 
 **Aktualizacje w aplikacji** (`Sources/Mavinci/Updates/`):
 
-- Sprawdzenie po zalogowaniu i co 4 godziny; od razu — Mavinci → „Sprawdź aktualizacje…” albo pasek menu.
-- Nowsza kompilacja → pasek „Dostępna nowa wersja” nad treścią okna („Później” chowa go do następnej wersji) i pozycja na pasku menu.
-- „Zobacz i zainstaluj”: arkusz z wersjami i „Co nowego”. „Pobierz aktualizację” pobiera paczkę (postęp), sprawdza sumę SHA-256, rozpakowuje ją (`ditto`) i sprawdza podpis zespołu Mavinci, identyfikator pakietu i numer kompilacji.
+- Sprawdzenie po zalogowaniu i co godzinę, przy otwarciu Ustawienia → Oprogramowanie (gdy ostatnie było ponad 10 minut temu); od razu — „Sprawdź teraz” w tej zakładce, Mavinci → „Sprawdź aktualizacje…” albo pasek menu (oba otwierają zakładkę „Oprogramowanie”).
+- Nowsza kompilacja → w stopce paska bocznego, pod nazwiskiem pracownika (przy „Połączono” / „Odświeżanie…”), „Nowa wersja …” — „Zobacz i zainstaluj” (w trakcie: „Pobieranie… %”, „Aktualizacja gotowa — Zainstaluj i uruchom ponownie”) — oraz pozycja na pasku menu. Kliknięcie otwiera okno Ustawień na zakładce **„Oprogramowanie”** (`Updates/AppUpdateViews.swift`, `SettingsWindow.swift`). Dawny pasek nad treścią okna nachodził na nagłówki sekcji (np. przełącznik widoku Spotkań) — usunięty.
+- **Ustawienia → Oprogramowanie**: wersja zainstalowana (i numer kompilacji), nowa wersja z datą wydania i rozmiarem, „Co nowego” (`NOTES` z `yarn dmg`), instalacja z postępem i kroki instalacji — w aplikacji (zalecane) oraz z instalatora DMG (pobierz, zamknij Mavinci, przeciągnij do Aplikacji → „Zastąp”, uruchom, wysuń instalator). Bez nowej wersji: „Masz najnowszą wersję · sprawdzono …”.
+- „Pobierz aktualizację” pobiera paczkę (postęp), sprawdza sumę SHA-256, rozpakowuje ją (`ditto`) i sprawdza podpis zespołu Mavinci, identyfikator pakietu i numer kompilacji.
 - „Zainstaluj i uruchom ponownie”: aplikacja się zamyka, skrypt podmienia pakiet w miejscu bieżącego (przy błędzie przywraca poprzedni) i uruchamia nową wersję. Po uruchomieniu komunikat „Zainstalowano Mavinci …”, a katalog aktualizacji (`~/Library/Caches/pl.mavinci.desktop/Updates`) jest sprzątany.
 - Pliki pobrane przez aplikację nie mają kwarantanny, więc po aktualizacji macOS nie pyta ponownie o zgodę.
 - Kopia z folderu budowania (`yarn build:mac`), z obrazu dysku, bez podpisu zespołu albo w folderze bez prawa zapisu pokazuje nową wersję, ale się nie podmienia. Pokazuje wtedy powód i przycisk „Pobierz instalator (DMG)”.
+
+## Widżety na pulpit: „Moje zadania”, „Zadania prywatne”, „Kalendarz” i „Spotkania”
+
+Rozszerzenie `MavinciWidgets.appex` (`Sources/MavinciWidgets`) — widżety WidgetKit na pulpit i do Centrum powiadomień (macOS 14). Ten sam
+kod buduje widżety na iPhonie i iPadzie (`mobile/plugins/withMavinciWidgets.js`, różnice w `#if os(iOS)` — także ekran blokady).
+
+- **„Moje zadania”** — otwarte zadania z tablicy „Moje zadania” (prywatne i przypisane do Ciebie), **„Zadania prywatne”** — tylko prywatne.
+  Kropka — priorytet, termin („Dziś, 18:00”, „Jutro”; po terminie na czerwono), „W trakcie” / „Do sprawdzenia”, kłódka przy prywatnych,
+  działający licznik czasu.
+- **„Kalendarz”** — Twój plan na 7 dni, te same dane co „Mój plan” (`get_employee_schedule`): eventy i fazy, spotkania, zadania z terminem,
+  kontakty w zapytaniach, oddzwonienia i nieobecności; w nagłówku dzisiejsza data, „Do potwierdzenia” przy zaproszeniu do eventu.
+- **„Spotkania”** — Twoje spotkania na 14 dni (autor albo uczestnik, bez odwołanych i odrzuconych) z miejscem, liczbą osób i organizatorem;
+  zaproszenie bez odpowiedzi — złote „Odpowiedz” i „… do odpowiedzi” w nagłówku, „Może” i „Wstępne” jak w CRM.
+- Rozmiary: mały (najbliższa pozycja / liczba zadań), średni (3 pozycje z godziną i dniem), duży (terminarz z nagłówkami dni) i bardzo duży
+  (dwie kolumny). Trwające pozycje mają „Teraz”, zakończone znikają same (wpisy osi czasu na początek i koniec każdej pozycji).
+- Kliknięcie pozycji otwiera ją w aplikacji: `mavinci://task|event|meeting|inquiry|contact/<id>`; kliknięcie widżetu — sekcję:
+  `mavinci://tasks`, `mavinci://calendar`, `mavinci://meetings` (`MavinciApp.onOpenURL`, `Widgets/WidgetBridge.swift`).
+- Dane: `GET /bridge/native/v1/tasks?op=widget` (`tasksWidget` w `src/lib/native/tasks.ts`) oraz `GET /bridge/native/v1/widgets?op=calendar|meetings`
+  (`src/lib/native/widgets.ts`) z sesją z kontenera grupy (jak Finder), więc widżety działają też przy zamkniętej aplikacji; bez internetu —
+  ostatnie dane z dopiskiem „bez połączenia” (`WidgetSupport.swift`).
+- Odświeżanie co 15 minut i od razu po zmianach w aplikacji (`WidgetBridge.reload`): zadania i licznik czasu, spotkania (także zmiany z CRM
+  po synchronizacji), plan dnia i wylogowanie; po wylogowaniu widżety proszą o zalogowanie.
+- Budowanie: `scripts/build-app.sh` razem z rozszerzeniem Findera (tylko z podpisem zespołu Mavinci); `WIDGETS=0` — bez widżetów.
+
+**Dodanie na pulpit:** kliknij pulpit prawym przyciskiem → „Edytuj widżety…” → wyszukaj „Mavinci” → przeciągnij wybrany widżet na pulpit
+(albo do Centrum powiadomień). Aplikacja po zalogowaniu sama zgłasza widżety systemowi; gdy w galerii ich nie ma (albo brakuje nowych) —
+zamknij i otwórz aplikację (najlepiej z folderu Aplikacje) i otwórz galerię ponownie.
 
 ## Dysk: schowek jak w Finderze, kopie i miejsce na Dysku (0.23)
 

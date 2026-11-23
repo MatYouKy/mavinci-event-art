@@ -1,6 +1,7 @@
 import ExpoModulesCore
 import FileProvider
 import Foundation
+import WidgetKit
 
 // MARK: „Mavinci” w aplikacji Pliki — strona aplikacji (iPhone, iPad)
 //
@@ -10,6 +11,8 @@ import Foundation
 // `FinderShared` — oraz rejestruje domenę „Mavinci”, która pojawia się w aplikacji Pliki obok iCloud Drive. Wylogowanie
 // unieważnia sesję rozszerzenia na serwerze i usuwa domenę (razem z pobranymi kopiami plików). Wymaga iOS 16.
 // Stałe jak w `FinderShared` (gałąź iOS) — rozszerzenie czyta te same pliki.
+// Tej samej sesji używają widżety Mavinci (`ios/MavinciWidgets`, `plugins/withMavinciWidgets.js`): po zapisie i usunięciu sesji
+// oraz na prośbę aplikacji (`reloadWidgets` — np. po wyjściu z aplikacji) widżety pobierają dane od razu.
 
 private enum MavinciFilesStore {
   static let appGroup = "group.com.mavinci.crm"
@@ -96,6 +99,7 @@ private enum MavinciFilesStore {
     }
     try await NSFileProviderManager.add(domain)
     signal(driveChanged: false)
+    reloadWidgets()
   }
 
   /// Wylogowanie: sesja rozszerzenia unieważniona na serwerze, pliki sesji i domena usunięte.
@@ -105,8 +109,15 @@ private enum MavinciFilesStore {
       remove("session.json")
     }
     remove("drive-changed.txt")
+    // Widżety bez sesji pokazują „zaloguj się” (i usuwają swoje kopie danych przy najbliższym odświeżeniu).
+    reloadWidgets()
     guard #available(iOS 16.0, *) else { return }
     try? await NSFileProviderManager.remove(domain)
+  }
+
+  /// Widżety Mavinci (zadania, kalendarz, spotkania) pobierają dane od razu, bez czekania na swój harmonogram.
+  static func reloadWidgets() {
+    Task { @MainActor in WidgetCenter.shared.reloadAllTimelines() }
   }
 
   /// Prośba do aplikacji Pliki o sprawdzenie zmian; `driveChanged` — plik dodany w aplikacji do Dysku (rozszerzenie wczyta Dysk od nowa).
@@ -184,6 +195,10 @@ public class MavinciFilesModule: Module {
 
     AsyncFunction("signal") { (driveChanged: Bool) in
       MavinciFilesStore.signal(driveChanged: driveChanged)
+    }
+
+    AsyncFunction("reloadWidgets") { () -> Void in
+      MavinciFilesStore.reloadWidgets()
     }
   }
 }

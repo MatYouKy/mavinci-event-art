@@ -48,6 +48,8 @@ enum FinderDomain {
         guard available, let crm = connection.crm else { return }
         FinderShared.store(.init(url: connection.url, publicKey: connection.publicKey, native: connection.provider == .server, crm: crm))
         if fresh { FinderShared.storeSession(session) } else { FinderShared.offerSession(session) }
+        // Widżety zadań korzystają z tej samej sesji — zgłoszenie rozszerzenia i odświeżenie po zalogowaniu.
+        WidgetBridge.activate()
         let target = Self.domain
         Task {
             await register(target)
@@ -131,6 +133,7 @@ enum FinderDomain {
         problem = nil
         guard available else { return }
         FinderShared.signOut()
+        WidgetBridge.reload()
         let target = Self.domain
         Task {
             do { try await NSFileProviderManager.remove(target) } catch {

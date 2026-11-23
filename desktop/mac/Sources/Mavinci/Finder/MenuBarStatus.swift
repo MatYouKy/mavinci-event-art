@@ -11,6 +11,7 @@ import SwiftUI
 struct MenuBarStatusMenu: View {
     @ObservedObject var workspace: Workspace
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @State private var finder: FinderDomain.Status?
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginItemError: String?
@@ -55,9 +56,9 @@ struct MenuBarStatusMenu: View {
             Text(connectionText)
             Text(finderText)
             Divider()
+            // Nowa wersja i „Sprawdź aktualizacje” — Ustawienia → Oprogramowanie.
             AppUpdateMenuItems(updater: workspace.updater, signedIn: workspace.employee != nil) {
-                showMainWindow()
-                workspace.activeNavigation.updateShown = true
+                SettingsTab.show(.software, openSettings)
             }
             Divider()
             Button("Otwórz Mavinci") { showMainWindow() }

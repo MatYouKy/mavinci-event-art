@@ -23,6 +23,11 @@ export type MavinciFilesNative = {
   disable(): Promise<void>;
   /** Prośba o sprawdzenie zmian; `driveChanged` — plik dodany w aplikacji do Dysku. */
   signal(driveChanged: boolean): Promise<void>;
+  /**
+   * Widżety Mavinci (ekran główny i blokady — `plugins/withMavinciWidgets.js`) pobierają dane od razu. Brak w wersji aplikacji
+   * sprzed widżetów (aktualizacja OTA nie dodaje funkcji natywnych) — sprawdzaj przed wywołaniem.
+   */
+  reloadWidgets?(): Promise<void>;
 };
 
 export const MavinciFiles = requireOptionalNativeModule<MavinciFilesNative>('MavinciFiles');

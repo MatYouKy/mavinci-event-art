@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { nativeContext, nativeJson, nativeUnauthorized, readJson, type NativeContext } from '@/lib/native/auth';
-import { activeTimer, invalidateTasks, taskAccess, tasksItems, tasksState, type TaskBoard } from '@/lib/native/tasks';
+import { activeTimer, invalidateTasks, taskAccess, tasksItems, tasksState, tasksWidget, type TaskBoard } from '@/lib/native/tasks';
 import { taskDueFromInput, taskDueParts } from '@/lib/CRM/tasks/taskDue';
 
 export const runtime = 'nodejs';
@@ -14,6 +14,7 @@ export const maxDuration = 60;
  * (`event-files/task-attachments`). Tokenem pracownika — RLS jak w przeglądarce.
  * Termin (`save`: `dueDate` + `dueTime`): dzień i opcjonalna godzina w czasie polskim (`taskDue.ts`; bez godziny — cały dzień,
  * 23:59). Starsza wersja aplikacji wysyła sam dzień (bez `dueTime`) — przy edycji ten sam dzień z godziną zostaje z godziną.
+ * GET op=widget — widżet „Moje zadania” na Macu: otwarte zadania z „Moich zadań” i licznik czasu (`tasksWidget`).
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -60,6 +61,8 @@ export async function GET(request: Request) {
       }
       case 'timer':
         return nativeJson({ timer: await activeTimer(ctx) });
+      case 'widget':
+        return nativeJson(await tasksWidget(ctx));
       case 'detail': {
         const id = q('id');
         if (!uuid.test(id)) return failure('Nieprawidłowe zadanie.');

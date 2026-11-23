@@ -33,6 +33,7 @@ import { useUnreadChatCount } from '../services/chatNotifications';
 import { consumeNotificationTarget } from '../../App';
 import { routeNotification, navigateToCalendarTab, NotificationTargetData } from './navigationRef';
 import { handleEventInvitationNotificationAction, handleInquiryFollowupNotificationAction } from '../services/pushNotifications';
+import { listenWidgetLinks } from '../lib/widgetLinks';
 
 export type MainTabParamList = {
   Dashboard: undefined;
@@ -162,6 +163,13 @@ export default function MainTabNavigator() {
       if (coldStartTimer) clearTimeout(coldStartTimer);
       sub.remove();
     };
+  }, [employee?.id]);
+
+  // Widżety na ekranie głównym i blokady (iPhone, iPad): `mavinci-crm://…` otwiera zadanie, event, spotkanie, zapytanie albo
+  // sekcję (Moje zadania, Kalendarz, Spotkania) — `lib/widgetLinks.ts`.
+  useEffect(() => {
+    if (!employee?.id) return;
+    return listenWidgetLinks();
   }, [employee?.id]);
 
   return (
