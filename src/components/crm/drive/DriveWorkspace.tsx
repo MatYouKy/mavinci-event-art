@@ -11,7 +11,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { DRIVE_TITLE, type DriveFolder, type DriveListing, type DriveRoot, type DriveSection } from '@/lib/drive/driveShared';
 import MaterialsWorkspace from '../materials/MaterialsWorkspace';
 import MaterialsPreview, { type PreviewItem } from '../materials/MaterialsPreview';
-import { cardClass, errorMessage, secondaryButton } from '../materials/materialsUi';
+import { cardClass, contentPanelClass, errorMessage, secondaryButton, sidePanelClass } from '../materials/materialsUi';
 import DriveBrowser from './DriveBrowser';
 import DriveEvents, { NO_DATE, eventFolderName, eventYear, type DriveEvent } from './DriveEvents';
 import DriveStorageMeter from './DriveStorageMeter';
@@ -284,7 +284,7 @@ export default function DriveWorkspace() {
       ) : (
         <div className="flex min-h-0 flex-1 gap-4">
           <aside className="hidden w-72 shrink-0 lg:block">
-            <nav className={`${cardClass} sticky top-4 max-h-[calc(100vh-2rem)] space-y-0.5 overflow-y-auto p-2`} aria-label="Dysk">
+            <nav className={`${sidePanelClass} sticky top-4 max-h-[calc(100vh-2rem)] space-y-0.5 overflow-y-auto p-2`} aria-label="Dysk">
               {available.map((entry) => {
                 const Icon = SECTION_ICONS[entry.key];
                 const active = section === entry.key;
@@ -312,7 +312,8 @@ export default function DriveWorkspace() {
             </nav>
           </aside>
 
-          <section className="min-w-0 flex-1 space-y-3">
+          {/* Na komputerze treść w ramce obok paska folderów (wyraźny podział, jak na Macu); mniejsze ekrany — bez ramki. */}
+          <section className={`min-w-0 flex-1 space-y-3 ${contentPanelClass}`}>
             {/* Mniejsze ekrany: działy jako przyciski nad treścią. */}
             <div className="flex flex-wrap gap-1.5 lg:hidden">
               {available.map((entry) => {

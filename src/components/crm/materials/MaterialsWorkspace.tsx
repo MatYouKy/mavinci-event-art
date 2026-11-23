@@ -23,8 +23,8 @@ import {
 } from './materialsApi';
 import { MaterialsAlbumView, MaterialsAlbumsSidebar } from './MaterialsAlbums';
 import {
-  ITEM_DRAG_TYPE, MaterialThumb, cardClass, dateLabel, dateTimeLabel, errorMessage, folderIcon, ghostButton, inputClass, isFileDrag,
-  primaryButton, secondaryButton,
+  ITEM_DRAG_TYPE, MaterialThumb, cardClass, contentPanelClass, dateLabel, dateTimeLabel, errorMessage, folderIcon, ghostButton, inputClass,
+  isFileDrag, primaryButton, secondaryButton, sidePanelClass,
 } from './materialsUi';
 import { childrenOf, descendantIds, pathOf } from './materialsTree';
 import MaterialsDetails from './MaterialsDetails';
@@ -1252,11 +1252,12 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
           ? (sidebarPortal ? createPortal(sidebarContent, sidebarPortal) : null)
           : (
             <aside className="hidden w-64 shrink-0 lg:block">
-              <div className={`${cardClass} sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto p-2`}>{sidebarContent}</div>
+              <div className={`${sidePanelClass} sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto p-2`}>{sidebarContent}</div>
             </aside>
           )}
 
-        <section className="min-w-0 flex-1 space-y-3">
+        {/* Osobna strona Materiałów: treść w ramce obok paska folderów (na Dysku ramkę daje strona Dysku). */}
+        <section className={`min-w-0 flex-1 space-y-3 ${embedded ? '' : contentPanelClass}`}>
           {mode === 'trash' ? (
             <>
               <div className="flex items-center gap-2">

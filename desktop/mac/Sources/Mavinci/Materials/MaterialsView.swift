@@ -225,17 +225,18 @@ import UniformTypeIdentifiers
         VStack(alignment: .leading, spacing: 12) {
             header(home)
             HStack(alignment: .top, spacing: 12) {
+                // Pasek folderów, treść i szczegóły pliku w ramkach — wyraźny podział (jak w CRM).
                 sidebar(home)
                     .frame(width: 250)
                     .frame(maxHeight: .infinity, alignment: .top)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(theme.card))
+                    .crmPanel()
                 VStack(spacing: 0) {
                     toolbar(home)
                     Divider().opacity(0.3)
                     pane(home)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(RoundedRectangle(cornerRadius: 12).fill(theme.card))
+                .crmPanel()
                 if let file = selectedFile {
                     MaterialDetailsPanel(store: store, file: file, onPreview: { Task { await open(file) } }, onRename: { askRename(MaterialRef(kind: "file", id: file.id, name: file.name)) },
                                          onMove: { moving = [MaterialRef(kind: "file", id: file.id, name: file.name)] },
@@ -243,7 +244,7 @@ import UniformTypeIdentifiers
                                          onReplace: { chooseReplacement(file) })
                         .frame(width: 320)
                         .frame(maxHeight: .infinity, alignment: .top)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(theme.card))
+                        .crmPanel()
                         .id(file.id)
                 }
             }

@@ -1624,3 +1624,8 @@ Panel „Przegląd” w karcie wydarzenia otwiera się domyślnie. Na stałe (na
 - **Serwer** (`showcase.server.ts`, `showcaseProductPage.server.ts`): karta czytana ze wszystkimi kolumnami — `showOnProductPage` w szczegółach karty, gdy kolumna istnieje; zapis (`saveItem`, pole opcjonalne — starsza wersja aplikacji nic nie zmienia) i kopia karty z przełącznikiem; strona `/produkty/[id]` pomija karty z wyłączonym przełącznikiem. Bez migracji wszystko działa jak dotąd (bez przełącznika).
 - **CRM i Mac** (`ShowcaseItemEditor`, `ShowcaseEditorView` / `ShowcaseStore` / `ShowcaseModels`): przełącznik pod listą produktów karty i opis, gdzie karta się pokazuje (szkic — nigdzie, wyłączony — tylko spotkania). `showcaseShared.ts` (CRM i telefon — wspólna kopia): opcjonalne `showOnProductPage` w szczegółach karty.
 - Telefon i tablet: nie dotyczy (karty edytuje się w CRM i na Macu; pokaz na tablecie bez zmian).
+
+### Dysk i Materiały: pasek folderów i treść w ramkach (23.11.2026)
+- **CRM** (`materialsUi.tsx` — `sidePanelClass`, `contentPanelClass`; `DriveWorkspace`, `MaterialsWorkspace`): na komputerze (od `lg`) obszar treści Dysku i osobnej strony Materiałów ma własną ramkę obok paska folderów (wyraźniejsza ramka paska, ciemniejsze tło treści niż kart w środku), sięga do dołu strony; na telefonie i tablecie w przeglądarce — bez ramki, jak dotąd.
+- **Mac** (`Theme.swift` — `crmPanel()`; `DriveView`, `MaterialsView`): pasek folderów, treść i panel szczegółów pliku z tą samą cienką ramką w kolorze akcentu (tło karty jak dotąd).
+- Telefon i tablet (aplikacja): nie dotyczy — Dysk w aplikacji to jedna kolumna bez paska folderów.

@@ -56,8 +56,25 @@ private struct CrmBar: ViewModifier {
     @Environment(\.crmTheme) private var theme
     func body(content: Content) -> some View { content.background(theme.sidebar.opacity(0.96)) }
 }
+/// Panel układu z paskiem folderów (Dysk, Materiały): tło karty i cienka ramka w kolorze akcentu — wyraźna linia między paskiem
+/// a treścią (jak w CRM: `sidePanelClass`, `contentPanelClass` w `materialsUi.tsx`). Ramka wewnątrz kształtu — przycięcie treści
+/// do zaokrąglenia (`clipShape`) jej nie ścina.
+private struct CrmPanel: ViewModifier {
+    @Environment(\.crmTheme) private var theme
+    let radius: CGFloat
+    func body(content: Content) -> some View {
+        content
+            .background(RoundedRectangle(cornerRadius: radius).fill(theme.card))
+            .overlay {
+                RoundedRectangle(cornerRadius: radius).strokeBorder(theme.accent.opacity(theme == .light ? 0.3 : 0.2), lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+    }
+}
 extension View {
     func crmBar() -> some View { modifier(CrmBar()) }
+    /// Panel z tłem karty i ramką (pasek folderów, obszar treści, panel szczegółów).
+    func crmPanel(cornerRadius: CGFloat = 12) -> some View { modifier(CrmPanel(radius: cornerRadius)) }
     /// Motyw dla całego okna: schemat kolorów, akcent, tła list, tabel i formularzy pokazują tło strony.
     func crmThemed(_ theme: CrmTheme) -> some View {
         environment(\.crmTheme, theme).preferredColorScheme(theme.scheme).tint(theme.accent).scrollContentBackground(.hidden)

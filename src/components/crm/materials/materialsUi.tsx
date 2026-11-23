@@ -12,6 +12,13 @@ import type { MaterialKind, MaterialSystemFolder } from '@/lib/materials/materia
 /* Wspólne elementy widoków Materiałów w CRM (klasy przycisków, ikony rodzajów plików, miniatury, daty). */
 
 export const cardClass = 'rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]';
+/**
+ * Układ dwóch paneli na komputerze (Dysk, Materiały): pasek folderów i obszar treści w ramkach — wyraźna linia między paskiem
+ * a treścią (jak na Macu: `crmPanel()`). Obszar treści ma ramkę od szerokości `lg` (na telefonie i tablecie — bez ramki, cała
+ * szerokość); jego tło jest ciemniejsze od kart, żeby listy i kafelki w środku (`cardClass`) dalej się odróżniały.
+ */
+export const sidePanelClass = 'rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]';
+export const contentPanelClass = 'lg:rounded-xl lg:border lg:border-[#d3bb73]/20 lg:bg-[#161a2a] lg:p-5';
 export const inputClass =
   'w-full rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73]/40 disabled:opacity-50';
 export const buttonClass =

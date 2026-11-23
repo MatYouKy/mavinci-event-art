@@ -99,16 +99,17 @@ struct DriveSidebarContext {
         VStack(alignment: .leading, spacing: 12) {
             header(section)
             HStack(alignment: .top, spacing: 12) {
+                // Pasek folderów i treść w ramkach — wyraźny podział (jak w CRM).
                 sidebar(available)
                     .frame(width: 250)
                     .frame(maxHeight: .infinity, alignment: .top)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(theme.card))
+                    .crmPanel()
                 Group {
                     if section == .events { eventsPane } else { DriveBrowserPane(store: store, section: section) }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(RoundedRectangle(cornerRadius: 12).fill(theme.card))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .crmPanel()
             }
         }
         .padding(16)
