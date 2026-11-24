@@ -142,6 +142,8 @@ struct ProductDetail: Codable {
     var canEdit: Bool
     var product: [String: JSONValue]
     var imageUrl: String?
+    /// Zdjęcie wybrane z Dysku: plik, miejsce i wersja (starszy serwer albo zdjęcie z komputera — brak).
+    var imageSource: ProductImageSource?
     var facts: Facts
     var readiness: Readiness
     var categories: [ProductCategory]
@@ -156,6 +158,26 @@ struct ProductDetail: Codable {
         let id = ProductValue.text(product, "category_id")
         return categories.first { $0.id == id }?.name
     }
+}
+
+/// Zdjęcie produktu z Dysku (`src/lib/CRM/Offers/productImageSource.ts`): oryginał zostaje w Dysku, produkt ma lekką wersję WebP;
+/// `version` — wersja treści pliku użyta w produkcie, `currentVersion` — bieżąca w Dysku (większa — w Dysku podmieniono zdjęcie).
+struct ProductImageSource: Codable, Hashable {
+    var fileId: String
+    var version: Int
+    var currentVersion: Int?
+    var name: String
+    var place: String
+    var missing: Bool
+
+    /// „Z Dysku: Mavinci / Zdjęcia / … / plik.jpg” (jak `productImageSourceText`).
+    var text: String {
+        if missing { return "Z Dysku — pliku już nie ma w Dysku albo nie masz do niego dostępu (zdjęcie produktu zostaje)." }
+        return "Z Dysku: " + [place, name].filter { !$0.isEmpty }.joined(separator: " / ")
+    }
+
+    /// W Dysku podmieniono treść pliku po wybraniu zdjęcia do produktu.
+    var outdated: Bool { !missing && (currentVersion ?? 0) > version }
 }
 
 /// Odczyt pól produktu ze słownika kolumn (liczby z bazy mogą przyjść jako tekst).
@@ -208,6 +230,17 @@ enum ProductText {
     static func number(_ value: Double) -> String { decimal.string(from: NSNumber(value: value)) ?? String(value) }
     /// „1 234,50 zł” (jak `formatMoney` w katalogu CRM).
     static func money(_ value: Double) -> String { (fixed.string(from: NSNumber(value: value)) ?? String(value)) + " zł" }
+    private static func few(_ count: Int) -> Bool { (2...4).contains(count % 10) && !(12...14).contains(count % 100) }
+    /// „1 zdjęcie”, „3 zdjęcia”, „5 zdjęć” (jak `photosText` w CRM).
+    static func photos(_ count: Int) -> String { count == 1 ? "1 zdjęcie" : few(count) ? "\(count) zdjęcia" : "\(count) zdjęć" }
+    /// Opis „Duplikuj” w potwierdzeniu (jak `PRODUCT_DUPLICATE_NOTE` w CRM).
+    static let duplicateNote = "Powstanie nowy produkt z kopią całej karty: warianty, pakiety, dodatki, wymagania, klauzule, sprzęt, obsada, "
+        + "Mavinci LIVE, przygotowanie, ceny w cennikach sezonów, zdjęcia z kadrami i teksty EN. Kopia będzie nieaktywna — włącz „Produkt "
+        + "aktywny”, gdy będzie gotowa. Ceny sprzedawców nie są kopiowane."
+    /// „Nazwa (kopia)”.
+    static func duplicateName(_ name: String) -> String { String((name.trimmingCharacters(in: .whitespacesAndNewlines) + " (kopia)").prefix(300)) }
+    /// „jest 1 zdjęcie”, „są 3 zdjęcia”, „jest 5 zdjęć”.
+    static func photosCount(_ count: Int) -> String { (count != 1 && few(count) ? "są " : "jest ") + photos(count) }
     private static let editable: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.locale = Locale(identifier: "pl_PL")
@@ -294,6 +327,14 @@ enum ProductText {
     @Published var english: [String: ProductEnglishDocument] = [:]
     @Published var englishErrors: [String: String] = [:]
     @Published var englishBusy: [String: Int] = [:]
+    /// Zdjęcia produktów, wariantów i pakietów jeszcze w JPG/PNG, postęp zamiany na WebP i zdjęcia, których nie udało się zamienić
+    /// (pasek w katalogu, jak `ProductImagesWebpBanner` w CRM).
+    @Published var imagesPending = 0
+    @Published var imagesProgress: ImagesProgress?
+    @Published var imagesProblems: [ImageConversionProblem] = []
+
+    struct ImagesProgress: Equatable { var done: Int; var total: Int }
+    struct ImageConversionProblem: Decodable, Hashable { let key: String; let label: String; let error: String }
 
     private var namespace: String?
     private var file: SealedFile<ProductsState>?
@@ -327,6 +368,7 @@ enum ProductText {
         selectedID = nil; openedID = nil; details = [:]; detailErrors = [:]
         resources = [:]; resourceErrors = [:]; scopes = [:]; equipmentCatalog = nil; extras = [:]; extrasErrors = [:]
         english = [:]; englishErrors = [:]; englishBusy = [:]
+        imagesPending = 0; imagesProgress = nil; imagesProblems = []
     }
 
     // MARK: Synchronizacja
@@ -446,6 +488,74 @@ enum ProductText {
         }
     }
 
+    /// Zdjęcie produktu z Dysku: serwer przygotowuje lekką wersję WebP z pliku Materiałów (oryginał zostaje w Dysku) i zwraca jej
+    /// ścieżkę — zapis w produkcie przez sekcję `offer_image`, jak przy zdjęciu z komputera.
+    func imageFromMaterial(_ id: String, fileID: String) async -> String? {
+        guard case let (api, workspace)? = writable("Zdjęcie z Dysku wymaga połączenia z serwerem CRM.") else { return nil }
+        struct Reply: Decodable { let path: String }
+        do {
+            let body: [String: JSONValue] = ["op": .string("imageFromMaterial"), "id": .string(id), "fileId": .string(fileID)]
+            let reply = try await workspace.withPending("Przygotowanie zdjęcia z Dysku…") { try await api.post("/products", body, timeout: 150) }
+            return try JSONDecoder().decode(Reply.self, from: reply).path
+        } catch {
+            workspace.error = failureText(error, "Nie udało się przygotować zdjęcia z Dysku.")
+            return nil
+        }
+    }
+
+    /// Pełny podgląd zdjęcia z Dysku w oknie zdjęcia (wariant, pakiet) — `nil`, gdy nie udało się go pobrać (zostaje miniatura).
+    func materialPreview(_ file: MaterialFile) async -> NSImage? {
+        guard let api,
+              let data = try? await api.get("/materials", query: ["op": "url", "kind": "material", "id": file.id, "mode": "preview"]),
+              let reply = try? JSONDecoder().decode(MaterialUrlReply.self, from: data), let url = URL(string: reply.url),
+              let loaded = try? await URLSession.shared.data(from: url) else { return nil }
+        return NSImage(data: loaded.0)
+    }
+
+    // MARK: Zamiana starszych zdjęć JPG/PNG na WebP (`convertOfferImages` na serwerze)
+
+    func loadImagesPending() async {
+        guard let api else { return }
+        struct Reply: Decodable { let count: Int; let canEdit: Bool }
+        guard let data = try? await api.get("/products?op=imagesPending"),
+              let reply = try? JSONDecoder().decode(Reply.self, from: data) else { return }
+        imagesPending = reply.canEdit ? reply.count : 0
+    }
+
+    /// Zamiana porcjami po 4 zdjęcia (nowy plik WebP obok starego, nowa ścieżka i kadry); zdjęcia z błędem pomijamy w kolejnych
+    /// porcjach i pokazujemy pod paskiem. Stare pliki zostają w magazynie (wcześniejsze broszury).
+    func convertImages() async {
+        guard imagesProgress == nil, imagesPending > 0,
+              case let (api, workspace)? = writable("Zamiana zdjęć wymaga połączenia z serwerem CRM.") else { return }
+        struct Reply: Decodable { let converted: Int; let failed: [ImageConversionProblem]; let remaining: Int }
+        var done = 0
+        var total = imagesPending
+        var problems: [ImageConversionProblem] = []
+        imagesProblems = []
+        imagesProgress = ImagesProgress(done: 0, total: total)
+        do {
+            for _ in 0..<500 {
+                let body: [String: JSONValue] = ["op": .string("imagesConvert"), "limit": .number(4), "skip": .array(problems.map { .string($0.key) })]
+                let reply = try JSONDecoder().decode(Reply.self, from: try await api.post("/products", body, timeout: 170))
+                done += reply.converted
+                problems += reply.failed
+                total = max(total, done + problems.count + reply.remaining)
+                imagesProgress = ImagesProgress(done: done, total: total)
+                if reply.remaining == 0 || (reply.converted == 0 && reply.failed.isEmpty) { break }
+            }
+            imagesProblems = problems
+            imagesProgress = nil
+            workspace.succeed(problems.isEmpty ? "Zamieniono \(ProductText.photos(done)) na WebP"
+                              : "Zamieniono \(ProductText.photos(done)) na WebP. Nie udało się zamienić: \(problems.count)")
+        } catch {
+            imagesProblems = problems
+            imagesProgress = nil
+            workspace.error = failureText(error, "Nie udało się zamienić zdjęć na WebP.")
+        }
+        await loadImagesPending()
+        await sync(force: true)
+    }
+
     /// Usługi i sprzęt podwykonawcy (organizacja z listy „Podwykonawca”).
     func services(organization: String) async -> [ProductSupplierService] {
         guard let api else { return [] }
@@ -473,6 +583,32 @@ enum ProductText {
             return id
         } catch {
             workspace.error = failureText(error, "Nie udało się dodać produktu.")
+            return nil
+        }
+    }
+
+    /// „Duplikuj” (`src/lib/CRM/Offers/productDuplicate.ts`): nowy, nieaktywny produkt z kopią całej karty — warianty, pakiety,
+    /// dodatki, wymagania, klauzule, sprzęt, obsada, Mavinci LIVE, przygotowanie, ceny w cennikach sezonów, zdjęcia z kadrami
+    /// i teksty EN. Po kopii otwiera kartę nowego produktu; części pominięte z braku uprawnień są w komunikacie.
+    @discardableResult func duplicate(_ id: String) async -> String? {
+        guard case let (api, workspace)? = writable("Duplikowanie produktu wymaga połączenia z serwerem CRM.") else { return nil }
+        struct Reply: Decodable { let id: String; let name: String; let skipped: [String]; let imagesMissing: Int }
+        do {
+            let body: [String: JSONValue] = ["op": .string("duplicate"), "id": .string(id)]
+            let data = try await workspace.withPending("Duplikowanie produktu…") { try await api.post("/products", body, timeout: 170) }
+            let reply = try JSONDecoder().decode(Reply.self, from: data)
+            await sync(force: true)
+            selectedID = reply.id
+            openedID = reply.id
+            refreshEnglish(reply.id)
+            var parts = ["Utworzono „\(reply.name)” — kopia jest nieaktywna. Wprowadź zmiany i włącz „Produkt aktywny”."]
+            if !reply.skipped.isEmpty { parts.append("Bez: \(reply.skipped.joined(separator: ", ")) (brak uprawnień).") }
+            if reply.imagesMissing > 0 { parts.append("Nie udało się skopiować zdjęć: \(reply.imagesMissing) — dodaj je ponownie.") }
+            let text = parts.joined(separator: " ")
+            if reply.skipped.isEmpty && reply.imagesMissing == 0 { workspace.succeed(text) } else { workspace.snack = Snack(kind: .info, text: text) }
+            return reply.id
+        } catch {
+            workspace.error = failureText(error, "Nie udało się zduplikować produktu.")
             return nil
         }
     }

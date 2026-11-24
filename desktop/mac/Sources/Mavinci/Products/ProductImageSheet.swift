@@ -2,8 +2,10 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-// MARK: Grafika na karcie produktu (`ProductCardImageSection.tsx`) — zdjęcie do oferty PDF (JPG, PNG lub WebP do 10 MB,
-// zmniejszane do 1800 px jak `optimizeOfferImage`), opis grafiki i kadrowanie: poziom, pion, skala i „Przywróć domyślny kadr”.
+// MARK: Grafika na karcie produktu (`ProductCardImageSection.tsx`) — zdjęcie do oferty PDF z komputera (JPG, PNG lub WebP do 10 MB,
+// zmniejszane do 1800 px jak `optimizeOfferImage`) albo z Dysku (`MaterialPhotoPicker` — oryginał zostaje w Dysku); w obu przypadkach
+// produkt dostaje lekką wersję WebP przygotowaną na serwerze przy zapisie. Opis grafiki i kadrowanie: poziom, pion, skala
+// i „Przywróć domyślny kadr”.
 
 /// Zdjęcie w kadrze 4:3 jak w ofercie: wypełnienie ramki (`object-fit: cover`), położenie w procentach i skala względem
 /// punktu kadru; poniżej 100% całe zdjęcie mieści się w kadrze, a rozmyte tło wypełnia resztę.
@@ -71,12 +73,16 @@ struct ProductFramedImage: View {
     }
 }
 
-/// Zmniejszenie zdjęcia do 1800 px (jak `optimizeOfferImage` w CRM): PNG zostaje PNG (przezroczystość), pozostałe — JPEG 0,82.
+/// Zmniejszenie zdjęcia do 1800 px (jak `optimizeOfferImage` w CRM): PNG zostaje PNG (przezroczystość), pozostałe — JPEG (domyślnie
+/// 0,82). Zdjęcia produktów, wariantów i pakietów serwer zapisuje jako lekkie WebP (`src/lib/native/productImages.ts`), więc wysyłamy
+/// je w wyższej jakości (`forWebP`), żeby nie tracić jakości drugi raz.
 enum ProductImageEncoder {
     static let maxSide: CGFloat = 1800
     static let uploadLimit = 8 * 1024 * 1024
+    /// Jakość JPEG zdjęć, z których serwer robi WebP (jak `productImageUpload` w CRM).
+    static let forWebP: CGFloat = 0.92
 
-    static func encode(_ url: URL) -> (data: Data, image: NSImage)? {
+    static func encode(_ url: URL, quality: CGFloat = 0.82) -> (data: Data, image: NSImage)? {
         guard let source = NSImage(contentsOf: url),
               let cg = source.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         let png = UTType(filenameExtension: url.pathExtension)?.conforms(to: .png) ?? false
@@ -94,7 +100,7 @@ enum ProductImageEncoder {
         }
         NSGraphicsContext.current?.cgContext.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
         NSGraphicsContext.restoreGraphicsState()
-        var data = png ? rep.representation(using: .png, properties: [:]) : rep.representation(using: .jpeg, properties: [.compressionFactor: 0.82])
+        var data = png ? rep.representation(using: .png, properties: [:]) : rep.representation(using: .jpeg, properties: [.compressionFactor: quality])
         if png, let encoded = data, encoded.count > uploadLimit {
             // Bardzo duży PNG (zdjęcie zapisane jako PNG) — JPEG mieści się w limicie.
             NSGraphicsContext.saveGraphicsState()
@@ -102,7 +108,7 @@ enum ProductImageEncoder {
             NSColor.white.setFill()
             NSRect(x: 0, y: 0, width: width, height: height).fill(using: .destinationOver)
             NSGraphicsContext.restoreGraphicsState()
-            data = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.82])
+            data = rep.representation(using: .jpeg, properties: [.compressionFactor: quality])
         }
         guard let data, data.count <= uploadLimit else { return nil }
         let image = NSImage(size: NSSize(width: width, height: height))
@@ -129,6 +135,9 @@ enum ProductImageEncoder {
     @State private var problem: String?
     @State private var saving = false
     @State private var dropping = false
+    /// Zdjęcie wybrane z Dysku (zapis tworzy jego lekką wersję WebP).
+    @State private var material: PickedMaterialPhoto?
+    @State private var pickingMaterial = false
 
     init(store: ProductsStore, detail: ProductDetail) {
         _store = ObservedObject(wrappedValue: store)
@@ -169,17 +178,26 @@ enum ProductImageEncoder {
                             return true
                         } isTargeted: { dropping = $0 }
                     HStack {
-                        Button { importing = true } label: { Label(preview == nil ? "Wybierz zdjęcie" : "Zmień zdjęcie", systemImage: "square.and.arrow.up") }
+                        Button { importing = true } label: { Label(preview == nil ? "Wybierz zdjęcie" : "Z komputera", systemImage: "square.and.arrow.up") }
+                        Button { pickingMaterial = true } label: { Label("Z Dysku…", systemImage: "externaldrive") }
                         if preview != nil {
                             Button(role: .destructive) {
                                 pickedData = nil
                                 pickedImage = nil
+                                material = nil
                                 removed = true
                             } label: { Label("Usuń grafikę", systemImage: "trash") }
                         }
                     }
                     .controlSize(.small)
-                    Text("PNG, JPG lub WebP, do 10 MB.").font(.caption).foregroundStyle(.secondary)
+                    if let material {
+                        Text("Z Dysku: \(material.place) / \(material.file.name)").font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(2).truncationMode(.middle)
+                    } else if pickedData == nil, !removed, let source = detail.imageSource {
+                        Text(source.text).font(.caption).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                    }
+                    Text("Z komputera: PNG, JPG lub WebP, do 10 MB. Z Dysku: oryginał zostaje w Dysku. Produkt zawsze dostaje lekką wersję WebP (do 1800 px).")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(width: 400)
 
@@ -222,6 +240,9 @@ enum ProductImageEncoder {
         .fileImporter(isPresented: $importing, allowedContentTypes: [.jpeg, .png, .webP]) { result in
             if case .success(let url) = result { choose(url) }
         }
+        .sheet(isPresented: $pickingMaterial) {
+            MaterialPhotoPicker(title: "Zdjęcie produktu z Dysku") { photo in choose(photo) }
+        }
     }
 
     private func slider(_ label: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double) -> some View {
@@ -242,14 +263,32 @@ enum ProductImageEncoder {
             problem = "Wybierz zdjęcie JPG, PNG lub WebP do 10 MB."
             return
         }
-        guard let encoded = ProductImageEncoder.encode(url) else {
+        guard let encoded = ProductImageEncoder.encode(url, quality: ProductImageEncoder.forWebP) else {
             problem = "Nie udało się odczytać zdjęcia. Wybierz inny plik."
             return
         }
         pickedData = encoded.data
         pickedImage = encoded.image
+        material = nil
         removed = false
         problem = nil
+    }
+
+    /// Zdjęcie z Dysku: od razu miniatura, potem podgląd w pełnej rozdzielczości (kadrowanie); plik produktu powstaje przy zapisie.
+    private func choose(_ photo: PickedMaterialPhoto) {
+        guard !saving else { return }
+        material = photo
+        pickedData = nil
+        pickedImage = MaterialsThumbnails.shared.cached(photo.file)
+        removed = false
+        problem = nil
+        Task {
+            guard let api = state.nativeAPI(),
+                  let data = try? await api.get("/materials", query: ["op": "url", "kind": "material", "id": photo.file.id, "mode": "preview"]),
+                  let reply = try? JSONDecoder().decode(MaterialUrlReply.self, from: data), let url = URL(string: reply.url),
+                  let loaded = try? await URLSession.shared.data(from: url), let image = NSImage(data: loaded.0) else { return }
+            if material?.file.id == photo.file.id { pickedImage = image }
+        }
     }
 
     private func save() async {
@@ -257,7 +296,11 @@ enum ProductImageEncoder {
         defer { saving = false }
         problem = nil
         var path: String? = removed || currentPath.isEmpty ? nil : currentPath
-        if let pickedData, let pickedImage {
+        if let material {
+            guard let created = await store.imageFromMaterial(detail.id, fileID: material.file.id) else { return }
+            if let pickedImage { ProductImageCache.shared.store(pickedImage, path: created) }
+            path = created
+        } else if let pickedData, let pickedImage {
             guard let uploaded = await store.uploadImage(detail.id, data: pickedData) else { return }
             ProductImageCache.shared.store(pickedImage, path: uploaded)
             path = uploaded

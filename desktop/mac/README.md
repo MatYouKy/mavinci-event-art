@@ -192,14 +192,28 @@ i „Pokaż więcej”; wyszukiwanie bez rozróżniania wielkości liter i znak�
 
 Nowa wiadomość, odpowiedź i przekazanie (Wiadomości, „Napisz e-mail” w Kontaktach) oraz wystawianie faktury (Finanse, rozliczenie
 eventu, faktura końcowa) otwierają się w **osobnych oknach** zamiast arkusza przyklejonego do okna: okno można skalować i przesuwać,
-otworzyć kilka naraz i pracować obok — np. przewijać skrzynkę przy pisaniu odpowiedzi. Każdy rodzaj okna pamięta rozmiar i położenie.
+otworzyć kilka naraz i pracować obok — np. przewijać skrzynkę przy pisaniu odpowiedzi. Okno wiadomości otwiera się zawsze w rozmiarze
+okna modalnego (920 × 780, w granicach ekranu) na środku okna CRM (`FormWindowKind.openSize`, `FormWindowSizer`) — nie na cały ekran
+po powiększeniu poprzedniego okna; okno faktury pamięta ostatni rozmiar i położenie.
 Mechanizm: `FormWindows.swift` (`.formWindow(item:kind:)` zamiast `.sheet(item:)`, sceny `form-compose` i `form-invoice`
 w `MavinciApp`); `dismiss()` w formularzu zamyka okno. Okno przywrócone po ponownym uruchomieniu aplikacji pokazuje tylko „Zamknij okno”.
 
 Okno wiadomości (`ComposeSheet` w `Messages/MessageSheets.swift`): u góry nadawca, adresy i temat, niżej treść, a w odpowiedzi pod
 treścią **cała wiadomość, na którą odpowiadasz** (z jej wcześniejszą korespondencją — jak w Thunderbirdzie; podział przesuwany).
 Cytat do wysyłanej wiadomości dołącza serwer, jak dotąd. **Przeciąganie plików**: pliki upuszczone w oknie — także na treść
-(`MailTextEditor`) — trafiają do załączników (foldery są pomijane z informacją).
+— trafiają do załączników (foldery są pomijane z informacją).
+
+**Treść z formatowaniem jak w Thunderbirdzie** (`Messages/MailRichEditor.swift`): edytor HTML w WebKit (skrypt edytora w osobnym
+świecie skryptów, treść i stopka nie uruchamiają własnych) z paskiem: pogrubienie, kursywa, podkreślenie (⌘B, ⌘I, ⌘U), przekreślenie,
+rozmiar (mały, zwykły, duży, bardzo duży) i kolor tekstu, wypunktowanie, numeracja, wcięcia (Tab / ⇧Tab w listach), wyrównanie
+(do lewej, środek, do prawej, wyjustowanie), link (⌘K — zaznaczenie albo sam adres; „mavinci.pl” → https, adres e-mail → mailto)
+i „Wyczyść formatowanie”. Treść ma krój, rozmiar i odstępy jak wiadomość u odbiorcy (Arial 14 px, interlinia 1,6, białe tło, wiersze
+bez dodatkowych odstępów), a **na końcu treści jest stopka wybranej skrzynki** (`op=signature`) — tak jak w Thunderbirdzie widać od
+razu wynik; stopki nie edytuje się w oknie. Wklejanie zachowuje pogrubienia, kursywę, podkreślenia, listy, wyrównanie i linki
+(bez obcych krojów, kolorów tła i obrazów). Do wysyłki idzie HTML z odstępami zapisanymi w stylach (`html`; serwer zostawia tylko
+znaczniki i style treści — `sanitizeMailContentHtml` w `src/lib/native/messages.ts`) i zwykły tekst (`text`, sprawdzenie pustej
+treści). „Podgląd” i odbiorca widzą tę samą treść co okno — wcześniej każdy wiersz był osobnym akapitem z domyślnym odstępem.
+Zwykły tekst z innych okien (np. wiadomość z zapytania) też trafia do wiadomości jako wiersze bez dodatkowych odstępów.
 
 Faktura (`Finance/InvoiceFormParts.swift`): kolumny pozycji rozdzielone pionowymi liniami, nazwa pozycji od lewej (ze spacjami).
 
@@ -256,6 +270,90 @@ Karta produktu → „Podstawowe informacje” → „Także w kategoriach event
 kategoriach — np. Fotolustro w „Dodatki”, „Wesele” i „EVENT” — zamiast kopii. Filtry kategorii na liście produktów, w kreatorze
 oferty i w edytorze cennika (oraz „Uzupełnij z katalogu”) biorą kategorię główną i dodatkowe (`categoryIds` z serwera; starszy
 serwer — sama główna). Przed migracją pola nie ma i nic się nie zmienia.
+
+## Zdjęcie produktu z Dysku i WebP w ofertach
+
+Karta produktu → „Edytuj grafikę” (`ProductImageSheet`) → „Z Dysku…” (`Materials/MaterialPhotoPicker.swift`): marka, foldery jak
+w Dysku (start — „Zdjęcia”), wyszukiwanie, miniatury; tylko JPG, PNG i WebP. Oryginał zostaje w Dysku, a przy zapisie serwer
+(`op=imageFromMaterial`, `src/lib/native/products.ts`) robi z niego lekką wersję WebP (do 1800 px, orientacja jak w przeglądarce)
+w magazynie zdjęć produktów: `assets/<produkt>/material-<plik>-v<wersja>.webp` — ścieżka wskazuje plik i wersję treści
+(`src/lib/CRM/Offers/productImageSource.ts`), ta sama wersja drugi raz się nie zapisuje. Pod zdjęciem na karcie (`ProductHeroSection`)
+„Z Dysku: Marka / Zdjęcia / … / plik.jpg”, a gdy w Dysku podmieniono treść pliku — „Zaktualizuj z Dysku” (kadr i opis bez zmian).
+PDF oferty nie może zawierać WebP, więc przy generowaniu zdjęcia WebP (także wgrane wcześniej), GIF, AVIF i BMP zamieniają się
+w JPEG, a z przezroczystością — w PNG (`src/lib/images/imageConvert.server.ts`); wcześniej takie zdjęcia znikały z PDF.
+
+## Zdjęcia produktów, wariantów, pakietów i broszur zawsze w WebP
+
+Wszystko, co trafia do magazynu zdjęć produktów (`offer-product-pages`), serwer zapisuje jako lekkie WebP (`src/lib/native/productImages.ts`
+— `storeOfferWebp`, `materialWebp`): zdjęcie główne (`op=image`, do 1800 px), wariant/element (`variantsSave` → `image.data` albo
+`image.materialId`, 1800 px), pakiet (`packagesSave` → `images[].data` albo `images[].materialId`, 1400 px) i własne zdjęcie broszury
+(`/brochures op=imageUpload`, 2200 px). Mac zmniejsza plik z komputera do 1800 px w jakości 0,92 (`ProductImageEncoder.forWebP`), żeby
+nie tracić jakości drugi raz; CRM wysyła plik przez ten sam serwer (`productImageUpload`, `brochureImageUpload` w `materialsApi.ts`).
+„Z Dysku…” jest też w oknie wariantu (`ProductVariantSheet`) i pakietu (`ProductPackageSheet`) — wspólna wersja WebP pliku z Dysku
+(`assets/<produkt>/material-<plik>-v<wersja>.webp`) nie jest usuwana przy wycofaniu zapisu, bo może jej używać inne zdjęcie produktu.
+
+Katalog (`ProductsView`) pokazuje osobom, które mogą zmieniać produkty, pasek „W katalogu jest N zdjęć w formacie JPG/PNG” z przyciskiem
+„Zamień na WebP” (`ProductsStore.convertImages`, `op=imagesPending` i porcje `op=imagesConvert` po 4 zdjęcia): nowy plik WebP obok
+starego (ta sama nazwa, a zdjęcie spoza folderu produktu — kopia w folderze produktu), nowa ścieżka w produkcie, wariancie lub pakiecie
+i przeniesienie kadrów (`offer_image_crops` są zapisane po ścieżce). Stare pliki zostają w magazynie (wcześniejsze broszury). Zdjęcia,
+których nie udało się zamienić, są wypisane pod paskiem. CRM — ten sam pasek w katalogu (`ProductImagesWebpBanner`).
+
+## Duplikowanie produktu i powrót do katalogu
+
+„Duplikuj…” w menu produktu w katalogu (prawy klik), przycisk „Duplikuj” na pasku katalogu (zaznaczony produkt) i w menu „…” karty
+produktu (`ProductsStore.duplicate`, `op=duplicate`, `src/lib/native/productDuplicate.ts`): po potwierdzeniu powstaje nowy produkt
+„Nazwa (kopia)” z nowym identyfikatorem i kopią całej karty — warianty (nowe identyfikatory, także w pakietach, tekstach EN
+i konfiguracjach), pakiety, dodatki, wymagania, klauzule, powiązane usługi, tagi, sprzęt i obsada produktu i wariantów, Mavinci LIVE,
+przygotowanie i zamówienia, ceny w cennikach sezonów (bez archiwalnych), zdjęcia (kopie plików w folderze nowego produktu) z kadrami.
+Kopia jest nieaktywna i od razu otwiera się jej karta. Bez uprawnień do Mavinci LIVE, przygotowania lub cenników ta część jest
+pomijana (komunikat mówi, której zabrakło); błąd w części podstawowej usuwa kopię i skopiowane pliki. Ceny sprzedawców nie są kopiowane.
+CRM — ikona „Duplikuj” przy produkcie w katalogu i „Duplikuj” na karcie produktu (`useDuplicateProduct`).
+
+Na karcie produktu powrót do katalogu to wyraźny przycisk „Katalog produktów” na początku paska (duży, z ramką) i skrót ⌘[.
+
+## Opiekun nowego zapytania — osoba dodająca
+
+Zapytanie dodane ręcznie (okno „Nowe zapytanie” w lejku, kalendarzu i karcie kontaktu; w CRM i w telefonie także) ma od razu
+opiekuna — osobę, która je dodaje, jeśli prowadzi zapytania (administrator, `inquiries_assign`, `inquiries_manage`,
+`inquiries_manage_own`, `inquiries_manage_all`). Ustawia to baza (`prepare_inquiry_sales_automation`, migracja
+`20261130110000_inquiry_creator_owner.sql`), więc dotyczy też zapytań z wiadomości, przetargów i karty klienta; osoba, która sama
+zostaje opiekunem, nie dostaje powiadomienia o przypisaniu. W oknie (`NewInquiryForm`) lista „Opiekun” zaczyna się od „Ja” — domyślnie
+(`NewInquiryModel.creatorOwns`), bez pozycji „Wspólna kolejka”; przy przydziale można wybrać inną osobę. Pod listą — opis, kto
+zostanie opiekunem; bez prawa prowadzenia zapytań: „Zapytanie trafi do wspólnej kolejki „Nieprzypisane”…”. Po zapisie lejek
+przechodzi do „Moje” („Zapytanie zostało dodane i przypisane do Ciebie”). Do wspólnej puli zapytanie oddaje się w karcie zapytania.
+CRM — opis w oknie i ten sam komunikat (`src/lib/CRM/inquiries/inquiryCreatorOwner.ts`).
+
+## Telefon klienta z kierunkowym
+
+„Telefon klienta” w informacjach podstawowych oferty pokazuje numer z kierunkowym („+48 510 233 670”, stacjonarny „+48 22 123 45 67”)
+— także numer zapisany wcześniej jako same cyfry (`formatPhone`, `src/lib/CRM/client/phoneFormat.ts`; serwer formatuje `contactPhone`).
+Nowy kontakt (`createEntity`, CRM `/crm/contacts/new`) zapisuje telefony z kierunkowym zamiast samych cyfr (wcześniej „+48 510 233 670”
+zapisywał się jako „48510233670”), a duplikat kontaktu rozpoznaje po numerze w każdym zapisie. Migracja
+`20261130111000_contact_phone_plus.sql` poprawia zapisane tak numery w bazie. CRM — wiersz telefonu z ikoną, wyrównany z resztą.
+
+## Dysk → Materiały: link do pobrania („Udostępnij link”)
+
+Folder (z podfolderami — „na żywo”, pliki dodane później też są do pobrania), album albo zaznaczone pliki można udostępnić
+osobie spoza firmy linkiem ważnym 1, 3, 7, 14 albo 30 dni — np. zdjęcia z fotobudki dla pary młodej zamiast WeTransfer.
+„Udostępnij link…” jest w menu prawym przyciskiem (plik, folder, kilka zaznaczonych, puste miejsce w folderze — „Udostępnij link
+do „Folder”…”), w czynnościach zaznaczenia i w albumie („Udostępnij album”); „Linki” w nagłówku — lista linków marki
+(`MaterialSharing.swift`: `MaterialShareSheet`, `MaterialSharesSheet`). W oknie: tytuł i wiadomość na stronie, ważność, dostęp —
+„Każdy, kto ma link” albo „Po podaniu e-maila i hasła” (adresy odbiorców; puste hasło — serwer generuje bezpieczne, np.
+„Kx7pm-2Qa9T”). Po zapisie: link, hasło (pokazane tylko raz — w bazie jest skrót) i gotowa wiadomość dla odbiorcy („Kopiuj
+wiadomość”, „Wyślij e-mailem”). Na liście: kopiuj link i wiadomość, otwórz stronę, przedłuż (od teraz o 1–30 dni; wyłączony
+lub wygasły — „Włącz ponownie”), zmień (tytuł, wiadomość, dostęp, adresy), nowe hasło, wyłącz, usuń; otwarcia, pobrania i adresy,
+którymi otwarto link z hasłem. Linki tworzy „Materiały — zarządzanie” marki (administrator).
+
+Odbiorca otwiera `https://mavinci.pl/pobierz/<token>` — stronę w barwach marki z księgi znaku (logo, kolor, font nagłówków, bez menu
+strony i Google Analytics, poza wyszukiwarkami): miniatury w częściach (folder, podfoldery, album), podgląd na całym ekranie
+(strzałki, Esc), pobieranie pojedynczo i „Pobierz wszystkie (ZIP)” — archiwum składane w locie przez serwer (pliki strumieniem
+z magazynu, bez kompresji, do 4 GB; większe — „Pobierz folder (ZIP)” w częściach albo pojedynczo). Link z hasłem — najpierw e-mail
+z listy i hasło (ciasteczko sesji do końca ważności, najwyżej 7 dni; po 8 błędnych próbach z jednego adresu albo 30 łącznie — 15 minut
+przerwy). Wygasły albo wyłączony link pokazuje informację z kontaktem do firmy.
+Serwer: `src/lib/materials/materialShares.server.ts` (zarządzanie, `op=shares|shareCreate|shareUpdate|shareDelete`),
+`materialSharePublic.server.ts` i `materialShareContents.server.ts` (strona i pliki), `zipStream.ts` (ZIP), trasy
+`/bridge/public/material-share/{unlock,file,zip}`, strona `src/app/(share)/pobierz/[token]`. Migracja `20261130120000_material_share_links.sql`.
+CRM — `MaterialShareDialog`, `MaterialSharesPanel`; telefon — `MaterialShareModal`, `MaterialSharesModal` (wiadomość przez „Udostępnij…”).
 
 ## Broszura z cennikiem sezonu (oferta weselna, etap 3)
 
@@ -671,7 +769,7 @@ Serwer: `src/lib/native/inquiryCreate.ts` i `/bridge/native/v1/inquiries` (`GET 
 2. **Klient** — wyszukiwanie w pełnej liście (kopia Kontaktów na Macu; bez dostępu do Kontaktów — pełna lista z serwera): każde słowo w nazwie, e-mailu, stanowisku, mieście i nazwach powiązanych organizacji, telefon także wpisany ze spacjami i bez kierunkowego, bez polskich znaków („lodz”). Po wyborze **organizacji** — jej osoby (główny kontakt i osoby decyzyjne najpierw, filtr przy wielu osobach) z wyborem jednym kliknięciem, „Dodaj osobę do …”, „Bez osoby kontaktowej”; po wyborze **osoby** — jej organizacja (jedna albo główna od razu, kilka — „Pracuje w” z wyborem). Telefon i e-mail z wybranej osoby (wpisane ręcznie zostają), „Zmień klienta”. Zapis: osoba w `client_text`, organizacja w `client_company`, oba identyfikatory.
 3. **Dodaj klienta** — formularze Kontaktów w oknie (organizacja, osoba kontaktowa, osoba prywatna) wypełnione z wpisanej frazy, telefonu i e-maila; nowy rekord jest od razu wybrany (duplikat — „Użyj istniejącego kontaktu”).
 4. **Podpowiedzi** — rozpoznanie kontaktu po wpisanym telefonie lub e-mailu („Wybierz”), ostrzeżenie, że organizacja bez osoby z telefonem/e-mailem utworzy kontakt o nazwie organizacji, otwarte zapytania tego klienta z lejka (osoba, organizacja, e-mail, telefon) z „Otwórz”, podgląd wartości szacunkowej z budżetu.
-5. **Prowadzenie** — opiekun od razu: wspólna kolejka, „Ja” (przejmowanie lub przydział — zapamiętywane), osoba z listy „Osoba odpowiedzialna” (przydział); „Rozmowa z klientem już się odbyła” (domyślnie przy źródle Telefon i Rozmowa / spotkanie) — etap „Kontakt podjęty” z datą kontaktu, bez przypomnienia o pierwszym kontakcie; „Następne działanie” z przyciskami Za 2 godz., Jutro 10:00, Za 3 dni, Za tydzień (bez terminu — automatycznie jak dotąd). Po zapisie komunikat z opiekunem (także z przydziału automatycznego), lejek przełącza zakres na ten z nowym zapytaniem; opcja „Po zapisie otwórz kartę zapytania”.
+5. **Prowadzenie** — opiekun od razu: „Ja” (osoba dodająca, gdy prowadzi zapytania — zob. „Opiekun nowego zapytania”), osoba z listy „Osoba odpowiedzialna” (przydział); „Rozmowa z klientem już się odbyła” (domyślnie przy źródle Telefon i Rozmowa / spotkanie) — etap „Kontakt podjęty” z datą kontaktu, bez przypomnienia o pierwszym kontakcie; „Następne działanie” z przyciskami Za 2 godz., Jutro 10:00, Za 3 dni, Za tydzień (bez terminu — automatycznie jak dotąd). Po zapisie komunikat z opiekunem (także z przydziału automatycznego), lejek przełącza zakres na ten z nowym zapytaniem; opcja „Po zapisie otwórz kartę zapytania”.
 
 Serwer: `newSetup` zwraca pełne listy stronami (organizacje z e-mailem, telefonem i miastem, osoby ze stanowiskiem, obecne powiązania), `create` przyjmuje `clientCompany`, `ownerId` (siebie — przejmowanie lub przydział, inną osobę — przydział w zakresie zespołu), `contacted` i `nextActionAt`, zwraca opiekuna po zapisie. Starszy serwer — okno wykonuje „Przejmij” i „Kontakt wykonany” osobno albo informuje, co dokończyć w lejku. Bez migracji. Wymaga wdrożenia CRM.
 
@@ -964,7 +1062,16 @@ Pozycja **„Dysk”** (dawniej „Materiały”, adres CRM `/crm/materials` bez
 
 Serwer: `GET /bridge/native/v1/drive` `op=root | list&node= | download&id&mode=preview|download | sync` (z księgą znaku marek), `POST` `prepareUpload | completeUpload | cancelUpload` (`src/lib/drive/drive.server.ts`, typy `src/lib/drive/driveShared.ts`). Kod: `Sources/Mavinci/Drive/*` (ekran, kopia, księga znaku), `Materials/MaterialsView.swift` (działy Dysku w pasku, księga znaku), `Sources/MavinciFileProvider/DriveCatalog.swift` (Finder), `FileProviderExtension.swift` (wspólny punkt synchronizacji: wydarzenia, Materiały, Dysk). Bez migracji.
 
-Kod ekranu: `Sources/Mavinci/Materials/MaterialsModels.swift`, `MaterialsStore.swift` (dane, kopia na dysku, wysyłka z postępem, przeciąganie), `MaterialsView.swift`, `MaterialsSheets.swift` (wybór folderu, okno wysyłki, karta pliku, wyszukiwanie, kosz).
+Kod ekranu: `Sources/Mavinci/Materials/MaterialsModels.swift`, `MaterialsStore.swift` (dane, kopia na dysku, wysyłka z postępem, przeciąganie), `MaterialsView.swift`, `MaterialsSheets.swift` (wybór folderu, panel wysyłki, karta pliku, wyszukiwanie, kosz).
+
+**Wysyłka w tle.** Wysyłka plików na Dysk nie blokuje aplikacji: zamiast okna modalnego jest panel w prawym dolnym rogu okna
+(`MaterialsUploadPanel`, obok przycisku komunikatora) — liczba plików, postęp, bieżący plik i „Przerwij wysyłkę”, a po rozwinięciu
+lista plików z miejscem docelowym, błędami i pominiętymi duplikatami. W tym czasie można przeglądać Dysk, pracować w innych sekcjach
+i dodawać kolejne pliki — dołączają do kolejki (`MaterialsStore.enqueue`). Postęp jest w osobnym obiekcie (`MaterialsUploads`) i przychodzi
+najwyżej 4 razy na sekundę — wcześniej każda porcja wysłanych bajtów przeliczała cały widok Dysku, co przy setkach zdjęć zatrzymywało
+aplikację. Przeglądanie przeciągniętych folderów odbywa się poza wątkiem interfejsu, nowe pliki pojawiają się w otwartym folderze
+co kilka sekund, a podfoldery powstają w marce pliku (także gdy w trakcie wysyłki na ekranie otwarto inną markę). Po udanej wysyłce
+panel znika sam; z błędami albo duplikatami zostaje do „Zamknij”.
 
 ## Aktualizacja 0.22 — Finanse: Wyciągi, Uzgodnienie wyciągów i Deklaracje ZUS i podatki natywnie
 

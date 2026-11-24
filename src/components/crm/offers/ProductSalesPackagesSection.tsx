@@ -3,11 +3,12 @@ import AudiencePricingEditor from './AudiencePricingEditor';
 import ProductPackageResourcesEditor from './ProductPackageResourcesEditor';
 import ProductPackageCostsEditor, { ProductPackageCostSummary } from './ProductPackageCostsEditor';
 import { useEffect, useId, useRef, useState } from 'react';
-import { ImagePlus, Loader2, Plus, Save, Trash2, X, Eye, Pencil, GripVertical, ArrowUp, ArrowDown } from 'lucide-react';
+import { HardDrive, ImagePlus, Loader2, Plus, Save, Trash2, X, Eye, Pencil, GripVertical, ArrowUp, ArrowDown } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { supabase } from '@/lib/supabase/browser';
-import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
+import MaterialPhotoPicker, { type PickedMaterialPhoto } from '@/components/crm/materials/MaterialPhotoPicker';
+import { materialsGet, productImageFromMaterial, productImageUpload, type MaterialUrl } from '@/components/crm/materials/materialsApi';
 import { validateSalesPackages, packageExtensionLabel, packageCostLineNet, packageCostSettlementLabels, type ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
 import type { IProductVariant } from '@/app/(crm)/crm/offers/types';
 
@@ -104,7 +105,9 @@ export default function ProductSalesPackagesSection({ productId, value, enabled,
   const [pendingOrder, setPendingOrder] = useState<ProductSalesPackage[] | null>(null);
   const [imageRevision, setImageRevision] = useState(0);
   const [images, setImages] = useState<Record<string,string>>({});
-  const files = useRef(new Map<string,{file:File;url:string}>());
+  // Zdjęcia pakietów do zapisu: plik z komputera albo zdjęcie z Dysku — serwer zapisuje oba jako lekkie WebP.
+  const files = useRef(new Map<string,{file?:File;material?:PickedMaterialPhoto;url:string}>());
+  const [pickingFor, setPickingFor] = useState<string | null>(null);
   const displayed = pendingOrder ?? value;
   const visible = draft ? [...value.filter(p => p.id !== draft.id), draft] : value;
   const signature = visible.map(p => p.id + ':' + p.image_path).join('|');
@@ -131,7 +134,8 @@ export default function ProductSalesPackagesSection({ productId, value, enabled,
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = previousOverflow; };
   }, [active?.id]);
-  const clearFiles = () => { files.current.forEach(f => URL.revokeObjectURL(f.url)); files.current.clear(); };
+  const revoke = (url: string) => { if (url.startsWith('blob:')) URL.revokeObjectURL(url); };
+  const clearFiles = () => { files.current.forEach(f => revoke(f.url)); files.current.clear(); };
   useEffect(() => () => clearFiles(), []);
   const finish = () => {
     clearFiles(); setImageRevision(current => current + 1); setActive(null); setDraft(null);
@@ -152,14 +156,26 @@ export default function ProductSalesPackagesSection({ productId, value, enabled,
   const upload = async (id: string, file: File) => {
     if (textOnly || busy || submitting.current || preparingRef.current || !canEdit || !draft || productId === 'new') return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) { setError('Wybierz JPG, PNG lub WebP o wielkości do 10 MB.'); return; }
-    preparingRef.current = true; setPreparing(true); setPreparingImageId(id); setDraggingImageId(null); setError('');
-    try {
-      const optimized = await optimizeOfferImage(file, { maxWidth: 1400, maxHeight: 1400, quality: .82 });
-      const old = files.current.get(id); if (old) URL.revokeObjectURL(old.url);
-      const url = URL.createObjectURL(optimized); files.current.set(id, { file: optimized, url });
-      setImages(current => ({ ...current, [id]: url }));
-    } catch { setError('Nie udało się przygotować zdjęcia.'); }
-    finally { preparingRef.current = false; setPreparing(false); setPreparingImageId(null); }
+    setDraggingImageId(null); setError('');
+    // Plik zmniejsza i wysyła `productImageUpload` przy „Zapisz pakiet” (serwer zapisuje WebP).
+    const old = files.current.get(id); if (old) revoke(old.url);
+    const url = URL.createObjectURL(file); files.current.set(id, { file, url });
+    setImages(current => ({ ...current, [id]: url }));
+  };
+  /** Zdjęcie pakietu z Dysku: od razu miniatura, potem podgląd w pełnej rozdzielczości; lekka wersja WebP powstaje przy zapisie. */
+  const chooseMaterial = (id: string, photo: PickedMaterialPhoto) => {
+    setPickingFor(null);
+    if (textOnly || busy || submitting.current || !canEdit || !draft || productId === 'new') return;
+    const old = files.current.get(id); if (old) revoke(old.url);
+    const thumbnail = photo.file.thumbnailUrl || '';
+    files.current.set(id, { material: photo, url: thumbnail });
+    setImages(current => ({ ...current, [id]: thumbnail })); setError('');
+    materialsGet<MaterialUrl>('url', { kind: 'material', id: photo.file.id, mode: 'preview' }).then((result) => {
+      const entry = files.current.get(id);
+      if (entry?.material?.file.id !== photo.file.id || entry.url !== thumbnail) return;
+      files.current.set(id, { material: photo, url: result.url });
+      setImages(current => ({ ...current, [id]: result.url }));
+    }).catch(() => undefined);
   };
   const persist = async (remove = false) => {
     if (!active || !canEdit || busy || submitting.current || preparingRef.current || (!remove && !draft)) return;
@@ -176,18 +192,21 @@ export default function ProductSalesPackagesSection({ productId, value, enabled,
       const image = !remove && updated ? files.current.get(updated.id) : null;
       if (image && updated) {
         if (productId === 'new') throw new Error('Zapisz najpierw produkt, aby dodać zdjęcie.');
-        const ext = image.file.type === 'image/webp' ? 'webp' : image.file.type === 'image/png' ? 'png' : 'jpg';
-        const path = `assets/${productId}/packages/${updated.id}-${crypto.randomUUID()}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from('offer-product-pages').upload(path, image.file, { upsert: false, contentType: image.file.type });
-        if (uploadError) throw uploadError;
-        uploaded = path; updated.image_path = path;
+        if (image.material) {
+          // Z Dysku: lekka wersja WebP wspólna z innymi zdjęciami produktu — przy błędzie zapisu jej nie usuwamy.
+          updated.image_path = (await productImageFromMaterial(productId, image.material.file.id)).path;
+        } else if (image.file) {
+          setPreparingImageId(updated.id);
+          const { path } = await productImageUpload(productId, image.file, 'package', updated.id);
+          uploaded = path; updated.image_path = path;
+        }
       }
       await onSave(next, next.length > 0 && (enabled || (creating && value.length === 0)));
       committed = true; finish();
     } catch (failure) {
       if (uploaded && !committed) await supabase.storage.from('offer-product-pages').remove([uploaded]).catch(() => {});
       setError(failure instanceof Error ? failure.message : 'Nie udało się zapisać pakietu. Spróbuj ponownie.');
-    } finally { submitting.current = false; setSaving(false); }
+    } finally { submitting.current = false; setSaving(false); setPreparingImageId(null); }
   };
   const saveList = async (next: ProductSalesPackage[], nextEnabled: boolean) => {
     if (!canEdit || busy || submitting.current || active) return;
@@ -270,9 +289,11 @@ export default function ProductSalesPackagesSection({ productId, value, enabled,
               </span>
             </button>
           </div>
-          <p className="text-xs text-[#e5e4e2]/40">JPG, PNG lub WebP · maks. 10 MB · automatyczna kompresja</p>
+          <button type="button" disabled={textOnly||busy||!canEdit||productId==='new'} onClick={()=>setPickingFor(p.id)} className="flex items-center gap-1.5 rounded-lg bg-[#d3bb73]/10 px-2.5 py-1.5 text-xs text-[#d3bb73] disabled:opacity-40"><HardDrive className="h-3.5 w-3.5"/>Z Dysku</button>
+          {files.current.get(p.id)?.material && <p className="break-words text-xs text-[#e5e4e2]/55">Z Dysku: {files.current.get(p.id)!.material!.place} / {files.current.get(p.id)!.material!.file.name}</p>}
+          <p className="text-xs text-[#e5e4e2]/40">JPG, PNG lub WebP do 10 MB albo zdjęcie z Dysku · zapisujemy lekkie WebP</p>
           {productId==='new'?<p className="text-xs text-[#e5e4e2]/50">Zapisz produkt, aby dodać zdjęcia pakietów.</p>:<p className="text-xs text-[#e5e4e2]/40">Zdjęcie dotyczy wyłącznie tego pakietu. Zapiszesz je przyciskiem „Zapisz pakiet”.</p>}
-          {images[p.id]&&<button type="button" disabled={busy} onClick={()=>{const f=files.current.get(p.id);if(f)URL.revokeObjectURL(f.url);files.current.delete(p.id);setImages(current=>({...current,[p.id]:''}));change(p.id,{image_path:null});}} className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-red-200/80 hover:bg-white/5 disabled:opacity-40"><Trash2 className="h-3.5 w-3.5"/>Usuń zdjęcie pakietu</button>}
+          {images[p.id]&&<button type="button" disabled={busy} onClick={()=>{const f=files.current.get(p.id);if(f)revoke(f.url);files.current.delete(p.id);setImages(current=>({...current,[p.id]:''}));change(p.id,{image_path:null});}} className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs text-red-200/80 hover:bg-white/5 disabled:opacity-40"><Trash2 className="h-3.5 w-3.5"/>Usuń zdjęcie pakietu</button>}
           <PackageElementsPicker disabled={textOnly || busy || !canEdit} elements={elements} selectedIds={p.element_ids} packageName={p.name || 'Nowy pakiet'} onChange={ids => change(p.id, { element_ids: ids })} />
         </div>
           <div className="min-w-0 space-y-4">
@@ -293,5 +314,6 @@ export default function ProductSalesPackagesSection({ productId, value, enabled,
         </footer>
       </div>}
     </dialog>
+    {pickingFor && <MaterialPhotoPicker title="Zdjęcie pakietu z Dysku" onPick={photo => chooseMaterial(pickingFor, photo)} onClose={() => setPickingFor(null)} />}
   </section>;
 }

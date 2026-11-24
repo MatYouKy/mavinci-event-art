@@ -1,6 +1,8 @@
 import 'server-only';
 import type { NativeContext } from './auth';
 import { fail } from './offers';
+import { storeOfferWebp } from './productImages';
+import { BROCHURE_IMAGE_SIDE } from '@/lib/CRM/Offers/productImageSource';
 import {
   BROCHURE_LAYOUTS, BROCHURE_ORNAMENT_PLACES, BROCHURE_ORNAMENTS, BROCHURE_PRESETS, BROCHURE_SLOGANS, brochureAssetKey, brochurePalette, imageBucket, pageDefaults, pageDesign,
   parseComposer, parseDecorativePages, requiresPageImage, resolvedBenefits, type BrochureLayout,
@@ -667,23 +669,14 @@ export async function brochureImageUrls(ctx: NativeContext, body: Row) {
   return { urls: await signBrochureAssets(ctx, assets) };
 }
 
-const imageType = (bytes: Buffer) => {
-  if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return { type: 'image/jpeg', ext: 'jpg' };
-  if (bytes.length > 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return { type: 'image/png', ext: 'png' };
-  if (bytes.length > 12 && bytes.subarray(0, 4).toString('latin1') === 'RIFF' && bytes.subarray(8, 12).toString('latin1') === 'WEBP') return { type: 'image/webp', ext: 'webp' };
-  return null;
-};
-
-/** „Dodaj swoje zdjęcie” — plik zmniejszony na Macu trafia do biblioteki tej broszury (jak `BrochureImagePicker`). */
+/**
+ * „Dodaj swoje zdjęcie” — plik zmniejszony na Macu lub w CRM (`BrochureImagePicker`) trafia do biblioteki tej broszury jako lekkie
+ * WebP przygotowane na serwerze (`productImages.ts`, dłuższy bok do 2200 px).
+ */
 export async function uploadBrochureImage(ctx: NativeContext, body: Row) {
   await requireManage(ctx);
   const id = uuid(body.id, 'Nie znaleziono broszury.');
-  const bytes = Buffer.from(text(body.data), 'base64');
-  const kind = imageType(bytes);
-  if (!kind || bytes.length > 10 * 1024 * 1024) fail('Wybierz JPG, PNG lub WebP do 10 MB.');
-  const path = `assets/brochures/${id}/${crypto.randomUUID()}.${kind!.ext}`;
-  const { error } = await ctx.supabase.storage.from(PRODUCT_BUCKET).upload(path, bytes, { contentType: kind!.type });
-  if (error) fail(error.message || 'Nie udało się wgrać zdjęcia. Spróbuj ponownie.');
+  const path = await storeOfferWebp(ctx, text(body.data), `assets/brochures/${id}`, '', BROCHURE_IMAGE_SIDE, 0.84);
   const { data } = await ctx.supabase.storage.from(PRODUCT_BUCKET).createSignedUrl(path, 3600);
   return {
     path, bucket: PRODUCT_BUCKET, url: data?.signedUrl || null,

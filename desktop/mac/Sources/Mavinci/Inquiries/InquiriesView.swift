@@ -153,7 +153,7 @@ struct InquiryActions {
             ToolbarItemGroup(placement: .primaryAction) {
                 if store.access?.canCreate == true {
                     Button { addingInquiry = true } label: { Label("Dodaj zapytanie", systemImage: "plus") }
-                        .help("Nowe zapytanie trafia do wspólnej kolejki")
+                        .help("Nowe zapytanie — opiekunem zostaje osoba, która je dodaje (gdy prowadzi zapytania)")
                 }
                 if store.access?.isAdmin == true {
                     Button { slaSettings = true } label: { Label("SLA", systemImage: "gearshape") }

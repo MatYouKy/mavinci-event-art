@@ -120,7 +120,7 @@ export function OfferPage({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { employee, isAdmin } = useCurrentEmployee();
+  const { employee, isAdmin, hasScope } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
 
   const [catalogData, setCatalogData] = useState({ products, categories });
@@ -392,6 +392,7 @@ export function OfferPage({
       {activeTab === 'catalog' && catalogError && <button className="p-4 text-red-400" onClick={() => setCatalogAttempt(value => value + 1)}>{catalogError}</button>}
       {activeTab === 'catalog' && !catalogLoading && !catalogError && (
         <CatalogTab
+          canEdit={isAdmin || hasScope('offers_manage')}
           products={filteredProducts}
           categories={catalogData.categories}
           productSearch={productSearch}

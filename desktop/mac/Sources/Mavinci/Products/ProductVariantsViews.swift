@@ -118,6 +118,9 @@ import UniformTypeIdentifiers
     @State private var removeImage = false
     @State private var stored: NSImage?
     @State private var importing = false
+    /// Zdjęcie wybrane z Dysku — serwer zapisuje jego lekką wersję WebP przy zapisie elementu.
+    @State private var material: PickedMaterialPhoto?
+    @State private var pickingMaterial = false
     @State private var problem: String?
     @State private var saving = false
     /// „Opis AI” (część C2b): okno z wytycznymi; wytyczne zostają do ponownego generowania.
@@ -135,7 +138,7 @@ import UniformTypeIdentifiers
 
     private var existing: Bool { extras.variants.contains { $0.id == draft.id } }
     private var noun: String { extras.elementMode ? "element" : "wariant" }
-    private var preview: NSImage? { image ?? (removeImage ? nil : stored) }
+    private var preview: NSImage? { image ?? (removeImage || material != nil ? nil : stored) }
     private var multiplier: Double { 1 + extras.vatRate / 100 }
     private func round2(_ value: Double) -> Double { ((value + .ulpOfOne) * 100).rounded() / 100 }
 
@@ -165,7 +168,7 @@ import UniformTypeIdentifiers
                                     VStack(spacing: 4) {
                                         Image(systemName: "photo").font(.title2)
                                         Text("Przeciągnij zdjęcie lub kliknij „Wybierz”").font(.caption)
-                                        Text("PNG, JPG lub WebP, maks. 10 MB").font(.caption2)
+                                        Text("PNG, JPG lub WebP, maks. 10 MB, albo z Dysku").font(.caption2)
                                     }
                                     .foregroundStyle(.secondary)
                                 }
@@ -177,13 +180,18 @@ import UniformTypeIdentifiers
                                 return true
                             }
                         HStack {
-                            Button(preview == nil ? "Wybierz…" : "Zmień…") { importing = true }
-                            if preview != nil {
-                                Button("Usuń", role: .destructive) { image = nil; imageData = nil; removeImage = true }
+                            Button(preview == nil && material == nil ? "Wybierz…" : "Zmień…") { importing = true }
+                            Button { pickingMaterial = true } label: { Label("Z Dysku…", systemImage: "externaldrive") }
+                            if preview != nil || material != nil {
+                                Button("Usuń", role: .destructive) { image = nil; imageData = nil; material = nil; removeImage = true }
                             }
                         }
                         .controlSize(.small)
-                        Text("Proporcje zdjęcia jak na karcie elementu w PDF (118:100). Podgląd pokazuje centralny kadr — brzegi szerszego lub wyższego zdjęcia zostaną przycięte.")
+                        if let material {
+                            Text("Z Dysku: \(material.place) / \(material.file.name)").font(.caption2).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Text("Proporcje zdjęcia jak na karcie elementu w PDF (118:100). Podgląd pokazuje centralny kadr — brzegi szerszego lub wyższego zdjęcia zostaną przycięte. Zdjęcie zapisujemy jako lekkie WebP (z Dysku oryginał zostaje w Dysku).")
                             .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         TextField("", text: $draft.imageAlt, prompt: Text("Opis zdjęcia dla dostępności")).textFieldStyle(.roundedBorder)
                     }
@@ -262,6 +270,9 @@ import UniformTypeIdentifiers
         .fileImporter(isPresented: $importing, allowedContentTypes: [.jpeg, .png, .webP]) { result in
             if case .success(let url) = result { choose(url) }
         }
+        .sheet(isPresented: $pickingMaterial) {
+            MaterialPhotoPicker(title: extras.elementMode ? "Zdjęcie elementu z Dysku" : "Zdjęcie wariantu z Dysku") { photo in choose(photo) }
+        }
         .sheet(isPresented: $aiOpen) {
             ProductVariantAISheet(store: store, productID: productID, variant: currentVariant, instructions: $aiInstructions) { copy in
                 draft.shortDescription = copy.shortDescription
@@ -283,14 +294,31 @@ import UniformTypeIdentifiers
         let type = UTType(filenameExtension: url.pathExtension)
         let allowed = [UTType.jpeg, .png, .webP].contains { type?.conforms(to: $0) == true }
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        guard allowed, size > 0, size <= 10 * 1024 * 1024, let encoded = ProductImageEncoder.encode(url) else {
+        guard allowed, size > 0, size <= 10 * 1024 * 1024, let encoded = ProductImageEncoder.encode(url, quality: ProductImageEncoder.forWebP) else {
             problem = "Wybierz zdjęcie JPG, PNG lub WebP o wielkości do 10 MB."
             return
         }
         imageData = encoded.data
         image = encoded.image
+        material = nil
         removeImage = false
         problem = nil
+    }
+
+    /// Zdjęcie z Dysku: od razu miniatura, potem podgląd w pełnej rozdzielczości; lekka wersja WebP powstaje przy zapisie.
+    private func choose(_ photo: PickedMaterialPhoto) {
+        guard !saving else { return }
+        material = photo
+        imageData = nil
+        image = MaterialsThumbnails.shared.cached(photo.file)
+        removeImage = false
+        problem = nil
+        Task {
+            if image == nil, let thumbnail = await MaterialsThumbnails.shared.image(photo.file), material?.file.id == photo.file.id, image == nil {
+                image = thumbnail
+            }
+            if let full = await store.materialPreview(photo.file), material?.file.id == photo.file.id { image = full }
+        }
     }
 
     private func save() async {
@@ -307,17 +335,20 @@ import UniformTypeIdentifiers
         var list = existing ? extras.variants.map { $0.id == next.id ? next : $0 } : extras.variants + [next]
         if next.recommended { list = list.map { item in var copy = item; copy.recommended = item.id == next.id; return copy } }
         var fields: [String: JSONValue] = ["variants": .array(list.map(\.json))]
-        if imageData != nil || removeImage {
+        if imageData != nil || removeImage || material != nil {
             var upload: [String: JSONValue] = ["variantId": .string(next.id)]
-            if let imageData { upload["data"] = .string(imageData.base64EncodedString()) }
+            if let material { upload["materialId"] = .string(material.file.id) }
+            else if let imageData { upload["data"] = .string(imageData.base64EncodedString()) }
             if removeImage { upload["remove"] = .bool(true) }
             fields["image"] = .object(upload)
         }
         problem = nil
         saving = true
         defer { saving = false }
-        if await store.changeExtras(productID, "variantsSave", fields, success: existing ? "Zapisano zmiany elementów produktu" : "Dodano \(noun)") {
-            if imageData != nil, let image, let path = store.extras[productID]?.variants.first(where: { $0.id == next.id })?.imagePath {
+        let pending = material != nil ? "Przygotowanie zdjęcia z Dysku…" : imageData != nil ? "Zapisywanie zdjęcia…" : "Zapisywanie…"
+        if await store.changeExtras(productID, "variantsSave", fields, pending: pending,
+                                    success: existing ? "Zapisano zmiany elementów produktu" : "Dodano \(noun)", timeout: 150) {
+            if imageData != nil || material != nil, let image, let path = store.extras[productID]?.variants.first(where: { $0.id == next.id })?.imagePath {
                 ProductImageCache.shared.store(image, path: path)
             }
             dismiss()

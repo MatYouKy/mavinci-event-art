@@ -1,8 +1,10 @@
 import SwiftUI
 
 // MARK: Katalog produktów (`/crm/offers?tab=catalog`, `CatalogTab.tsx`) — wyszukiwanie po nazwie, opisie i tagach, kategoria,
+// „Duplikuj…” w menu produktu (nowy, nieaktywny produkt z kopią karty — `ProductsStore.duplicate`),
 // widok kafelków / listy / tabeli, gotowość do oferty (liczniki, filtr „Do uzupełnienia” / „Gotowe”, braki według grup)
-// i nowy produkt. Dwuklik otwiera kartę produktu (`ProductCardView`).
+// i nowy produkt. Dwuklik otwiera kartę produktu (`ProductCardView`). Pasek „Zamień na WebP” — starsze zdjęcia JPG/PNG produktów,
+// wariantów i pakietów (`ProductImagesWebpBanner.tsx` w CRM).
 
 @MainActor struct ProductsView: View {
     @ObservedObject var store: ProductsStore
@@ -15,6 +17,7 @@ import SwiftUI
     @State private var group: String?
     @State private var creating = false
     @State private var deleting: ProductListItem?
+    @State private var duplicating: ProductListItem?
     @State private var sortOrder = [KeyPathComparator(\ProductListItem.order)]
 
     var body: some View {
@@ -55,6 +58,7 @@ import SwiftUI
             toolbar
             if let problem = store.loadError { MessageBar(text: problem, warning: true) { store.loadError = nil } }
             if !store.products.isEmpty { readinessBar }
+            if store.canEdit && (store.imagesPending > 0 || store.imagesProgress != nil || !store.imagesProblems.isEmpty) { imagesBar }
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle("Katalog produktów")
@@ -68,8 +72,19 @@ import SwiftUI
         } message: {
             Text("Ta operacja jest nieodwracalna.")
         }
+        .confirmationDialog("Utworzyć „\(ProductText.duplicateName(duplicating?.name ?? ""))”?",
+                            isPresented: Binding(get: { duplicating != nil }, set: { if !$0 { duplicating = nil } }), titleVisibility: .visible) {
+            Button("Duplikuj") {
+                if let item = duplicating { Task { await store.duplicate(item.id) } }
+                duplicating = nil
+            }
+            Button("Anuluj", role: .cancel) { duplicating = nil }
+        } message: {
+            Text(ProductText.duplicateNote)
+        }
         .task(id: state.employee?.id) {
             await store.backgroundSync()
+            await store.loadImagesPending()
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
                 await store.backgroundSync()
@@ -96,6 +111,9 @@ import SwiftUI
             if store.syncing { ProgressView().controlSize(.small) }
             Button { state.openHref("/crm/offers") } label: { Label("Oferty", systemImage: "doc.text") }
             if store.canEdit {
+                Button { duplicating = store.product(store.selectedID) } label: { Label("Duplikuj", systemImage: "plus.square.on.square") }
+                    .disabled(store.product(store.selectedID) == nil || !state.canWrite)
+                    .help("Duplikuj zaznaczony produkt — nowy, nieaktywny produkt z kopią całej karty")
                 Button { creating = true } label: { Label("Nowy produkt", systemImage: "plus") }
                     .buttonStyle(.borderedProminent)
                     .disabled(!state.canWrite)
@@ -139,6 +157,40 @@ import SwiftUI
                 .help("Produkty z brakami: \(item.label.lowercased())")
             }
             Spacer()
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 14).padding(.vertical, 7)
+        .background(theme.card.opacity(0.35))
+    }
+
+    private var imagesBar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: "photo.on.rectangle.angled").foregroundStyle(.secondary)
+                if let progress = store.imagesProgress {
+                    Text("Zamieniam zdjęcia na WebP… \(progress.done) z \(progress.total)").font(.callout).monospacedDigit()
+                    ProgressView(value: Double(min(progress.done, progress.total)), total: Double(max(progress.total, 1))).frame(maxWidth: 240)
+                } else if store.imagesPending > 0 {
+                    Text("W katalogu \(ProductText.photosCount(store.imagesPending)) w formacie JPG/PNG. Zamień je na lekkie WebP — oferty, broszury i strona wczytają się szybciej. Kadry zostaną bez zmian.")
+                        .font(.callout).fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Wszystkie pozostałe zdjęcia są już w WebP.").font(.callout)
+                }
+                Spacer()
+                if store.imagesPending > 0 || store.imagesProgress != nil {
+                    Button(store.imagesProgress == nil ? "Zamień na WebP" : "Zamieniam…") { Task { await store.convertImages() } }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(store.imagesProgress != nil || !state.canWrite)
+                }
+            }
+            if store.imagesProgress == nil && !store.imagesProblems.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Nie udało się zamienić (\(store.imagesProblems.count)) — otwórz produkt i wgraj zdjęcie ponownie:")
+                    ForEach(store.imagesProblems.prefix(12), id: \.key) { item in Text("• \(item.label): \(item.error)") }
+                    if store.imagesProblems.count > 12 { Text("… i \(store.imagesProblems.count - 12) więcej") }
+                }
+                .font(.caption).foregroundStyle(.red).textSelection(.enabled)
+            }
         }
         .controlSize(.small)
         .padding(.horizontal, 14).padding(.vertical, 7)
@@ -244,6 +296,8 @@ import SwiftUI
         Button("Otwórz kartę produktu", systemImage: "doc.text.magnifyingglass") { store.openedID = item.id }
         Button("Otwórz w CRM", systemImage: "safari") { state.openCRM("/crm/offers/products/\(item.id)") }
         if store.canEdit {
+            Button("Duplikuj…", systemImage: "plus.square.on.square") { duplicating = item }
+                .disabled(!state.canWrite)
             Divider()
             Button("Usuń…", systemImage: "trash", role: .destructive) { deleting = item }
         }

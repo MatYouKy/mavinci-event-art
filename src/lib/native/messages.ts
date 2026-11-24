@@ -6,7 +6,9 @@ import type { MessageDetails } from '@/lib/CRM/messages/messagesQueries';
 /*
  * Wiadomości w aplikacji na Maca — HTML podglądu i wysyłki budowany na serwerze tymi samymi regułami co w przeglądarce
  * (`EmailHtmlPreview`, `ComposeEmailModal`, `UnifiedEmailComposer`): usunięte aktywne elementy, obrazy `cid:` historycznej
- * stopki, cytat odpowiedzi „Dnia …, użytkownik … napisał:”, stopka i szablon firmy wybranej skrzynki.
+ * stopki, cytat odpowiedzi „Dnia …, użytkownik … napisał:”, stopka i szablon firmy wybranej skrzynki. Treść z edytora na Macu
+ * (formatowanie jak w Thunderbirdzie) przychodzi jako HTML z odstępami zapisanymi w stylach (`sanitizeMailContentHtml` zostawia
+ * tylko znaczniki i style treści), więc odbiorca widzi to samo co okno treści.
  */
 
 export const escapeHtml = (value: string) =>
@@ -122,16 +124,125 @@ export const replyQuoteHtml = (details: MessageDetails) => {
     </div>`;
 };
 
-/** Tekst z edytora aplikacji → akapity jak z edytora CRM (pusta linia = `<p><br></p>`, zachowane wielokrotne spacje). */
+/**
+ * Zwykły tekst (np. wiadomość z zapytania w aplikacji) → wiersze bez dodatkowych odstępów: każdy wiersz to akapit z `margin:0`
+ * (pusta linia = pusty wiersz), więc wiadomość wygląda jak pole treści — bez domyślnych marginesów akapitów w programach poczty.
+ */
 export const plainTextToEmailHtml = (text: string) =>
   text
     .replace(/\r\n?/g, '\n')
     .split('\n')
     .map((line) => {
-      const escaped = escapeHtml(line.replace(/\t/g, '    ')).replace(/ {2,}/g, (spaces) => ' '.repeat(spaces.length - 1) + ' ');
-      return `<p>${escaped || '<br>'}</p>`;
+      const escaped = escapeHtml(line.replace(/\t/g, '    ')).replace(/ {2,}/g, (spaces) => '&nbsp;'.repeat(spaces.length - 1) + ' ');
+      return `<p style="margin:0">${escaped || '<br>'}</p>`;
     })
     .join('');
+
+// MARK: Treść HTML z edytora na Macu
+
+const MAIL_TAGS = new Set(['p', 'div', 'br', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del', 'a', 'ul', 'ol', 'li', 'blockquote',
+  'span', 'font', 'sub', 'sup', 'h1', 'h2', 'h3', 'hr']);
+const MAIL_VOID = new Set(['br', 'hr']);
+const MAIL_DROP_WITH_CONTENT = new Set(['script', 'style', 'iframe', 'object', 'embed', 'template', 'noscript', 'svg', 'math', 'head',
+  'title', 'textarea', 'select', 'button', 'video', 'audio', 'canvas']);
+const LENGTH = String.raw`(?:0|-?\d{1,4}(?:\.\d{1,3})?(?:px|em|rem|pt|%))`;
+const MAIL_STYLES: Record<string, RegExp> = {
+  'text-align': /^(?:left|right|center|justify|start|end)$/i,
+  margin: new RegExp(String.raw`^(?:(?:${LENGTH}|auto)\s*){1,4}$`, 'i'),
+  'margin-top': new RegExp(`^${LENGTH}$`, 'i'),
+  'margin-right': new RegExp(`^${LENGTH}$`, 'i'),
+  'margin-bottom': new RegExp(`^${LENGTH}$`, 'i'),
+  'margin-left': new RegExp(`^${LENGTH}$`, 'i'),
+  padding: new RegExp(String.raw`^(?:${LENGTH}\s*){1,4}$`, 'i'),
+  'padding-left': new RegExp(`^${LENGTH}$`, 'i'),
+  color: /^(?:#[\da-f]{3,8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*(?:0|1|0?\.\d+)\s*)?\)|[a-z]{3,20})$/i,
+  'font-weight': /^(?:bold|bolder|normal|[1-9]00)$/i,
+  'font-style': /^(?:italic|normal|oblique)$/i,
+  'text-decoration': /^(?:none|underline|line-through)(?:\s+(?:underline|line-through))?$/i,
+  'text-decoration-line': /^(?:none|underline|line-through)(?:\s+(?:underline|line-through))?$/i,
+  'font-size': /^(?:\d{1,3}(?:\.\d{1,2})?(?:px|pt|em|rem|%)|x-small|small|medium|large|x-large|xx-large)$/i,
+  border: /^none$/i,
+  'list-style-type': /^(?:disc|circle|square|decimal|lower-alpha|upper-alpha|lower-roman|upper-roman|none)$/i,
+};
+const escapeMailText = (value: string) =>
+  value.replace(/&(?!(?:[a-z]+|#\d+|#x[\da-f]+);)/gi, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const escapeMailAttribute = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const decodeAttribute = (value: string) => value.replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
+/** Tylko dozwolone właściwości stylu z bezpiecznymi wartościami (bez `url()`, wyrażeń i pozycjonowania). */
+const mailStyle = (raw: string) => raw.split(';').map((rule) => {
+  const colon = rule.indexOf(':');
+  if (colon < 1) return '';
+  const name = rule.slice(0, colon).trim().toLowerCase();
+  const value = rule.slice(colon + 1).replace(/!important/gi, '').trim();
+  const pattern = MAIL_STYLES[name];
+  return pattern && value.length <= 80 && pattern.test(value) ? `${name}: ${value}` : '';
+}).filter(Boolean).join('; ');
+
+/**
+ * Treść wiadomości z edytora na Macu: tylko znaczniki formatowania (akapity, listy, wcięcia, pogrubienie, kursywa, podkreślenie,
+ * przekreślenie, linki, kolor i rozmiar tekstu) i bezpieczne style; skrypty, style, ramki, obrazy i formularze są usuwane,
+ * niezamknięte znaczniki — domykane. Linki tylko `http(s)`, `mailto` i `tel`.
+ */
+export function sanitizeMailContentHtml(input: string) {
+  const html = String(input || '');
+  const tokens = /<!--[\s\S]*?-->|<\/?([a-zA-Z][a-zA-Z0-9]*)((?:\s+[^\s>"'=/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'>]+))?)*)\s*\/?>/g;
+  let output = '';
+  let cursor = 0;
+  let dropping: string | null = null;
+  const open: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = tokens.exec(html))) {
+    if (!dropping) output += escapeMailText(html.slice(cursor, match.index));
+    cursor = match.index + match[0].length;
+    if (match[0].startsWith('<!--')) continue;
+    const tag = match[1].toLowerCase();
+    const closing = match[0].startsWith('</');
+    if (dropping) {
+      if (closing && tag === dropping) dropping = null;
+      continue;
+    }
+    if (MAIL_DROP_WITH_CONTENT.has(tag)) {
+      if (!closing && !match[0].endsWith('/>')) dropping = tag;
+      continue;
+    }
+    if (!MAIL_TAGS.has(tag)) continue;
+    if (closing) {
+      const index = open.lastIndexOf(tag);
+      if (index === -1) continue;
+      while (open.length > index) output += `</${open.pop()}>`;
+      continue;
+    }
+    let attributes = '';
+    const attributePattern = /([^\s>"'=/]+)(?:\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+    let attribute: RegExpExecArray | null;
+    while ((attribute = attributePattern.exec(match[2] || ''))) {
+      const name = attribute[1].toLowerCase();
+      const value = decodeAttribute(attribute[3] ?? attribute[4] ?? attribute[5] ?? '').trim();
+      if (name === 'style') {
+        const style = mailStyle(value);
+        if (style) attributes += ` style="${escapeMailAttribute(style)}"`;
+      } else if (name === 'href' && tag === 'a') {
+        if (value.length <= 2000 && /^(?:https?:\/\/|mailto:|tel:)[^\s"'<>]+$/i.test(value)) attributes += ` href="${escapeMailAttribute(value)}"`;
+      } else if (name === 'color' && tag === 'font' && MAIL_STYLES.color.test(value)) {
+        attributes += ` color="${escapeMailAttribute(value)}"`;
+      } else if (name === 'start' && tag === 'ol' && /^\d{1,4}$/.test(value)) {
+        attributes += ` start="${value}"`;
+      }
+    }
+    output += `<${tag}${attributes}>`;
+    if (!MAIL_VOID.has(tag)) open.push(tag);
+  }
+  if (!dropping) output += escapeMailText(html.slice(cursor));
+  while (open.length) output += `</${open.pop()}>`;
+  return output.trim();
+}
+
+/** Stopka wybranej skrzynki do okna nowej wiadomości (na końcu treści, tak jak zobaczy ją odbiorca). */
+export async function composeSignatureHtml(client: SupabaseClient, employeeId: string, accountId: string) {
+  const signature = await buildCompanySignatureHtml({ client, employeeId, emailAccountId: accountId });
+  return upgradeInsecureMedia(removeActiveEmailContent(signature.html || ''));
+}
 
 /** Ostateczny HTML wysyłki: treść, stopka i szablon firmy skrzynki nadawczej, cytat — jak `buildUnifiedEmailHtml`. */
 export async function composeEmailHtml(client: SupabaseClient, opts: {
@@ -139,6 +250,8 @@ export async function composeEmailHtml(client: SupabaseClient, opts: {
   accountId: string;
   subject: string;
   text: string;
+  /** Treść z edytora z formatowaniem (Mac); bez niej — `text` jako zwykły tekst. */
+  html?: string;
   quotedHtml?: string;
 }): Promise<string> {
   const signature = await buildCompanySignatureHtml({ client, employeeId: opts.employeeId, emailAccountId: opts.accountId });
@@ -146,7 +259,7 @@ export async function composeEmailHtml(client: SupabaseClient, opts: {
     client,
     employeeId: opts.employeeId,
     emailAccountId: opts.accountId,
-    content: plainTextToEmailHtml(opts.text),
+    content: typeof opts.html === 'string' && opts.html.trim() ? sanitizeMailContentHtml(opts.html) : plainTextToEmailHtml(opts.text),
     contentIsHtml: true,
     subject: opts.subject,
     signatureHtml: signature.html,

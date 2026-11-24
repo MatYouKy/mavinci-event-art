@@ -1,6 +1,7 @@
 import SwiftUI
 
-// MARK: Karta produktu (`/crm/offers/products/[id]`, `ProductDetailPage.tsx`) — nagłówek z czynnościami (PL → EN, usunięcie),
+// MARK: Karta produktu (`/crm/offers/products/[id]`, `ProductDetailPage.tsx`) — nagłówek z wyraźnym „Katalog produktów” (⌘[)
+// i czynnościami (PL → EN, duplikowanie, usunięcie),
 // gotowość do oferty z „Nie dotyczy” i przejściem do braków, sekcje z podglądem i edycją jak `ProductDataSection` w CRM:
 // podstawowe informacje, prezentacja w ofercie PDF z grafiką i propozycją AI, kadrowanie zdjęć, warianty, pakiety, dodatki,
 // wymagania, sprzęt, obsada, klauzule, wersja angielska, ustawienia wyceny, ceny i koszty, warunki techniczne, przygotowanie,
@@ -46,6 +47,7 @@ enum ProductSectionFields {
     @State var loadingServices = false
     @State var imageSheet = false
     @State var deleting = false
+    @State var duplicating = false
     /// Robocza propozycja AI dla prezentacji (część C2b) — wypełnia formularz dopiero po „Zastosuj”.
     @State var offerAI: ProductOfferAIDraft?
     @State var offerAIBusy = false
@@ -97,13 +99,28 @@ enum ProductSectionFields {
         } message: {
             Text("Ta operacja jest nieodwracalna.")
         }
+        .confirmationDialog("Utworzyć „\(ProductText.duplicateName(detail?.name ?? ""))”?", isPresented: $duplicating, titleVisibility: .visible) {
+            Button("Duplikuj") { Task { await store.duplicate(productID) } }
+            Button("Anuluj", role: .cancel) {}
+        } message: {
+            Text(ProductText.duplicateNote)
+        }
     }
 
     // MARK: Nagłówek
     private var header: some View {
-        HStack(spacing: 10) {
-            Button { store.openedID = nil } label: { Label("Katalog", systemImage: "chevron.left") }
-                .help("Wróć do katalogu produktów")
+        HStack(spacing: 12) {
+            // Wyraźny powrót do katalogu (większy przycisk z ramką i skrót ⌘[ jak „Wstecz” w aplikacjach macOS).
+            Button { store.openedID = nil } label: {
+                Label("Katalog produktów", systemImage: "chevron.backward")
+                    .font(.body.weight(.medium))
+                    .padding(.horizontal, 4)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .keyboardShortcut("[", modifiers: .command)
+            .help("Wróć do katalogu produktów (⌘[)")
+            Divider().frame(height: 26)
             VStack(alignment: .leading, spacing: 1) {
                 Text(detail?.name ?? store.product(productID)?.name ?? "Produkt").font(.headline).lineLimit(1)
                 if let category = detail?.categoryName ?? store.product(productID)?.category {
@@ -125,6 +142,8 @@ enum ProductSectionFields {
             Menu {
                 Button { state.openCRM("/crm/offers/products/\(productID)") } label: { Label("Otwórz w CRM", systemImage: "safari") }
                 if detail?.canEdit == true {
+                    Button { duplicating = true } label: { Label("Duplikuj…", systemImage: "plus.square.on.square") }
+                        .disabled(editing != nil || !state.canWrite)
                     Divider()
                     Button(role: .destructive) { deleting = true } label: { Label("Usuń…", systemImage: "trash") }
                 }

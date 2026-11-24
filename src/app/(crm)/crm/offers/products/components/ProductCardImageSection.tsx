@@ -2,9 +2,22 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Image as ImageIcon, Loader2, Pencil, Trash2, Upload, X } from 'lucide-react';
+import { HardDrive, Image as ImageIcon, Loader2, Pencil, RefreshCw, Trash2, Upload, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
-import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
+import {
+  productImageSourceOutdated, productImageSourceText, productMaterialImageSource, type ProductImageSource,
+} from '@/lib/CRM/Offers/productImageSource';
+import MaterialPhotoPicker, { type PickedMaterialPhoto } from '@/components/crm/materials/MaterialPhotoPicker';
+import {
+  materialsGet, productImageFromMaterial, productImageSourceInfo, productImageUpload, type MaterialUrl,
+} from '@/components/crm/materials/materialsApi';
+
+/*
+ * Grafika na karcie produktu: zdjęcie z komputera (zmniejszane do 1800 px, serwer zapisuje lekką wersję WebP) albo z Dysku
+ * (Materiały — oryginał zostaje w Dysku, produkt dostaje lekką wersję WebP, a karta pokazuje źródło i „Zaktualizuj z Dysku”,
+ * gdy w Dysku podmieniono treść pliku).
+ * Mac — `ProductImageSheet.swift`, `ProductHeroSection.swift`.
+ */
 
 type ImageSettings = {
   offer_image_path?: string | null;
@@ -42,8 +55,21 @@ export default function ProductCardImageSection({ productId, productName, value,
   const [removed, setRemoved] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  /** Zdjęcie wybrane z Dysku (zapis tworzy jego lekką wersję) i jego podgląd. */
+  const [material, setMaterial] = useState<PickedMaterialPhoto | null>(null);
+  const [materialUrl, setMaterialUrl] = useState('');
+  const [picking, setPicking] = useState(false);
+  const [source, setSource] = useState<ProductImageSource | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const busyRef = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
+  const storedPath = value.offer_image_path || '';
+  useEffect(() => {
+    if (!productMaterialImageSource(storedPath)) { setSource(null); return; }
+    let active = true;
+    productImageSourceInfo(storedPath).then((next) => { if (active) setSource(next); }).catch(() => { if (active) setSource(null); });
+    return () => { active = false; };
+  }, [storedPath]);
   useEffect(() => {
     if (!file) { setLocalUrl(''); return; }
     const url = URL.createObjectURL(file); setLocalUrl(url);
@@ -54,17 +80,37 @@ export default function ProductCardImageSection({ productId, productName, value,
   }, [Boolean(draft)]);
   const close = () => {
     if (busyRef.current) return;
-    setDraft(null); setFile(null); setRemoved(false); setError(''); onEditingChange(false);
+    setDraft(null); setFile(null); setMaterial(null); setMaterialUrl(''); setRemoved(false); setError(''); onEditingChange(false);
   };
   const open = () => {
     if (!canEdit || disabled || productId === 'new') return;
     setDraft({ offer_image_path: value.offer_image_path, offer_image_alt: value.offer_image_alt || '', offer_image_position_x: value.offer_image_position_x ?? 50, offer_image_position_y: value.offer_image_position_y ?? 25, offer_image_zoom: scale(value.offer_image_zoom) });
-    setFile(null); setRemoved(false); setError(''); onEditingChange(true);
+    setFile(null); setMaterial(null); setMaterialUrl(''); setRemoved(false); setError(''); onEditingChange(true);
   };
   const chooseFile = (next: File) => {
     if (busyRef.current || disabled) return;
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(next.type) || next.size > 10 * 1024 * 1024) { setError('Wybierz zdjęcie JPG, PNG lub WebP do 10 MB.'); return; }
-    setFile(next); setRemoved(false); setError('');
+    setFile(next); setMaterial(null); setMaterialUrl(''); setRemoved(false); setError('');
+  };
+  const chooseMaterial = (photo: PickedMaterialPhoto) => {
+    setPicking(false);
+    setMaterial(photo); setFile(null); setRemoved(false); setError('');
+    setMaterialUrl(photo.file.thumbnailUrl || '');
+    // Podgląd w pełnej rozdzielczości (kadrowanie); miniatura do czasu wczytania.
+    materialsGet<MaterialUrl>('url', { kind: 'material', id: photo.file.id, mode: 'preview' })
+      .then((result) => setMaterialUrl((current) => (current === (photo.file.thumbnailUrl || '') ? result.url : current)))
+      .catch(() => undefined);
+  };
+  /** W Dysku podmieniono zdjęcie — nowa lekka wersja, kadr i opis bez zmian. */
+  const refreshFromDrive = async () => {
+    if (!source || !canEdit || disabled || busyRef.current) return;
+    busyRef.current = true; setRefreshing(true); onSavingChange(true); setError('');
+    try {
+      const result = await productImageFromMaterial(productId, source.fileId);
+      await onSave({ ...value, offer_image_path: result.path });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Nie udało się zaktualizować zdjęcia z Dysku.');
+    } finally { busyRef.current = false; setRefreshing(false); onSavingChange(false); }
   };
   const save = async () => {
     if (!draft || !canEdit || disabled || busyRef.current) return;
@@ -73,12 +119,12 @@ export default function ProductCardImageSection({ productId, productName, value,
     let uploadedPath: string | null = null;
     try {
       const patch = { ...draft, offer_image_path: removed ? null : draft.offer_image_path, offer_image_zoom: scale(draft.offer_image_zoom) };
-      if (file) {
-        const optimized = await optimizeOfferImage(file, { maxWidth: 1800, maxHeight: 1800, quality: 0.82 });
-        const extension = optimized.type === 'image/png' ? 'png' : optimized.type === 'image/webp' ? 'webp' : 'jpg';
-        const path = `assets/${productId}/offer-image-${crypto.randomUUID()}.${extension}`;
-        const { error: uploadError } = await bucket.upload(path, optimized, { contentType: optimized.type, upsert: false });
-        if (uploadError) throw uploadError;
+      if (material) {
+        // Z Dysku: lekka wersja WebP na serwerze (oryginał zostaje w Dysku, ścieżka wskazuje plik i jego wersję).
+        patch.offer_image_path = (await productImageFromMaterial(productId, material.file.id)).path;
+      } else if (file) {
+        // Z komputera: lekka wersja WebP na serwerze (jak na Macu).
+        const { path } = await productImageUpload(productId, file, 'product');
         uploadedPath = path; patch.offer_image_path = path;
       }
       await onSave(patch);
@@ -89,11 +135,28 @@ export default function ProductCardImageSection({ productId, productName, value,
       setError(cause instanceof Error ? cause.message : 'Nie udało się zapisać grafiki. Spróbuj ponownie.');
     } finally { busyRef.current = false; setBusy(false); onSavingChange(false); }
   };
-  const previewUrl = localUrl || (!removed ? imageUrl : '') || '';
+  const previewUrl = localUrl || materialUrl || (!removed ? imageUrl : '') || '';
   return <section className="self-start rounded-lg bg-black/15 p-4">
     <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-sm font-medium text-[#e5e4e2]">Grafika na karcie produktu</h3>{canEdit && <button type="button" onClick={open} disabled={disabled || productId === 'new'} aria-label="Edytuj grafikę" className="rounded-lg p-2 text-[#d3bb73] hover:bg-white/5 disabled:opacity-40"><Pencil className="h-4 w-4" /></button>}</div>
     {imageUrl ? <Picture url={imageUrl} settings={value} name={productName} /> : <div className="flex aspect-[4/3] items-center justify-center rounded-lg bg-black/10 text-[#e5e4e2]/40"><ImageIcon className="h-10 w-10" /></div>}
     {productId === 'new' && <p className="mt-3 text-xs text-[#e5e4e2]/50">Zapisz nowy produkt, aby dodać grafikę.</p>}
+    {source && imageUrl && (
+      <div className="mt-3 space-y-2 text-xs text-[#e5e4e2]/55">
+        <p className="flex items-start gap-1.5"><HardDrive className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#d3bb73]/70" /><span className="break-words">{productImageSourceText(source)}</span></p>
+        {productImageSourceOutdated(source) && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-[#d3bb73]">
+            <span className="flex-1">W Dysku podmieniono to zdjęcie.</span>
+            {canEdit && (
+              <button type="button" disabled={disabled || refreshing} onClick={() => void refreshFromDrive()} className="flex items-center gap-1.5 rounded-md bg-[#d3bb73] px-2.5 py-1 font-medium text-[#1c1f33] disabled:opacity-40">
+                {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}Zaktualizuj z Dysku
+              </button>
+            )}
+          </div>
+        )}
+        {!draft && error && <p role="alert" className="text-red-300">{error}</p>}
+      </div>
+    )}
+    {picking && <MaterialPhotoPicker title="Zdjęcie produktu z Dysku" onPick={chooseMaterial} onClose={() => setPicking(false)} />}
     <dialog ref={dialog} onCancel={event => { event.preventDefault(); close(); }} aria-labelledby="product-image-title" className="m-auto max-h-[90dvh] w-[calc(100%_-_2rem)] max-w-3xl overflow-hidden rounded-2xl bg-[#1c1f33] p-0 text-[#e5e4e2] shadow-2xl backdrop:bg-black/65">
       {draft && <div className="flex max-h-[90dvh] flex-col">
         <header className="flex items-center justify-between gap-3 px-6 py-4"><h2 id="product-image-title" className="text-lg uppercase">Grafika na karcie produktu</h2><button type="button" aria-label="Zamknij" onClick={close} disabled={busy} className="rounded-lg p-2 hover:bg-white/5"><X className="h-5 w-5" /></button></header>
@@ -101,9 +164,13 @@ export default function ProductCardImageSection({ productId, productName, value,
           <fieldset disabled={busy || disabled} className="grid min-w-0 gap-5 sm:grid-cols-2">
             <div onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const selected = event.dataTransfer.files[0]; if (selected) chooseFile(selected); }}>
               {previewUrl ? <Picture url={previewUrl} settings={draft} name={productName} /> : <div className="flex aspect-[4/3] items-center justify-center rounded-lg border border-dashed border-white/10 bg-black/15 text-sm text-[#e5e4e2]/50">Przeciągnij zdjęcie tutaj</div>}
-              <label className={`mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] ${busy ? 'pointer-events-none opacity-50' : ''}`}><Upload className="h-4 w-4" />{previewUrl ? 'Zmień zdjęcie' : 'Wybierz zdjęcie'}<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => { const selected = event.target.files?.[0]; event.target.value = ''; if (selected) chooseFile(selected); }} /></label>
-              {previewUrl && <button type="button" onClick={() => { setFile(null); setRemoved(true); }} className="mt-2 flex items-center gap-2 px-3 py-2 text-sm text-red-300"><Trash2 className="h-4 w-4" />Usuń grafikę</button>}
-              <p className="mt-3 text-xs text-[#e5e4e2]/45">PNG, JPG lub WebP, do 10 MB.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] ${busy ? 'pointer-events-none opacity-50' : ''}`}><Upload className="h-4 w-4" />{previewUrl ? 'Z komputera' : 'Wybierz zdjęcie'}<input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={event => { const selected = event.target.files?.[0]; event.target.value = ''; if (selected) chooseFile(selected); }} /></label>
+                <button type="button" onClick={() => setPicking(true)} className="flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73]"><HardDrive className="h-4 w-4" />Z Dysku</button>
+              </div>
+              {material && <p className="mt-2 break-words text-xs text-[#e5e4e2]/55">Z Dysku: {material.place} / {material.file.name}</p>}
+              {previewUrl && <button type="button" onClick={() => { setFile(null); setMaterial(null); setMaterialUrl(''); setRemoved(true); }} className="mt-2 flex items-center gap-2 px-3 py-2 text-sm text-red-300"><Trash2 className="h-4 w-4" />Usuń grafikę</button>}
+              <p className="mt-3 text-xs text-[#e5e4e2]/45">Z komputera: PNG, JPG lub WebP, do 10 MB. Z Dysku: oryginał zostaje w Dysku. Produkt zawsze dostaje lekką wersję WebP (do 1800 px).</p>
             </div>
             <div className="space-y-4">
               <label className="block text-sm text-[#e5e4e2]/65">Opis grafiki<input value={draft.offer_image_alt || ''} onChange={event => setDraft({ ...draft, offer_image_alt: event.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-[#e5e4e2]" /></label>

@@ -6,6 +6,8 @@ import {
   materialsHome, materialsList, materialsMove, materialsPrepareUpload, materialsPurge, materialsRemove, materialsRename, materialsRestore,
   materialsSearch, materialsSync, materialsSyncItem, materialsTrash, materialsUpdateFile, materialsUrl,
 } from '@/lib/materials/materials.server';
+import { materialShareCreate, materialShareDelete, materialShareUpdate, materialSharesList } from '@/lib/materials/materialShares.server';
+import { requestOrigin } from '@/lib/native/desktopRelease';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,6 +30,10 @@ export const maxDuration = 300;
  *   finderRemove {kind, id}. Albumy: createAlbum {companyId, name, description?, fileIds?} | updateAlbum {id, name?,
  *   description?, coverFileId?} | deleteAlbum {id} | albumAdd {id, fileIds[]} | albumRemove {id, fileIds[]} |
  *   albumReorder {id, fileIds[]} | albumsReorder {companyId, ids[]} — album to odnośniki, pliki zostają na miejscu.
+ * Linki do pobrania (migracja 20261130120000, `src/lib/materials/materialShares.server.ts`): GET shares&company. POST
+ *   shareCreate {companyId, items[{kind: folder|album|file, id}], title, message, days, access: public|password, emails, password}
+ *   → {share, password} (hasło jeden raz) | shareUpdate {id, title?, message?, days?, revoked?, access?, emails?, newPassword?,
+ *   password?} → {share, password} | shareDelete {id}. Adres linku: `<serwer>/pobierz/<token>`.
  * Treść plików nie przechodzi przez serwer — wysyłka i pobieranie przez podpisane adresy magazynu.
  */
 
@@ -72,6 +78,8 @@ export async function GET(request: Request) {
         return nativeJson(await materialsAlbums(ctx, params));
       case 'album':
         return nativeJson(await materialsAlbum(ctx, params.get('id') || ''));
+      case 'shares':
+        return nativeJson(await materialSharesList(ctx, params, requestOrigin(request)));
       default:
         return nativeJson({ error: 'Nieznana operacja.' }, 400);
     }
@@ -135,6 +143,12 @@ export async function POST(request: Request) {
         return nativeJson(await materialsAlbumReorder(ctx, body));
       case 'albumsReorder':
         return nativeJson(await materialsAlbumsReorder(ctx, body));
+      case 'shareCreate':
+        return nativeJson(await materialShareCreate(ctx, body, requestOrigin(request)));
+      case 'shareUpdate':
+        return nativeJson(await materialShareUpdate(ctx, body, requestOrigin(request)));
+      case 'shareDelete':
+        return nativeJson(await materialShareDelete(ctx, body));
       default:
         return nativeJson({ error: 'Nieznana operacja.' }, 400);
     }

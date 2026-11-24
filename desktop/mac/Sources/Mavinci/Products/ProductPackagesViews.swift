@@ -118,6 +118,9 @@ import UniformTypeIdentifiers
     @State private var removeImage = false
     @State private var stored: NSImage?
     @State private var importing = false
+    /// Zdjęcie wybrane z Dysku — serwer zapisuje jego lekką wersję WebP przy zapisie pakietu.
+    @State private var material: PickedMaterialPhoto?
+    @State private var pickingMaterial = false
     @State private var editingResources = false
     @State private var editingCosts = false
     @State private var elementSearch = ""
@@ -134,7 +137,7 @@ import UniformTypeIdentifiers
         _stored = State(initialValue: ProductImageCache.shared.cached(initial.image_path))
     }
 
-    private var preview: NSImage? { image ?? (removeImage ? nil : stored) }
+    private var preview: NSImage? { image ?? (removeImage || material != nil ? nil : stored) }
 
     private func limited(_ key: WritableKeyPath<ProductSalesPackageItem, String>, _ limit: Int) -> Binding<String> {
         Binding(get: { draft[keyPath: key] }, set: { draft[keyPath: key] = String($0.prefix(limit)) })
@@ -168,13 +171,18 @@ import UniformTypeIdentifiers
                             }
                         if !readOnly {
                             HStack {
-                                Button(preview == nil ? "Wybierz…" : "Zmień zdjęcie") { importing = true }
-                                if preview != nil {
-                                    Button("Usuń zdjęcie", role: .destructive) { image = nil; imageData = nil; removeImage = true }
+                                Button(preview == nil && material == nil ? "Wybierz…" : "Zmień zdjęcie") { importing = true }
+                                Button { pickingMaterial = true } label: { Label("Z Dysku…", systemImage: "externaldrive") }
+                                if preview != nil || material != nil {
+                                    Button("Usuń zdjęcie", role: .destructive) { image = nil; imageData = nil; material = nil; removeImage = true }
                                 }
                             }
                             .controlSize(.small)
-                            Text("JPG, PNG lub WebP · maks. 10 MB · automatyczna kompresja. Zdjęcie dotyczy wyłącznie tego pakietu.")
+                            if let material {
+                                Text("Z Dysku: \(material.place) / \(material.file.name)").font(.caption2).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Text("JPG, PNG lub WebP do 10 MB albo zdjęcie z Dysku · zapisujemy lekkie WebP. Zdjęcie dotyczy wyłącznie tego pakietu.")
                                 .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                             TextField("", text: limited(\.image_alt, 200), prompt: Text("Opis zdjęcia")).textFieldStyle(.roundedBorder)
                         }
@@ -247,6 +255,9 @@ import UniformTypeIdentifiers
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.jpeg, .png, .webP]) { result in
             if case .success(let url) = result { choose(url) }
+        }
+        .sheet(isPresented: $pickingMaterial) {
+            MaterialPhotoPicker(title: "Zdjęcie pakietu z Dysku") { photo in choose(photo) }
         }
         .sheet(isPresented: $editingResources) {
             ProductPackageResourcesSheet(store: store, productID: productID, packageName: draft.name, initial: draft.resources, readOnly: readOnly) { draft.resources = $0 }
@@ -336,14 +347,31 @@ import UniformTypeIdentifiers
         let type = UTType(filenameExtension: url.pathExtension)
         let allowed = [UTType.jpeg, .png, .webP].contains { type?.conforms(to: $0) == true }
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        guard allowed, size > 0, size <= 10 * 1024 * 1024, let encoded = ProductImageEncoder.encode(url) else {
+        guard allowed, size > 0, size <= 10 * 1024 * 1024, let encoded = ProductImageEncoder.encode(url, quality: ProductImageEncoder.forWebP) else {
             problem = "Wybierz JPG, PNG lub WebP o wielkości do 10 MB."
             return
         }
         imageData = encoded.data
         image = encoded.image
+        material = nil
         removeImage = false
         problem = nil
+    }
+
+    /// Zdjęcie z Dysku: od razu miniatura, potem podgląd w pełnej rozdzielczości; lekka wersja WebP powstaje przy zapisie.
+    private func choose(_ photo: PickedMaterialPhoto) {
+        guard !saving, !readOnly else { return }
+        material = photo
+        imageData = nil
+        image = MaterialsThumbnails.shared.cached(photo.file)
+        removeImage = false
+        problem = nil
+        Task {
+            if image == nil, let thumbnail = await MaterialsThumbnails.shared.image(photo.file), material?.file.id == photo.file.id, image == nil {
+                image = thumbnail
+            }
+            if let full = await store.materialPreview(photo.file), material?.file.id == photo.file.id { image = full }
+        }
     }
 
     private func save() async {
@@ -356,12 +384,17 @@ import UniformTypeIdentifiers
         let list = creating ? items + [next] : items.map { $0.id == next.id ? next : $0 }
         let enabled = !list.isEmpty && (extras.packages.enabled || (creating && items.isEmpty))
         var fields: [String: JSONValue] = ["packages": .array(list.map(\.json)), "enabled": .bool(enabled)]
-        if let imageData { fields["images"] = .array([.object(["packageId": .string(next.id), "data": .string(imageData.base64EncodedString())])]) }
+        if let material {
+            fields["images"] = .array([.object(["packageId": .string(next.id), "materialId": .string(material.file.id)])])
+        } else if let imageData {
+            fields["images"] = .array([.object(["packageId": .string(next.id), "data": .string(imageData.base64EncodedString())])])
+        }
         problem = nil
         saving = true
         defer { saving = false }
-        if await store.changeExtras(productID, "packagesSave", fields, success: creating ? "Pakiet dodany" : "Zapisano pakiet") {
-            if imageData != nil, let image, let path = store.extras[productID]?.packages.items.first(where: { $0.id == next.id })?.image_path {
+        let pending = material != nil ? "Przygotowanie zdjęcia z Dysku…" : imageData != nil ? "Zapisywanie zdjęcia…" : "Zapisywanie…"
+        if await store.changeExtras(productID, "packagesSave", fields, pending: pending, success: creating ? "Pakiet dodany" : "Zapisano pakiet", timeout: 150) {
+            if imageData != nil || material != nil, let image, let path = store.extras[productID]?.packages.items.first(where: { $0.id == next.id })?.image_path {
                 ProductImageCache.shared.store(image, path: path)
             }
             dismiss()

@@ -3,10 +3,12 @@ import AppKit
 import UniformTypeIdentifiers
 
 /// Nowa wiadomość, odpowiedź i przekazanie — pola, stopka skrzynki, cytat i planowanie jak w `ComposeEmailModal`. Otwierana
-/// w osobnym oknie (`formWindow`): okno można skalować i przesuwać, a skrzynka w głównym oknie działa dalej. U góry nadawca,
-/// adresy i temat, niżej treść; w odpowiedzi pod treścią cała wiadomość, na którą odpowiadasz, z jej wcześniejszą korespondencją
-/// (jak w Thunderbirdzie, podział przesuwany). Pliki przeciągnięte do okna — także na treść — trafiają do załączników.
-/// Wpisywany tekst (adresy, temat, treść) ma osobne pola stanu — litera nie przelicza całego okna z podglądem cytatu.
+/// w osobnym oknie (`formWindow`) w rozmiarze okna modalnego: okno można skalować i przesuwać, a skrzynka w głównym oknie działa
+/// dalej. U góry nadawca, adresy i temat, niżej treść z formatowaniem jak w Thunderbirdzie (`MailRichEditor`: pogrubienie, listy,
+/// wcięcia, wyrównanie, linki, rozmiar i kolor) i stopką wybranej skrzynki na końcu — tak jak zobaczy ją odbiorca; w odpowiedzi
+/// pod treścią cała wiadomość, na którą odpowiadasz, z jej wcześniejszą korespondencją (podział przesuwany). Pliki przeciągnięte
+/// do okna — także na treść — trafiają do załączników. Wpisywany tekst (adresy, temat, treść) ma osobne pola stanu — litera nie
+/// przelicza całego okna z podglądem cytatu.
 @MainActor struct ComposeSheet: View {
     @ObservedObject var store: MessagesStore
     @State private var draft: ComposeDraft
@@ -14,7 +16,13 @@ import UniformTypeIdentifiers
     @State private var cc: String
     @State private var bcc: String
     @State private var subject: String
+    /// Treść: zwykły tekst (sprawdzenie, czy wiadomość nie jest pusta) i HTML z formatowaniem do wysyłki.
     @State private var text: String
+    @State private var html: String
+    /// Stopka wybranej skrzynki pod treścią (`op=signature`).
+    @State private var signature = ""
+    @State private var signatureLoaded = false
+    @StateObject private var editor: MailEditorController
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
     @Environment(\.inFormWindow) private var inWindow
@@ -37,6 +45,9 @@ import UniformTypeIdentifiers
         _bcc = State(initialValue: draft.bcc)
         _subject = State(initialValue: draft.subject)
         _text = State(initialValue: draft.text)
+        let initialHTML = MailEditorText.html(draft.text)
+        _html = State(initialValue: initialHTML)
+        _editor = StateObject(wrappedValue: MailEditorController(initialHTML: initialHTML))
     }
 
     nonisolated static var defaultSchedule: Date {
@@ -61,7 +72,7 @@ import UniformTypeIdentifiers
     /// Szkic z bieżącymi polami (do podglądu i wysyłki).
     private var current: ComposeDraft {
         var value = draft
-        value.to = to; value.cc = cc; value.bcc = bcc; value.subject = subject; value.text = text
+        value.to = to; value.cc = cc; value.bcc = bcc; value.subject = subject; value.text = text; value.html = html
         return value
     }
 
@@ -86,7 +97,7 @@ import UniformTypeIdentifiers
             fields
             Divider()
             VSplitView {
-                editor
+                editorPane
                 if let reply = draft.reply { quote(reply) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -158,17 +169,34 @@ import UniformTypeIdentifiers
         .padding(.horizontal, 20).padding(.vertical, 12)
     }
 
-    /// Treść wiadomości — pliki upuszczone na pole trafiają do załączników.
-    private var editor: some View {
+    /// Treść wiadomości z paskiem formatowania i stopką skrzynki na końcu (białe tło i krój jak u odbiorcy). Pliki upuszczone
+    /// na treść trafiają do załączników (`onDrop` okna).
+    private var editorPane: some View {
         VStack(alignment: .leading, spacing: 6) {
-            MailTextEditor(text: $text) { addFiles($0) }
-                .frame(maxWidth: .infinity, minHeight: 140, maxHeight: .infinity)
-                .background(theme.card, in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.12)))
-            Text("Stopka i szablon wybranej skrzynki zostaną dodane automatycznie — zobacz „Podgląd”.").font(.caption).foregroundStyle(.secondary)
+            MailEditorToolbar(controller: editor)
+            MailRichEditor(controller: editor, signatureHTML: signature) { html, text in
+                self.html = html
+                self.text = text
+            }
+            .frame(maxWidth: .infinity, minHeight: 160, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.12)))
+            Text(signatureNote).font(.caption).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
-        .frame(minHeight: 200, idealHeight: 300)
+        .frame(minHeight: 240, idealHeight: 340)
+        .task(id: draft.accountId) {
+            signatureLoaded = false
+            signature = draft.accountId.isEmpty ? "" : await store.signature(accountId: draft.accountId)
+            signatureLoaded = true
+        }
+    }
+
+    private var signatureNote: String {
+        if signatureLoaded && signature.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Ta skrzynka nie ma stopki. Pełny wygląd wiadomości (z szablonem skrzynki) pokazuje „Podgląd”."
+        }
+        return "Na końcu treści jest stopka wybranej skrzynki — tak zobaczy ją odbiorca. Pełny wygląd z szablonem skrzynki pokazuje „Podgląd”."
     }
 
     /// Wiadomość, na którą odpowiadasz — w całości, z jej wcześniejszą korespondencją (serwer dołącza cytat przy wysyłce).
@@ -320,103 +348,6 @@ private struct ComposeWindowTitle: View {
     var body: some View {
         let trimmed = subject.trimmingCharacters(in: .whitespacesAndNewlines)
         Color.clear.navigationTitle(trimmed.isEmpty ? base : "\(base): \(trimmed)")
-    }
-}
-
-/// Treść wiadomości (zwykły tekst, sprawdzanie pisowni). Pliki upuszczone na pole trafiają do załączników (`onFiles`) zamiast
-/// wstawiać do treści ścieżkę pliku.
-struct MailTextEditor: NSViewRepresentable {
-    @Binding var text: String
-    let onFiles: ([URL]) -> Void
-
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        var parent: MailTextEditor
-        init(_ parent: MailTextEditor) { self.parent = parent }
-
-        func textDidChange(_ notification: Notification) {
-            guard let view = notification.object as? NSTextView else { return }
-            if parent.text != view.string { parent.text = view.string }
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let textView = MailDropTextView(frame: .zero)
-        textView.isRichText = false
-        textView.importsGraphics = false
-        textView.allowsUndo = true
-        textView.isEditable = true
-        textView.isSelectable = true
-        textView.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-        textView.textColor = NSColor.textColor
-        textView.insertionPointColor = NSColor.textColor
-        textView.drawsBackground = false
-        textView.textContainerInset = NSSize(width: 6, height: 8)
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.minSize = NSSize(width: 0, height: 0)
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer?.widthTracksTextView = true
-        textView.isContinuousSpellCheckingEnabled = true
-        textView.string = text
-        textView.delegate = context.coordinator
-        textView.onFiles = onFiles
-        let scroll = MailTextScrollView()
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
-        scroll.borderType = .noBorder
-        scroll.drawsBackground = false
-        scroll.documentView = textView
-        return scroll
-    }
-
-    func updateNSView(_ scroll: NSScrollView, context: Context) {
-        context.coordinator.parent = self
-        guard let textView = scroll.documentView as? MailDropTextView else { return }
-        textView.onFiles = onFiles
-        if textView.string != text { textView.string = text }
-    }
-}
-
-/// Przewijane pole treści: tekst zajmuje co najmniej całą wysokość pola, więc kliknięcie w pustym miejscu pod tekstem
-/// ustawia kursor (jak w zwykłym edytorze).
-final class MailTextScrollView: NSScrollView {
-    override func tile() {
-        super.tile()
-        guard let textView = documentView as? NSTextView else { return }
-        let height = contentSize.height
-        guard abs(textView.minSize.height - height) > 0.5 else { return }
-        textView.minSize = NSSize(width: 0, height: height)
-        if textView.frame.height < height { textView.setFrameSize(NSSize(width: textView.frame.width, height: height)) }
-    }
-}
-
-/// Pole treści wiadomości: upuszczone pliki (np. z Findera) przekazuje jako załączniki, upuszczony tekst wstawia jak zwykle.
-final class MailDropTextView: NSTextView {
-    var onFiles: (([URL]) -> Void)?
-
-    private func fileURLs(_ info: NSDraggingInfo) -> [URL] {
-        let objects = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
-        return (objects as? [URL]) ?? []
-    }
-
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        onFiles != nil && !fileURLs(sender).isEmpty ? .copy : super.draggingEntered(sender)
-    }
-
-    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        onFiles != nil && !fileURLs(sender).isEmpty ? .copy : super.draggingUpdated(sender)
-    }
-
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let urls = fileURLs(sender)
-        if let onFiles, !urls.isEmpty {
-            onFiles(urls)
-            return true
-        }
-        return super.performDragOperation(sender)
     }
 }
 

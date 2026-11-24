@@ -1,8 +1,7 @@
 'use client';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Loader2, Save, Upload } from 'lucide-react';
-import { supabase } from '@/lib/supabase/browser';
-import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
+import { brochureImageUpload } from '@/components/crm/materials/materialsApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { brochureAssetKey, type BrochureImageAsset, type BrochureImageBucket } from '@/lib/brochures/decorativePages';
 
@@ -54,13 +53,9 @@ export default function BrochureImagePicker({ emptyLabel = 'Bez zdjęcia', broch
     setUploadName(file.name); setUploading(true); onBusy(true);
     try {
       await validateUploadedImage(file);
-      const optimized = await optimizeOfferImage(file, { maxWidth: 1600, maxHeight: 2200, quality: .8, outputType: 'image/webp' });
-      if (optimized !== file) await validateUploadedImage(optimized);
-      const extension = optimized.type === 'image/png' ? 'png' : optimized.type === 'image/webp' ? 'webp' : 'jpg';
-      const nextPath = `assets/brochures/${brochureId}/${crypto.randomUUID()}.${extension}`;
-      const { error } = await supabase.storage.from('offer-product-pages').upload(nextPath, optimized, { contentType: optimized.type });
-      if (error) throw error;
-      setUploaded({ path: nextPath, name: file.name, url: URL.createObjectURL(optimized) });
+      // Serwer zapisuje lekką wersję WebP (do 2200 px) w bibliotece broszury — jak „Dodaj swoje zdjęcie” na Macu.
+      const { path: nextPath } = await brochureImageUpload(brochureId, file);
+      setUploaded({ path: nextPath, name: file.name, url: URL.createObjectURL(file) });
       onChange(nextPath, 'offer-product-pages');
       showSnackbar('Dodano zdjęcie do podglądu. Kliknij „Zapisz broszurę”, aby zachować zmianę.', 'success');
     } catch (e: any) {

@@ -85,60 +85,111 @@ import SwiftUI
     }
 }
 
-/// Okno wysyłki: pliki z miejscem docelowym, postęp, błędy i pominięte duplikaty (gdzie już są); „Przerwij” w trakcie, „Zamknij” po
-/// zakończeniu.
-@MainActor struct MaterialsUploadSheet: View {
-    @ObservedObject var store: MaterialsStore
+/// Wysyłka na Dysk w tle — panel w rogu okna (jak w Dysku Google), nie blokuje aplikacji: można dalej przeglądać Dysk, dodawać
+/// kolejne pliki (dołączają do kolejki) i pracować w innych sekcjach. Zwinięty: liczba plików, postęp, bieżący plik i „Przerwij
+/// wysyłkę”; rozwinięty — lista plików z miejscem docelowym, błędami i pominiętymi duplikatami (gdzie już są). Po zakończeniu
+/// z błędami albo duplikatami panel zostaje do „Zamknij”; po udanej wysyłce znika sam.
+@MainActor struct MaterialsUploadPanel: View {
+    @ObservedObject var uploads: MaterialsUploads
     @Environment(\.crmTheme) private var theme
 
     var body: some View {
-        let batch = store.uploads
-        let rows = batch?.rows ?? []
-        let done = rows.filter { $0.status == .done || $0.status == .skipped }.count
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(batch?.running == true ? "Wysyłanie plików (\(done)/\(rows.count))" : "Wysyłka zakończona (\(done)/\(rows.count))").font(.title3.weight(.semibold))
-                Spacer()
-                if batch?.running == true { ProgressView().controlSize(.small) }
-            }
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(rows) { row in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Image(systemName: icon(row.status)).foregroundStyle(color(row.status))
-                                Text(row.name).lineLimit(1)
-                                Spacer()
-                                Text(MaterialsText.bytes(Double(row.size))).font(.caption).foregroundStyle(.secondary)
-                            }
-                            Text(row.place).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                            if row.status == .uploading {
-                                ProgressView(value: row.size > 0 ? min(1, Double(row.sent) / Double(row.size)) : 0).tint(theme.accent)
-                            }
-                            if let error = row.error { Text(error).font(.caption).foregroundStyle(.red) }
-                            if row.status == .skipped {
-                                Text(["Pominięto — duplikat", row.note].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.caption).foregroundStyle(theme.accent).lineLimit(2).help(row.note ?? "")
-                            }
-                        }
-                        .padding(8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
-                    }
+        if let batch = uploads.batch {
+            panel(batch)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    private func panel(_ batch: MaterialsUploadBatch) -> some View {
+        let rows = batch.rows
+        let finished = rows.filter { $0.status == .done || $0.status == .skipped }.count
+        let failed = rows.filter { $0.status == .failed }.count
+        let skipped = rows.filter { $0.status == .skipped }.count
+        let cancelled = rows.filter { $0.status == .cancelled }.count
+        let total = rows.reduce(Int64(0)) { $0 + ($1.status == .failed || $1.status == .cancelled ? 0 : $1.size) }
+        let sent = rows.reduce(Int64(0)) { $0 + ($1.status == .done || $1.status == .skipped ? $1.size : $1.status == .uploading ? $1.sent : 0) }
+        let current = rows.first { $0.status == .uploading }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: batch.running ? "arrow.up.circle" : failed > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .foregroundStyle(batch.running ? theme.accent : failed > 0 ? Color.orange : Color.green)
+                Text(batch.running ? "Wysyłanie na Dysk (\(finished)/\(rows.count))" : "Wysyłka zakończona (\(finished)/\(rows.count))")
+                    .font(.callout.weight(.semibold)).monospacedDigit().lineLimit(1)
+                Spacer(minLength: 4)
+                if batch.running { ProgressView().controlSize(.small) }
+                Button { withAnimation(.easeOut(duration: 0.15)) { uploads.expanded.toggle() } } label: {
+                    Image(systemName: uploads.expanded ? "chevron.down" : "chevron.up")
+                }
+                .buttonStyle(.borderless)
+                .help(uploads.expanded ? "Zwiń listę plików" : "Pokaż listę plików")
+                if !batch.running {
+                    Button { uploads.close() } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.borderless).help("Zamknij")
                 }
             }
-            .frame(minHeight: 200, maxHeight: 420)
+            if batch.running {
+                ProgressView(value: total > 0 ? min(1, Double(sent) / Double(total)) : 0).tint(theme.accent)
+                HStack(spacing: 6) {
+                    Text(current.map { "\($0.name) · \($0.place)" } ?? "Przygotowanie plików…").lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    Text("\(MaterialsText.bytes(Double(sent))) z \(MaterialsText.bytes(Double(total)))").monospacedDigit()
+                }
+                .font(.caption).foregroundStyle(.secondary)
+            }
+            if failed > 0 || skipped > 0 || (cancelled > 0 && !batch.running) {
+                Text([failed > 0 ? "Nie udało się: \(failed)" : nil, skipped > 0 ? "Pominięte duplikaty: \(skipped)" : nil,
+                      cancelled > 0 && !batch.running ? "Przerwane: \(cancelled)" : nil].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption).foregroundStyle(failed > 0 ? Color.red : theme.accent)
+            }
+            if uploads.expanded { list(rows) }
             HStack {
+                if !uploads.expanded && !batch.running && (failed > 0 || skipped > 0) {
+                    Button("Pokaż szczegóły") { withAnimation(.easeOut(duration: 0.15)) { uploads.expanded = true } }
+                }
                 Spacer()
-                if batch?.running == true {
-                    Button("Przerwij wysyłkę", role: .destructive) { store.cancelUploads() }
+                if batch.running {
+                    Button("Przerwij wysyłkę", role: .destructive) { uploads.cancel() }
                 } else {
-                    Button("Zamknij") { store.closeUploads() }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                    Button("Zamknij") { uploads.close() }
+                }
+            }
+            .controlSize(.small)
+        }
+        .padding(12)
+        .frame(width: 380)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.1)))
+        .shadow(color: .black.opacity(0.2), radius: 14, y: 4)
+    }
+
+    private func list(_ rows: [MaterialsUploadRow]) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 6) {
+                ForEach(rows) { row in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Image(systemName: icon(row.status)).foregroundStyle(color(row.status))
+                            Text(row.name).lineLimit(1).truncationMode(.middle)
+                            Spacer(minLength: 4)
+                            Text(MaterialsText.bytes(Double(row.size))).font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                        }
+                        Text(row.place).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        if row.status == .uploading {
+                            ProgressView(value: row.size > 0 ? min(1, Double(row.sent) / Double(row.size)) : 0).tint(theme.accent)
+                        }
+                        if let error = row.error { Text(error).font(.caption2).foregroundStyle(.red) }
+                        if row.status == .skipped {
+                            Text(["Pominięto — duplikat", row.note].compactMap { $0 }.joined(separator: " · "))
+                                .font(.caption2).foregroundStyle(theme.accent).lineLimit(2).help(row.note ?? "")
+                        }
+                    }
+                    .font(.caption)
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.04)))
                 }
             }
         }
-        .padding(20)
-        .frame(width: 520)
-        .interactiveDismissDisabled(batch?.running == true)
+        .frame(maxHeight: 280)
     }
 
     private func icon(_ status: MaterialsUploadRow.Status) -> String {

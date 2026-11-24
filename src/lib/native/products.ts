@@ -1,5 +1,5 @@
 import 'server-only';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { can, type NativeContext } from './auth';
 import {
   productReadiness,
@@ -14,12 +14,17 @@ import { compactProductBlockReason } from '@/lib/CRM/Offers/productPresentation'
 import { packageCostLineNet, staffCostItem } from '@/lib/CRM/Offers/productSalesPackages';
 import { IMAGE_CROP_LAYOUTS, imageCrop } from '@/lib/CRM/Offers/productImageCrop';
 import { productCategoryIds } from '@/lib/CRM/Offers/productCategories';
+import { OFFER_IMAGE_SIDES, productMaterialImageSource, type ProductImageSource } from '@/lib/CRM/Offers/productImageSource';
+import { materialFilePlace } from '@/lib/materials/materials.server';
+import { convertOfferImages, materialWebp, offerImagesPending, storeOfferWebp } from './productImages';
+import { duplicateProduct } from './productDuplicate';
 
 /*
  * Produkty (katalog oferty) na Macu — `/crm/offers?tab=catalog` i karta produktu `/crm/offers/products/[id]`: te same dane
  * i zasady co w CRM (RLS tokenem pracownika). Gotowość do oferty liczy `productReadiness` (jak katalog i karta w CRM),
  * zapis sekcji karty jak `saveProductSection` w `ProductDetailPage` (te same pola i sprawdzenia), grafika do oferty
- * w magazynie `offer-product-pages` (`assets/<id>/offer-image-<uuid>`).
+ * w magazynie `offer-product-pages` — zawsze lekkie WebP przygotowane na serwerze (`productImages.ts`): z komputera
+ * `assets/<id>/offer-image-<uuid>.webp`, z Dysku `assets/<id>/material-<plik>-v<wersja>.webp` (`productImageSource.ts`).
  */
 
 type Row = Record<string, any>;
@@ -192,13 +197,17 @@ export async function productDetail(ctx: NativeContext, id: string) {
   const readiness = productReadiness(row, resources);
   const variants = (Array.isArray(row.variants) ? row.variants : []).filter((variant: Row) => variant?.is_active !== false);
   const isStage = ['stage', 'warehouse_stage'].includes(row.configuration_schema?.profile || '');
-  const urls = await signed(ctx, [row.offer_image_path || '']);
-  const services = row.subcontractor_id ? await subcontractorServices(ctx, row.subcontractor_id) : [];
+  const [urls, services, imageSource] = await Promise.all([
+    signed(ctx, [row.offer_image_path || '']),
+    row.subcontractor_id ? subcontractorServices(ctx, row.subcontractor_id) : Promise.resolve([]),
+    productImageSourceOf(ctx, row.offer_image_path),
+  ]);
   const packages = row.sales_packages_enabled === true && Array.isArray(row.sales_packages) ? row.sales_packages.length : 0;
   return {
     ...access,
     product: Object.fromEntries(CARD_FIELDS.map((key) => [key, row[key] ?? null])),
     imageUrl: row.offer_image_path ? urls.get(row.offer_image_path) || null : null,
+    imageSource,
     facts: {
       variants: variants.length,
       packages,
@@ -461,6 +470,12 @@ export async function createProduct(ctx: NativeContext, body: Row) {
   return { ok: true, id: String((data as Row).id) };
 }
 
+/** „Duplikuj” — nowy, nieaktywny produkt z kopią całej karty (`productDuplicate.ts`); zwraca jego identyfikator i nazwę. */
+export async function duplicateProductCard(ctx: NativeContext, body: Row) {
+  if (!productsAccess(ctx).canEdit) fail('Nie masz uprawnień do dodawania produktów.');
+  return duplicateProduct(ctx, productId(body.id));
+}
+
 export async function deleteProduct(ctx: NativeContext, body: Row) {
   if (!productsAccess(ctx).canEdit) fail('Nie masz uprawnień do usuwania produktów.');
   const id = productId(body.id);
@@ -473,26 +488,66 @@ export async function deleteProduct(ctx: NativeContext, body: Row) {
   return { ok: true };
 }
 
-const IMAGE_TYPES: Array<{ type: string; extension: string; test: (bytes: Buffer) => boolean }> = [
-  { type: 'image/png', extension: 'png', test: (bytes) => bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
-  { type: 'image/jpeg', extension: 'jpg', test: (bytes) => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff },
-  { type: 'image/webp', extension: 'webp', test: (bytes) => bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP' },
-];
+/** Cel zdjęcia z komputera: zdjęcie główne produktu, wariant (element) albo pakiet sprzedaży — folder i dłuższy bok WebP. */
+const UPLOAD_TARGETS = {
+  product: { folder: (id: string) => `assets/${id}`, prefix: () => 'offer-image-', side: OFFER_IMAGE_SIDES.product },
+  variant: { folder: (id: string) => `assets/${id}/variants`, prefix: (target: string) => `${target}-`, side: OFFER_IMAGE_SIDES.variant },
+  package: { folder: (id: string) => `assets/${id}/packages`, prefix: (target: string) => `${target}-`, side: OFFER_IMAGE_SIDES.package },
+} as const;
 
-/** Zdjęcie produktu do oferty (Mac zmniejsza je wcześniej do 1800 px jak `optimizeOfferImage`); zapis ścieżki — sekcja `offer_image`. */
+/**
+ * Zdjęcie z komputera (Mac i CRM zmniejszają je wcześniej do 1800 px) → lekka wersja WebP w magazynie zdjęć produktów; zwraca
+ * ścieżkę. Zapis ścieżki: sekcja `offer_image` (zdjęcie główne), w CRM — zapis wariantów i pakietów. Bez `target` — zdjęcie główne.
+ */
 export async function uploadProductImage(ctx: NativeContext, body: Row) {
   if (!productsAccess(ctx).canEdit) fail('Nie masz uprawnień do zmiany produktów.');
   const id = productId(body.id);
-  const bytes = Buffer.from(typeof body.data === 'string' ? body.data : '', 'base64');
-  if (!bytes.length) fail('Nie wybrano zdjęcia.');
-  if (bytes.length > 8 * 1024 * 1024) fail('Zdjęcie jest za duże.');
-  const kind = IMAGE_TYPES.find((item) => item.test(bytes));
-  if (!kind) fail('Wybierz zdjęcie JPG, PNG lub WebP.');
-  const path = `assets/${id}/offer-image-${randomUUID()}.${kind.extension}`;
-  const { error } = await ctx.supabase.storage.from(BUCKET).upload(path, bytes, { contentType: kind.type, upsert: false });
-  if (error) fail(error.message || 'Nie udało się wysłać zdjęcia.');
+  const kind = String(body.target || 'product') as keyof typeof UPLOAD_TARGETS;
+  if (!Object.prototype.hasOwnProperty.call(UPLOAD_TARGETS, kind)) fail('Nieznane miejsce zdjęcia.');
+  const target = UPLOAD_TARGETS[kind];
+  const owner = kind === 'product' ? id : String(body.targetId || '');
+  // Element — UUID wiersza; pakiet — identyfikator z listy pakietów (starsze pakiety mogą mieć inny format, bez znaku „/”).
+  if (kind === 'variant' && !PRODUCT_UUID.test(owner)) fail('Nieprawidłowy element produktu.');
+  if (kind === 'package' && !/^[A-Za-z0-9_-]{1,80}$/.test(owner)) fail('Nieprawidłowy pakiet.');
+  const path = await storeOfferWebp(ctx, body.data, target.folder(id), target.prefix(kind === 'variant' ? owner.toLowerCase() : owner), target.side);
   const urls = await signed(ctx, [path]);
   return { ok: true, path, url: urls.get(path) || null };
+}
+
+/** Skąd jest zdjęcie produktu: plik Dysku (nazwa, miejsce, bieżąca wersja treści) albo `null` — zdjęcie z komputera. */
+export async function productImageSourceOf(ctx: NativeContext, path: unknown): Promise<ProductImageSource | null> {
+  const source = productMaterialImageSource(typeof path === 'string' ? path : null);
+  if (!source) return null;
+  const file = await materialFilePlace(ctx, source.fileId).catch(() => null);
+  return file
+    ? { fileId: source.fileId, version: source.version, currentVersion: file.contentVersion, name: file.name, place: file.place, missing: false }
+    : { fileId: source.fileId, version: source.version, currentVersion: null, name: '', place: '', missing: true };
+}
+
+/**
+ * Zdjęcie produktu z Dysku (Materiały): oryginał zostaje w Dysku, produkt dostaje lekką wersję WebP (do 1800 px, orientacja jak
+ * w przeglądarce) w magazynie zdjęć produktów — ścieżka wskazuje plik i wersję treści (`productMaterialImagePath`), ta sama wersja
+ * drugi raz się nie zapisuje. Dostęp do pliku sprawdza baza (RLS Materiałów). Zapis ścieżki w produkcie — sekcja `offer_image`
+ * (jak przy zdjęciu z komputera), w CRM — zapis wariantów i pakietów, więc anulowanie okna niczego w produkcie nie zmienia.
+ */
+export async function productImageFromMaterial(ctx: NativeContext, body: Row) {
+  if (!productsAccess(ctx).canEdit) fail('Nie masz uprawnień do zmiany produktów.');
+  const id = productId(body.id);
+  const path = await materialWebp(ctx, id, body.fileId);
+  const [urls, source] = await Promise.all([signed(ctx, [path]), productImageSourceOf(ctx, path)]);
+  return { ok: true, path, url: urls.get(path) || null, source };
+}
+
+/** Ile zdjęć produktów, wariantów i pakietów jest jeszcze w JPG/PNG (tylko dla osób, które mogą zmieniać produkty). */
+export async function productImagesPending(ctx: NativeContext) {
+  if (!productsAccess(ctx).canEdit) return { count: 0, canEdit: false };
+  return { ...(await offerImagesPending(ctx)), canEdit: true };
+}
+
+/** „Zamień zdjęcia na WebP” w katalogu — porcja zamiany starszych zdjęć JPG/PNG (`convertOfferImages`). */
+export async function convertProductImages(ctx: NativeContext, body: Row) {
+  if (!productsAccess(ctx).canEdit) fail('Nie masz uprawnień do zmiany produktów.');
+  return convertOfferImages(ctx, body);
 }
 
 /** Wywołanie funkcji Supabase tokenem pracownika (jak `supabase.functions.invoke` w CRM) z komunikatem błędu z odpowiedzi. */

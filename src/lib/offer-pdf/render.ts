@@ -16,6 +16,7 @@ import { offerPdfFileName } from './shared/offerPdfFileName';
 import { publicProductUrl } from './shared/publicProductUrl';
 import 'server-only';
 import { cachedAsset, cachedSignedAssetUrls } from './resources';
+import { pdfReadyImage } from '@/lib/images/imageConvert.server';
 import { createClient } from "@supabase/supabase-js";
 import { PDFDocument, rgb, pushGraphicsState, popGraphicsState, moveTo, lineTo, appendBezierCurve, closePath, clip, endPath, PDFName, PDFDict, PDFString, PDFArray, PDFNumber } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
@@ -748,8 +749,11 @@ export async function renderOfferPdf(req: Request, report?: ReportOfferPdfProgre
       let lastError: unknown;
       for (const url of candidates) {
         try {
-          const bytes = new Uint8Array(await cachedAsset(url, 15000));
-          isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+          // PDF przyjmuje tylko JPEG i PNG — zdjęcie WebP (np. produktu z Dysku), GIF, AVIF albo BMP zamienia się w JPEG
+          // (z przezroczystością — w PNG); wcześniej takie zdjęcie po cichu znikało z oferty.
+          const ready = await pdfReadyImage(new Uint8Array(await cachedAsset(url, 15000)));
+          const bytes = ready.bytes;
+          isPng = ready.png;
           image = await timed('image_embed', async () => {
             const embedded = await (isPng ? pdfDoc.embedPng(bytes) : pdfDoc.embedJpg(bytes));
             // Compress each image immediately and release decoded pixel buffers.

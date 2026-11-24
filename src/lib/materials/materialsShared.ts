@@ -206,3 +206,152 @@ export function materialSelectionSummary(files: number, folders: number, bytes: 
     files ? formatMaterialBytes(bytes) : null,
   ].filter(Boolean).join(' · ');
 }
+
+// MARK: Linki do pobrania (udostępnianie na zewnątrz)
+
+/*
+ * „Udostępnij link” — folder, album albo wybrane pliki Materiałów do pobrania przez osobę spoza firmy (np. zdjęcia z fotobudki
+ * dla pary młodej): link ważny kilka dni, otwarty dla każdego, kto go ma, albo po podaniu e-maila i hasła. Strona
+ * `/pobierz/<token>` pokazuje miniatury i pozwala pobrać pliki pojedynczo albo wszystkie w jednym archiwum ZIP. Folder
+ * w linku jest „na żywo” — pliki dodane później też są do pobrania. Linki tworzy i wyłącza „Materiały — zarządzanie”.
+ * Serwer — `src/lib/materials/materialShares.server.ts` (zarządzanie) i `materialSharePublic.server.ts` (strona publiczna).
+ */
+
+export type MaterialShareAccess = 'public' | 'password';
+export type MaterialShareItemKind = 'folder' | 'file' | 'album';
+export type MaterialShareStatus = 'active' | 'expired' | 'revoked';
+
+/** Ważność do wyboru (dni) i domyślna. */
+export const MATERIAL_SHARE_DAYS = [1, 3, 7, 14, 30] as const;
+export const MATERIAL_SHARE_DEFAULT_DAYS = 3;
+export const MATERIAL_SHARE_LIMITS = {
+  title: 120,
+  message: 2000,
+  /** Adresy e-mail odbiorców linku z hasłem. */
+  emails: 10,
+  passwordMin: 8,
+  passwordMax: 64,
+  /** Najdłuższa ważność od teraz (dni). */
+  maxDays: 90,
+  /** Elementy (foldery, albumy, pliki) w jednym linku. */
+  items: 500,
+  /** Najwięcej plików do pobrania z jednego linku. */
+  files: 5000,
+} as const;
+
+/** Element linku z nazwą (`missing` — usunięty z Materiałów, nie trafia na stronę). */
+export type MaterialShareItem = { kind: MaterialShareItemKind; id: string; name: string; missing: boolean };
+
+/** Link na liście „Udostępnione linki”. */
+export type MaterialShare = {
+  id: string;
+  companyId: string;
+  url: string;
+  title: string;
+  message: string;
+  access: MaterialShareAccess;
+  emails: string[];
+  expiresAt: string;
+  revokedAt: string | null;
+  status: MaterialShareStatus;
+  items: MaterialShareItem[];
+  fileCount: number;
+  totalBytes: number;
+  viewCount: number;
+  downloadCount: number;
+  lastViewedAt: string | null;
+  lastDownloadedAt: string | null;
+  /** Adresy e-mail, którymi otwarto link z hasłem (ostatnie najpierw). */
+  openedBy: string[];
+  createdAt: string;
+  createdBy: string | null;
+};
+
+/** Odpowiedź po utworzeniu linku albo nowym haśle: link i hasło do przekazania (hasła nie da się później odczytać). */
+export type MaterialShareCreated = { share: MaterialShare; password: string | null };
+
+export const MATERIAL_SHARE_ACCESS_LABELS: Record<MaterialShareAccess, string> = {
+  public: 'Każdy, kto ma link',
+  password: 'Po podaniu e-maila i hasła',
+};
+
+export const MATERIAL_SHARE_STATUS_LABELS: Record<MaterialShareStatus, string> = {
+  active: 'Aktywny',
+  expired: 'Wygasł',
+  revoked: 'Wyłączony',
+};
+
+/** Stan linku w chwili `now`. */
+export function materialShareStatus(share: { expiresAt: string; revokedAt: string | null }, now: number = Date.now()): MaterialShareStatus {
+  if (share.revokedAt) return 'revoked';
+  const expires = Date.parse(share.expiresAt);
+  return Number.isFinite(expires) && expires > now ? 'active' : 'expired';
+}
+
+/** „1 dzień”, „3 dni”, „30 dni”. */
+export function materialShareDaysLabel(days: number): string {
+  return days === 1 ? '1 dzień' : `${days} dni`;
+}
+
+/** Koniec ważności: teraz + `days` dni (najwyżej `maxDays`). */
+export function materialShareExpiry(days: number, from: number = Date.now()): string {
+  const safe = Math.min(MATERIAL_SHARE_LIMITS.maxDays, Math.max(1, Math.round(Number(days) || MATERIAL_SHARE_DEFAULT_DAYS)));
+  return new Date(from + safe * 24 * 3600_000).toISOString();
+}
+
+/** „27.11.2026, 15:40” (czas urządzenia albo `timeZone`, np. `Europe/Warsaw` na serwerze). */
+export function materialShareDateLabel(value: string | null | undefined, timeZone?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('pl-PL', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', ...(timeZone ? { timeZone } : {}),
+  });
+}
+
+const SHARE_EMAIL = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]{2,}$/;
+
+/** Adresy e-mail z pola (przecinki, średniki, spacje, nowe linie): małe litery, bez powtórzeń; `invalid` — niepoprawne. */
+export function materialShareEmails(value: unknown): { emails: string[]; invalid: string[] } {
+  const list = Array.isArray(value) ? value.map(String) : String(value ?? '').split(/[\s,;]+/);
+  const emails: string[] = [];
+  const invalid: string[] = [];
+  for (const raw of list) {
+    const email = raw.trim().toLowerCase();
+    if (!email) continue;
+    if (!SHARE_EMAIL.test(email) || email.length > 254) invalid.push(raw.trim());
+    else if (!emails.includes(email)) emails.push(email);
+  }
+  return { emails, invalid };
+}
+
+/** „248 plików · 1,2 GB”. */
+export function materialShareSummary(fileCount: number, totalBytes: number): string {
+  return fileCount ? `${materialCountLabel(fileCount, 'file')} · ${formatMaterialBytes(totalBytes)}` : 'Brak plików';
+}
+
+/**
+ * Wiadomość dla odbiorcy (e-mail, SMS, komunikator): link, ważność i — przy linku z hasłem — e-mail i hasło.
+ * `password` — tylko zaraz po utworzeniu linku albo ustawieniu nowego hasła (później hasła nie da się odczytać).
+ */
+export function materialShareMessage(input: {
+  url: string; title: string; expiresAt: string; access: MaterialShareAccess; emails: string[]; password?: string | null; companyName?: string | null;
+}): string {
+  const lines = [
+    'Dzień dobry,',
+    '',
+    `przesyłamy link do pobrania plików „${input.title}”:`,
+    input.url,
+    '',
+    `Link jest ważny do ${materialShareDateLabel(input.expiresAt)}. Pliki można pobrać pojedynczo albo wszystkie naraz (ZIP).`,
+  ];
+  if (input.access === 'password') {
+    lines.push('');
+    lines.push(input.emails.length === 1
+      ? `Aby otworzyć stronę, podaj adres e-mail: ${input.emails[0]}`
+      : 'Aby otworzyć stronę, podaj swój adres e-mail (ten, na który przyszła ta wiadomość).');
+    lines.push(input.password ? `Hasło: ${input.password}` : 'Hasło przekażemy osobno.');
+  }
+  lines.push('', 'Pozdrawiamy', ...(input.companyName ? [input.companyName] : []));
+  return lines.join('\n');
+}

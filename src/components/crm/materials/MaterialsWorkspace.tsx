@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import {
   CalendarDays, ChevronDown, ChevronRight, ClipboardPaste, Copy, CopyPlus, Download, Eye, FolderInput, FolderOpen, FolderPlus, Home, LayoutGrid, Library,
-  List, Loader2, Pencil, Plus, RefreshCw, Scissors, Search, Trash2, Upload, UploadCloud, X,
+  Link2, List, Loader2, Pencil, Plus, RefreshCw, Scissors, Search, Share2, Trash2, Upload, UploadCloud, X,
 } from 'lucide-react';
 import OverlayPortal from '@/components/UI/OverlayPortal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -18,7 +18,7 @@ import {
 } from '@/lib/materials/materialsShared';
 import {
   MaterialDuplicateError, downloadMaterial, materialsGet, materialsPost, materialsPostInBatches, uploadMaterial, type EventFileHit, type MaterialAlbum, type MaterialBatchResult,
-  type MaterialFile, type MaterialFolder, type MaterialItemRef, type MaterialsHome, type MaterialsListing, type MaterialsSearch,
+  type MaterialFile, type MaterialFolder, type MaterialItemRef, type MaterialShareTarget, type MaterialsHome, type MaterialsListing, type MaterialsSearch,
   type UploadTarget,
 } from './materialsApi';
 import { MaterialsAlbumView, MaterialsAlbumsSidebar } from './MaterialsAlbums';
@@ -31,6 +31,8 @@ import MaterialsDetails from './MaterialsDetails';
 import MaterialsFolderPicker from './MaterialsFolderPicker';
 import MaterialsPreview, { type PreviewItem } from './MaterialsPreview';
 import MaterialsTrash from './MaterialsTrash';
+import MaterialShareDialog from './MaterialShareDialog';
+import MaterialSharesPanel from './MaterialSharesPanel';
 import DriveBrandStrip from '../drive/DriveBrandStrip';
 
 /*
@@ -40,6 +42,8 @@ import DriveBrandStrip from '../drive/DriveBrandStrip';
  * Albumy (główna baza zdjęć): pliki przeciągnięte na album w pasku bocznym albo „Dodaj do albumu” — odnośniki, bez kopii.
  * Schowek jak w Finderze (i na Macu): ⌘C / Ctrl+C kopiuj, ⌘X wytnij, ⌘V wklej (kopia albo przeniesienie), menu pod prawym
  * przyciskiem (elementy i puste miejsce), „Duplikuj”, „Kopiuj do…”, przeciąganie z ⌥ / Alt — kopia. Kopie robi serwer (`op=copy`).
+ * „Udostępnij link…” (folder, album, zaznaczone pliki) — link do pobrania dla osoby spoza firmy (`MaterialShareDialog`), lista
+ * linków marki — „Linki” (`MaterialSharesPanel`).
  * Dane przez `/bridge/native/v1/materials` (to samo API dla Findera, Maca i telefonu w kolejnych etapach). Modal ładowania
  * przy akcjach, okno postępu przy wysyłce, snackbar po sukcesie lub błędzie.
  */
@@ -176,6 +180,9 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
   const [albumMenu, setAlbumMenu] = useState(false);
   const [clipboard, setClipboard] = useState<Clipboard | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  /** „Udostępnij link…” — elementy i proponowany tytuł strony; „Linki” — lista linków marki. */
+  const [shareDialog, setShareDialog] = useState<{ items: MaterialShareTarget[]; title: string } | null>(null);
+  const [sharesOpen, setSharesOpen] = useState(false);
   const uploadAbort = useRef<AbortController | null>(null);
   const reloadTimer = useRef<number | null>(null);
   const listRequest = useRef(0);
@@ -936,6 +943,14 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
     ? childFolders.find((f) => f.id === selectedList[0].id) || null
     : null;
   const hasSystemFolder = selectedList.some((ref) => ref.kind === 'folder' && !!childFolders.find((f) => f.id === ref.id)?.systemKey);
+  /** „Udostępnij link…”: tytuł strony — nazwa folderu, plik bez rozszerzenia albo bieżący folder (kilka elementów). */
+  const shareItems = (refs: MaterialItemRef[]) => {
+    if (!refs.length) return;
+    const single = refs.length === 1 ? refs[0] : null;
+    const title = single ? (single.kind === 'file' ? single.name.replace(/\.[A-Za-z0-9]{1,12}$/, '') || single.name : single.name)
+      : currentFolder?.name || 'Pliki do pobrania';
+    setShareDialog({ items: refs.map((ref) => ({ kind: ref.kind, id: ref.id, name: ref.name })), title });
+  };
   /** „10 plików · 2 foldery · 24,3 MB” — jak plakietka zaznaczenia na Macu. */
   const selectedSummary = materialSelectionSummary(
     selectedList.filter((ref) => ref.kind === 'file').length,
@@ -1283,6 +1298,9 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
                     uploadFiles(list, folderId);
                   }} />
               </label>
+              <button type="button" className={secondaryButton} onClick={() => setSharesOpen(true)} title="Linki do pobrania tej marki — przedłuż, wyłącz, nowe hasło">
+                <Link2 className="h-4 w-4" />Linki
+              </button>
               <button type="button" onClick={() => { setQuery(''); setMode(mode === 'trash' ? 'browse' : 'trash'); setSelection(new Set()); setDetailsId(null); }}
                 className={mode === 'trash' ? primaryButton : secondaryButton}>
                 <Trash2 className="h-4 w-4" />Kosz{home.trashCount ? ` (${home.trashCount})` : ''}
@@ -1316,6 +1334,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
           ) : searchActive ? searchContent : albumId ? (
             <MaterialsAlbumView key={albumId} albumId={albumId} access={access} run={run} notify={notify}
               onBack={() => setAlbumId(null)}
+              onShare={canManage ? (album) => setShareDialog({ items: [{ kind: 'album', id: album.id, name: album.name }], title: album.name }) : undefined}
               onChanged={() => void loadAlbums()}
               onDeleted={() => { setAlbumId(null); void loadAlbums(); }}
               onPreview={(list, index) => setPreview({
@@ -1402,6 +1421,11 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
                       )}
                     </span>
                   )}
+                  {canManage && (
+                    <button type="button" className={ghostButton} onClick={() => shareItems(selectedList)} title="Link do pobrania dla osoby spoza firmy">
+                      <Share2 className="h-4 w-4" />Udostępnij link
+                    </button>
+                  )}
                   <button type="button" className={ghostButton} onClick={() => toClipboard(selectedList, false)} title="Kopiuj do schowka (⌘C)">
                     <Copy className="h-4 w-4" />Kopiuj
                   </button>
@@ -1460,6 +1484,7 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
               { label: 'Podgląd', icon: Eye, action: () => previewFiles(selectedFile) },
               { label: 'Pobierz', icon: Download, action: () => void downloadMaterial('material', selectedFile.id).catch((error) => showSnackbar(errorMessage(error, 'Nie udało się pobrać pliku.'), 'error')) },
             ] : []),
+            ...(canManage ? [{ label: selectedList.length > 1 ? `Udostępnij link do zaznaczonych (${selectedList.length})…` : 'Udostępnij link…', icon: Share2, action: () => shareItems(selectedList) }] : []),
             'divider' as const,
             { label: selectedList.length > 1 ? `Kopiuj zaznaczone (${selectedList.length})` : 'Kopiuj', icon: Copy, hint: '⌘C', action: () => toClipboard(selectedList, false) },
             ...(canManage ? [
@@ -1479,12 +1504,18 @@ export default function MaterialsWorkspace({ embedded = false, sidebarPortal = n
             ...(canManage ? [
               { label: 'Nowy folder…', icon: FolderPlus, action: createFolder },
               ...(clipboard ? [{ label: pasteLabel(), icon: ClipboardPaste, hint: '⌘V', action: () => void pasteInto(folderId) }] : []),
+              ...(currentFolder ? [{ label: `Udostępnij link do „${currentFolder.name}”…`, icon: Share2, action: () => shareItems([{ kind: 'folder', id: currentFolder.id, name: currentFolder.name }]) }] : []),
               'divider' as const,
             ] : []),
             { label: 'Zaznacz wszystko', icon: List, hint: '⌘A', action: () => setSelection(new Set(orderedKeys)), disabled: !orderedKeys.length },
           ]} />
       )}
       {nameDialog && <NameDialog {...nameDialog} onClose={() => setNameDialog(null)} />}
+      {shareDialog && (
+        <MaterialShareDialog mode="create" items={shareDialog.items} defaultTitle={shareDialog.title} companyId={home.company.id} companyName={home.company.name}
+          onClose={() => setShareDialog(null)} />
+      )}
+      {sharesOpen && <MaterialSharesPanel companyId={home.company.id} companyName={home.company.name} onClose={() => setSharesOpen(false)} />}
       {picker && (
         <MaterialsFolderPicker title={picker.title} confirmText={picker.confirm} companyName={home.company.name} folders={folders}
           initialFolderId={picker.initial} excludeIds={picker.exclude} onPick={picker.pick} onClose={() => setPicker(null)} />

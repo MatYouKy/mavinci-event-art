@@ -172,6 +172,10 @@ struct RootView: View {
                     // zostaje przycięta u dołu, zamiast powiększać okno ponad ekran i przesuwać w górę całą zawartość z paskiem bocznym.
                     .frame(maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .top)
                     .background(state.theme.page)
+                    // Wysyłka plików na Dysk w tle — panel w prawym dolnym rogu, obok przycisku komunikatora; okno działa normalnie.
+                    .overlay(alignment: .bottomTrailing) {
+                        MaterialsUploadPanel(uploads: state.materials.uploader).padding(.trailing, 86).padding(.bottom, 20)
+                    }
                     // Komunikator (jak widżet czatu w CRM) — przycisk i panel w prawym dolnym rogu; panel powiadomień go przykrywa.
                     .overlay(alignment: .bottomTrailing) { ChatWidgetHost(store: state.chat) }
                     .overlay {

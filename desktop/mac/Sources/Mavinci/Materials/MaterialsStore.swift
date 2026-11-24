@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import os
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -32,7 +33,10 @@ import UniformTypeIdentifiers
     @Published private(set) var search: MaterialsSearchReply?
     @Published private(set) var searching = false
     @Published private(set) var details: [String: MaterialFileDetail] = [:]
-    @Published var uploads: MaterialsUploadBatch?
+    /// Wysyłka w tle — postęp w osobnym obiekcie (panel `MaterialsUploadPanel` w rogu okna), żeby kolejne bajty nie przeliczały
+    /// widoku Dysku; `uploading` zmienia się tylko na początku i na końcu wysyłki.
+    let uploader = MaterialsUploads()
+    @Published private(set) var uploading = false
     /// Albumy wybranej marki i otwarty album (nil — foldery). Album to odnośniki do plików, bez kopii.
     @Published private(set) var albums: [MaterialAlbum] = []
     @Published private(set) var albumID: String?
@@ -44,6 +48,11 @@ import UniformTypeIdentifiers
     private var homeFile: SealedFile<MaterialsHome>?
     private var listsFile: SealedFile<[String: MaterialsListing]>?
     private var uploadTask: Task<Void, Never>?
+    /// Kolejka wysyłki (pliki dodane w trakcie dołączają do bieżącej serii), pliki tymczasowe do sprzątnięcia po serii
+    /// i foldery marek używane przy tworzeniu podfolderów (marka mogła się zmienić na ekranie w trakcie wysyłki).
+    private var uploadQueue: [MaterialsUploadJob] = []
+    private var uploadTemporary: [URL] = []
+    private var uploadFolders: [String: [MaterialFolder]] = [:]
     private var searchTask: Task<Void, Never>?
 
     var api: NativeAPI? { workspace?.nativeAPI() }
@@ -79,6 +88,7 @@ import UniformTypeIdentifiers
 
     func reset(clearDisk: Bool = true) {
         uploadTask?.cancel(); uploadTask = nil
+        uploadQueue = []; uploadTemporary = []; uploadFolders = [:]; uploading = false; uploader.reset()
         searchTask?.cancel(); searchTask = nil
         if clearDisk {
             try? homeFile?.clear()
@@ -88,7 +98,7 @@ import UniformTypeIdentifiers
         homeFile = nil; listsFile = nil; namespace = nil
         home = nil; loadError = nil; loading = false; companyID = nil; folderID = nil; sort = .name
         listings = [:]; listLoading = false; trashMode = false; trash = []; trashLoading = false
-        query = ""; scope = .materials; search = nil; searching = false; details = [:]; uploads = nil
+        query = ""; scope = .materials; search = nil; searching = false; details = [:]
         albums = []; albumID = nil; albumFiles = [:]; clipboard = nil
     }
 
@@ -745,116 +755,163 @@ import UniformTypeIdentifiers
     // MARK: Wysyłka
 
     /// Pliki i foldery z Findera (albo okna wyboru) do folderu marki: foldery powstają jak na dysku, najwyżej `maxUpload` plików naraz
-    /// (pliki idą po kolei, każdy osobno).
+    /// (pliki idą po kolei, każdy osobno). Wysyłka idzie w tle — można dalej pracować, także w innych sekcjach; pliki dodane w trakcie
+    /// dołączają do kolejki. Przeglądanie folderów (na dysku) — poza wątkiem interfejsu.
     func upload(_ urls: [URL], to parent: String?) {
         guard let workspace else { return }
         guard canManage else { workspace.notice = "Nie masz uprawnień do dodawania plików w Materiałach tej marki."; return }
         guard workspace.canWrite else { workspace.error = "Wysyłka wymaga połączenia z serwerem CRM."; return }
-        guard uploadTask == nil, let company = home?.company else { return }
-        var jobs = Self.jobs(from: urls, parent: parent)
-        if jobs.count > MaterialsText.maxUpload {
-            workspace.notice = "Naraz można wgrać najwyżej \(MaterialsText.maxUpload) plików — wgrywam pierwsze \(MaterialsText.maxUpload)."
-            jobs = Array(jobs.prefix(MaterialsText.maxUpload))
+        guard let company = home?.company else { return }
+        Task { [weak self] in
+            var jobs = await Task.detached(priority: .userInitiated) { MaterialsStore.jobs(from: urls, parent: parent) }.value
+            guard let self, let workspace = self.workspace else { return }
+            if jobs.count > MaterialsText.maxUpload {
+                workspace.notice = "Naraz można wgrać najwyżej \(MaterialsText.maxUpload) plików — wgrywam pierwsze \(MaterialsText.maxUpload)."
+                jobs = Array(jobs.prefix(MaterialsText.maxUpload))
+            }
+            guard !jobs.isEmpty else { workspace.notice = "Nie znaleziono plików do wysłania."; return }
+            self.enqueue(jobs, company: company, temporary: urls)
         }
-        guard !jobs.isEmpty else { workspace.notice = "Nie znaleziono plików do wysłania."; return }
-        start(jobs, company: company, temporary: urls)
     }
 
     /// Nowa treść pliku (poprzednia zostaje jako wersja na 30 dni).
     func replace(_ file: MaterialFile, with url: URL) {
-        guard let workspace, canManage, uploadTask == nil, let company = home?.company else { return }
+        guard let workspace, canManage, let company = home?.company else { return }
         guard workspace.canWrite else { workspace.error = "Wysyłka wymaga połączenia z serwerem CRM."; return }
         let job = MaterialsUploadJob(url: url, dirs: [], parent: file.folderId, replace: (file.id, file.contentVersion))
-        start([job], company: company, temporary: [url])
+        enqueue([job], company: company, temporary: [url])
     }
 
+    /// Przerwanie wysyłki — plik w drodze i pozostałe w kolejce.
     func cancelUploads() { uploadTask?.cancel() }
 
-    private func start(_ jobs: [MaterialsUploadJob], company: MaterialCompany, temporary: [URL]) {
+    /// Pliki do kolejki: wiersze w panelu (z miejscem docelowym) i start wysyłki, jeśli jeszcze nie trwa.
+    private func enqueue(_ jobs: [MaterialsUploadJob], company: MaterialCompany, temporary: [URL]) {
         let maxBytes = Int64(home?.maxBytes ?? 2_147_483_648)
-        uploads = MaterialsUploadBatch(rows: jobs.map { job -> MaterialsUploadRow in
+        if uploadFolders[company.id] == nil, home?.company.id == company.id { uploadFolders[company.id] = folders }
+        var batch = uploader.batch?.running == true ? uploader.batch! : MaterialsUploadBatch(rows: [], running: true)
+        var queued: [MaterialsUploadJob] = []
+        for var job in jobs {
+            job.company = company.id
+            job.companyName = company.name
             let size = MaterialMedia.size(of: job.url)
             let place = ([company.name] + path(of: job.parent).map(\.name) + job.dirs).joined(separator: " / ")
-            return MaterialsUploadRow(id: job.id, name: job.url.lastPathComponent, size: size, place: place,
-                                      status: size > maxBytes ? .failed : .waiting, error: size > maxBytes ? "Plik jest większy niż 2 GB." : nil)
-        }, running: true)
+            let tooBig = size > maxBytes
+            batch.rows.append(MaterialsUploadRow(id: job.id, name: job.url.lastPathComponent, size: size, place: place,
+                                                 status: tooBig ? .failed : .waiting, error: tooBig ? "Plik jest większy niż 2 GB." : nil))
+            if !tooBig { queued.append(job) }
+        }
+        uploader.publish(batch)
+        uploadQueue += queued
+        uploadTemporary += temporary
+        uploader.onCancel = { [weak self] in self?.cancelUploads() }
+        if uploadTask == nil { runUploads() }
+    }
+
+    private func runUploads() {
+        uploading = true
         uploadTask = Task { [weak self] in
             guard let self else { return }
             var cache: [String: String?] = [:]
-            var done = 0, failed = 0, skipped = 0
-            for job in jobs {
-                guard let row = self.uploads?.rows.first(where: { $0.id == job.id }), row.status == .waiting else {
-                    failed += 1
-                    continue
-                }
+            var replaced: [String] = []
+            var lastRefresh = Date()
+            var added = false
+            while !self.uploadQueue.isEmpty {
+                let job = self.uploadQueue.removeFirst()
                 if Task.isCancelled { self.patch(job.id) { $0.status = .cancelled }; continue }
                 self.patch(job.id) { $0.status = .uploading }
                 do {
                     var target: String? = job.parent
-                    if job.replace == nil { target = try await self.ensureFolders(company: company.id, parent: job.parent, dirs: job.dirs, cache: &cache) }
-                    try await self.send(job, company: company.id, folder: target)
+                    if job.replace == nil { target = try await self.ensureFolders(company: job.company, parent: job.parent, dirs: job.dirs, cache: &cache) }
+                    try await self.send(job, company: job.company, folder: target)
                     self.patch(job.id) { $0.status = .done; $0.sent = $0.size }
-                    done += 1
+                    if let id = job.replace?.id { replaced.append(id) }
+                    added = true
                 } catch is CancellationError {
                     self.patch(job.id) { $0.status = .cancelled }
                 } catch let error as URLError where error.code == .cancelled {
                     self.patch(job.id) { $0.status = .cancelled }
                 } catch let duplicate as MaterialsDuplicate {
                     // Ten sam plik już jest w Materiałach marki — bez drugiej kopii (w innym folderze: „Kopiuj do…” albo album).
-                    skipped += 1
-                    let place = ([company.name] + self.path(of: duplicate.file.folderId).map(\.name) + [duplicate.file.name]).joined(separator: " / ")
+                    let folders = self.uploadFolders[job.company] ?? []
+                    let place = ([job.companyName] + Self.folderPath(duplicate.file.folderId, in: folders).map(\.name) + [duplicate.file.name])
+                        .joined(separator: " / ")
                     self.patch(job.id) { $0.status = .skipped; $0.sent = $0.size; $0.note = "Już jest: \(place)" }
                 } catch {
-                    failed += 1
                     let message = self.failureText(error, "Nie udało się wysłać pliku.")
                     self.patch(job.id) { $0.status = .failed; $0.error = message }
                 }
+                // Nowe pliki pojawiają się w otwartym folderze w trakcie wysyłki (co kilka sekund, bez wskaźnika ładowania).
+                if added, !Task.isCancelled, Date().timeIntervalSince(lastRefresh) > 5 {
+                    added = false
+                    lastRefresh = Date()
+                    await self.loadList(quiet: true)
+                }
             }
+            // Koniec serii — bez czekania (kolejne pliki dodane od teraz zaczną nową serię).
             let cancelled = Task.isCancelled
+            let batchID = self.uploader.batch?.id
+            let rows = self.uploader.batch?.rows ?? []
+            let temporary = self.uploadTemporary
             self.uploadTask = nil
-            self.uploads?.running = false
+            self.uploadTemporary = []
+            self.uploadFolders = [:]
+            self.uploading = false
+            self.uploader.finish()
             PortfolioDrop.cleanup(temporary)
             FinderDomain.signal()
             await self.refresh()
-            for job in jobs { if let id = job.replace?.id { self.details[id] = nil; await self.loadDetail(id) } }
+            for id in replaced { self.details[id] = nil; await self.loadDetail(id) }
             guard let workspace = self.workspace else { return }
+            let done = rows.filter { $0.status == .done }.count
+            let failed = rows.filter { $0.status == .failed }.count
+            let skipped = rows.filter { $0.status == .skipped }.count
             let duplicates = skipped > 0 ? " Pominięto duplikaty: \(skipped)." : ""
             if cancelled {
                 workspace.notice = done > 0 ? "Wysyłkę przerwano — wgrano: \(done).\(duplicates)" : "Wysyłkę przerwano.\(duplicates)"
             } else if failed > 0 {
-                workspace.error = "Wgrano: \(done).\(duplicates) Nie udało się: \(failed) — szczegóły w oknie wysyłki."
+                workspace.error = "Wgrano: \(done).\(duplicates) Nie udało się: \(failed) — szczegóły w panelu wysyłki."
             } else if skipped > 0 {
-                // Okno zostaje otwarte — widać, które pliki już były i gdzie leżą.
+                // Panel zostaje — widać, które pliki już były i gdzie leżą.
                 workspace.notice = done > 0
-                    ? "Wgrano: \(done). Pominięto duplikaty (już są w Materiałach): \(skipped) — szczegóły w oknie wysyłki."
-                    : "Te pliki już są w Materiałach (\(skipped)) — nic nie wgrano, szczegóły w oknie wysyłki."
+                    ? "Wgrano: \(done). Pominięto duplikaty (już są w Materiałach): \(skipped) — szczegóły w panelu wysyłki."
+                    : "Te pliki już są w Materiałach (\(skipped)) — nic nie wgrano, szczegóły w panelu wysyłki."
             } else {
-                workspace.succeed(done == 1 ? (jobs.first?.replace != nil ? "Podmieniono plik" : "Wgrano plik") : "Wgrano pliki: \(done)")
-                self.uploads = nil
+                let replacedOnly = rows.count == 1 && !replaced.isEmpty
+                workspace.succeed(done == 1 ? (replacedOnly ? "Podmieniono plik" : "Wgrano plik") : "Wgrano pliki: \(done)")
+                if self.uploader.batch?.id == batchID { self.uploader.reset() }
             }
         }
     }
 
-    func closeUploads() {
-        guard uploads?.running != true else { return }
-        uploads = nil
-    }
-
     private func patch(_ id: UUID, _ change: (inout MaterialsUploadRow) -> Void) {
-        guard var batch = uploads, let index = batch.rows.firstIndex(where: { $0.id == id }) else { return }
-        change(&batch.rows[index])
-        uploads = batch
+        uploader.patch(id, change)
     }
 
-    /// Folder docelowy dla pliku z przeciągniętego folderu (tworzy brakujące podfoldery, jak na dysku).
+    /// Ścieżka folderu w podanych folderach marki (wysyłka mogła dotyczyć innej marki niż otwarta na ekranie).
+    private static func folderPath(_ id: String?, in folders: [MaterialFolder]) -> [MaterialFolder] {
+        var result: [MaterialFolder] = []
+        var current = id
+        var guardCount = 0
+        while let value = current, let folder = folders.first(where: { $0.id == value }), guardCount < 64 {
+            result.insert(folder, at: 0)
+            current = folder.parentId
+            guardCount += 1
+        }
+        return result
+    }
+
+    /// Folder docelowy dla pliku z przeciągniętego folderu (tworzy brakujące podfoldery, jak na dysku). Foldery marki pliku
+    /// (`uploadFolders`) — marka otwarta na ekranie mogła się zmienić w trakcie wysyłki.
     private func ensureFolders(company: String, parent: String?, dirs: [String], cache: inout [String: String?]) async throws -> String? {
         var current = parent
         for index in dirs.indices {
-            let key = "\(parent ?? "")/" + dirs[...index].joined(separator: "/")
+            let key = "\(company)|\(parent ?? "")/" + dirs[...index].joined(separator: "/")
             if let known = cache[key] { current = known; continue }
             let name = String(dirs[index].trimmingCharacters(in: .whitespacesAndNewlines).prefix(255)).nonEmptyName
             let parentID = current
-            if let existing = folders.first(where: { $0.parentId == parentID && $0.name.lowercased() == name.lowercased() }) {
+            let known = uploadFolders[company] ?? []
+            if let existing = known.first(where: { $0.parentId == parentID && $0.name.lowercased() == name.lowercased() }) {
                 cache[key] = existing.id
                 current = existing.id
                 continue
@@ -862,12 +919,17 @@ import UniformTypeIdentifiers
             do {
                 let data = try await post("createFolder", ["companyId": .string(company), "parentId": parentID.map { .string($0) } ?? .null, "name": .string(name)])
                 let created = try JSONDecoder().decode(MaterialFolderCreated.self, from: data).item
-                if var updated = home { updated.folders.append(created); home = updated }
+                uploadFolders[company, default: []].append(created)
+                if var updated = home, updated.company.id == company { updated.folders.append(created); home = updated }
                 cache[key] = created.id
                 current = created.id
             } catch let failure as NativeFailure where failure.status == 409 {
-                await loadHome(quiet: true)
-                guard let existing = folders.first(where: { $0.parentId == parentID && $0.name.lowercased() == name.lowercased() }) else { throw failure }
+                // Folder o tej nazwie już powstał (np. w CRM) — aktualne foldery tej marki z serwera.
+                guard let api else { throw failure }
+                let fresh = try JSONDecoder().decode(MaterialsHome.self, from: try await api.get("/materials", query: ["op": "home", "company": company]))
+                guard fresh.company.id == company else { throw failure }
+                uploadFolders[company] = fresh.folders
+                guard let existing = fresh.folders.first(where: { $0.parentId == parentID && $0.name.lowercased() == name.lowercased() }) else { throw failure }
                 cache[key] = existing.id
                 current = existing.id
             }
@@ -971,6 +1033,9 @@ struct MaterialsUploadJob {
     let dirs: [String]
     let parent: String?
     let replace: (id: String, version: Int)?
+    /// Marka docelowa (ustawiana przy dodaniu do kolejki).
+    var company = ""
+    var companyName = ""
 }
 
 struct MaterialsUploadRow: Identifiable {
@@ -999,8 +1064,47 @@ struct MaterialDuplicateReply: Decodable {
 }
 
 struct MaterialsUploadBatch {
+    var id = UUID()
     var rows: [MaterialsUploadRow]
     var running: Bool
+}
+
+/// Postęp wysyłki na Dysk (panel `MaterialsUploadPanel` w rogu okna). Osobny obiekt — zmiany postępu odświeżają tylko panel.
+@MainActor final class MaterialsUploads: ObservableObject {
+    @Published private(set) var batch: MaterialsUploadBatch?
+    /// Lista plików rozwinięta w panelu.
+    @Published var expanded = false
+    fileprivate var onCancel: (() -> Void)?
+    private var index: [UUID: Int] = [:]
+
+    fileprivate func publish(_ next: MaterialsUploadBatch) {
+        if next.id != batch?.id { expanded = false }
+        index = Dictionary(next.rows.enumerated().map { item in (item.element.id, item.offset) }, uniquingKeysWith: { first, _ in first })
+        batch = next
+    }
+
+    fileprivate func patch(_ id: UUID, _ change: (inout MaterialsUploadRow) -> Void) {
+        guard var current = batch, let position = index[id], current.rows.indices.contains(position) else { return }
+        change(&current.rows[position])
+        batch = current
+    }
+
+    fileprivate func finish() { batch?.running = false }
+
+    fileprivate func reset() {
+        batch = nil
+        index = [:]
+        expanded = false
+    }
+
+    /// „Przerwij wysyłkę”.
+    func cancel() { onCancel?() }
+
+    /// „Zamknij” po zakończeniu (w trakcie wysyłki panel zostaje).
+    func close() {
+        guard batch?.running != true else { return }
+        reset()
+    }
 }
 
 /// Pliki pomijane przy wysyłce (systemowe i tymczasowe — jak w Finderze).
@@ -1033,12 +1137,21 @@ enum MaterialsDrag {
 
 /// Wysyłka na podpisane adresy magazynu z postępem.
 enum MaterialsTransfer {
+    /// Postęp najwyżej 4 razy na sekundę (i na koniec pliku) — częstsze odświeżanie panelu tylko obciążało aplikację.
     private final class Progress: NSObject, URLSessionTaskDelegate {
         let report: @Sendable (Int64) -> Void
+        private let last = OSAllocatedUnfairLock(initialState: Date.distantPast)
         init(_ report: @escaping @Sendable (Int64) -> Void) { self.report = report }
         func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64,
                         totalBytesExpectedToSend: Int64) {
-            report(totalBytesSent)
+            let complete = totalBytesExpectedToSend > 0 && totalBytesSent >= totalBytesExpectedToSend
+            let due = last.withLock { previous -> Bool in
+                let now = Date()
+                guard complete || now.timeIntervalSince(previous) >= 0.25 else { return false }
+                previous = now
+                return true
+            }
+            if due { report(totalBytesSent) }
         }
     }
 

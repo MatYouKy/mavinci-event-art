@@ -4,7 +4,10 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { Platform, Share } from 'react-native';
 import { supabase } from './supabase';
-import { materialKind, type MaterialAccess, type MaterialKind, type MaterialSystemFolder } from './materialsShared';
+import {
+  materialKind, type MaterialAccess, type MaterialKind, type MaterialShare, type MaterialShareAccess, type MaterialShareCreated, type MaterialShareItemKind,
+  type MaterialSystemFolder,
+} from './materialsShared';
 
 /*
  * Materiały w aplikacji — to samo API co CRM, Mac i Finder (`/bridge/native/v1/materials`, token sesji pracownika,
@@ -101,6 +104,24 @@ export async function materialsPost<T>(op: string, body: Record<string, unknown>
 }
 
 export const materialsErrorMessage = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
+
+// MARK: Linki do pobrania (jak CRM i Mac: `op=shares`, `shareCreate`, `shareUpdate`, `shareDelete`)
+
+export type { MaterialShare, MaterialShareCreated };
+/** Element do udostępnienia (folder z podfolderami, album albo plik) z nazwą do opisu w oknie. */
+export type MaterialShareTarget = { kind: MaterialShareItemKind; id: string; name: string };
+export type MaterialShareChange = {
+  id: string; title?: string; message?: string; days?: number; revoked?: boolean; access?: MaterialShareAccess; emails?: string[];
+  newPassword?: boolean; password?: string;
+};
+
+export const materialShares = (companyId: string) => materialsGet<{ companyId: string; shares: MaterialShare[] }>('shares', { company: companyId });
+export const createMaterialShare = (input: {
+  companyId: string; items: Array<{ kind: MaterialShareItemKind; id: string }>; title: string; message: string; days: number;
+  access: MaterialShareAccess; emails: string[]; password: string;
+}) => materialsPost<MaterialShareCreated>('shareCreate', input);
+export const updateMaterialShare = (change: MaterialShareChange) => materialsPost<MaterialShareCreated>('shareUpdate', change);
+export const deleteMaterialShare = (id: string) => materialsPost<{ ok: true; id: string }>('shareDelete', { id });
 export const materialsErrorStatus = (error: unknown) => (error as ApiError | null)?.status;
 
 // MARK: Pliki z telefonu

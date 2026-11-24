@@ -80,7 +80,8 @@ export async function newInquirySetup(ctx: NativeContext) {
 
 /**
  * Opiekun od razu przy zapisie: siebie — kto może przejmować zapytania (`canClaim`) albo je przydzielać, inną osobę — kto
- * przydziela (`canAssign`), w zakresie listy „Osoba odpowiedzialna” (wszyscy, zespół albo tylko Ty). Brak — wspólna kolejka.
+ * przydziela (`canAssign`), w zakresie listy „Osoba odpowiedzialna” (wszyscy, zespół albo tylko Ty). Brak — opiekuna ustawia
+ * baza: osoba dodająca, jeśli prowadzi zapytania (`src/lib/CRM/inquiries/inquiryCreatorOwner.ts`), inaczej wspólna kolejka.
  */
 async function newInquiryOwner(ctx: NativeContext, raw: unknown): Promise<{ id: string; name: string } | null> {
   const value = str(raw).trim();
@@ -105,9 +106,10 @@ async function newInquiryOwner(ctx: NativeContext, raw: unknown): Promise<{ id: 
 
 /**
  * „Zapisz zapytanie” (`handleSave`): te same sprawdzenia i komunikaty, ten sam zapis — zadanie-zapytanie na początku
- * listy, pilne, etap „Nowe”, bez opiekuna (wspólna kolejka), szansa 10%, wartość z budżetu, szczegóły źródła. Identyfikator
- * nadaje okno (jak `crypto.randomUUID()` przy otwarciu), więc ponowne kliknięcie nie tworzy duplikatu. Opcjonalnie (okno na
- * Macu): `ownerId` — opiekun od razu, `contacted` — rozmowa już się odbyła (etap „Kontakt podjęty”, szansa etapu),
+ * listy, pilne, etap „Nowe”, opiekun — osoba dodająca, gdy prowadzi zapytania (baza), inaczej wspólna kolejka, szansa 10%,
+ * wartość z budżetu, szczegóły źródła. Identyfikator nadaje okno (jak `crypto.randomUUID()` przy otwarciu), więc ponowne
+ * kliknięcie nie tworzy duplikatu. Opcjonalnie (okno na Macu): `ownerId` — opiekun od razu, `contacted` — rozmowa już się
+ * odbyła (etap „Kontakt podjęty”, szansa etapu),
  * `nextActionAt` — termin kolejnego działania (bez niego baza ustawia własny, jak dotąd).
  */
 export async function createInquiry(ctx: NativeContext, body: Row) {
@@ -214,7 +216,8 @@ export async function createInquiry(ctx: NativeContext, body: Row) {
     created_by: ctx.employee.id,
     is_inquiry: true,
     is_private: false,
-    // Bez opiekuna — wspólna kolejka (albo przydział rotacyjny bazy); bez terminu kolejnego działania baza ustawia własny.
+    // Bez wybranego opiekuna baza ustawia osobę dodającą (gdy prowadzi zapytania), inaczej wspólna kolejka albo przydział
+    // rotacyjny; bez terminu kolejnego działania baza ustawia własny.
     inquiry_stage: stage,
     inquiry_owner_id: owner?.id ?? null,
     win_probability: probability,
@@ -227,7 +230,7 @@ export async function createInquiry(ctx: NativeContext, body: Row) {
     inquiry_details: inquiryDetails,
   }], { onConflict: 'id', ignoreDuplicates: true });
   if (error) fail(`Błąd zapisu: ${error.message}`, error.code === '42501' ? 403 : 400);
-  // Bez wybranego opiekuna baza może przydzielić go sama (tryb rotacyjny SLA) — okno pokazuje, kto dostał zapytanie.
+  // Bez wybranego opiekuna baza ustawia go sama (osoba dodająca albo tryb rotacyjny SLA) — okno pokazuje, kto dostał zapytanie.
   let ownerId = owner?.id ?? null;
   let ownerName = owner?.name ?? null;
   if (!ownerId) {
@@ -241,7 +244,8 @@ export async function createInquiry(ctx: NativeContext, body: Row) {
     }
   }
   // `stage` informuje okno, że serwer zapisał opiekuna i kontakt (starszy serwer — okno robi to osobnymi czynnościami).
-  return { id, stage, ownerId, ownerName, autoAssigned: !owner && !!ownerId, nextActionAt };
+  // `autoAssigned` — przydział rotacyjny innej osobie (osoba dodająca jako opiekun to nie przydział automatyczny).
+  return { id, stage, ownerId, ownerName, autoAssigned: !owner && !!ownerId && ownerId !== ctx.employee.id, nextActionAt };
 }
 
 const SLA_COLUMNS = 'id, is_enabled, unassigned_minutes, first_contact_minutes, repeat_minutes, escalation_minutes, max_owner_reminders, '

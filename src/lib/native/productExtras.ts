@@ -6,12 +6,15 @@ import { validateAddons, type ProductAddon } from '@/lib/CRM/Offers/offerAddons'
 import { validateSalesPackages, type ProductSalesPackage } from '@/lib/CRM/Offers/productSalesPackages';
 import { getOfferRequirementLabel, inferOfferRequirementCategory } from '@/lib/CRM/Offers/offerRequirements';
 import { relatedServicePagePath, servicePagePath } from '@/lib/CRM/Offers/relatedServices';
+import { OFFER_IMAGE_SIDES } from '@/lib/CRM/Offers/productImageSource';
+import { materialWebp, storeOfferWebp } from './productImages';
 
 /*
  * Karta produktu na Macu, część C1 — warianty (elementy) produktu ze zdjęciami, przygotowanie i zamówienia (kroki realizacji),
  * wymagania produktu, powiązane usługi na stronie oraz dodatki i limity pakietu: te same pola, sprawdzenia i zapis co
  * `saveVariantSection`, `ProductPreparationItems`, `saveRequirementSection`, `ProductRelatedServicesSection`
- * i `saveAddonSection` w CRM.
+ * i `saveAddonSection` w CRM. Zdjęcia wariantów i pakietów (z komputera albo z Dysku) zapisujemy jako lekkie WebP
+ * (`productImages.ts`).
  */
 
 type Row = Record<string, any>;
@@ -179,12 +182,6 @@ export async function productExtras(ctx: NativeContext, productValue: string) {
 
 // MARK: Warianty / elementy
 
-const IMAGE_TYPES: Array<{ type: string; extension: string; test: (bytes: Buffer) => boolean }> = [
-  { type: 'image/png', extension: 'png', test: (bytes) => bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
-  { type: 'image/jpeg', extension: 'jpg', test: (bytes) => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff },
-  { type: 'image/webp', extension: 'webp', test: (bytes) => bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP' },
-];
-
 const optionalAmount = (value: unknown) => {
   if (value == null || value === '') return null;
   const amount = Number(value);
@@ -247,20 +244,17 @@ export async function saveVariants(ctx: NativeContext, body: Row) {
     fail('Najpierw usuń element ze składu pakietów, aby usunąć go z produktu.');
   }
 
-  // Zdjęcie elementu (Mac zmniejsza je do 1800 px jak `optimizeOfferImage`).
+  // Zdjęcie elementu: z komputera (Mac zmniejsza je do 1800 px jak `optimizeOfferImage`) albo z Dysku (`materialId`) — WebP.
   let uploaded: string | null = null;
   if (body.image && typeof body.image === 'object') {
     const target = variants.find((variant) => variant.id === body.image.variantId);
     if (!target) fail('Nie znaleziono elementu dla zdjęcia.');
     if (body.image.remove === true) target.offer_image_path = null;
-    if (typeof body.image.data === 'string' && body.image.data) {
-      const bytes = Buffer.from(body.image.data, 'base64');
-      if (bytes.length > 8 * 1024 * 1024) fail('Zdjęcie jest za duże.');
-      const kind = IMAGE_TYPES.find((item) => item.test(bytes));
-      if (!kind) fail('Wybierz zdjęcie JPG, PNG lub WebP o wielkości do 10 MB.');
-      const path = `assets/${productId}/variants/${target.id}-${randomUUID()}.${kind.extension}`;
-      const { error } = await ctx.supabase.storage.from(BUCKET).upload(path, bytes, { contentType: kind.type, upsert: false });
-      if (error) fail(error.message || 'Nie udało się wysłać zdjęcia.');
+    if (typeof body.image.materialId === 'string' && body.image.materialId) {
+      // Wersja z Dysku może być wspólna z innym zdjęciem produktu — nie usuwamy jej przy wycofaniu zapisu.
+      target.offer_image_path = await materialWebp(ctx, productId, body.image.materialId);
+    } else if (typeof body.image.data === 'string' && body.image.data) {
+      const path = await storeOfferWebp(ctx, body.image.data, `assets/${productId}/variants`, `${target.id}-`, OFFER_IMAGE_SIDES.variant);
       uploaded = path;
       target.offer_image_path = path;
     }
@@ -462,18 +456,18 @@ export async function savePackages(ctx: NativeContext, body: Row) {
 
   const uploaded: string[] = [];
   try {
+    // Zdjęcie pakietu z komputera (`data`) albo z Dysku (`materialId`) — WebP; wersji z Dysku nie usuwamy przy wycofaniu zapisu.
     for (const image of Array.isArray(body.images) ? body.images as Row[] : []) {
       const target = packages.find((item) => item.id === image?.packageId);
-      if (!target || typeof image.data !== 'string' || !image.data) continue;
-      const bytes = Buffer.from(image.data, 'base64');
-      if (bytes.length > 8 * 1024 * 1024) fail('Zdjęcie pakietu jest za duże.');
-      const kind = IMAGE_TYPES.find((entry) => entry.test(bytes));
-      if (!kind) fail('Wybierz JPG, PNG lub WebP o wielkości do 10 MB.');
-      const path = `assets/${productId}/packages/${target.id}-${randomUUID()}.${kind.extension}`;
-      const { error } = await ctx.supabase.storage.from(BUCKET).upload(path, bytes, { contentType: kind.type, upsert: false });
-      if (error) fail(error.message || 'Nie udało się wysłać zdjęcia pakietu.');
-      uploaded.push(path);
-      target.image_path = path;
+      if (!target) continue;
+      if (typeof image.materialId === 'string' && image.materialId) {
+        target.image_path = await materialWebp(ctx, productId, image.materialId);
+      } else if (typeof image.data === 'string' && image.data) {
+        if (!/^[A-Za-z0-9_-]{1,80}$/.test(String(target.id))) fail('Nieprawidłowy pakiet.');
+        const path = await storeOfferWebp(ctx, image.data, `assets/${productId}/packages`, `${target.id}-`, OFFER_IMAGE_SIDES.package);
+        uploaded.push(path);
+        target.image_path = path;
+      }
     }
     const enabled = body.enabled === true && packages.length > 0;
     // Pakiety rozliczane są w sztukach pakietu (jak `saveProductSection` w CRM).

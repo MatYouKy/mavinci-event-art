@@ -54,6 +54,13 @@ export const canCreateInquiry = (employee: PermissionEmployee): boolean =>
     hasPermission(employee, 'tasks_create')
   );
 
+// Osoba dodająca zapytanie zostaje jego opiekunem, jeśli prowadzi zapytania — ta sama reguła co w bazie
+// (`prepare_inquiry_sales_automation`) i w CRM (`src/lib/CRM/inquiries/inquiryCreatorOwner.ts`).
+export const canOwnNewInquiry = (employee: PermissionEmployee): boolean =>
+  isAdmin(employee) ||
+  ['inquiries_assign', 'inquiries_manage', 'inquiries_manage_own', 'inquiries_manage_all']
+    .some((scope) => employee?.permissions?.includes(scope) === true);
+
 export type ModuleName =
   | 'equipment'
   | 'employees'

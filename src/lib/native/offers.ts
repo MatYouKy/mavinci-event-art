@@ -9,6 +9,7 @@ import { normalizeEventAssumptionItems, syncGuestCountAssumptions } from '@/lib/
 import { expandConfiguredItems, hasOfferAddons } from '@/lib/CRM/Offers/offerAddons';
 import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 import { offerPdfFileName } from '@/lib/CRM/Offers/offerPdfFileName';
+import { formatPhone } from '@/lib/CRM/client/phoneFormat';
 import {
   LOCATION_BACKGROUND_BUCKET, locationSelectorLabel, offerUsesVenueBackground, offerVenue, offerVenueHint, offerVenueIds, offerVenueLabel,
   venueOutdatedOffers,
@@ -417,7 +418,8 @@ export async function offerDetail(ctx: NativeContext, id: string) {
       legalName: !seller && offer.organization?.alias && offer.organization?.name ? text(offer.organization.name) : null,
       contactName: seller ? text(offer.portal_client_name) : fullName(contact),
       contactEmail: text(seller ? offer.portal_client_email : contact?.email) || null,
-      contactPhone: text(seller ? offer.portal_client_phone : contact?.mobile || contact?.phone) || null,
+      // Jak „Telefon klienta” w CRM: z kierunkowym („+48 510 233 670”), także numer zapisany jako same cyfry.
+      contactPhone: formatPhone(seller ? offer.portal_client_phone : contact?.mobile || contact?.phone) || null,
       sellerDescription: seller ? text(offer.description) || null : null,
       eventLabel: offer.event?.name || text(offer.inquiry?.title).replace(/^Zapytanie:\s*/i, '')
         || (seller ? 'Samodzielna oferta sprzedawcy — bez powiązanego eventu CRM' : '-'),

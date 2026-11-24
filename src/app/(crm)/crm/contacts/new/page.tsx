@@ -43,10 +43,12 @@ import {
 import OrganizationFormFields, { clientBusinessTypes } from '@/components/crm/contacts/organization/OrganizationFormFields';
 import OrganizationInvoiceBuyerSection from '@/components/crm/contacts/organization/OrganizationInvoiceBuyerSection';
 import { requiresKrsForLegalForm } from '@/lib/organizations/organizationLegalForm';
+import { formatPhone, phoneDuplicateConditions } from '@/lib/CRM/client/phoneFormat';
 
 const cleanNip = (value: string) => value.replace(/\D/g, '');
 
-const normalizePhone = (value?: string | null) => (value || '').replace(/\D/g, '');
+/** Telefon z kierunkowym („+48 510 233 670”) — wcześniej same cyfry, bez „+” (`src/lib/CRM/client/phoneFormat.ts`). */
+const normalizePhone = (value?: string | null) => formatPhone(value);
 
 const normalizeEmail = (value?: string | null) => (value || '').trim().toLowerCase();
 
@@ -543,23 +545,8 @@ export default function NewContactPage() {
       orConditions.push(`email.ilike.${email}`);
     }
 
-    if (phone) {
-      orConditions.push(`phone.eq.${phone}`);
-      orConditions.push(`mobile.eq.${phone}`);
-      orConditions.push(`business_phone.eq.${phone}`);
-    }
-
-    if (mobile) {
-      orConditions.push(`phone.eq.${mobile}`);
-      orConditions.push(`mobile.eq.${mobile}`);
-      orConditions.push(`business_phone.eq.${mobile}`);
-    }
-
-    if (businessPhone) {
-      orConditions.push(`phone.eq.${businessPhone}`);
-      orConditions.push(`mobile.eq.${businessPhone}`);
-      orConditions.push(`business_phone.eq.${businessPhone}`);
-    }
+    // Ten sam numer w każdym zapisie, jaki może być w bazie (same cyfry, „+48 …”, ze spacjami, bez kierunkowego).
+    orConditions.push(...phoneDuplicateConditions([phone, mobile, businessPhone]));
 
     if (nip) {
       orConditions.push(`nip.eq.${nip}`);

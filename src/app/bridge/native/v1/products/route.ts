@@ -1,11 +1,16 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
 import {
+  convertProductImages,
   createProduct,
   deleteProduct,
   draftProductOfferCopy,
+  duplicateProductCard,
   draftVariantCopy,
   productDetail,
   productEnglish,
+  productImageFromMaterial,
+  productImageSourceOf,
+  productImagesPending,
   productsAccess,
   productsState,
   refreshProductEnglish,
@@ -49,9 +54,14 @@ export const maxDuration = 200;
  * Produkty (katalog oferty) dla aplikacji na Maca (`src/lib/native/products.ts`): GET op=state (katalog z gotowością),
  * op=product&id=… (karta produktu), op=services&organization=… (usługi podwykonawcy), op=resources&id=…&variant=… (sprzęt,
  * obsada, Mavinci LIVE i klauzule w zakresie produktu lub wariantu), op=equipmentCatalog (sprzęt i zestawy do wyboru),
- * op=extras&id=… (warianty, przygotowanie, wymagania, powiązane usługi, dodatki), op=english&id=… (teksty wersji EN);
- * POST op=create | delete | section (zapis sekcji karty, także kadry zdjęć `image_crops`) | exemption („nie dotyczy”) |
- * image (zdjęcie do oferty) | english („Przetłumacz PL → EN”, też w tle po zmianie treści, jak w CRM) | englishSave (poprawki
+ * op=extras&id=… (warianty, przygotowanie, wymagania, powiązane usługi, dodatki), op=english&id=… (teksty wersji EN),
+ * op=imageSource&path=… (zdjęcie produktu z Dysku: plik, miejsce, nowsza wersja — CRM), op=imagesPending (ile zdjęć jest
+ * jeszcze w JPG/PNG);
+ * POST op=create | duplicate {id} (kopia całej karty jako nowy, nieaktywny produkt) | delete | section (zapis sekcji karty,
+ * także kadry zdjęć `image_crops`) | exemption („nie dotyczy”) |
+ * image {id, data, target?: product | variant | package, targetId?} (zdjęcie z komputera → WebP) | imageFromMaterial {id, fileId}
+ * (zdjęcie z Dysku — lekka wersja WebP) | imagesConvert {skip?, limit?} (porcja zamiany starszych zdjęć na WebP) |
+ * english („Przetłumacz PL → EN”, też w tle po zmianie treści, jak w CRM) | englishSave (poprawki
  * tekstów EN) | aiOffer | aiVariant (propozycje treści z AI) | equipmentAdd | equipmentUpdate | equipmentRemove | staffSave |
  * staffRemove | liveToggle | clausesSave | variantCustomize | variantInherit (zakres wariantu) | variantsSave | preparationSave |
  * preparationToggle | preparationRemove | requirementsSave | relatedSave | addonsSave | packagesSave (pakiety sprzedaży).
@@ -75,6 +85,8 @@ export async function GET(request: Request) {
       case 'equipmentCatalog': return nativeJson(await equipmentCatalog(ctx));
       case 'extras': return nativeJson(await productExtras(ctx, url.searchParams.get('id') || ''));
       case 'english': return nativeJson(await productEnglish(ctx, url.searchParams.get('id') || ''));
+      case 'imageSource': return nativeJson({ source: await productImageSourceOf(ctx, url.searchParams.get('path')) });
+      case 'imagesPending': return nativeJson(await productImagesPending(ctx));
       default: return failure('Nieznana operacja.');
     }
   } catch (error) {
@@ -88,18 +100,21 @@ export async function POST(request: Request) {
   if (!productsAccess(ctx).canView) return failure('Nie masz dostępu do produktów.', 403);
   let body: Record<string, any>;
   try {
-    // Zdjęcie do oferty (do ~8 MB w base64); pozostałe operacje to krótkie formularze.
-    body = await readJson(request, 12_000_000);
+    // Zdjęcie do oferty (do 10 MB, w base64 ~13,4 mln znaków); pozostałe operacje to krótkie formularze.
+    body = await readJson(request, 15_000_000);
   } catch {
     return failure('Nieprawidłowe dane.');
   }
   try {
     switch (String(body.op || '')) {
       case 'create': return nativeJson(await createProduct(ctx, body));
+      case 'duplicate': return nativeJson(await duplicateProductCard(ctx, body));
       case 'delete': return nativeJson(await deleteProduct(ctx, body));
       case 'section': return nativeJson(await saveProductSection(ctx, body));
       case 'exemption': return nativeJson(await setReadinessExemption(ctx, body));
       case 'image': return nativeJson(await uploadProductImage(ctx, body));
+      case 'imageFromMaterial': return nativeJson(await productImageFromMaterial(ctx, body));
+      case 'imagesConvert': return nativeJson(await convertProductImages(ctx, body));
       case 'english': return nativeJson(await refreshProductEnglish(ctx, body));
       case 'englishSave': return nativeJson(await saveProductEnglish(ctx, body));
       case 'aiOffer': return nativeJson(await draftProductOfferCopy(ctx, body));

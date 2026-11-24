@@ -1,10 +1,12 @@
-import { Grid3x3, LayoutList, Package, Plus, Search, Table2 } from 'lucide-react';
+import { Copy, Grid3x3, LayoutList, Package, Plus, Search, Table2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Popover from '@/components/UI/Tooltip';
 import { useUserPreferences } from '@/app/(crm)/crm/PreferencesClientProvider';
 import { productReadiness, READINESS_GROUPS, type ProductReadiness, type ReadinessGroupKey } from '@/lib/CRM/Offers/productReadiness';
 import { ReadinessDots, readinessSummary } from '@/components/crm/offers/ProductReadiness';
+import ProductImagesWebpBanner from './ProductImagesWebpBanner';
+import { useDuplicateProduct } from './useDuplicateProduct';
 
 type CatalogViewMode = 'grid' | 'list' | 'table';
 
@@ -162,7 +164,23 @@ function ProductThumbnail({
   );
 }
 
+/** „Duplikuj” przy produkcie w katalogu (bez otwierania karty). */
+function DuplicateButton({ product, onDuplicate }: { product: any; onDuplicate: (product: { id: string; name: string }) => void }) {
+  return (
+    <button
+      type="button"
+      title="Duplikuj produkt"
+      aria-label={`Duplikuj produkt ${product.name}`}
+      onClick={(event) => { event.stopPropagation(); onDuplicate({ id: product.id, name: product.name }); }}
+      className="shrink-0 rounded-md p-1.5 text-[#e5e4e2]/45 transition-colors hover:bg-white/5 hover:text-[#d3bb73]"
+    >
+      <Copy className="h-4 w-4" />
+    </button>
+  );
+}
+
 export function CatalogTab({
+  canEdit = false,
   products,
   categories,
   productSearch,
@@ -174,6 +192,8 @@ export function CatalogTab({
   router,
 }: any) {
   const { employeeId, preferences, setPreference } = useUserPreferences();
+  const duplicate = useDuplicateProduct();
+  const onDuplicate = (product: { id: string; name: string }) => { void duplicate(product); };
   const storageKey = `crm:offer-catalog:view:${employeeId}`;
   const [readinessFilter, setReadinessFilter] = useState<ReadinessFilter>('all');
   const [groupFilter, setGroupFilter] = useState<ReadinessGroupKey | null>(null);
@@ -300,6 +320,8 @@ export function CatalogTab({
           </button>
         </div>
 
+        <ProductImagesWebpBanner />
+
         {products.length > 0 && (
           <div className="mb-5 flex flex-wrap items-center gap-2 text-xs" aria-label="Gotowość produktów do oferty">
             <span className="mr-1 text-[#e5e4e2]/60">
@@ -369,11 +391,14 @@ export function CatalogTab({
                         <h3 className="line-clamp-2 font-semibold leading-snug text-[#e5e4e2]">{product.name}</h3>
                         <p className="mt-1 text-xs text-[#d3bb73]">{product.category?.name || 'Bez kategorii'}</p>
                       </div>
-                      <span className={`shrink-0 rounded px-2 py-1 text-[10px] ${
-                        product.is_active !== false ? 'bg-green-500/15 text-green-400' : 'bg-gray-500/20 text-gray-400'
-                      }`}>
-                        {product.is_active !== false ? 'Aktywny' : 'Nieaktywny'}
-                      </span>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {canEdit && <DuplicateButton product={product} onDuplicate={onDuplicate} />}
+                        <span className={`shrink-0 rounded px-2 py-1 text-[10px] ${
+                          product.is_active !== false ? 'bg-green-500/15 text-green-400' : 'bg-gray-500/20 text-gray-400'
+                        }`}>
+                          {product.is_active !== false ? 'Aktywny' : 'Nieaktywny'}
+                        </span>
+                      </div>
                     </div>
                     {product.description && (
                       <p className="mt-3 line-clamp-2 min-h-10 text-sm leading-5 text-[#e5e4e2]/55">{product.description}</p>
@@ -433,6 +458,7 @@ export function CatalogTab({
                       <div className="text-sm text-[#e5e4e2]/80">{formatMoney(prices.gross)} zł</div>
                     </div>
                     <div className={`hidden w-20 shrink-0 text-right text-xs font-medium xl:block ${marginClass(margin)}`} title={margin == null ? MARGIN_UNKNOWN : undefined}>{marginText(margin)}</div>
+                    {canEdit && <DuplicateButton product={product} onDuplicate={onDuplicate} />}
                   </div>
                 </article>
               );
@@ -452,6 +478,7 @@ export function CatalogTab({
                   <th className="w-[9%] px-3 text-right font-medium">Marża</th>
                   <th className="w-[200px] px-3 font-medium">Gotowość do oferty</th>
                   <th className="w-[90px] px-3 text-center font-medium">Status</th>
+                  {canEdit && <th className="w-[52px] px-2"><span className="sr-only">Czynności</span></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#d3bb73]/10 bg-[#0f1119]">
@@ -477,6 +504,7 @@ export function CatalogTab({
                           {product.is_active !== false ? 'Aktywny' : 'Nieaktywny'}
                         </span>
                       </td>
+                      {canEdit && <td className="px-2 py-2 text-center"><DuplicateButton product={product} onDuplicate={onDuplicate} /></td>}
                     </tr>
                   );
                 })}

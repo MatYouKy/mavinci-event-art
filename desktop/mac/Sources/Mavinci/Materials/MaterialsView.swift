@@ -14,6 +14,8 @@ import UniformTypeIdentifiers
 // folderu”; menu na pustym miejscu: nowy folder, dodawanie plików, wklejanie.
 // Na ekranie Dysku (`drive`) pasek boczny pokazuje działy Dysku (Eventy, Oferty, Magazyn…), a drzewo folderów i albumów —
 // pod pozycją „Materiały”; w folderze „Logotypy i księga znaku” na górze logotypy, fonty i kolory z księgi znaku.
+// „Udostępnij link…” (folder, album, pliki — menu prawym przyciskiem, czynności zaznaczenia, album) — link do pobrania dla osoby
+// spoza firmy; „Linki” w nagłówku — linki marki (`MaterialSharing.swift`).
 
 @MainActor struct MaterialsView: View {
     @ObservedObject var store: MaterialsStore
@@ -41,6 +43,9 @@ import UniformTypeIdentifiers
     @State private var albumPrompt: AlbumPrompt?
     @State private var albumName = ""
     @State private var albumDescription = ""
+    /// „Udostępnij link…” i lista „Linki” (linki do pobrania marki).
+    @State private var sharing: MaterialShareRequest?
+    @State private var sharesShown = false
 
     private struct AlbumPrompt: Identifiable {
         let id = UUID()
@@ -94,10 +99,6 @@ import UniformTypeIdentifiers
         Binding(get: { copying != nil }, set: { if !$0 { copying = nil } })
     }
 
-    private var uploadsShown: Binding<Bool> {
-        Binding(get: { store.uploads != nil }, set: { if !$0 { store.closeUploads() } })
-    }
-
     private var deleteMessage: String {
         let folders = (deleting ?? []).contains { $0.kind == "folder" }
         return folders
@@ -118,7 +119,7 @@ import UniformTypeIdentifiers
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 60_000_000_000)
                     if Task.isCancelled { break }
-                    if store.uploads?.running != true { await store.refresh() }
+                    if !store.uploading { await store.refresh() }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -159,7 +160,7 @@ import UniformTypeIdentifiers
             }
     }
 
-    /// Przeniesienie do folderu, zapis pliku wydarzenia w Materiałach, postęp wysyłki.
+    /// Przeniesienie do folderu i zapis pliku wydarzenia w Materiałach (postęp wysyłki — panel w rogu okna, `MaterialsUploadPanel`).
     private func sheets<V: View>(_ view: V) -> some View {
         view
             .sheet(isPresented: movingShown) {
@@ -171,9 +172,34 @@ import UniformTypeIdentifiers
             .sheet(item: $savingEvent) { hit in
                 saveEventPicker(hit)
             }
-            .sheet(isPresented: uploadsShown) {
-                MaterialsUploadSheet(store: store).environment(\.crmTheme, theme)
+            .sheet(item: $sharing) { request in
+                if let company = store.home?.company {
+                    MaterialShareSheet(store: store, companyID: company.id, companyName: company.name, mode: .create(request))
+                        .environmentObject(state).environment(\.crmTheme, theme)
+                }
             }
+            .sheet(isPresented: $sharesShown) {
+                if let company = store.home?.company {
+                    MaterialSharesSheet(store: store, companyID: company.id, companyName: company.name)
+                        .environmentObject(state).environment(\.crmTheme, theme)
+                }
+            }
+    }
+
+    /// „Udostępnij link…”: tytuł strony — nazwa folderu lub albumu, plik bez rozszerzenia albo bieżący folder (kilka elementów).
+    private func share(_ items: [MaterialShareTarget]) {
+        guard !items.isEmpty else { return }
+        let title: String
+        if items.count == 1, let item = items.first {
+            title = item.kind == "file" ? ((item.name as NSString).deletingPathExtension.isEmpty ? item.name : (item.name as NSString).deletingPathExtension) : item.name
+        } else {
+            title = store.path(of: store.folderID).last?.name ?? "Pliki do pobrania"
+        }
+        sharing = MaterialShareRequest(items: items, title: title)
+    }
+
+    private func shareRefs(_ refs: [MaterialRef]) {
+        share(refs.map { MaterialShareTarget(kind: $0.kind, id: $0.id, name: $0.name) })
     }
 
     private var movePicker: some View {
@@ -281,9 +307,12 @@ import UniformTypeIdentifiers
             }
             Button { Task { await store.refresh(quiet: false) } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
             if home.access.manage {
+                Button { sharesShown = true } label: { Label("Linki", systemImage: "link") }
+                    .help("Linki do pobrania tej marki — przedłuż, wyłącz, nowe hasło")
                 Button { askNewFolder(parent: store.folderID) } label: { Label("Nowy folder", systemImage: "folder.badge.plus") }
+                // Także w trakcie wysyłki — pliki dołączają do kolejki.
                 Button { chooseFiles() } label: { Label("Dodaj pliki", systemImage: "square.and.arrow.up") }
-                    .buttonStyle(.borderedProminent).disabled(store.uploads?.running == true)
+                    .buttonStyle(.borderedProminent)
             }
         }
     }
@@ -402,6 +431,9 @@ import UniformTypeIdentifiers
         if FinderDomain.available {
             Button("Pokaż w Finderze") { Task { await FinderDomain.reveal(materialsFolder: folder.id, company: folder.companyId) } }
         }
+        if store.canManage {
+            Button("Udostępnij link…") { shareRefs([ref]) }
+        }
         Divider()
         Button("Kopiuj") { store.setClipboard([ref], cut: false) }
         if store.canManage {
@@ -427,6 +459,9 @@ import UniformTypeIdentifiers
         if store.canManage {
             Button("Nowy folder…") { askNewFolder(parent: store.folderID) }
             Button("Dodaj pliki…") { chooseFiles() }
+            if let folder = store.path(of: store.folderID).last {
+                Button("Udostępnij link do „\(folder.name)”…") { shareRefs([MaterialRef(kind: "folder", id: folder.id, name: folder.name)]) }
+            }
             if let title = pasteTitle(into: nil) {
                 Divider()
                 Button(title) { Task { await paste(into: store.folderID) } }
@@ -511,7 +546,8 @@ import UniformTypeIdentifiers
                                        anchor = "f:" + file.id
                                    }
                                },
-                               onEdit: { album in askAlbum(album, fileIDs: []) })
+                               onEdit: { album in askAlbum(album, fileIDs: []) },
+                               onShare: { album in share([MaterialShareTarget(kind: "album", id: album.id, name: album.name)]) })
         } else {
             browser(home)
         }
@@ -733,6 +769,9 @@ import UniformTypeIdentifiers
         Button("Podgląd") { Task { await open(file) } }
         Button("Otwórz w domyślnej aplikacji") { Task { await openExternally(file) } }
         Button("Pobierz") { Task { await store.downloadToDownloads(id: file.id, version: file.contentVersion, name: file.name) } }
+        if store.canManage {
+            Button("Udostępnij link…") { shareRefs([ref]) }
+        }
         Divider()
         Button("Kopiuj") { store.setClipboard([ref], cut: false) }
         if store.canManage {
@@ -764,6 +803,10 @@ import UniformTypeIdentifiers
 
     /// Kilka zaznaczonych: `all` — do kopiowania (także foldery domyślne marki), `managed` — do przeniesienia i usunięcia.
     @ViewBuilder private func multiMenu(all: [MaterialRef], managed: [MaterialRef]) -> some View {
+        if store.canManage, !all.isEmpty {
+            Button("Udostępnij link do zaznaczonych (\(all.count))…") { shareRefs(all) }
+            Divider()
+        }
         if !all.isEmpty {
             Button("Kopiuj zaznaczone (\(all.count))") { store.setClipboard(all, cut: false) }
             if store.canManage {

@@ -81,6 +81,8 @@ enum MaterialsAlbumDrag {
     let onOpen: (MaterialFile) -> Void
     let onReveal: (MaterialFile) -> Void
     let onEdit: (MaterialAlbum) -> Void
+    /// „Udostępnij album” — link do pobrania dla osoby spoza firmy (zarządzanie Materiałami).
+    var onShare: ((MaterialAlbum) -> Void)? = nil
     @Environment(\.crmTheme) private var theme
     @State private var selection = Set<String>()
     @State private var dropTarget: String?
@@ -101,6 +103,7 @@ enum MaterialsAlbumDrag {
                     if !selection.isEmpty {
                         Button { remove(Array(selection)) } label: { Label("Usuń z albumu (\(selection.count))", systemImage: "minus.circle") }
                     }
+                    if let onShare { Button { onShare(album) } label: { Label("Udostępnij album", systemImage: "link") } }
                     Button { onEdit(album) } label: { Label("Edytuj", systemImage: "pencil") }
                     Button(role: .destructive) { confirmDelete = true } label: { Label("Usuń album", systemImage: "trash") }
                 }

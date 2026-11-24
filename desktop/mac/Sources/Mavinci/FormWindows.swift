@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // MARK: Formularze w osobnych oknach (wiadomość e-mail, faktura)
@@ -5,7 +6,9 @@ import SwiftUI
 // Zamiast arkusza przyklejonego do okna — zwykłe okno macOS: skalowanie, przesuwanie, kilka naraz i praca obok głównego okna
 // (np. przewijanie skrzynki przy pisaniu odpowiedzi). Widok, który otwierał arkusz (`.sheet(item:)`), otwiera okno tym samym
 // zapisem: `.formWindow(item:kind:)`. Treść czeka w `FormWindows` pod identyfikatorem, który dostaje scena `WindowGroup`
-// (`MavinciApp`: obszar roboczy, motyw); okno zabiera ją przy otwarciu. `dismiss()` w formularzu zamyka okno.
+// (`MavinciApp`: obszar roboczy, motyw); okno zabiera ją przy otwarciu. `dismiss()` w formularzu zamyka okno. Nowa wiadomość
+// otwiera się zawsze w rozmiarze okna modalnego na środku okna CRM (`FormWindowKind.openSize`), a nie w ostatnim rozmiarze
+// (np. na cały ekran po powiększeniu poprzedniego okna).
 
 /// Rodzaje okien formularzy — identyfikatory scen w `MavinciApp` (każdy rodzaj pamięta własny rozmiar i położenie okna).
 enum FormWindowKind: String {
@@ -13,20 +16,23 @@ enum FormWindowKind: String {
     case compose = "form-compose"
     /// Faktura VAT, proforma, zaliczka, korekta i faktura końcowa (`InvoiceFormSheet`, `FinalInvoiceSheet`).
     case invoice = "form-invoice"
+
+    /// Rozmiar treści okna przy każdym otwarciu (jak okno modalne, w granicach ekranu); `nil` — macOS pamięta ostatni rozmiar.
+    var openSize: CGSize? { self == .compose ? CGSize(width: 920, height: 780) : nil }
 }
 
 /// Treść okien formularzy czekająca na otwarcie okna (zabierana raz, przy otwarciu).
 @MainActor final class FormWindows {
     static let shared = FormWindows()
-    private var pending: [UUID: AnyView] = [:]
+    private var pending: [UUID: (view: AnyView, size: CGSize?)] = [:]
 
-    func register(_ content: AnyView) -> UUID {
+    func register(_ content: AnyView, size: CGSize? = nil) -> UUID {
         let id = UUID()
-        pending[id] = content
+        pending[id] = (content, size)
         return id
     }
 
-    func take(_ id: UUID) -> AnyView? { pending.removeValue(forKey: id) }
+    func take(_ id: UUID) -> (view: AnyView, size: CGSize?)? { pending.removeValue(forKey: id) }
 }
 
 private struct InFormWindowKey: EnvironmentKey {
@@ -48,12 +54,14 @@ extension EnvironmentValues {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
     @State private var content: AnyView?
+    @State private var size: CGSize?
     @State private var checked = false
 
     var body: some View {
         Group {
             if let content {
                 content.environment(\.inFormWindow, true)
+                    .background { if let size { FormWindowSizer(size: size) } }
             } else if checked {
                 ContentUnavailableView {
                     Label("Formularz nie jest już otwarty", systemImage: "doc.questionmark")
@@ -71,7 +79,10 @@ extension EnvironmentValues {
         .onAppear {
             guard !checked else { return }
             checked = true
-            if let id { content = FormWindows.shared.take(id) }
+            if let id, let entry = FormWindows.shared.take(id) {
+                content = entry.view
+                size = entry.size
+            }
         }
     }
 }
@@ -95,8 +106,47 @@ private struct FormWindowPresenter<Item: Identifiable, Panel: View>: ViewModifie
         content.onChange(of: item != nil, initial: true) { _, present in
             guard present, let current = item else { return }
             item = nil
-            let id = FormWindows.shared.register(AnyView(panel(current)))
+            let id = FormWindows.shared.register(AnyView(panel(current)), size: kind.openSize)
             openWindow(id: kind.rawValue, value: id)
+        }
+    }
+}
+
+/// Rozmiar okna formularza ustawiany raz, przy otwarciu: treść `size` (w granicach ekranu), na środku okna, z którego otwarto
+/// formularz (albo ekranu). Okno w trybie pełnoekranowym zostaje bez zmian.
+private struct FormWindowSizer: NSViewRepresentable {
+    let size: CGSize
+
+    func makeNSView(context: Context) -> SizerView { SizerView(size: size) }
+    func updateNSView(_ view: SizerView, context: Context) {}
+
+    final class SizerView: NSView {
+        private let size: CGSize
+        private var applied = false
+
+        init(size: CGSize) {
+            self.size = size
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard !applied, let window else { return }
+            applied = true
+            let anchor = NSApp.orderedWindows.first { $0 !== window && $0.isVisible && !$0.isMiniaturized && $0.level == .normal && !($0 is NSPanel) }
+            let size = size
+            Task { @MainActor [weak window, weak anchor] in
+                guard let window, !window.styleMask.contains(.fullScreen) else { return }
+                guard let screen = (anchor?.screen ?? window.screen ?? NSScreen.main)?.visibleFrame, screen.width > 0 else { return }
+                let content = NSSize(width: min(size.width, screen.width - 40), height: min(size.height, screen.height - 60))
+                var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: content))
+                let center = anchor.map { NSPoint(x: $0.frame.midX, y: $0.frame.midY) } ?? NSPoint(x: screen.midX, y: screen.midY)
+                frame.origin.x = min(max(center.x - frame.width / 2, screen.minX), screen.maxX - frame.width)
+                frame.origin.y = min(max(center.y - frame.height / 2, screen.minY), screen.maxY - frame.height)
+                window.setFrame(frame, display: true, animate: false)
+            }
         }
     }
 }

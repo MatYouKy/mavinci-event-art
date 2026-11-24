@@ -4,7 +4,7 @@ import { OFFER_AUDIENCE_SAVED } from '@/components/crm/offers/useOfferAudience';
 import { offerNeedsTables } from '@/lib/CRM/Offers/audiencePricing';
 
 import { useState, useEffect, useCallback, forwardRef, useImperativeHandle, useRef } from 'react';
-import { Building2, Calculator, Calendar, DollarSign, FileText, Image as ImageIcon, MapPin, Upload, User } from 'lucide-react';
+import { Building2, Calculator, Calendar, DollarSign, FileText, Image as ImageIcon, MapPin, Phone, TextQuote, Upload, User } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import OfferAssumptionsSection from './OfferAssumptionsSection';
@@ -18,6 +18,7 @@ import { resolveOfferSchedule } from '@/lib/CRM/Offers/offerSchedule';
 import { getOfferLineDiscounts, getOfferPricingTotals } from '@/lib/CRM/Offers/offerTotals';
 import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
+import { formatPhone } from '@/lib/CRM/client/phoneFormat';
 import { localDatetimeStringToUTC, utcToLocalDatetimeString } from '@/lib/utils/dateTimeUtils';
 import CreateClientFromSellerOffer from '@/components/crm/sellers/CreateClientFromSellerOffer';
 import {
@@ -488,7 +489,8 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
       ? offer.portal_client_company || ''
       : offer.organization?.alias || offer.organization?.name || '';
     const contactEmail = isSellerOffer ? offer.portal_client_email : selectedContact?.email;
-    const contactPhone = isSellerOffer ? offer.portal_client_phone : selectedContact?.mobile || selectedContact?.phone;
+    // Numer z kierunkowym („+48 510 233 670”) — także zapisany wcześniej jako same cyfry (`formatPhone`).
+    const contactPhone = formatPhone(isSellerOffer ? offer.portal_client_phone : selectedContact?.mobile || selectedContact?.phone);
     useEffect(() => {
       const saved = (event: Event) => {
         const detail = (event as CustomEvent).detail;
@@ -575,8 +577,24 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
               </div>
             )}
 
-            {contactPhone && <div className="text-sm text-[#e5e4e2]"><p className="text-xs text-[#e5e4e2]/60">Telefon klienta</p>{contactPhone}</div>}
-            {isSellerOffer && offer.description && <div><p className="text-xs text-[#e5e4e2]/60">Opis od sprzedawcy</p><p className="whitespace-pre-wrap text-sm text-[#e5e4e2]">{offer.description}</p></div>}
+            {contactPhone && (
+              <div className="flex items-start gap-3">
+                <Phone className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
+                <div className="flex-1">
+                  <p className="text-xs text-[#e5e4e2]/60">Telefon klienta</p>
+                  <p className="text-sm font-medium text-[#e5e4e2]">{contactPhone}</p>
+                </div>
+              </div>
+            )}
+            {isSellerOffer && offer.description && (
+              <div className="flex items-start gap-3">
+                <TextQuote className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
+                <div className="flex-1">
+                  <p className="text-xs text-[#e5e4e2]/60">Opis od sprzedawcy</p>
+                  <p className="whitespace-pre-wrap text-sm text-[#e5e4e2]">{offer.description}</p>
+                </div>
+              </div>
+            )}
             <div className="flex items-start gap-3">
               <FileText className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
               <div className="flex-1">

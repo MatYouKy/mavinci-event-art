@@ -3,12 +3,17 @@ import { QuantitySourceSelect } from '@/components/crm/offers/AudiencePricingEdi
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
-import { Image as ImageIcon, Loader2, Plus, Sparkles, Star, Trash2, Upload, X, Pencil, GripVertical, ArrowUp, ArrowDown } from 'lucide-react';
+import { HardDrive, Image as ImageIcon, Loader2, Plus, Sparkles, Star, Trash2, Upload, X, Pencil, GripVertical, ArrowUp, ArrowDown } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import type { IProductVariant } from '@/app/(crm)/crm/offers/types';
+import MaterialPhotoPicker, { type PickedMaterialPhoto } from '@/components/crm/materials/MaterialPhotoPicker';
+import { materialsGet, type MaterialUrl } from '@/components/crm/materials/materialsApi';
 
 import { supabase } from '@/lib/supabase/browser';
+
+/** Zdjęcie wariantu do zapisu: plik z komputera albo zdjęcie z Dysku (serwer zapisuje oba jako lekkie WebP). */
+export type VariantImageChange = { id: string; file?: File; material?: PickedMaterialPhoto; remove?: boolean };
 
 type Props = {
   textOnly?: boolean;
@@ -21,7 +26,7 @@ type Props = {
   defaultServiceDurationHours?: number | null;
   defaultExtensionPriceNetPerHour?: number | null;
   disabled?: boolean;
-  onChange: (variants: IProductVariant[], image?: { id: string; file?: File; remove?: boolean }) => void | Promise<void>;
+  onChange: (variants: IProductVariant[], image?: VariantImageChange) => void | Promise<void>;
   onEditingChange?: (editing: boolean) => void;
   isNewProduct?: boolean;
   imageUrls?: Record<string, string>;
@@ -49,6 +54,10 @@ export function ProductVariantsEditor({
 }: Props) {
   const [draft, setDraft] = useState<IProductVariant | null>(null);
   const [draftFile, setDraftFile] = useState<File | null>(null);
+  /** Zdjęcie wybrane z Dysku i jego podgląd (najpierw miniatura, potem pełna rozdzielczość). */
+  const [draftMaterial, setDraftMaterial] = useState<PickedMaterialPhoto | null>(null);
+  const [materialUrl, setMaterialUrl] = useState('');
+  const [picking, setPicking] = useState(false);
   const [imageRemoved, setImageRemoved] = useState(false);
   const [localImageUrl, setLocalImageUrl] = useState('');
   const [modalError, setModalError] = useState('');
@@ -67,22 +76,32 @@ export function ProductVariantsEditor({
     if (draft && editing) editorDialog.current?.showModal();
     else editorDialog.current?.close();
   }, [draft?.id, editing]);
-  const editorImageUrl = localImageUrl || (!imageRemoved && draft ? imageUrls[draft.id] : '') || '';
+  const editorImageUrl = localImageUrl || materialUrl || (!imageRemoved && draft ? imageUrls[draft.id] : '') || '';
+  const clearMaterial = () => { setDraftMaterial(null); setMaterialUrl(''); };
   const startEdit = (variant: IProductVariant) => {
     if (disabled || committingRef.current) return;
-    setDraft(structuredClone(variant)); setDraftFile(null); setImageRemoved(false); setModalError(''); onEditingChange?.(true);
+    setDraft(structuredClone(variant)); setDraftFile(null); clearMaterial(); setImageRemoved(false); setModalError(''); onEditingChange?.(true);
   };
   const closeEditor = () => {
     if (committingRef.current) return;
-    setDraft(null); setDraftFile(null); setImageRemoved(false); setModalError(''); closeAi(); onEditingChange?.(false);
+    setDraft(null); setDraftFile(null); clearMaterial(); setPicking(false); setImageRemoved(false); setModalError(''); closeAi(); onEditingChange?.(false);
   };
   const stageImage = (file: File) => {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
       setModalError('Wybierz zdjęcie JPG, PNG lub WebP o wielkości do 10 MB.'); return;
     }
-    setDraftFile(file); setImageRemoved(false); setModalError('');
+    setDraftFile(file); clearMaterial(); setImageRemoved(false); setModalError('');
   };
-  const removeDraftImage = () => { setDraftFile(null); setImageRemoved(true); };
+  /** Zdjęcie z Dysku: od razu miniatura, potem podgląd w pełnej rozdzielczości; lekka wersja WebP powstaje przy zapisie. */
+  const chooseMaterial = (photo: PickedMaterialPhoto) => {
+    setPicking(false);
+    const thumbnail = photo.file.thumbnailUrl || '';
+    setDraftMaterial(photo); setMaterialUrl(thumbnail); setDraftFile(null); setImageRemoved(false); setModalError('');
+    materialsGet<MaterialUrl>('url', { kind: 'material', id: photo.file.id, mode: 'preview' })
+      .then((result) => setMaterialUrl((current) => (current === thumbnail ? result.url : current)))
+      .catch(() => undefined);
+  };
+  const removeDraftImage = () => { setDraftFile(null); clearMaterial(); setImageRemoved(true); };
   const applyDraft = async () => {
     if (!draft || disabled || committingRef.current) return;
     if (!draft.name.trim()) { setModalError('Podaj nazwę.'); return; }
@@ -93,7 +112,7 @@ export function ProductVariantsEditor({
     const next = { ...draft, name: draft.name.trim(), ...(imageRemoved ? { offer_image_path: null } : {}) };
     const exists = variants.some(v => v.id === draft.id);
     try {
-      await onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants, next]).map((v, i) => ({ ...v, display_order: i, is_recommended: next.is_recommended ? v.id === next.id : v.is_recommended })), { id: next.id, file: draftFile || undefined, remove: imageRemoved });
+      await onChange((exists ? variants.map(v => v.id === next.id ? next : v) : [...variants, next]).map((v, i) => ({ ...v, display_order: i, is_recommended: next.is_recommended ? v.id === next.id : v.is_recommended })), { id: next.id, file: draftFile || undefined, material: draftMaterial || undefined, remove: imageRemoved });
       committingRef.current = false; closeEditor();
     } catch (error) {
       setModalError(error instanceof Error ? error.message : 'Nie udało się zapisać elementu. Spróbuj ponownie.');
@@ -296,33 +315,44 @@ export function ProductVariantsEditor({
                         </label>
                       )}
                     </div>
-                  {editorImageUrl && (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <label className="flex cursor-pointer items-center gap-1.5 rounded-md bg-[#d3bb73] px-2.5 py-1.5 text-xs font-medium text-[#1c1f33]">
-                              <Upload className="h-3.5 w-3.5" /> Zmień
-                              <input
-                                type="file"
-                                accept="image/png,image/jpeg,image/webp"
-                                disabled={textOnly || disabled || committing}
-                                className="hidden"
-                                onChange={async (event) => {
-                                  const file = event.currentTarget.files?.[0];
-                                  event.currentTarget.value = '';
-                                  if (file) stageImage(file);
-                                }}
-                              />
-                            </label>
-                            <button
-                              type="button"
-                              disabled={disabled || committing}
-                              onClick={() => removeDraftImage()}
-                              className="flex items-center gap-1.5 rounded-md bg-red-950/85 px-2.5 py-1.5 text-xs text-red-200"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" /> Usuń
-                            </button>
-                          </div>
-                  )}
-                  <p className="mt-2 max-w-[320px] text-xs leading-relaxed text-[#e5e4e2]/50">Proporcje zdjęcia jak na karcie elementu w PDF (118:100). Podgląd pokazuje centralny kadr — brzegi szerszego lub wyższego zdjęcia zostaną przycięte.</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {editorImageUrl && (
+                      <label className="flex cursor-pointer items-center gap-1.5 rounded-md bg-[#d3bb73] px-2.5 py-1.5 text-xs font-medium text-[#1c1f33]">
+                        <Upload className="h-3.5 w-3.5" /> Zmień
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          disabled={textOnly || disabled || committing}
+                          className="hidden"
+                          onChange={async (event) => {
+                            const file = event.currentTarget.files?.[0];
+                            event.currentTarget.value = '';
+                            if (file) stageImage(file);
+                          }}
+                        />
+                      </label>
+                    )}
+                    <button
+                      type="button"
+                      disabled={textOnly || disabled || committing}
+                      onClick={() => setPicking(true)}
+                      className="flex items-center gap-1.5 rounded-md bg-[#d3bb73]/10 px-2.5 py-1.5 text-xs text-[#d3bb73] disabled:opacity-40"
+                    >
+                      <HardDrive className="h-3.5 w-3.5" /> Z Dysku
+                    </button>
+                    {editorImageUrl && (
+                      <button
+                        type="button"
+                        disabled={disabled || committing}
+                        onClick={() => removeDraftImage()}
+                        className="flex items-center gap-1.5 rounded-md bg-red-950/85 px-2.5 py-1.5 text-xs text-red-200"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Usuń
+                      </button>
+                    )}
+                  </div>
+                  {draftMaterial && <p className="mt-2 max-w-[320px] break-words text-xs text-[#e5e4e2]/55">Z Dysku: {draftMaterial.place} / {draftMaterial.file.name}</p>}
+                  <p className="mt-2 max-w-[320px] text-xs leading-relaxed text-[#e5e4e2]/50">Proporcje zdjęcia jak na karcie elementu w PDF (118:100). Podgląd pokazuje centralny kadr — brzegi szerszego lub wyższego zdjęcia zostaną przycięte. Zdjęcie zapisujemy jako lekkie WebP (z Dysku oryginał zostaje w Dysku).</p>
                   <input
                     value={variant.offer_image_alt || ''}
                     onChange={(event) => updateVariant(index, { offer_image_alt: event.target.value })}
@@ -536,6 +566,7 @@ export function ProductVariantsEditor({
           }} className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] disabled:opacity-40">Wstaw do wariantu</button>
         </div>}
       </dialog>
+      {picking && <MaterialPhotoPicker title={elementMode ? 'Zdjęcie elementu z Dysku' : 'Zdjęcie wariantu z Dysku'} onPick={chooseMaterial} onClose={() => setPicking(false)} />}
     </section>
   );
 }

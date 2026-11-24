@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
+  Copy,
   Save,
   Package,
   DollarSign,
@@ -45,7 +46,9 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
+import { useDuplicateProduct } from '@/components/crm/offers/products/useDuplicateProduct';
+import type { PickedMaterialPhoto } from '@/components/crm/materials/MaterialPhotoPicker';
+import { productImageFromMaterial, productImageUpload } from '@/components/crm/materials/materialsApi';
 
 import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
 import { Building2, ExternalLink } from 'lucide-react';
@@ -55,7 +58,7 @@ import { ProductContractClauses } from '../components/StructuredProductContractC
 import { ProductMavinciLiveModules } from '../components/ProductMavinciLiveModules';
 import ProductPreparationItems from '../components/ProductPreparationItems';
 import { ProductOfferCardPreview } from '../components/ProductOfferCardPreview';
-import { ProductVariantsEditor } from '../components/ProductVariantsEditor';
+import { ProductVariantsEditor, type VariantImageChange } from '../components/ProductVariantsEditor';
 import ProductCardImageSection from '../components/ProductCardImageSection';
 import ProductImageFraming from '../components/ProductImageFraming';
 import type { ImageCrops } from '@/lib/CRM/Offers/productImageCrop';
@@ -70,6 +73,9 @@ import {
   getOfferRequirementLabel,
   inferOfferRequirementCategory,
 } from '@/lib/CRM/Offers/offerRequirements';
+
+/** Podgląd zdjęcia wariantu przed zapisem: adres `blob:` (plik z komputera) zwalniamy, miniatury z Dysku nie. */
+const revokePreview = (url: string) => { if (url.startsWith('blob:')) URL.revokeObjectURL(url); };
 
 const toNumber = (v: string, fallback = 0) => {
   if (v === '' || v === null || v === undefined) return fallback;
@@ -414,6 +420,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   const router = useRouter();
   const params = useParams();
   const { showSnackbar } = useSnackbar();
+  const duplicateProduct = useDuplicateProduct();
   const { hasScope, isAdmin, employee } = useCurrentEmployee();
 
   const canEdit = isAdmin || hasScope('offers_manage');
@@ -489,11 +496,12 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   const [uploadingOfferImage, setUploadingOfferImage] = useState(false);
   const [offerImageSrc, setOfferImageSrc] = useState<string | null>(null);
   const [variantImageUrls, setVariantImageUrls] = useState<Record<string, string>>({});
-  const draftVariantImages = useRef(new Map<string, { file: File; preview: string }>());
+  // Zdjęcia wariantów do zapisu: plik z komputera albo zdjęcie z Dysku — serwer zapisuje oba jako lekkie WebP.
+  const draftVariantImages = useRef(new Map<string, { file?: File; material?: PickedMaterialPhoto; preview: string }>());
   const createdProductId = useRef<string | null>(null);
 
   useEffect(() => () => {
-    draftVariantImages.current.forEach(({ preview }) => URL.revokeObjectURL(preview));
+    draftVariantImages.current.forEach(({ preview }) => revokePreview(preview));
     draftVariantImages.current.clear();
   }, []);
 
@@ -501,7 +509,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     const activeIds = new Set(visibleVariants.map(variant => variant.id));
     draftVariantImages.current.forEach(({ preview }, id) => {
       if (!activeIds.has(id)) {
-        URL.revokeObjectURL(preview);
+        revokePreview(preview);
         draftVariantImages.current.delete(id);
       }
     });
@@ -1152,12 +1160,15 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       for (const payload of [...existingPayload, ...newPayload]) {
         const draft = draftVariantImages.current.get(payload.id) || draftVariantImages.current.get(`temp-${payload.id}`);
         if (!draft) continue;
-        const extension = draft.file.type === 'image/png' ? 'png' : draft.file.type === 'image/webp' ? 'webp' : 'jpg';
-        const path = `assets/${savedProductId}/variants/${payload.id}-${crypto.randomUUID()}.${extension}`;
-        const { error } = await bucket.upload(path, draft.file, { contentType: draft.file.type, upsert: false });
-        if (error) throw error;
-        uploadedPaths.push(path);
-        payload.offer_image_path = path;
+        if (draft.material) {
+          // Z Dysku: lekka wersja WebP wspólna z innymi zdjęciami produktu — przy błędzie zapisu jej nie usuwamy.
+          payload.offer_image_path = (await productImageFromMaterial(savedProductId, draft.material.file.id)).path;
+        } else if (draft.file) {
+          // Z komputera: serwer zapisuje lekką wersję WebP (jak na Macu).
+          const { path } = await productImageUpload(savedProductId, draft.file, 'variant', payload.id);
+          uploadedPaths.push(path);
+          payload.offer_image_path = path;
+        }
       }
       const payload = [...existingPayload, ...newPayload];
       if (payload.length > 0) {
@@ -1172,9 +1183,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     }
   };
 
-  const saveVariantSection = async (source: IProductVariant[], image?: { id: string; file?: File; remove?: boolean }) => {
+  const saveVariantSection = async (source: IProductVariant[], image?: VariantImageChange) => {
     if (contentLanguage === 'en') {
-      if (image?.file || image?.remove) throw new Error('Zdjęcia są wspólne. Zmień je w wersji PL.');
+      if (image?.file || image?.material || image?.remove) throw new Error('Zdjęcia są wspólne. Zmień je w wersji PL.');
       await productLanguage.savePatch({ offer_product_variants: source }); return;
     }
     if (!product || !canEdit || saving || variantsSavingRef.current || savingVariants || savingAddons || savingRequirements || savingProductSection || uploadingOfferImage) throw new Error('Trwa zapis innej sekcji. Spróbuj ponownie.');
@@ -1187,9 +1198,12 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     try {
       if (image?.remove) draftVariantImages.current.delete(image.id);
       if (image?.file) {
+        // Plik zmniejsza i wysyła `productImageUpload` przy zapisie (serwer zapisuje WebP).
         setUploadingVariantImageId(image.id);
-        const file = await optimizeOfferImage(image.file, { maxWidth: 1800, maxHeight: 1800, quality: 0.82 });
-        draftVariantImages.current.set(image.id, { file, preview: URL.createObjectURL(file) });
+        draftVariantImages.current.set(image.id, { file: image.file, preview: URL.createObjectURL(image.file) });
+      } else if (image?.material) {
+        setUploadingVariantImageId(image.id);
+        draftVariantImages.current.set(image.id, { material: image.material, preview: image.material.file.thumbnailUrl || '' });
       }
       const removedIds = productVariants.filter(variant => !variant.id.startsWith('temp-') && !source.some(next => next.id === variant.id)).map(variant => variant.id);
       let saved: IProductVariant[];
@@ -1208,10 +1222,10 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       await refreshEnglish();
       setProduct(current => current ? { ...current, offer_product_variants: saved } : current);
       previousImages.forEach(({ preview }, id) => {
-        if (draftVariantImages.current.get(id)?.preview !== preview) URL.revokeObjectURL(preview);
+        if (draftVariantImages.current.get(id)?.preview !== preview) revokePreview(preview);
       });
       if (productId !== 'new') {
-        draftVariantImages.current.forEach(({ preview }) => URL.revokeObjectURL(preview));
+        draftVariantImages.current.forEach(({ preview }) => revokePreview(preview));
         draftVariantImages.current.clear();
       } else {
         setVariantImageUrls(Object.fromEntries(Array.from(draftVariantImages.current, ([id, draft]) => [id, draft.preview])));
@@ -1219,7 +1233,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       showSnackbar(productId === 'new' ? 'Element zatwierdzony. Zapisz nowy produkt, aby dodać go do katalogu.' : 'Zapisano zmiany elementów produktu', 'success');
     } catch (error) {
       draftVariantImages.current.forEach(({ preview }, id) => {
-        if (previousImages.get(id)?.preview !== preview) URL.revokeObjectURL(preview);
+        if (previousImages.get(id)?.preview !== preview) revokePreview(preview);
       });
       draftVariantImages.current = previousImages;
       throw error;
@@ -1527,6 +1541,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           <ResponsiveActionBar disabledBackground compact actions={[
             { label: productId === 'new' ? 'Dodaj produkt' : 'Zapisz zmiany', icon: <Save className="h-4 w-4" />, onClick: () => void handleSave(), show: canEdit && contentLanguage === 'pl', disabled: languageLocked, variant: 'primary' },
             { label: 'Przetłumacz PL → EN', icon: <Sparkles className="h-4 w-4" />, onClick: () => void refreshEnglish(), show: canEdit && productId !== 'new', disabled: languageLocked },
+            { label: 'Duplikuj', icon: <Copy className="h-4 w-4" />, onClick: () => void duplicateProduct({ id: product.id, name: product.name }), show: canEdit && productId !== 'new', disabled: languageLocked },
             { label: 'Usuń', icon: <Trash2 className="h-4 w-4" />, onClick: () => void handleDelete(), show: canEdit && contentLanguage === 'pl' && productId !== 'new', disabled: languageLocked, variant: 'danger' },
           ]} />
         </div>

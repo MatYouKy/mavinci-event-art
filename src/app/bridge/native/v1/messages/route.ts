@@ -19,7 +19,10 @@ import {
   type MessageListItem,
 } from '@/lib/CRM/messages/messagesQueries';
 import { invalidateMail, mailBodies, mailItems, mailRefs, mailSales, mailState } from '@/lib/native/mail';
-import { composeEmailHtml, emailPreviewDocument, isPlainEmailHtml, messagePreviewHtml, replyAddress, replyQuoteHtml, replyThreadHeaders } from '@/lib/native/messages';
+import {
+  composeEmailHtml, composeSignatureHtml, emailPreviewDocument, isPlainEmailHtml, messagePreviewHtml, replyAddress, replyQuoteHtml,
+  replyThreadHeaders,
+} from '@/lib/native/messages';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,6 +32,8 @@ export const maxDuration = 60;
  * Wiadomości CRM dla aplikacji na Maca — te same zapytania co strona `/crm/messages` (`messagesQueries.ts`), wykonywane
  * tokenem pracownika (RLS). Kosz poczty IMAP, „oznacz wszystkie jako przeczytane” i załączniki aplikacja wywołuje
  * bezpośrednio w istniejących trasach `/bridge/messages/*` (przyjmują Bearer), żeby logika była w jednym miejscu.
+ * Nowa wiadomość: POST op=signature {accountId} (stopka skrzynki do okna treści), op=preview | compose | send z `text` (zwykły
+ * tekst) i `html` (treść z formatowaniem z edytora na Macu — `sanitizeMailContentHtml`).
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -166,7 +171,7 @@ export async function GET(request: Request) {
 }
 
 type SendInput = {
-  accountId?: string; to?: string; cc?: string; bcc?: string; subject?: string; text?: string;
+  accountId?: string; to?: string; cc?: string; bcc?: string; subject?: string; text?: string; html?: string;
   scheduledAt?: string | null; reply?: { id?: string; type?: string } | null;
   attachments?: Array<{ filename?: string; content?: string; contentType?: string }>;
 };
@@ -192,7 +197,7 @@ export async function POST(request: Request) {
   }
   const op = String(input?.op || '');
   // Każda zmiana wiadomości jest widoczna przy następnej synchronizacji kopii na Macu (po zapisie, nie przed).
-  const writes = !['mirrorItems', 'bodies', 'sales', 'preview', 'compose'].includes(op);
+  const writes = !['mirrorItems', 'bodies', 'sales', 'preview', 'compose', 'signature'].includes(op);
   try {
     switch (op) {
       case 'mirrorItems':
@@ -305,6 +310,11 @@ export async function POST(request: Request) {
         if (error || !data?.success) return failure(`Błąd: ${data?.error || errorText(error, 'Nie udało się pobrać wiadomości')}`, 502);
         return nativeJson({ ok: true, count: data.count || 0, message: `Pobrano ${data.count || 0} nowych wiadomości` });
       }
+      case 'signature': {
+        const account = await sendingAccount(ctx, String(input.accountId || ''));
+        if (!account) return failure('Nie masz uprawnień do wysyłania z tej skrzynki.', 403);
+        return nativeJson({ html: await composeSignatureHtml(ctx.supabase, ctx.employee.id, account.id) });
+      }
       case 'preview':
       case 'compose':
       case 'send': {
@@ -314,7 +324,8 @@ export async function POST(request: Request) {
         const reply = await replyContext(ctx, body.reply);
         const html = await composeEmailHtml(ctx.supabase, {
           employeeId: ctx.employee.id, accountId: account.id, subject: String(body.subject || ''),
-          text: String(body.text || ''), quotedHtml: reply ? replyQuoteHtml(reply) : '',
+          text: String(body.text || ''), html: typeof body.html === 'string' ? body.html : undefined,
+          quotedHtml: reply ? replyQuoteHtml(reply) : '',
         });
         if (op === 'preview') return nativeJson({ html: emailPreviewDocument(html) });
         // Aplikacja wysyła załączniki bezpośrednio do funkcji poczty (jak przeglądarka) — tu tylko treść i nagłówki wątku.

@@ -416,6 +416,7 @@ export default function ComposeEmailModal({
             onShowPreviewChange={setShowPreview}
             previewHtml={previewHtml}
             previewLoading={loadingSignature}
+            signaturePreviewHtml={companySignatureEnabled ? companySignatureHtml : ''}
             replyContext={replyContext ? {
               from: replyContext.from,
               to: replyContext.to,

@@ -1,16 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { X, PhoneCall, Loader2 } from 'lucide-react';
+import { X, PhoneCall, Loader2, UserCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import SpecialDayNotice from './SpecialDayNotice';
+import { becomesInquiryOwner, inquiryCreatorOwnerNote } from '@/lib/CRM/inquiries/inquiryCreatorOwner';
 
 interface NewInquiryModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialDate?: Date;
-  onSaved?: (inquiryId: string) => void | Promise<void>;
+  /** Po zapisie: identyfikator i opiekun nadany przez bazę (osoba dodająca, przydział automatyczny albo `null` — wspólna kolejka). */
+  onSaved?: (inquiryId: string, owner: { id: string | null; name: string | null }) => void | Promise<void>;
   initialClient?: { contactId?: string; organizationId?: string; name: string; email?: string | null; phone?: string | null };
 }
 
@@ -34,6 +36,8 @@ function toLocalDateTimeInput(d: Date): string {
 
 export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved, initialClient }: NewInquiryModalProps) {
   const { employee, loading: employeeLoading } = useCurrentEmployee();
+  // Osoba dodająca zapytanie zostaje jego opiekunem, jeśli prowadzi zapytania (baza: `prepare_inquiry_sales_automation`).
+  const creatorOwns = becomesInquiryOwner(employee);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const inquiryIdRef = useRef<string | null>(null);
@@ -234,7 +238,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved,
           is_inquiry: true,
           is_private: false,
           inquiry_stage: 'new',
-          inquiry_owner_id: null,
+          // Bez opiekuna w zapisie — baza ustawia osobę dodającą (gdy prowadzi zapytania), inaczej wspólna kolejka / przydział SLA.
           win_probability: 10,
           estimated_value: estimatedValue,
           contact_id: clientContactId,
@@ -249,8 +253,21 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved,
         return;
       }
 
+      // Opiekun nadany przy zapisie (do komunikatu i zakresu lejka po zapisie).
+      const { data: saved } = await supabase
+        .from('tasks')
+        .select('inquiry_owner_id, inquiry_owner:employees!tasks_inquiry_owner_id_fkey(name, surname)')
+        .eq('id', inquiryId)
+        .maybeSingle();
+      const savedOwner = (Array.isArray(saved?.inquiry_owner) ? saved?.inquiry_owner[0] : saved?.inquiry_owner) as
+        { name?: string | null; surname?: string | null } | null | undefined;
+      const owner = {
+        id: (saved?.inquiry_owner_id as string | null | undefined) ?? null,
+        name: [savedOwner?.name, savedOwner?.surname].filter(Boolean).join(' ').trim() || null,
+      };
+
       onClose();
-      await onSaved?.(inquiryId);
+      await onSaved?.(inquiryId, owner);
     } catch (e: any) {
       setError(e?.message || 'Nieznany błąd');
     } finally {
@@ -463,6 +480,13 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved,
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
             />
           </div>
+
+          {!employeeLoading && employee && (
+            <p className="flex items-start gap-2 rounded-lg border border-[#d3bb73]/15 bg-[#d3bb73]/5 px-3 py-2 text-xs text-[#e5e4e2]/70">
+              <UserCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#d3bb73]" />
+              {inquiryCreatorOwnerNote(creatorOwns)}
+            </p>
+          )}
         </div>
 
         <div className="flex gap-3 p-6 border-t border-[#d3bb73]/10 sticky bottom-0 bg-[#0f1119]">

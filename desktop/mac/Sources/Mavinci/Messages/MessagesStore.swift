@@ -64,6 +64,8 @@ struct ComposeDraft: Identifiable {
     var bcc = ""
     var subject = ""
     var text = ""
+    /// Treść z formatowaniem z edytora (`MailRichEditor`); bez niej serwer składa wiadomość z `text`.
+    var html: String?
     var reply: MessageDetail?
     var title: String { mode == .reply ? "Odpowiedź" : mode == .forward ? "Przekaż wiadomość" : "Nowa wiadomość" }
 }
@@ -618,8 +620,15 @@ struct AttachmentFile: Identifiable, Equatable {
     }
     private func composeBody(_ draft: ComposeDraft) -> [String: JSONValue] {
         var body: [String: JSONValue] = ["accountId": .string(draft.accountId), "subject": .string(draft.subject), "text": .string(draft.text)]
+        if let html = draft.html { body["html"] = .string(html) }
         if let reply = draft.reply { body["reply"] = .object(["id": .string(reply.item.id), "type": .string(reply.item.type)]) }
         return body
+    }
+    /// Stopka skrzynki do okna nowej wiadomości (pusta — skrzynka bez stopki albo brak połączenia).
+    func signature(accountId: String) async -> String {
+        guard let api, let data = try? await api.post("/messages", ["op": .string("signature"), "accountId": .string(accountId)]),
+              let reply = try? JSONDecoder().decode([String: JSONValue].self, from: data) else { return "" }
+        return reply["html"]?.text ?? ""
     }
     func preview(_ draft: ComposeDraft) async throws -> String {
         guard let api else { throw AppError.configuration }

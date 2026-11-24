@@ -1711,6 +1711,33 @@ export async function materialFileRow(ctx: NativeContext, idValue: unknown): Pro
   return fileRow(ctx, uuidOf(idValue, 'Nie znaleziono pliku w Materiałach.', 404));
 }
 
+/**
+ * Plik Materiałów z miejscem w Dysku (np. źródło zdjęcia produktu): nazwa, bieżąca wersja treści, „Marka / folder / …”.
+ * Plik usunięty albo bez dostępu (RLS) — `null`.
+ */
+export async function materialFilePlace(ctx: NativeContext, idValue: unknown) {
+  const id = String(idValue || '').toLowerCase();
+  if (!UUID.test(id)) return null;
+  const { data, error } = await ctx.supabase.from('material_files').select('id,company_id,folder_id,name,status,content_version')
+    .eq('id', id).maybeSingle();
+  if (error || !data) return null;
+  const row = data as Row;
+  const [folders, company] = await Promise.all([
+    companyFolders(ctx, String(row.company_id)),
+    ctx.supabase.from('my_companies').select('name').eq('id', row.company_id).maybeSingle(),
+  ]);
+  const byId = new Map(folders.map((f) => [f.id, f]));
+  return {
+    id,
+    companyId: String(row.company_id),
+    folderId: (row.folder_id as string | null) ?? null,
+    name: text(row.name) || 'plik',
+    ready: row.status === 'ready',
+    contentVersion: Number(row.content_version || 1),
+    place: [text((company.data as Row | null)?.name) || 'Marka', ...folderPath(byId, row.folder_id ?? null).map((f) => f.name)].join(' / '),
+  };
+}
+
 /** Folder domyślny marki (`photos` — „Zdjęcia”) albo `null` — główny folder marki. */
 export async function materialSystemFolder(ctx: NativeContext, companyId: string, key: MaterialSystemFolder) {
   const { data } = await ctx.supabase.from('material_folders').select('id,name').eq('company_id', companyId).eq('system_key', key).limit(1).maybeSingle();

@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-import { Plus, Save, Sparkles, GripVertical, Eye, Pencil, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Plus, Sparkles, GripVertical, Eye, Loader2, Pencil, Trash2 } from 'lucide-react';
 import Dialog from '@mui/material/Dialog';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 import AddOfferItemModal, { ProductThumbnail } from './AddOfferItemModal';
 import type { OfferRecommendation } from './offerRecommendation';
 import ProductAddonsEditor from '@/components/crm/offers/ProductAddonsEditor';
@@ -18,9 +19,15 @@ import { configurationPrice, createModularConfiguration, createConfiguration, va
 type Props = { offer: any; canEdit: boolean; onSaved: () => void };
 const money = (value: number) => value.toLocaleString('pl-PL', { style: 'currency', currency: 'PLN' });
 
+/*
+ * „Zobacz, co warto dobrać do takiego eventu” — jak pozycje oferty (i karta na Macu, `OfferRecommendationsCard.swift`): bez trybu
+ * edycji, każda zmiana zapisuje się od razu — „Dodaj produkt”, kolejność (uchwyt albo „Przenieś wyżej/niżej”), układ w PDF, edycja
+ * w oknie i usuwanie (z potwierdzeniem). Zapis `save_offer_recommendations` ze sprawdzeniem, że nikt w międzyczasie nie zmienił
+ * propozycji; po błędzie lista wraca do stanu z bazy.
+ */
 export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, onSaved }: Props) {
   const { showSnackbar } = useSnackbar();
-  const [editing, setEditing] = useState(false);
+  const { showConfirm } = useDialog();
   const [editDraft, setEditDraft] = useState<OfferRecommendation | null>(null);
   const updateDraft = (_id: string, patch: Partial<OfferRecommendation>) => setEditDraft(current => {
     if (!current) return current;
@@ -30,9 +37,8 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
   });
   const [items, setItems] = useState<OfferRecommendation[]>([]);
   const [original, setOriginal] = useState<OfferRecommendation[]>([]);
-  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const canEdit = mayEdit && editing && !saving;
+  const canEdit = mayEdit && !saving;
   const savingRef = useRef(false);
   const [showAdd, setShowAdd] = useState(false);
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
@@ -58,14 +64,17 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
   const vatRate = Number(offer.tax_percent ?? 23);
 
   useEffect(() => {
-    if (dirty) return;
+    // Lista z oferty (po zapisie i każdym odświeżeniu) — w trakcie zapisu zostaje zmiana widoczna od razu.
+    if (savingRef.current) return;
     const saved = Array.isArray(offer.recommended_items) ? offer.recommended_items : [];
     setItems(saved);
     setOriginal(saved);
   }, [offer.id, offer.recommended_items]);
 
-  const persist = async (next: OfferRecommendation[]) => {
-    if (!canEdit || savingRef.current) throw new Error('Nie można teraz zapisać propozycji.');
+  /** Zapis całej listy od razu (jak pozycje oferty); błąd — lista wraca do stanu z bazy i wyjątek z komunikatem. */
+  const persist = async (next: OfferRecommendation[], success: string) => {
+    if (!mayEdit) throw new Error('Nie masz uprawnień do zmiany propozycji.');
+    if (savingRef.current) throw new Error('Poczekaj, aż zapisze się poprzednia zmiana propozycji.');
     if (next.some((item) => !item.name.trim() || !Number.isInteger(item.days ?? 1) || (item.days ?? 1) < 1 || (item.days ?? 1) > 3650 || !Number.isFinite(item.quantity) || item.quantity <= 0 || !Number.isFinite(item.unit_price) || item.unit_price < 0)) {
       throw new Error('Uzupełnij nazwę, dodatnią ilość i cenę nie mniejszą niż zero.');
     }
@@ -78,8 +87,10 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
     }
     const keys = next.map((item) => item.product_id);
     if (new Set(keys).size !== keys.length) throw new Error('Ta sama pozycja występuje na liście propozycji więcej niż raz. Usuń powtórzenie.');
+    const previous = items;
     savingRef.current = true;
     setSaving(true);
+    setItems(next);
     try {
       // Re-read the quote before saving: the catalog may have been open while
       // another employee added a product to the main offer.
@@ -102,74 +113,79 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
       const saved = data.recommended_items as OfferRecommendation[];
       setItems(saved);
       setOriginal(saved);
-      setDirty(false);
+      showSnackbar(success, 'success');
       onSaved();
+    } catch (error) {
+      // Zmiana nie zapisała się (np. ktoś w międzyczasie zmienił propozycje) — poprzednia lista i świeże dane oferty.
+      setItems(previous);
+      onSaved();
+      throw error;
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
   };
 
-  const save = async () => {
+  /** Zmiana z listy (kolejność, układ, usuwanie) — zapis od razu, błąd w komunikacie. */
+  const apply = async (next: OfferRecommendation[], success: string) => {
     try {
-      await persist(items);
-      setEditing(false);
-      showSnackbar('Propozycje zapisane poza wyceną', 'success');
+      await persist(next, success);
     } catch (error: any) {
-      showSnackbar(error.message || 'Nie udało się zapisać propozycji', 'error');
+      showSnackbar(error?.message || 'Nie udało się zapisać propozycji', 'error');
     }
   };
-  const update = (id: string, patch: Partial<OfferRecommendation>) => {
-    setItems((current) => current.map((item) => {
-      if (item.id !== id) return item;
-      const next = { ...item, ...patch };
-      if (next.pricing_configuration) next.unit_price = Math.round(configurationPrice(next.pricing_configuration) * (1 - (next.discount_percent ?? 0) / 100) * 100) / 100;
-      return next;
-    }));
-    setDirty(true);
+  const setLayout = (id: string, layout: NonNullable<OfferRecommendation['pdf_layout']>) => {
+    const current = items.find(item => item.id === id);
+    if (!canEdit || !current || (current.pdf_layout || 'compact') === layout) return;
+    void apply(items.map(item => item.id === id ? { ...item, pdf_layout: layout } : item), 'Układ propozycji w PDF zapisany');
+  };
+  const move = (from: number, to: number) => {
+    if (!canEdit || from < 0 || to < 0 || from >= items.length || to >= items.length || from === to) return;
+    const next = [...items];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    void apply(next, 'Kolejność propozycji zapisana');
   };
   const handleDragEnd = ({ source, destination }: DropResult) => {
     if (!canEdit || savingRef.current || !destination || source.index === destination.index) return;
-    setItems(current => {
-      if (source.index < 0 || source.index >= current.length || destination.index < 0 || destination.index >= current.length) return current;
-      const next = [...current];
-      const [moved] = next.splice(source.index, 1);
-      next.splice(destination.index, 0, moved);
-      return next;
+    move(source.index, destination.index);
+  };
+  const remove = async (item: OfferRecommendation) => {
+    if (!canEdit) return;
+    const confirmed = await showConfirm({
+      title: 'Czy na pewno chcesz usunąć tę propozycję?',
+      message: `„${item.name}” zniknie z sekcji propozycji w ofercie.`,
+      confirmText: 'Usuń propozycję',
+      cancelText: 'Anuluj',
     });
-    setDirty(true);
+    if (!confirmed) return;
+    await apply(items.filter(row => row.id !== item.id), 'Propozycja usunięta');
   };
   const inputClass = 'w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] p-2 text-sm text-[#e5e4e2] disabled:opacity-70';
 
   return (
-    <section data-offer-editing={editing || Boolean(editDraft)} className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+    <section data-offer-editing={Boolean(editDraft) || showAdd || saving} className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h2 className="flex items-center gap-2 text-lg font-medium text-[#e5e4e2]"><Sparkles className="h-5 w-5 shrink-0 text-[#d3bb73]" />Zobacz, co warto dobrać do takiego eventu</h2>
           <p className="mt-2 text-sm text-[#e5e4e2]/60">Proponowane produkty z indywidualnymi cenami. Poza wyceną i rezerwacją sprzętu; w PDF po kalkulacji i pakietach.</p>
           <p className="mt-2 text-xs text-[#e5e4e2]/45">Przy dodawaniu ukrywamy produkty obecne już w głównej ofercie, razem z ich wariantami.</p>
         </div>
-        <div className="ml-auto flex shrink-0 flex-col items-end gap-2">
-      {mayEdit && <div className="flex gap-2">
-        {!editing ? <button type="button" className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-50" onClick={() => setEditing(true)}>Edytuj</button>
-        : <button type="button" disabled={saving} className="rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-50" onClick={() => { setItems(original.filter(item => !mainOfferProductIds.has(item.product_id))); setDirty(false); setShowAdd(false); setEditing(false); }}>Anuluj</button>}
-      </div>}
-        {canEdit && <div className="flex flex-wrap justify-end gap-2">
+        {mayEdit && <div className="ml-auto flex shrink-0 items-center gap-3">
+          {saving && <span role="status" className="flex items-center gap-1.5 text-xs text-[#e5e4e2]/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />Zapisywanie…</span>}
           <button type="button" disabled={saving} onClick={() => setShowAdd(true)} className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] disabled:opacity-50"><Plus className="h-4 w-4" />Dodaj produkt</button>
-          {dirty && <button type="button" disabled={saving} onClick={save} className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#0f1119] disabled:opacity-50"><Save className="h-4 w-4" />{saving ? 'Zapisywanie…' : 'Zapisz'}</button>}
         </div>}
-        </div>
       </div>
 
       {!items.length && <p className="mt-5 text-sm text-[#e5e4e2]/50">Wybierz produkty warte zaproponowania klientowi, np. telewizor, oświetlenie lub podest. Pusta sekcja nie pojawi się w PDF.</p>}
-      {canEdit && items.length > 1 && <p className="mt-3 text-xs text-[#e5e4e2]/50">Przeciągnij za uchwyt, aby zmienić kolejność w PDF. Zatwierdź przyciskiem „Zapisz”.</p>}
+      {mayEdit && items.length > 1 && <p className="mt-3 text-xs text-[#e5e4e2]/50">Przeciągnij za uchwyt, aby zmienić kolejność w PDF — zmiana zapisuje się od razu.</p>}
       <DragDropContext onDragEnd={handleDragEnd} dragHandleUsageInstructions="Naciśnij spację, aby podnieść propozycję, użyj strzałek do zmiany kolejności i ponownie spacji, aby ją odłożyć. Escape anuluje przeciąganie.">
         <Droppable droppableId={`offer-recommendations-${offer.id}`} isDropDisabled={!canEdit}>
           {(dropProvided) => <div ref={dropProvided.innerRef} {...dropProvided.droppableProps} className="mt-5 space-y-3">
         {items.map((item, index) => <Draggable key={item.id} draggableId={item.id} index={index} isDragDisabled={!canEdit}>
           {(provided, snapshot) => <div ref={provided.innerRef} {...provided.draggableProps} className={`rounded-lg border border-[#d3bb73]/10 bg-[#0f1118] p-4 ${snapshot.isDragging ? 'shadow-lg shadow-black/25' : ''}`}>
           <div className="flex items-start gap-3">
-            {canEdit && <button type="button" {...provided.dragHandleProps} aria-label={`Zmień kolejność propozycji: ${item.name}`} className="shrink-0 cursor-grab touch-none p-1 text-[#e5e4e2]/40"><GripVertical className="h-5 w-5" /></button>}
+            {mayEdit && items.length > 1 && <button type="button" {...provided.dragHandleProps} disabled={!canEdit} aria-label={`Zmień kolejność propozycji: ${item.name}`} className="shrink-0 cursor-grab touch-none p-1 text-[#e5e4e2]/40 disabled:cursor-default disabled:opacity-50"><GripVertical className="h-5 w-5" /></button>}
             <a href={`/produkty/${item.product_id}`} target="_blank" rel="noopener noreferrer" className="shrink-0">
               {item.image_path && imageUrls[item.image_path] ? <img src={imageUrls[item.image_path]} alt={item.name} className="h-16 w-12 rounded-md object-cover md:h-24 md:w-20" /> : <ProductThumbnail src={null} />}
             </a>
@@ -184,7 +200,7 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <span className="text-[10px] uppercase text-[#e5e4e2]/40">Układ w PDF</span>
                 <div className="inline-flex rounded-lg bg-white/5 p-1">
-                  {([{ value: 'compact', label: 'Kompaktowo · 3/str.' }, { value: 'full_page', label: 'Osobna strona' }, { value: 'visual', label: 'Duża grafika' }] as const).map(layout => <button key={layout.value} type="button" disabled={!mayEdit || saving} aria-pressed={(item.pdf_layout || 'compact') === layout.value} onClick={() => { setEditing(true); update(item.id, { pdf_layout: layout.value }); }} className={`rounded-md px-3 py-1 text-xs disabled:opacity-60 ${(item.pdf_layout || 'compact') === layout.value ? 'bg-[#6b0024] text-white' : 'text-[#e5e4e2]/60 hover:bg-white/5'}`}>{layout.label}</button>)}
+                  {([{ value: 'compact', label: 'Kompaktowo · 3/str.' }, { value: 'full_page', label: 'Osobna strona' }, { value: 'visual', label: 'Duża grafika' }] as const).map(layout => <button key={layout.value} type="button" disabled={!canEdit} aria-pressed={(item.pdf_layout || 'compact') === layout.value} onClick={() => setLayout(item.id, layout.value)} className={`rounded-md px-3 py-1 text-xs disabled:opacity-60 ${(item.pdf_layout || 'compact') === layout.value ? 'bg-[#6b0024] text-white' : 'text-[#e5e4e2]/60 hover:bg-white/5'}`}>{layout.label}</button>)}
                 </div>
                 <span className="text-xs text-[#d3bb73]">Poza wyceną</span>
               </div>
@@ -192,8 +208,10 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
             <div className="shrink-0">
               <ResponsiveActionBar disabledBackground mobileBreakpoint={4000} actions={[
                 { label: 'Otwórz produkt w CRM', icon: <Eye className="h-4 w-4" />, show: Boolean(item.product_id), onClick: () => window.open(`/crm/offers/products/${item.product_id}`, '_blank', 'noopener,noreferrer') },
-                { label: 'Edytuj', icon: <Pencil className="h-4 w-4" />, variant: 'primary', show: mayEdit, disabled: saving, onClick: () => { setEditing(true); setEditDraft(structuredClone(item)); } },
-                { label: 'Usuń', icon: <Trash2 className="h-4 w-4" />, variant: 'danger', show: mayEdit, disabled: saving, onClick: () => { setEditing(true); setItems(current => current.filter(row => row.id !== item.id)); setDirty(true); } },
+                { label: 'Edytuj', icon: <Pencil className="h-4 w-4" />, variant: 'primary', show: mayEdit, disabled: saving, onClick: () => setEditDraft(structuredClone(item)) },
+                { label: 'Przenieś wyżej', icon: <ArrowUp className="h-4 w-4" />, show: mayEdit && items.length > 1, disabled: saving || index === 0, onClick: () => move(index, index - 1) },
+                { label: 'Przenieś niżej', icon: <ArrowDown className="h-4 w-4" />, show: mayEdit && items.length > 1, disabled: saving || index === items.length - 1, onClick: () => move(index, index + 1) },
+                { label: 'Usuń', icon: <Trash2 className="h-4 w-4" />, variant: 'danger', show: mayEdit, disabled: saving, onClick: () => { void remove(item); } },
               ]} />
             </div>
           </div>
@@ -230,7 +248,7 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
           <div className="mt-5 flex justify-end gap-2">
             <button type="button" disabled={saving} onClick={() => setEditDraft(null)} className="rounded-lg bg-white/5 px-4 py-2">Anuluj</button>
             <button type="button" disabled={saving} onClick={async () => {
-              try { await persist(items.map(item => item.id === editDraft.id ? editDraft : item)); setEditDraft(null); showSnackbar('Propozycja zapisana poza wyceną', 'success'); }
+              try { await persist(items.map(item => item.id === editDraft.id ? editDraft : item), 'Propozycja zapisana poza wyceną'); setEditDraft(null); }
               catch (error: any) { showSnackbar(error.message || 'Nie udało się zapisać propozycji', 'error'); }
             }} className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#250914] disabled:opacity-50">{saving ? 'Zapisywanie…' : 'Zapisz'}</button>
           </div>
@@ -239,8 +257,8 @@ export default function OfferRecommendationsEditor({ offer, canEdit: mayEdit, on
       {showAdd && <AddOfferItemModal offerId={offer.id} excludedProductIds={new Set([...Array.from(mainOfferProductIds),...items.map(item=>item.product_id)])} onClose={() => setShowAdd(false)} onSuccess={() => {}} onAddRecommendation={async (item) => {
         if (mainOfferProductIds.has(item.product_id)) throw new Error('Ten produkt jest już w głównej ofercie. Nie dodawaj go ponownie do propozycji.');
         if (items.some((row) => row.product_id === item.product_id)) throw new Error('Ten produkt jest już na liście propozycji.');
-        setItems(current => [...current, item]);
-        setDirty(true);
+        // Dodana propozycja jest od razu zapisana (jak pozycja oferty); błąd zostaje w oknie dodawania.
+        await persist([...items, item], 'Propozycja dodana poza wyceną');
       }} />}
     </section>
   );

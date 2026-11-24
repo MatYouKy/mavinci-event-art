@@ -18,6 +18,8 @@ import {
 } from '../lib/materialsApi';
 import ChatVideoPreview from '../components/ChatVideoPreview';
 import DriveBrandStrip from '../components/DriveBrandStrip';
+import MaterialShareModal, { type MaterialShareModalMode } from '../components/MaterialShareModal';
+import MaterialSharesModal from '../components/MaterialSharesModal';
 import { useContentWidth } from '../hooks/useTabletLayout';
 import { openPdf } from '../lib/driveApi';
 
@@ -28,6 +30,8 @@ import { openPdf } from '../lib/driveApi';
  * nowy folder, zmiana nazwy, przenoszenie, kosz na 30 dni (przywracanie, usuwanie na zawsze).
  * Albumy (główna baza zdjęć): przeglądanie, „Dodaj do albumu” (odnośnik, bez kopii), nowy album, usunięcie z albumu, okładka,
  * zmiana nazwy i usunięcie albumu. Kolejność plików w albumie ustawia się przeciąganiem w CRM i na Macu.
+ * „Udostępnij link do pobrania” (folder, album, plik — przytrzymanie, album) — link dla osoby spoza firmy (`MaterialShareModal`),
+ * „Linki” — linki marki (`MaterialSharesModal`).
  */
 
 type Entry = { type: 'folder'; folder: MaterialFolder } | { type: 'file'; file: MaterialFile } | { type: 'album'; album: MaterialAlbum };
@@ -89,6 +93,9 @@ export default function MaterialsScreen() {
   const [openAlbum, setOpenAlbum] = useState<{ album: MaterialAlbum; files: MaterialFile[] } | null>(null);
   const [albumPick, setAlbumPick] = useState<string[] | null>(null);
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
+  /** „Udostępnij link do pobrania” i lista „Linki”. */
+  const [shareRequest, setShareRequest] = useState<MaterialShareModalMode | null>(null);
+  const [sharesOpen, setSharesOpen] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const homeRequest = useRef(0);
   const listRequest = useRef(0);
@@ -658,6 +665,11 @@ export default function MaterialsScreen() {
                     <Feather name="edit-2" size={16} color={colors.primary.gold} />
                     <Text style={styles.secondaryText}>Zmień nazwę</Text>
                   </TouchableOpacity>
+                  <TouchableOpacity style={[styles.secondary, { paddingHorizontal: spacing.md }]} accessibilityLabel="Udostępnij link do pobrania albumu"
+                    onPress={() => setShareRequest({ mode: 'create', items: [{ kind: 'album', id: openAlbum.album.id, name: openAlbum.album.name }], title: openAlbum.album.name })}>
+                    <Feather name="link" size={16} color={colors.primary.gold} />
+                    <Text style={styles.secondaryText}>Link</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity style={[styles.secondary, { paddingHorizontal: spacing.md }]} onPress={() => deleteAlbum(openAlbum.album)}>
                     <Feather name="trash-2" size={16} color={colors.status.error} />
                     <Text style={[styles.secondaryText, { color: colors.status.error }]}>Usuń album</Text>
@@ -697,6 +709,10 @@ export default function MaterialsScreen() {
               <TouchableOpacity style={[styles.secondary, { paddingHorizontal: spacing.md }]} onPress={createFolder}>
                 <Feather name="folder-plus" size={16} color={colors.primary.gold} />
                 <Text style={styles.secondaryText}>Folder</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.secondary, { paddingHorizontal: spacing.md }]} onPress={() => setSharesOpen(true)} accessibilityLabel="Linki do pobrania">
+                <Feather name="link" size={16} color={colors.primary.gold} />
+                <Text style={styles.secondaryText}>Linki</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.secondary, { paddingHorizontal: spacing.md }]} onPress={() => setTrashMode(true)}>
                 <Feather name="trash-2" size={16} color={colors.primary.gold} />
@@ -866,6 +882,10 @@ export default function MaterialsScreen() {
             <Text style={styles.sheetTitle} numberOfLines={2}>{menuFile?.name || menuFolder?.name || menuAlbum?.name}</Text>
             {menuAlbum && canManage && (
               <>
+                <SheetButton icon="link" label="Udostępnij link do pobrania" onPress={() => {
+                  setMenu(null);
+                  setShareRequest({ mode: 'create', items: [{ kind: 'album', id: menuAlbum.id, name: menuAlbum.name }], title: menuAlbum.name });
+                }} />
                 <SheetButton icon="edit-2" label="Zmień nazwę albumu" onPress={() => { setMenu(null); renameAlbum(menuAlbum); }} />
                 <SheetButton icon="trash-2" label="Usuń album (pliki zostaną)" danger onPress={() => { setMenu(null); deleteAlbum(menuAlbum); }} />
               </>
@@ -878,8 +898,23 @@ export default function MaterialsScreen() {
             )}
             {!!menuFile?.description && <Text style={styles.body}>{menuFile.description}</Text>}
             {menuFolder && <SheetButton icon="folder" label="Otwórz" onPress={() => { setMenu(null); openFolder(menuFolder.id); }} />}
+            {menuFolder && canManage && (
+              <SheetButton icon="link" label="Udostępnij link do pobrania" onPress={() => {
+                setMenu(null);
+                setShareRequest({ mode: 'create', items: [{ kind: 'folder', id: menuFolder.id, name: menuFolder.name }], title: menuFolder.name });
+              }} />
+            )}
             {menuFile && <SheetButton icon="eye" label="Podgląd" onPress={() => { setMenu(null); void preview(menuFile); }} />}
             {menuFile && <SheetButton icon="share" label="Udostępnij" onPress={() => { setMenu(null); void share(menuFile); }} />}
+            {menuFile && canManage && menuFile.companyId === homeCompany && (
+              <SheetButton icon="link" label="Udostępnij link do pobrania" onPress={() => {
+                setMenu(null);
+                setShareRequest({
+                  mode: 'create', items: [{ kind: 'file', id: menuFile.id, name: menuFile.name }],
+                  title: menuFile.name.replace(/\.[A-Za-z0-9]{1,12}$/, '') || menuFile.name,
+                });
+              }} />
+            )}
             {menuFile && (menuFile.kind === 'image' || menuFile.kind === 'video') && (
               <SheetButton icon="download" label="Zapisz w Zdjęciach" onPress={() => { setMenu(null); void toPhotos(menuFile); }} />
             )}
@@ -1062,6 +1097,14 @@ export default function MaterialsScreen() {
       </Modal>
 
       {video && <ChatVideoPreview uri={video} onClose={() => setVideo(null)} />}
+
+      {homeCompany && home && (
+        <>
+          <MaterialShareModal request={shareRequest} companyId={homeCompany} companyName={home.company.name} notify={notify}
+            onClose={() => setShareRequest(null)} />
+          <MaterialSharesModal visible={sharesOpen} companyId={homeCompany} companyName={home.company.name} onClose={() => setSharesOpen(false)} />
+        </>
+      )}
 
       {toast && (
         <View pointerEvents="none" style={[styles.toast, { bottom: insets.bottom + spacing.lg }, toast.error && { borderColor: colors.status.error }]}>

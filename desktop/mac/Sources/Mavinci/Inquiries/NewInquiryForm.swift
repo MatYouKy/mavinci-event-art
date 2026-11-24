@@ -10,9 +10,11 @@ import SwiftUI
 //   wychodzenia z okna; nowy rekord jest od razu wybrany.
 // • Rozpoznanie kontaktu po wpisanym telefonie lub e-mailu, ostrzeżenie o otwartych zapytaniach tego klienta (z lejka)
 //   i o kontakcie, który baza utworzyłaby z nazwy organizacji (`link_inquiry_to_customer360`).
-// • Prowadzenie: opiekun od razu (wspólna kolejka, Ty, osoba z zespołu — uprawnienia jak przydział w lejku), „Rozmowa
-//   z klientem już się odbyła” (etap „Kontakt podjęty”, bez przypomnienia o pierwszym kontakcie) i termin następnego
-//   działania z gotowymi terminami. Podgląd wartości szacunkowej z budżetu (jak liczy serwer).
+// • Prowadzenie: opiekunem zostaje osoba dodająca zapytanie, jeśli prowadzi zapytania (jak w bazie —
+//   `prepare_inquiry_sales_automation`, CRM `src/lib/CRM/inquiries/inquiryCreatorOwner.ts`); przy przydziale — także osoba
+//   z zespołu (uprawnienia jak przydział w lejku); bez prawa prowadzenia zapytań — wspólna kolejka. „Rozmowa z klientem już
+//   się odbyła” (etap „Kontakt podjęty”, bez przypomnienia o pierwszym kontakcie) i termin następnego działania z gotowymi
+//   terminami. Podgląd wartości szacunkowej z budżetu (jak liczy serwer).
 // • Zapis nie odmawia, gdy w tle trwa zwykłe odświeżanie danych (`Workspace.prepareWrite`).
 // Serwer: `/bridge/native/v1/inquiries` (`newSetup`, `specialDays`, `create` — `src/lib/native/inquiryCreate.ts`), tokenem
 // pracownika (RLS). Starszy serwer bez opiekuna i kontaktu w `create` — okno wykonuje je czynnościami lejka (`claim`, `contact`).
@@ -273,7 +275,8 @@ struct NewInquiryNextPreset: Identifiable {
     @Published var locationID: String?
 
     // Prowadzenie
-    /// Opiekun: puste — wspólna kolejka.
+    /// Opiekun: domyślnie Ty (gdy prowadzisz zapytania — `creatorOwns`); puste — baza ustawia osobę dodającą, a bez prawa
+    /// prowadzenia zapytań — wspólna kolejka.
     @Published var ownerID = ""
     @Published var contacted = true
     private var contactedTouched = false
@@ -328,6 +331,8 @@ struct NewInquiryNextPreset: Identifiable {
         // Uprawnienia lejka (opiekun do wyboru) — z kopii lejka; bez niej pobieramy ją teraz.
         if state.inquiries.access == nil, state.employee?.canView(.inquiries) == true { await state.inquiries.backgroundSync() }
         access = state.inquiries.access
+        // Opiekunem zostaje osoba dodająca zapytanie (jak w bazie i w CRM).
+        if creatorOwns, ownerID.isEmpty, let mine = me { ownerID = mine }
         // Kopia Kontaktów ma pełną listę z powiązaniami; bez dostępu do Kontaktów — lista z serwera.
         if state.employee?.canView(.contacts) == true {
             if state.contacts.contacts.isEmpty { await state.contacts.backgroundSync() } else { Task { await state.contacts.sync() } }
@@ -530,17 +535,30 @@ struct NewInquiryNextPreset: Identifiable {
         contactedTouched = true
         contacted = value
     }
-    /// Opiekunowie do wyboru: Ty (przejmowanie lub przydział), inne osoby z listy „Osoba odpowiedzialna” (przydział).
+    /// Osoba dodająca zapytanie zostaje jego opiekunem: administrator, przydział, przejmowanie, własne lub wszystkie zapytania
+    /// (`inquiries_assign`, `inquiries_manage`, `inquiries_manage_own`, `inquiries_manage_all` — jak w bazie).
+    var creatorOwns: Bool {
+        guard let access else { return false }
+        return access.isAdmin || access.canClaim || access.canAssign || access.manageOwn || access.manageAll
+    }
+
+    /// Opiekunowie do wyboru: Ty (osoba dodająca), inne osoby z listy „Osoba odpowiedzialna” (przydział).
     var ownerOptions: [MeetingPerson] {
         guard let access, let me = workspace?.employee else { return [] }
         var result: [MeetingPerson] = []
-        if access.canClaim || access.canAssign {
+        if creatorOwns {
             result.append(MeetingPerson(id: me.id, name: "Ja — \(me.name) \(me.surname)".trimmingCharacters(in: .whitespaces)))
         }
         if access.canAssign {
             result += employees.filter { $0.id != me.id }
         }
         return result
+    }
+
+    /// Opiekun w zapisie: Ty bez prawa przejmowania i przydziału (tylko własne zapytania) — puste, bo opiekuna ustawia baza.
+    private var ownerToSave: String {
+        guard ownerID == me, let access, !(access.canClaim || access.canAssign) else { return ownerID }
+        return ""
     }
 
     static var nextPresets: [NewInquiryNextPreset] {
@@ -628,7 +646,7 @@ struct NewInquiryNextPreset: Identifiable {
             "clientText": .string(label), "clientCompany": .string(clientCompany), "clientOrganizationId": .string(organizationID ?? ""),
             "clientContactId": .string(personID ?? ""), "clientPhone": .string(clientPhone), "clientEmail": .string(clientEmail),
             "locationText": .string(locationText), "locationId": .string(locationID ?? ""),
-            "ownerId": .string(ownerID), "contacted": .bool(contacted),
+            "ownerId": .string(ownerToSave), "contacted": .bool(contacted),
         ]
         form["nextActionAt"] = nextAction.map { JSONValue.string(MeetingDates.iso($0)) } ?? JSONValue.string("")
         do {
@@ -729,8 +747,6 @@ struct NewInquiryContactRequest: Identifiable {
     @State private var peopleFilter = ""
     @State private var personEditor: NewInquiryContactRequest?
     @State private var organizationEditor: NewInquiryContactRequest?
-    /// Ostatni wybór: zapytania od razu przypisane do mnie (zapamiętany w aplikacji).
-    @AppStorage("inquiries.new.mine") private var ownerMine = false
     /// Po zapisie od razu karta zapytania („Obsługa zapytania”).
     @AppStorage("inquiries.new.openCard") private var openCard = false
 
@@ -767,13 +783,8 @@ struct NewInquiryContactRequest: Identifiable {
         .interactiveDismissDisabled(model.saving)
         .task {
             await model.load(state)
-            if ownerMine, model.ownerOptions.contains(where: { $0.id == model.me }), let me = model.me { model.ownerID = me }
         }
         .task(id: model.terminText) { await model.loadSpecialDays() }
-        .onChange(of: model.ownerID) { _, value in
-            // Zapamiętujemy tylko „Ja” i „Wspólna kolejka” — przydział innej osobie jest jednorazowy.
-            if value.isEmpty { ownerMine = false } else if value == model.me { ownerMine = true }
-        }
         .onChange(of: focus) { _, next in
             // Lista podpowiedzi otwarta przy polu; przejście do innego pola ją zamyka (kliknięcie podpowiedzi — nie).
             if next == .client { clientOpen = true } else if next != nil { clientOpen = false }
@@ -1197,11 +1208,15 @@ struct NewInquiryContactRequest: Identifiable {
     private var handlingSection: some View {
         Section {
             let owners = model.ownerOptions
-            if !owners.isEmpty {
+            if owners.count > 1 {
                 Picker("Opiekun", selection: $model.ownerID) {
-                    Text("Wspólna kolejka — bez opiekuna").tag("")
                     ForEach(owners) { person in Text(person.name).tag(person.id) }
                 }
+            } else if let only = owners.first {
+                LabeledContent("Opiekun", value: only.name)
+            }
+            if model.access != nil {
+                Text(ownerNote).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Toggle(isOn: Binding(get: { model.contacted }, set: { model.setContacted($0) })) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -1216,6 +1231,17 @@ struct NewInquiryContactRequest: Identifiable {
         } header: {
             Text("Prowadzenie")
         }
+    }
+
+    /// Opis opiekuna (jak w oknie CRM — `inquiryCreatorOwnerNote`).
+    private var ownerNote: String {
+        if !model.creatorOwns {
+            return "Zapytanie trafi do wspólnej kolejki „Nieprzypisane” — opiekuna wybierze osoba prowadząca zapytania."
+        }
+        if model.ownerID.isEmpty || model.ownerID == model.me {
+            return "Opiekunem zapytania zostaniesz Ty — znajdziesz je w „Moje”. Przekazać je możesz w karcie zapytania."
+        }
+        return "Opiekunem zostanie wybrana osoba — dostanie powiadomienie o przypisaniu zapytania."
     }
 
     @ViewBuilder private var nextActionRow: some View {

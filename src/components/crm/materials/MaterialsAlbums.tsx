@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from 'react';
-import { ArrowLeft, Download, Eye, FolderOpen, ImageIcon, Library, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Download, Eye, FolderOpen, ImageIcon, Library, Loader2, Pencil, Plus, Share2, Trash2, X } from 'lucide-react';
 import { MATERIAL_ALBUM_LIMITS, formatMaterialBytes } from '@/lib/materials/materialsShared';
 import {
   downloadMaterial, materialsGet, materialsPost, materialsPostInBatches, type MaterialAccess, type MaterialAlbum, type MaterialFile, type MaterialItemRef,
@@ -119,12 +119,14 @@ export function MaterialsAlbumsSidebar({ albums, activeId, canManage, run, notif
 }
 
 /** Zawartość albumu: siatka plików w kolejności albumu (przeciąganie), podgląd, okładka, usunięcie z albumu, edycja albumu. */
-export function MaterialsAlbumView({ albumId, access, run, notify, onBack, onChanged, onDeleted, onPreview, onShowInFolder }: {
+export function MaterialsAlbumView({ albumId, access, run, notify, onBack, onShare, onChanged, onDeleted, onPreview, onShowInFolder }: {
   albumId: string;
   access: MaterialAccess | undefined;
   run: Run;
   notify: Notify;
   onBack: () => void;
+  /** „Udostępnij album” — link do pobrania (zarządzanie Materiałami). */
+  onShare?: (album: MaterialAlbum) => void;
   onChanged: () => void;
   onDeleted: () => void;
   onPreview: (files: MaterialFile[], index: number) => void;
@@ -234,6 +236,7 @@ export function MaterialsAlbumView({ albumId, access, run, notify, onBack, onCha
           <h2 className="flex items-center gap-2 truncate text-lg font-light"><Library className="h-5 w-5 shrink-0 text-[#d3bb73]" />{album.name}</h2>
           <p className="truncate text-xs text-[#e5e4e2]/45">{album.count} {album.count === 1 ? 'plik' : 'plików'} · odnośniki do Materiałów, bez kopii{album.description ? ` · ${album.description}` : ''}</p>
         </div>
+        {onShare && <button type="button" className={ghostButton} onClick={() => onShare(album)} title="Link do pobrania dla osoby spoza firmy"><Share2 className="h-4 w-4" />Udostępnij album</button>}
         {canManage && <button type="button" className={ghostButton} onClick={() => setEditing({ name: album.name, description: album.description })}><Pencil className="h-4 w-4" />Edytuj</button>}
         {canManage && <button type="button" className={ghostButton} onClick={() => void deleteAlbum()}><Trash2 className="h-4 w-4 text-red-300" />Usuń album</button>}
       </div>

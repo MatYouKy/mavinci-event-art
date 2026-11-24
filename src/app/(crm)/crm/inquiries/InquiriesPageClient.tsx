@@ -45,6 +45,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import NewInquiryModal from '@/components/crm/NewInquiryModal';
+import { inquiryCreatedMessage } from '@/lib/CRM/inquiries/inquiryCreatorOwner';
 import InquiryHandoffModal from '@/components/crm/inquiries/InquiryHandoffModal';
 import type {
   InquiryEmployee,
@@ -877,12 +878,17 @@ export default function InquiriesPageClient({ initialInquiries, employees }: { i
         isOpen={showNewInquiry}
         initialDate={newInquiryDate}
         onClose={() => { setShowNewInquiry(false); setNewInquiryDate(undefined); }}
-        onSaved={async () => {
+        onSaved={async (_inquiryId, owner) => {
+          // Jak na Macu: otwarte zapytania w zakresie z nowym zapytaniem — „Moje” (opiekunem jest osoba dodająca),
+          // wspólna kolejka albo (przydział automatyczny innej osobie) wszystkie / zespół.
           setFilter('open');
           setAttentionFilter('all');
-          changeScope('pool');
+          if (!owner.id) changeScope(canViewPool ? 'pool' : 'mine');
+          else if (owner.id === currentEmployeeId) changeScope('mine');
+          else if (canViewAll) changeScope('all');
+          else if (canViewTeam) changeScope('team');
           await reload();
-          showSnackbar('Zapytanie zostało dodane do wspólnej kolejki', 'success');
+          showSnackbar(inquiryCreatedMessage(owner, currentEmployeeId), 'success');
         }}
       />
       {showSlaSettings && isAdmin && <InquirySlaSettingsModal onClose={() => setShowSlaSettings(false)} />}

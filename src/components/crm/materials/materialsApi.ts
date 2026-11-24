@@ -1,5 +1,11 @@
 import { supabase } from '@/lib/supabase/browser';
-import { materialChunks, mergeMaterialReplies, type MaterialAccess, type MaterialKind, type MaterialSystemFolder } from '@/lib/materials/materialsShared';
+import {
+  materialChunks, mergeMaterialReplies, type MaterialAccess, type MaterialKind, type MaterialShare, type MaterialShareAccess, type MaterialShareCreated,
+  type MaterialShareItemKind, type MaterialSystemFolder,
+} from '@/lib/materials/materialsShared';
+import { OFFER_IMAGE_SIDES, BROCHURE_IMAGE_SIDE, type ProductImageSource } from '@/lib/CRM/Offers/productImageSource';
+import { optimizeOfferImage } from '@/lib/optimizeOfferImage';
+import type { ProductDuplicateResult } from '@/lib/CRM/Offers/productDuplicate';
 
 export type { MaterialAccess };
 
@@ -84,6 +90,106 @@ export async function materialsGet<T>(op: string, params: Record<string, string 
 
 export async function materialsPost<T>(op: string, body: Record<string, unknown> = {}): Promise<T> {
   return parse<T>(await fetch(ENDPOINT, { method: 'POST', headers: await headers(true), body: JSON.stringify({ ...body, op }) }));
+}
+
+// MARK: Linki do pobrania (`op=shares`, `shareCreate`, `shareUpdate`, `shareDelete`)
+
+export type { MaterialShare, MaterialShareCreated };
+/** Element do udostępnienia (folder z podfolderami, album albo plik) z nazwą do opisu w oknie. */
+export type MaterialShareTarget = { kind: MaterialShareItemKind; id: string; name: string };
+export type MaterialShareInput = {
+  companyId: string; items: Array<{ kind: MaterialShareItemKind; id: string }>; title: string; message: string; days: number;
+  access: MaterialShareAccess; emails: string[]; password: string;
+};
+export type MaterialShareChange = {
+  id: string; title?: string; message?: string; days?: number; revoked?: boolean; access?: MaterialShareAccess; emails?: string[];
+  newPassword?: boolean; password?: string;
+};
+
+export const materialShares = (companyId: string) => materialsGet<{ companyId: string; shares: MaterialShare[] }>('shares', { company: companyId });
+export const createMaterialShare = (input: MaterialShareInput) => materialsPost<MaterialShareCreated>('shareCreate', input);
+export const updateMaterialShare = (change: MaterialShareChange) => materialsPost<MaterialShareCreated>('shareUpdate', change);
+export const deleteMaterialShare = (id: string) => materialsPost<{ ok: true; id: string }>('shareDelete', { id });
+
+const PRODUCTS_ENDPOINT = '/bridge/native/v1/products';
+
+/** Zdjęcie produktu z Dysku: serwer przygotowuje lekką wersję WebP z pliku Materiałów (oryginał zostaje w Dysku). */
+export async function productImageFromMaterial(productId: string, fileId: string) {
+  return parse<{ path: string; url: string | null; source: ProductImageSource | null }>(await fetch(PRODUCTS_ENDPOINT, {
+    method: 'POST', headers: await headers(true), body: JSON.stringify({ op: 'imageFromMaterial', id: productId, fileId }),
+  }));
+}
+
+/** Skąd jest zdjęcie produktu (plik Dysku, miejsce, nowsza wersja w Dysku); zdjęcie z komputera — `null`. */
+export async function productImageSourceInfo(path: string) {
+  const query = new URLSearchParams({ op: 'imageSource', path });
+  return (await parse<{ source: ProductImageSource | null }>(await fetch(`${PRODUCTS_ENDPOINT}?${query.toString()}`, {
+    headers: await headers(false), cache: 'no-store',
+  }))).source;
+}
+
+const UPLOAD_LIMIT = 10 * 1024 * 1024;
+
+/** Zawartość pliku w base64 (bez nagłówka `data:`). */
+async function base64Of(blob: Blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...Array.from(bytes.subarray(index, index + 0x8000)));
+  return btoa(binary);
+}
+
+/** Plik zmniejszony w przeglądarce do `side` px (wysoka jakość — serwer i tak zapisze lekkie WebP), najwyżej 10 MB. */
+async function preparedImage(file: File, maxWidth: number, maxHeight: number) {
+  const prepared = await optimizeOfferImage(file, { maxWidth, maxHeight, quality: 0.92 });
+  if (prepared.size > UPLOAD_LIMIT) throw new Error('Zdjęcie po zmniejszeniu ma ponad 10 MB. Zapisz je jako JPG i spróbuj ponownie.');
+  return prepared;
+}
+
+export type OfferImageTarget = keyof typeof OFFER_IMAGE_SIDES;
+
+/**
+ * Zdjęcie z komputera do produktu (`product`), wariantu/elementu (`variant`) albo pakietu (`package`): przeglądarka zmniejsza plik,
+ * serwer zapisuje lekką wersję WebP w magazynie zdjęć produktów i zwraca ścieżkę — zapis ścieżki w produkcie robi karta produktu.
+ */
+export async function productImageUpload(productId: string, file: File, target: OfferImageTarget = 'product', targetId?: string) {
+  const side = OFFER_IMAGE_SIDES[target];
+  const prepared = await preparedImage(file, side, side);
+  return parse<{ path: string; url: string | null }>(await fetch(PRODUCTS_ENDPOINT, {
+    method: 'POST', headers: await headers(true),
+    body: JSON.stringify({ op: 'image', id: productId, target, ...(targetId ? { targetId } : {}), data: await base64Of(prepared) }),
+  }));
+}
+
+/** Własne zdjęcie broszury → lekkie WebP w bibliotece broszury (jak „Dodaj swoje zdjęcie” na Macu). */
+export async function brochureImageUpload(brochureId: string, file: File) {
+  const prepared = await preparedImage(file, 1600, BROCHURE_IMAGE_SIDE);
+  return parse<{ path: string; bucket: string; url: string | null; message?: string }>(await fetch('/bridge/native/v1/brochures', {
+    method: 'POST', headers: await headers(true),
+    body: JSON.stringify({ op: 'imageUpload', id: brochureId, data: await base64Of(prepared) }),
+  }));
+}
+
+/** Ile zdjęć produktów, wariantów i pakietów jest jeszcze w JPG/PNG (`canEdit` — czy można je zamienić). */
+export async function productImagesPending() {
+  return parse<{ count: number; canEdit: boolean }>(await fetch(`${PRODUCTS_ENDPOINT}?op=imagesPending`, {
+    headers: await headers(false), cache: 'no-store',
+  }));
+}
+
+export type ProductImagesConversion = { converted: number; failed: Array<{ key: string; label: string; error: string }>; remaining: number };
+
+/** „Duplikuj” — nowy, nieaktywny produkt z kopią całej karty (`src/lib/native/productDuplicate.ts`). */
+export async function productDuplicate(productId: string) {
+  return parse<ProductDuplicateResult>(await fetch(PRODUCTS_ENDPOINT, {
+    method: 'POST', headers: await headers(true), body: JSON.stringify({ op: 'duplicate', id: productId }),
+  }));
+}
+
+/** Porcja zamiany starszych zdjęć JPG/PNG na WebP; `skip` — zdjęcia, których nie udało się zamienić w tej serii. */
+export async function convertProductImages(skip: string[]) {
+  return parse<ProductImagesConversion>(await fetch(PRODUCTS_ENDPOINT, {
+    method: 'POST', headers: await headers(true), body: JSON.stringify({ op: 'imagesConvert', skip, limit: 4 }),
+  }));
 }
 
 /** Wynik operacji zbiorczej w porcjach; `interrupted` — błąd kolejnej porcji (wcześniejsze porcje są już zapisane). */

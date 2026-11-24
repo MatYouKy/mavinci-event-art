@@ -272,7 +272,7 @@ export default function AddOfferItemModal({ offerId, onClose, onSuccess, onAddRe
           discount_percent: discountPercent,
           image_path: selectedPackage?.image_path || selectedVariant?.offer_image_path || selectedProduct.offer_image_path || selectedProduct.pdf_thumbnail_url || null,
         });
-        showSnackbar('Propozycja dodana do edycji — zatwierdź przyciskiem Zapisz w sekcji propozycji', 'success');
+        // Propozycja jest już zapisana — komunikat pokazuje sekcja propozycji (`OfferRecommendationsEditor`).
         onSuccess();
         onClose();
         return;

@@ -7,6 +7,7 @@ import {
   type OrganizationFormValues,
 } from '@/components/crm/contacts/organization/organizationValidation';
 import { collectValidationErrors, personContactSchema } from '@/components/crm/contacts/contactValidation';
+import { formatPhone, phoneDuplicateConditions } from '@/lib/CRM/client/phoneFormat';
 
 /*
  * Karta kontaktu i organizacji na Macu — to samo co `/crm/contacts/[id]` i `/crm/contacts/new`:
@@ -357,9 +358,8 @@ const personErrors = (values: Row) => Object.fromEntries(
 async function existingContact(ctx: NativeContext, values: { email: string; phone: string; mobile: string; businessPhone: string; nip: string }) {
   const conditions: string[] = [];
   if (values.email) conditions.push(`email.ilike."${values.email.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`);
-  for (const phone of [values.phone, values.mobile, values.businessPhone]) {
-    if (phone) conditions.push(`phone.eq.${phone}`, `mobile.eq.${phone}`, `business_phone.eq.${phone}`);
-  }
+  // Ten sam numer w każdym zapisie, jaki może być w bazie (same cyfry, „+48 …”, ze spacjami, bez kierunkowego).
+  conditions.push(...phoneDuplicateConditions([values.phone, values.mobile, values.businessPhone]));
   if (values.nip) conditions.push(`nip.eq.${values.nip}`);
   if (!conditions.length) return null;
   const { data, error } = await ctx.supabase.from('contacts').select('id,full_name,first_name,last_name').or(conditions.join(',')).limit(1).maybeSingle();
@@ -432,8 +432,9 @@ export async function createEntity(ctx: NativeContext, body: Row) {
   const errors = personErrors(person);
   if (Object.keys(errors).length) fail('Popraw pola oznaczone na czerwono.', 400, errors);
   const normalized = {
-    email: person.email.trim().toLowerCase(), phone: digits(person.phone), mobile: digits(person.mobile),
-    businessPhone: digits(person.businessPhone), nip: digits(person.nip),
+    // Telefony z kierunkowym („+48 510 233 670”) — wcześniej same cyfry, bez „+” (`src/lib/CRM/client/phoneFormat.ts`).
+    email: person.email.trim().toLowerCase(), phone: formatPhone(person.phone), mobile: formatPhone(person.mobile),
+    businessPhone: formatPhone(person.businessPhone), nip: digits(person.nip),
   };
   const duplicate = await existingContact(ctx, normalized);
   if (duplicate) fail(`Taki kontakt prawdopodobnie już istnieje: ${personName(duplicate)}`, 409, undefined, { existingId: text(duplicate.id) });

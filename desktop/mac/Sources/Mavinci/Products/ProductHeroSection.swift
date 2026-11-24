@@ -1,8 +1,8 @@
 import SwiftUI
 
 // MARK: Góra karty produktu — zdjęcie główne do oferty (w kadrze jak w PDF; kliknięcie powiększa całe zdjęcie,
-// „Edytuj grafikę” otwiera zdjęcie, opis i kadr) obok najważniejszych danych: nazwa, status, kategoria, lead, ceny,
-// marża, jednostka, VAT, czas usługi i tagi.
+// „Edytuj grafikę” otwiera zdjęcie, opis i kadr; zdjęcie z Dysku — skąd jest i „Zaktualizuj z Dysku”, gdy w Dysku podmieniono
+// plik) obok najważniejszych danych: nazwa, status, kategoria, lead, ceny, marża, jednostka, VAT, czas usługi i tagi.
 
 @MainActor struct ProductHeroSection: View {
     @ObservedObject var store: ProductsStore
@@ -12,6 +12,7 @@ import SwiftUI
     @EnvironmentObject private var state: Workspace
     @Environment(\.crmTheme) private var theme
     @State private var zoomed = false
+    @State private var refreshing = false
 
     init(store: ProductsStore, detail: ProductDetail, editing: Bool, editImage: @escaping () -> Void) {
         _store = ObservedObject(wrappedValue: store)
@@ -79,7 +80,43 @@ import SwiftUI
             } else if path.isEmpty {
                 Text("Zdjęcie trafia do oferty PDF i na kartę produktu.").font(.caption).foregroundStyle(.secondary)
             }
+            sourceInfo
         }
+    }
+
+    /// Zdjęcie z Dysku: skąd jest i „Zaktualizuj z Dysku”, gdy w Dysku podmieniono plik.
+    @ViewBuilder private var sourceInfo: some View {
+        if !path.isEmpty, let source = detail.imageSource {
+            Label(source.text, systemImage: "externaldrive").font(.caption).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+            if source.outdated {
+                HStack(spacing: 8) {
+                    Text("W Dysku podmieniono to zdjęcie.").font(.caption).foregroundStyle(theme.accent)
+                    Spacer(minLength: 0)
+                    if detail.canEdit {
+                        Button { Task { await refreshFromDrive(source) } } label: { Label("Zaktualizuj z Dysku", systemImage: "arrow.triangle.2.circlepath") }
+                            .controlSize(.small)
+                            .disabled(editing || refreshing || !state.canWrite)
+                    }
+                }
+                .padding(8)
+                .background(theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    /// W Dysku podmieniono zdjęcie — nowa lekka wersja z pliku, opis i kadr bez zmian.
+    private func refreshFromDrive(_ source: ProductImageSource) async {
+        refreshing = true
+        defer { refreshing = false }
+        guard let created = await store.imageFromMaterial(detail.id, fileID: source.fileId) else { return }
+        let patch: [String: JSONValue] = [
+            "offer_image_path": .string(created),
+            "offer_image_alt": .string(ProductValue.text(product, "offer_image_alt")),
+            "offer_image_position_x": .number(ProductValue.number(product, "offer_image_position_x") ?? 50),
+            "offer_image_position_y": .number(ProductValue.number(product, "offer_image_position_y") ?? 25),
+            "offer_image_zoom": .number(ProductValue.number(product, "offer_image_zoom") ?? 1),
+        ]
+        await store.saveSection(detail.id, section: "offer_image", patch: patch, success: "Zaktualizowano zdjęcie z Dysku")
     }
 
     private var frameText: String {

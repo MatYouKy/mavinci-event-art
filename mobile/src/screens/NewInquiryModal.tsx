@@ -1,4 +1,4 @@
-import { canCreateInquiry } from '../lib/permissions';
+import { canCreateInquiry, canOwnNewInquiry } from '../lib/permissions';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
@@ -30,7 +30,8 @@ import { showcaseOfferDraftId } from '../lib/showcaseShared';
 
 /*
  * Nowe zapytanie z telefonu (lista zapytań, kalendarz) — ten sam zapis co CRM i Mac (`/bridge/native/v1/inquiries`, `op=create`):
- * zapytanie trafia do lejka sprzedaży (etap „Nowe”, źródło, opiekun albo wspólna kolejka / przydział automatyczny SLA),
+ * zapytanie trafia do lejka sprzedaży (etap „Nowe”, źródło; opiekun — wybrana osoba, a bez wyboru osoba dodająca, jeśli prowadzi
+ * zapytania — jak w bazie; inaczej wspólna kolejka / przydział automatyczny SLA),
  * nie do listy zadań — bez przypisania jak do zadania i bez powiadomienia „nowe zadanie”.
  */
 
@@ -89,6 +90,8 @@ export default function NewInquiryModal({
 }: NewInquiryModalProps) {
   const { employee } = useAuth();
   const allowed = canCreateInquiry(employee);
+  // Bez wybranego opiekuna zostajesz nim Ty (gdy prowadzisz zapytania) — baza: `prepare_inquiry_sales_automation`.
+  const creatorOwns = canOwnNewInquiry(employee);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const formScrollRef = useRef<ScrollView>(null);
@@ -264,9 +267,11 @@ export default function NewInquiryModal({
       onClose();
       Alert.alert(
         'Zapisano',
-        reply.ownerName
-          ? `Zapytanie trafiło do lejka sprzedaży — opiekun: ${reply.ownerName}${reply.autoAssigned ? ' (przydział automatyczny)' : ''}.`
-          : 'Zapytanie trafiło do lejka sprzedaży — wspólna kolejka zapytań.',
+        reply.ownerId && reply.ownerId === employee?.id
+          ? 'Zapytanie trafiło do lejka sprzedaży — opiekunem jesteś Ty.'
+          : reply.ownerName
+            ? `Zapytanie trafiło do lejka sprzedaży — opiekun: ${reply.ownerName}${reply.autoAssigned ? ' (przydział automatyczny)' : ''}.`
+            : 'Zapytanie trafiło do lejka sprzedaży — wspólna kolejka zapytań.',
       );
     } catch (e: any) {
       Alert.alert('Błąd', e?.message || 'Nieznany błąd');
@@ -605,7 +610,7 @@ export default function NewInquiryModal({
             dropdownId="employee"
             openedDropdown={openedDropdown}
             setOpenedDropdown={setOpenedDropdown}
-            label="Opiekun (bez wyboru — wspólna kolejka zapytań)"
+            label={creatorOwns ? 'Opiekun (bez wyboru — Ty)' : 'Opiekun (bez wyboru — wspólna kolejka zapytań)'}
             placeholder="Szukaj pracownika..."
             icon="user-check"
             items={employees}

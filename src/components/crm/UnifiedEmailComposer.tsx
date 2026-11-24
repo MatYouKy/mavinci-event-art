@@ -112,6 +112,8 @@ interface UnifiedEmailComposerProps {
   recipientSuggestions?: ReactNode;
   editorAction?: ReactNode;
   afterEditor?: ReactNode;
+  /** Stopka wybranej skrzynki pokazana pod treścią (tak jak zobaczy ją odbiorca); pusta — bez podglądu stopki. */
+  signaturePreviewHtml?: string;
   children?: ReactNode;
   accountHelp?: ReactNode;
   replyContext?: UnifiedReplyContext;
@@ -119,9 +121,10 @@ interface UnifiedEmailComposerProps {
 
 const emailEditorModules = {
   toolbar: [
-    ['bold', 'italic', 'underline'],
+    ['bold', 'italic', 'underline', 'strike'],
     [{ list: 'ordered' }, { list: 'bullet' }],
     [{ indent: '-1' }, { indent: '+1' }],
+    [{ align: [] }],
     ['link'],
     ['clean'],
   ],
@@ -131,9 +134,11 @@ const emailEditorFormats = [
   'bold',
   'italic',
   'underline',
+  'strike',
   'list',
   'bullet',
   'indent',
+  'align',
   'link',
 ];
 
@@ -170,17 +175,19 @@ export const normalizeUnifiedEmailHtml = (html: string, compactSpacing = false):
       }
     });
 
+    // Wcięcie jak w edytorze (Quill: 3em na poziom).
     const indentMatch = element.className.match(/(?:^|\s)ql-indent-(\d+)(?:\s|$)/);
-    if (indentMatch) element.style.marginLeft = `${Number(indentMatch[1]) * 24}px`;
+    if (indentMatch) element.style.marginLeft = `${Number(indentMatch[1]) * 3}em`;
 
     if (element.classList.contains('ql-align-center')) element.style.textAlign = 'center';
     if (element.classList.contains('ql-align-right')) element.style.textAlign = 'right';
     if (element.classList.contains('ql-align-justify')) element.style.textAlign = 'justify';
   });
 
+  // Odbiorca widzi to samo co okno treści: wiersze bez dodatkowych odstępów (pusty wiersz = pusta linia), jak w edytorze.
   documentNode.body.querySelectorAll<HTMLElement>('p').forEach((paragraph) => {
     paragraph.style.marginTop = '0';
-    paragraph.style.marginBottom = compactSpacing ? '0' : paragraph.textContent?.trim() ? '10px' : '8px';
+    paragraph.style.marginBottom = '0';
     if (compactSpacing) {
       paragraph.style.padding = '0';
       paragraph.style.height = 'auto';
@@ -192,12 +199,12 @@ export const normalizeUnifiedEmailHtml = (html: string, compactSpacing = false):
     paragraph.style.marginRight = '0';
   });
   documentNode.body.querySelectorAll<HTMLElement>('ol, ul').forEach((list) => {
-    list.style.margin = '8px 0 12px';
+    list.style.margin = '0';
     list.style.paddingLeft = '26px';
   });
   documentNode.body.querySelectorAll<HTMLElement>('li').forEach((item) => {
-    item.style.marginTop = '4px';
-    item.style.marginBottom = '4px';
+    item.style.marginTop = '0';
+    item.style.marginBottom = '0';
     item.style.marginRight = '0';
   });
 
@@ -337,6 +344,7 @@ export default function UnifiedEmailComposer({
   recipientSuggestions,
   editorAction,
   afterEditor,
+  signaturePreviewHtml,
   children,
   accountHelp,
   replyContext,
@@ -528,9 +536,15 @@ export default function UnifiedEmailComposer({
                 placeholder="Wpisz treść wiadomości..."
               />
             </div>
+            {signaturePreviewHtml?.trim() ? (
+              <div className="mt-2 overflow-x-auto rounded-lg bg-white px-4 py-3 text-[#1c1f33] [color-scheme:light]">
+                <p className="mb-2 text-[11px] uppercase text-[#1c1f33]/45">Stopka na końcu wiadomości</p>
+                <div className="pointer-events-none select-none" dangerouslySetInnerHTML={{ __html: signaturePreviewHtml }} />
+              </div>
+            ) : null}
             <p className="mt-2 text-xs text-[#e5e4e2]/50">
-              Dostępne są listy, podpunkty, wcięcia, linki i podstawowe formatowanie. Stopka jest
-              dodawana automatycznie.
+              Dostępne są listy, podpunkty, wcięcia, wyrównanie, linki i podstawowe formatowanie. Odstępy między wierszami są
+              takie jak w polu treści. Stopka jest dodawana automatycznie.
             </p>
             {afterEditor}
           </div>

@@ -63,3 +63,4 @@ mobile/ios/
 # Kopie plików sprzed przełączenia na Frankfurt (scripts/migration/frankfurt/12-switch-config.sh) — zawierają sekrety
 *.przed-frankfurtem
 desktop/mac/VERSION
+desktop/mac/VERSION

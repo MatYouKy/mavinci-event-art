@@ -200,9 +200,10 @@ extension ProductsStore {
         }
     }
 
-    /// Zapis części C1; `english` — odśwież wersję angielską jak w CRM (treść widoczna w ofercie).
+    /// Zapis części C1; `english` — odśwież wersję angielską jak w CRM (treść widoczna w ofercie); `timeout` — dłużej przy zdjęciu
+    /// z Dysku (serwer pobiera oryginał i przygotowuje WebP).
     @discardableResult func changeExtras(_ productID: String, _ op: String, _ fields: [String: JSONValue], pending: String = "Zapisywanie…",
-                                         success: String, english: Bool = true) async -> Bool {
+                                         success: String, english: Bool = true, timeout: TimeInterval? = nil) async -> Bool {
         guard let api, let workspace else { return false }
         guard workspace.canWrite else {
             workspace.error = "Zapis wymaga połączenia z serwerem CRM."
@@ -212,7 +213,7 @@ extension ProductsStore {
         body["op"] = .string(op)
         body["id"] = .string(productID)
         do {
-            let data = try await workspace.withPending(pending) { try await api.post("/products", body) }
+            let data = try await workspace.withPending(pending) { try await api.post("/products", body, timeout: timeout) }
             extras[productID] = try JSONDecoder().decode(ProductExtras.self, from: data)
             workspace.succeed(success)
             if english { refreshEnglish(productID) }
