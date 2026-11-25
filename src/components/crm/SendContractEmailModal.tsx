@@ -5,6 +5,7 @@ import { BadgeCheck, X, Send, Mail, Loader, Paperclip } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import StorageFileThumbnail from './StorageFileThumbnail';
+import { linkEventEmail } from '@/lib/CRM/events/eventCorrespondence';
 import {
   dispatchCrmEmail,
   formatScheduledEmailDate,
@@ -430,6 +431,8 @@ export default function SendContractEmailModal({
           bcc: formData.bcc.trim(),
         },
       });
+      // Wiadomość trafia do korespondencji eventu.
+      await linkEventEmail(supabase, eventId, result);
 
       if (!isDraft && !result.scheduled) {
         await supabase

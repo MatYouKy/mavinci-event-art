@@ -48,16 +48,21 @@ extension HTTPBackend {
 }
 
 @MainActor extension Workspace {
+    /// Rekord pobrany z serwera do kopii sekcji. Bez zmian (np. otwarcie szczegółów przetargu) — nic nie jest publikowane
+    /// ani zapisywane; zmieniony — podmieniany tylko w zbiorze, w którym jest (pozostałe zbiory bez kopiowania).
     func acceptRecord(_ record:Row,module:Module) {
         guard snapshot != nil else{return}
         var collection=snapshot?.collections[module.rawValue] ?? CollectionState()
-        var replaced=false
+        var replaced=false,changed=false
         for key in Array(collection.buckets.keys) {
-            collection.buckets[key]=collection.buckets[key]?.map {old in
-                if old.id==record.id {replaced=true;return record};return old
-            }
+            guard var rows=collection.buckets[key],rows.contains(where:{$0.id==record.id}) else{continue}
+            replaced=true
+            var touched=false
+            for index in rows.indices where rows[index].id==record.id && rows[index] != record {rows[index]=record;touched=true}
+            if touched {collection.buckets[key]=rows;changed=true}
         }
-        if !replaced {collection.buckets["linked",default:[]].append(record)}
+        if !replaced {collection.buckets["linked",default:[]].append(record);changed=true}
+        guard changed else{return}
         snapshot?.collections[module.rawValue]=collection
         persistSnapshot()
     }

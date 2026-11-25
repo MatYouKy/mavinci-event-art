@@ -267,6 +267,30 @@ struct OfferDetail: Codable {
     var draftRevision: DraftRevision?
     /// Cennik sezonowy oferty: pasek „Cennik: …” nad pozycjami i „Przelicz według cennika…” (starszy serwer — brak).
     var seasonPrices: OfferPriceNotice?
+    /// Akceptacja rabatu ponad limit (`src/lib/CRM/Offers/offerApproval.ts`) — sekcja w „Informacjach”; brak — nic do pokazania.
+    var approval: Approval?
+
+    /// Stan akceptacji rabatu i marży (progi `sales_offer_guardrails`) — teksty liczy serwer, jak karta „Informacje” w CRM.
+    struct Approval: Codable, Equatable {
+        struct Note: Codable, Equatable {
+            var label: String
+            var text: String
+        }
+        /// `success` | `pending` | `warning` | `info`.
+        var tone: String
+        var title: String
+        var reasons: [String]
+        var note: Note?
+        var meta: String?
+        var hint: String?
+        var canRequest: Bool
+        var canApprove: Bool
+        var canReject: Bool
+        var approveLabel: String
+        /// Wysyłka oferty zablokowana do akceptacji (przycisk „Wyślij ofertę” wyłączony).
+        var blocksSending: Bool
+        var notePlaceholder: String
+    }
 }
 
 enum OfferText {

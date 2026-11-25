@@ -122,6 +122,11 @@ export async function POST(request: Request) {
       }
       throw new WeddingDocumentError('Nie potwierdzono zapisu do kolejki. Ponów tę samą próbę — nie utworzy drugiej wiadomości.', 503);
     }
+    // Korespondencja eventu: zlecenie (a po wysyłce — wysłana wiadomość) w zakładce „Korespondencja”. Błąd nie cofa wysyłki.
+    const linked = await admin.from('event_email_links').insert({
+      event_id: eventId, scheduled_email_id: body.requestId, include_thread: true, source: 'event', created_by: userId,
+    });
+    if (linked.error && linked.error.code !== '23505') console.warn('Wedding card delivery: event correspondence link failed:', linked.error.code);
     return json({ delivery: deliveryView(queued.data) }, 202);
   } catch (error) { return failure(error); }
 }

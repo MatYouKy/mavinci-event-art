@@ -23,6 +23,7 @@ struct EventCardTabInfo: Codable, Hashable, Identifiable {
         case "calculations": return "function"
         case "contract": return "signature"
         case "seller-arrangements": return "bubble.left.and.bubble.right"
+        case "correspondence": return "envelope"
         case "finances": return "banknote"
         case "summary": return "chart.bar.doc.horizontal"
         case "history": return "clock.arrow.circlepath"

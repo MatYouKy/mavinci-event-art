@@ -6,6 +6,8 @@ import { buildCompanyEmailBody, buildCompanySignatureHtml } from '@/lib/buildCom
 import { dispatchCrmEmail } from '@/lib/emailScheduling';
 import { inquiryTitleLabel } from '@/lib/ui/systemLabels';
 import { venueOutdatedOffers } from '@/lib/CRM/Offers/offerVenueBackground';
+import { compareSendingAccounts } from '@/lib/CRM/messages/sendingAccount';
+import { linkDocumentEmailToEvent } from '@/lib/CRM/events/eventCorrespondence';
 
 /*
  * Oferty na Macu, część D2 — czynności z karty „Akcje” jak w CRM: wysyłka oferty e-mailem (`SendOfferEmailModal`: skrzynka
@@ -39,13 +41,19 @@ async function managed(ctx: NativeContext, id: string) {
 
 // MARK: Wysyłka e-mailem
 
-type Account = { id: string; email_address: string; from_name?: string | null; account_type?: string | null; is_default?: boolean | null };
+type Account = {
+  id: string; email_address: string; from_name?: string | null; account_type?: string | null; is_default?: boolean | null; employee_id?: string | null;
+};
 
-/** Skrzynki do wysyłki jak w `SendOfferEmailModal`: osobiste (bez systemowych) i przypisane z prawem wysyłania (też broszury). */
+/**
+ * Skrzynki do wysyłki jak w `SendOfferEmailModal`: osobiste (bez systemowych) i przypisane z prawem wysyłania (też broszury).
+ * Kolejność — pierwsza jest domyślna w oknach wysyłki: własna skrzynka osoby wysyłającej, potem przypisane osobiste i wspólne
+ * (`compareSendingAccounts`, `src/lib/CRM/messages/sendingAccount.ts`).
+ */
 export async function sendingAccounts(ctx: NativeContext): Promise<Account[]> {
   const employeeId = ctx.employee.id;
   const [personal, assignments] = await Promise.all([
-    ctx.supabase.from('employee_email_accounts').select('id, email_address, from_name, account_type, is_default')
+    ctx.supabase.from('employee_email_accounts').select('id, email_address, from_name, account_type, is_default, employee_id')
       .eq('employee_id', employeeId).eq('is_active', true).or('account_type.is.null,account_type.neq.system'),
     ctx.supabase.from('employee_email_account_assignments').select('email_account_id').eq('employee_id', employeeId).eq('can_send', true),
   ]);
@@ -53,19 +61,13 @@ export async function sendingAccounts(ctx: NativeContext): Promise<Account[]> {
   const assignedIds = ((assignments.data || []) as Row[]).map((row) => row.email_account_id).filter(Boolean);
   let assigned: Account[] = [];
   if (assignedIds.length) {
-    const { data, error } = await ctx.supabase.from('employee_email_accounts').select('id, email_address, from_name, account_type, is_default')
+    const { data, error } = await ctx.supabase.from('employee_email_accounts').select('id, email_address, from_name, account_type, is_default, employee_id')
       .in('id', assignedIds).eq('is_active', true).or('account_type.is.null,account_type.neq.system');
     if (error) fail('Nie udało się pobrać skrzynek pracownika');
     assigned = (data || []) as Account[];
   }
   return Array.from(new Map([...((personal.data || []) as Account[]), ...assigned].map((account) => [account.id, account])).values())
-    .sort((a, b) => {
-      if (Boolean(a.is_default) !== Boolean(b.is_default)) return a.is_default ? -1 : 1;
-      const aPersonal = (a.account_type || 'personal') === 'personal';
-      const bPersonal = (b.account_type || 'personal') === 'personal';
-      if (aPersonal !== bPersonal) return aPersonal ? -1 : 1;
-      return a.email_address.localeCompare(b.email_address, 'pl');
-    });
+    .sort(compareSendingAccounts(employeeId));
 }
 
 /** Dane okna „Wyślij ofertę przez email”: skrzynki, adresat (klient oferty), domyślny temat i treść, stan PDF. */
@@ -186,6 +188,8 @@ export async function sendOfferEmail(ctx: NativeContext, body: Row, accessToken:
       recipientName,
     },
   });
+  // Oferta eventu — wiadomość trafia do korespondencji eventu.
+  await linkDocumentEmailToEvent(ctx.supabase, 'offer', id, result);
   return {
     scheduled: result.scheduled,
     scheduledAt: result.scheduledAt ?? null,

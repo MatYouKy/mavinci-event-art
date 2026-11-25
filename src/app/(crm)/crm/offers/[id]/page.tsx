@@ -30,7 +30,6 @@ import OfferPackagesEditor from './components/OfferPackagesEditor';
 import OfferRecommendationsEditor from './components/OfferRecommendationsEditor';
 import OfferRequirementsEditor from './components/OfferRequirementsEditor';
 import SellerOfferWorkflow from '@/components/seller/SellerOfferWorkflow';
-import OfferApprovalBanner from '@/components/crm/offers/OfferApprovalBanner';
 import OfferSeasonPricePanel from '@/components/crm/offers/OfferSeasonPricePanel';
 import { useDispatch } from 'react-redux';
 import { eventsApi } from '@/app/(crm)/crm/events/store/api/eventsApi';
@@ -378,13 +377,6 @@ export default function OfferDetailPage() {
         {offerLanguage.error && <div role="alert">{offerLanguage.error}<button type="button" disabled={offerLanguage.busy} onClick={offerLanguage.prepare} className="ml-3 rounded-lg bg-white/5 px-3 py-2 text-[#d3bb73]">Ponów przygotowanie EN</button></div>}
         {offerLanguage.language === 'en' && <p>Wyświetlasz angielską treść. „Generuj PDF” przygotuje wersję EN. Zakres i ceny edytujesz po przełączeniu na PL.</p>}
       </div>}
-      {(offer as any).sales_channel !== 'seller_portal' && (
-        <OfferApprovalBanner
-          offerId={offer.id}
-          revision={`${(offer as any).content_revision ?? ''}:${(offer as any).total_amount ?? ''}:${offer.status}`}
-        />
-      )}
-
       {(offer as any).sales_channel === 'seller_portal' ? (
         <SellerOfferWorkflow key={offerId} offerId={offerId} crm onChanged={() => {
           void refetch();

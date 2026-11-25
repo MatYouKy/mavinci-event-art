@@ -10,7 +10,9 @@ import {
   savePost, saveSettings, saveTemplate, schedulePost, schedulePublication, socialComments, socialHome, socialPost, suggestPost,
   transitionPost,
 } from '@/lib/social/socialPosts.server';
-import { generateReport, refreshCompanyMetrics, refreshPostMetrics, socialStats } from '@/lib/social/socialReport.server';
+import {
+  generateReport, refreshBrandStats, refreshCompanyMetrics, refreshPostMetrics, saveBrandTermsStats, socialStats,
+} from '@/lib/social/socialReport.server';
 import { archiveLayout, deleteLayout, saveLayout, socialLayouts } from '@/lib/social/socialLayouts.server';
 import { pdfContentDisposition } from '@/lib/print/pdfRenderer.server';
 import { SOCIAL_LIMITS } from '@/lib/social/socialShared';
@@ -39,7 +41,9 @@ export const maxDuration = 300;
  *   schedulePublication {id, scheduledAt, revision} | publishNow {id, revision} (publikacja w Meta, wynik w `publishResult`) |
  *   commentsRefresh {postId | companyId, filter} | reply {commentId, message, scope: post | company, filter} |
  *   metricsRefresh {postId} → karta posta | metricsRefresh {companyId, days, report} → statystyki |
- *   reportGenerate {companyId, weekStart?, days} (twórca treści; raport za poprzedni albo wskazany tydzień) → statystyki.
+ *   reportGenerate {companyId, weekStart?, days} (twórca treści; raport za poprzedni albo wskazany tydzień) → statystyki |
+ *   brandRefresh {companyId, days, report} („Zainteresowanie marką”: Google i Meta marki) → statystyki |
+ *   brandTerms {companyId, terms: string[], days, report} (frazy marki liczone w Google; [] — domyślne) → statystyki.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -182,6 +186,10 @@ export async function POST(request: Request) {
         return nativeJson(await refreshCompanyMetrics(ctx, body));
       case 'reportGenerate':
         return nativeJson(await generateReport(ctx, body));
+      case 'brandRefresh':
+        return nativeJson(await refreshBrandStats(ctx, body));
+      case 'brandTerms':
+        return nativeJson(await saveBrandTermsStats(ctx, body));
       case 'saveLayout':
         return nativeJson(await saveLayout(ctx, body));
       case 'archiveLayout':

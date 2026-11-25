@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 /// wcięcia, wyrównanie, linki, rozmiar i kolor) i stopką wybranej skrzynki na końcu — tak jak zobaczy ją odbiorca; w odpowiedzi
 /// pod treścią cała wiadomość, na którą odpowiadasz, z jej wcześniejszą korespondencją (podział przesuwany). Pliki przeciągnięte
 /// do okna — także na treść — trafiają do załączników. Wpisywany tekst (adresy, temat, treść) ma osobne pola stanu — litera nie
-/// przelicza całego okna z podglądem cytatu.
+/// przelicza całego okna z podglądem cytatu. Pola „Do”, „DW” i „UDW” podpowiadają adresatów jak Thunderbird (`RecipientField`).
 @MainActor struct ComposeSheet: View {
     @ObservedObject var store: MessagesStore
     @State private var draft: ComposeDraft
@@ -36,6 +36,8 @@ import UniformTypeIdentifiers
     @State private var previewLoading = false
     @State private var sending = false
     @State private var problem: String?
+    /// Pole adresu z otwartą listą podpowiedzi (`RecipientField`) — wtedy ↩ i Esc obsługuje lista, nie przyciski okna.
+    @State private var recipientField: String?
 
     init(store: MessagesStore, draft: ComposeDraft) {
         _store = ObservedObject(wrappedValue: store)
@@ -108,11 +110,11 @@ import UniformTypeIdentifiers
                     if previewLoading { ProgressView().controlSize(.small) } else { Label("Podgląd", systemImage: "eye") }
                 }.disabled(previewLoading || draft.accountId.isEmpty)
                 Spacer()
-                Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).disabled(sending)
+                Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(recipientField == nil ? .cancelAction : nil).disabled(sending)
                 Button { Task { await send() } } label: {
                     if sending { Text(scheduled ? "Planowanie..." : "Wysyłanie...") } else { Label(scheduled ? "Zaplanuj wysyłkę" : "Wyślij", systemImage: "paperplane") }
                 }
-                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent).keyboardShortcut(recipientField == nil ? .defaultAction : nil)
                 .disabled(sending || accounts.isEmpty)
             }.padding(16).crmBar()
         }
@@ -151,15 +153,15 @@ import UniformTypeIdentifiers
             }
             GridRow {
                 Text("Do:").foregroundStyle(.secondary)
-                TextField("Do:", text: $to, prompt: Text("email@example.com")).textFieldStyle(.roundedBorder).labelsHidden()
+                RecipientField("Do:", text: $to, prompt: "Imię, nazwisko, firma albo adres e-mail", field: "to", openField: $recipientField)
             }
             GridRow {
                 Text("DW:").foregroundStyle(.secondary)
-                TextField("DW:", text: $cc, prompt: Text("Opcjonalnie")).textFieldStyle(.roundedBorder).labelsHidden()
+                RecipientField("DW:", text: $cc, prompt: "Opcjonalnie", field: "cc", openField: $recipientField)
             }
             GridRow {
                 Text("UDW:").foregroundStyle(.secondary)
-                TextField("UDW:", text: $bcc, prompt: Text("Opcjonalnie")).textFieldStyle(.roundedBorder).labelsHidden()
+                RecipientField("UDW:", text: $bcc, prompt: "Opcjonalnie", field: "bcc", openField: $recipientField)
             }
             GridRow {
                 Text("Temat:").foregroundStyle(.secondary)

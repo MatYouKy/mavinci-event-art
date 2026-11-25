@@ -1,6 +1,10 @@
 import 'server-only';
 
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
+import type { SocialBrandChannel } from '@/lib/social/socialShared';
+import {
+  saveBrandInterestState, syncBrandProfiles, syncBrandSearch, type BrandSyncResult,
+} from './brandInterest.server';
 import { decryptMarketingCredentials, encryptMarketingCredentials } from './crypto.server';
 import { metaAuthHeaders } from './metaGraph.server';
 import {
@@ -35,6 +39,11 @@ type MetaCredentials = {
 
 const numberValue = (value: unknown) => Number(value || 0);
 const moneyFromMicros = (value: unknown) => numberValue(value) / 1_000_000;
+/** Data kampanii Google Ads („RRRR-MM-DD GG:MM:SS”) → „RRRR-MM-DD”. */
+const campaignDate = (value: unknown) => {
+  const date = String(value || '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+};
 
 function dateRange() {
   const end = new Date();
@@ -148,7 +157,9 @@ async function syncSearchConsole(
       .upsert(rows, { onConflict: 'company_id,source,metric_date,external_campaign_id' });
     if (error) throw error;
   }
-  return { rows: rows.length, skipped: false };
+  // „Zainteresowanie marką” (frazy z nazwą marki) — własny stan w statystykach social media, bez wpływu na wynik Search Console.
+  const brand = await syncBrandSearch({ companyId: integration.company_id, accessToken: credentials.access_token, siteUrl });
+  return { rows: rows.length, skipped: false, brandSearch: { ok: brand.ok, days: brand.days, message: brand.message } };
 }
 
 async function syncGoogleAds(integration: IntegrationRow, credentials: GoogleCredentials) {
@@ -174,8 +185,9 @@ async function syncGoogleAds(integration: IntegrationRow, credentials: GoogleCre
   }
   const { start, end } = dateRange();
   // A date-segmented report omits campaigns without activity. Fetch the catalog separately.
+  // Od Google Ads API v23 daty kampanii to `start_date_time` / `end_date_time` („RRRR-MM-DD GG:MM:SS”, strefa konta).
   const catalog = await search(`SELECT campaign.id, campaign.name, campaign.status,
-    campaign.advertising_channel_type, campaign.start_date, campaign.end_date,
+    campaign.advertising_channel_type, campaign.start_date_time, campaign.end_date_time,
     campaign_budget.amount_micros, campaign_budget.total_amount_micros, campaign_budget.period FROM campaign`);
   const query = `
     SELECT
@@ -183,8 +195,8 @@ async function syncGoogleAds(integration: IntegrationRow, credentials: GoogleCre
       campaign.name,
       campaign.status,
       campaign.advertising_channel_type,
-      campaign.start_date,
-      campaign.end_date,
+      campaign.start_date_time,
+      campaign.end_date_time,
       campaign_budget.amount_micros,
       segments.date,
       metrics.impressions,
@@ -234,8 +246,8 @@ async function syncGoogleAds(integration: IntegrationRow, credentials: GoogleCre
       spend: 0,
       conversions: 0,
       conversion_value: 0,
-      start_date: row.campaign?.startDate || null,
-      end_date: row.campaign?.endDate || null,
+      start_date: campaignDate(row.campaign?.startDateTime),
+      end_date: campaignDate(row.campaign?.endDateTime),
       metadata: { customer_id: customerId, report_start: start, report_end: end },
       synced_at: new Date().toISOString(),
     };
@@ -275,6 +287,7 @@ async function syncMeta(integration: IntegrationRow, credentials: MetaCredential
   let metricCount = 0;
   let campaignCount = 0;
   let messageCount = 0;
+  const brandProfiles: BrandSyncResult[] = [];
 
   if (adAccountId) {
     const insightsUrl = new URL(
@@ -425,6 +438,15 @@ async function syncMeta(integration: IntegrationRow, credentials: MetaCredential
       }
     }
     if (pageErrors.length) console.warn('[marketing sync] Meta page insights partially unavailable', pageErrors.join('; '));
+
+    // „Zainteresowanie marką”: wyświetlenia strony Facebook i wejścia na profil Instagram (własny stan w statystykach).
+    const brand = await syncBrandProfiles({
+      companyId: integration.company_id,
+      pageId,
+      pageToken,
+      instagramId: String(integration.settings.instagram_account_id || '').trim() || null,
+    });
+    brandProfiles.push(...brand);
     if (rowsByDate.size) {
       try {
         const { error } = await admin
@@ -481,7 +503,12 @@ async function syncMeta(integration: IntegrationRow, credentials: MetaCredential
     }
   }
 
-  return { rows: metricCount, campaigns: campaignCount, messages: messageCount };
+  return {
+    rows: metricCount,
+    campaigns: campaignCount,
+    messages: messageCount,
+    brandProfiles: brandProfiles.map((item) => ({ channel: item.channel, ok: item.ok, days: item.days, message: item.message })),
+  };
 }
 
 export async function syncMarketingIntegration(integration: IntegrationRow) {
@@ -537,6 +564,73 @@ export async function syncMarketingIntegration(integration: IntegrationRow) {
       error: error?.message || 'Błąd synchronizacji',
     };
   }
+}
+
+/**
+ * „Zainteresowanie marką” jednej marki bez kampanii i wiadomości: „Odśwież” w statystykach social media (kanały pobrane
+ * ponad `minAgeMs` temu) i zmiana fraz marki (tylko Google). Brak połączenia kanału — bez zapisu (widok pokazuje
+ * „niepołączone” na podstawie integracji).
+ */
+export async function syncCompanyBrandInterest(
+  companyId: string,
+  options: { minAgeMs?: number; channels?: SocialBrandChannel[] } = {},
+) {
+  const admin = createSupabaseAdminClient();
+  const [integrationsResult, statesResult] = await Promise.all([
+    admin
+      .from('marketing_integrations')
+      .select('id, company_id, provider, settings, credentials_encrypted')
+      .eq('company_id', companyId)
+      .in('provider', ['google', 'meta']),
+    admin.from('marketing_brand_interest_sync').select('channel, checked_at').eq('company_id', companyId),
+  ]);
+  if (integrationsResult.error) throw integrationsResult.error;
+  const states = (statesResult.data || []) as Array<{ channel: string; checked_at: string | null }>;
+  const recent = (channel: SocialBrandChannel) => Boolean(options.minAgeMs) && states.some((state) =>
+    state.channel === channel && Date.now() - (Date.parse(String(state.checked_at || '')) || 0) < (options.minAgeMs as number));
+  const wanted = (channel: SocialBrandChannel) => (!options.channels || options.channels.includes(channel)) && !recent(channel);
+  const integrations = (integrationsResult.data || []) as IntegrationRow[];
+  const results: BrandSyncResult[] = [];
+
+  const google = integrations.find((item) => item.provider === 'google' && item.credentials_encrypted);
+  const siteUrl = String(google?.settings?.search_console_site_url || '').trim();
+  if (google && siteUrl && wanted('google')) {
+    try {
+      const credentials = await refreshGoogleCredentials(
+        google,
+        decryptMarketingCredentials<GoogleCredentials>(google.credentials_encrypted as string),
+      );
+      results.push(await syncBrandSearch({ companyId, accessToken: credentials.access_token, siteUrl }));
+    } catch (error: any) {
+      const message = String(error?.message || 'Nie udało się połączyć z Google.').slice(0, 480);
+      await saveBrandInterestState(companyId, 'google', 'error', message);
+      results.push({ channel: 'google', ok: false, status: 'error', days: 0, message });
+    }
+  }
+
+  const meta = integrations.find((item) => item.provider === 'meta' && item.credentials_encrypted);
+  const pageId = String(meta?.settings?.page_id || '').trim();
+  if (meta && pageId && (wanted('facebook') || wanted('instagram'))) {
+    try {
+      const credentials = decryptMarketingCredentials<MetaCredentials>(meta.credentials_encrypted as string);
+      results.push(...await syncBrandProfiles({
+        companyId,
+        pageId,
+        pageToken: credentials.page_access_tokens?.[pageId] || credentials.user_access_token || null,
+        instagramId: String(meta.settings?.instagram_account_id || '').trim() || null,
+        facebook: wanted('facebook'),
+        instagram: wanted('instagram'),
+      }));
+    } catch (error: any) {
+      const message = String(error?.message || 'Nie udało się odczytać dostępu do Meta.').slice(0, 480);
+      for (const channel of ['facebook', 'instagram'] as const) {
+        if (!wanted(channel)) continue;
+        await saveBrandInterestState(companyId, channel, 'error', message);
+        results.push({ channel, ok: false, status: 'error', days: 0, message });
+      }
+    }
+  }
+  return results;
 }
 
 export async function updateExternalCampaignStatus(

@@ -1597,6 +1597,8 @@ struct SocialStats: Codable {
     var canRefresh: Bool
     var canGenerate: Bool
     var lastWeekStart: String
+    /// „Zainteresowanie marką” (`SocialBrandInterestView.swift`); `nil` — serwer przed migracją bazy (karta ukryta).
+    var brand: SocialBrandInterest?
 }
 
 /// Liczby jak w CRM: „1 234”, „12,3 tys.”, „1,2 mln”, „4,2%”, zmiana „+12%” / „−5%” / „nowe”, okres „10–16.11.2026”.

@@ -17,6 +17,7 @@ import {
   formatScheduledEmailDate,
   resolveScheduledEmailDate,
 } from '@/lib/emailScheduling';
+import { linkEventEmail } from '@/lib/CRM/events/eventCorrespondence';
 
 interface SendCalculationEmailModalProps {
   calculationId: string;
@@ -368,6 +369,8 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
           bcc: formData.bcc.trim(),
         },
       });
+      // Kalkulacja eventu — wiadomość trafia do korespondencji eventu.
+      await linkEventEmail(supabase, eventId, result);
 
       showSnackbar(
         result.scheduled && result.scheduledAt

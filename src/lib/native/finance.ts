@@ -10,6 +10,7 @@ import { getInvoiceKsefRecipient } from '@/lib/invoices/ksefRecipient';
 import { getInvoicePartyDataCorrection } from '@/lib/invoices/partyDataCorrection';
 import { buildCompanyEmailBody, buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
 import { dispatchCrmEmail } from '@/lib/emailScheduling';
+import { linkDocumentEmailToEvent } from '@/lib/CRM/events/eventCorrespondence';
 import { handleKsefUpoRequest } from '@/app/bridge/ksef/upoRequests';
 
 /*
@@ -748,6 +749,8 @@ export async function sendReminder(ctx: NativeContext, accessToken: string, body
       recipientName,
     },
   });
+  // Faktura eventu (także monit) — wiadomość trafia do korespondencji eventu.
+  await linkDocumentEmailToEvent(ctx.supabase, 'invoice', str(invoice.id), result);
   const scheduledFor = result.scheduled && result.scheduledAt ? String(result.scheduledAt) : null;
   if (mode === 'invoice') {
     return {

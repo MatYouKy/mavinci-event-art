@@ -2,34 +2,26 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, BarChart3, Clock, ExternalLink, FileText, Images, Lightbulb, RefreshCw, Sparkles, TrendingDown, TrendingUp,
+  AlertTriangle, BarChart3, Clock, ExternalLink, FileText, Images, Lightbulb, RefreshCw, Sparkles, TrendingUp,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
 import { CrmCartesianChart } from '@/components/crm/charts/CrmCharts';
 import {
   SOCIAL_CHANNEL_LABELS, SOCIAL_KPI_METRICS, SOCIAL_METRIC_HINTS, SOCIAL_METRIC_LABELS, SOCIAL_RECOMMENDATION_PRIORITY_LABELS,
-  SOCIAL_STATS_RANGES, SOCIAL_TIME_BANDS, SOCIAL_WEEKDAYS_SHORT, formatSocialNumber, formatSocialPercent, socialChangeLabel,
+  SOCIAL_STATS_RANGES, SOCIAL_TIME_BANDS, SOCIAL_WEEKDAYS_SHORT, formatSocialNumber, formatSocialPercent,
   socialPeriodLabel, socialPlural, type SocialMetricKey,
 } from '@/lib/social/socialShared';
 import { socialGet, socialPost, type SocialReport, type SocialStats as SocialStatsData, type SocialTotals } from './socialApi';
-import { cardClass, dateTimeLabel, errorMessage, primaryButton, secondaryButton, shortDate } from './socialUi';
+import { ChangeBadge, cardClass, dateTimeLabel, errorMessage, primaryButton, secondaryButton, shortDate } from './socialUi';
+import SocialBrandInterestCard from './SocialBrandInterest';
 
 /*
  * Social media → „Statystyki” (Etap 3): wyniki postów opublikowanych w okresie (7 / 28 / 90 dni) wobec poprzedniego okresu,
- * przyrosty dzienne, kanały, najlepsze posty, najlepsze pory publikacji z własnych wyników i raport tygodniowy
- * „Trendy i rekomendacje”. Te same dane co na Macu i w telefonie (`op=stats`).
+ * przyrosty dzienne, kanały, najlepsze posty, najlepsze pory publikacji z własnych wyników, „Zainteresowanie marką”
+ * (wyszukiwania nazwy w Google, wejścia na profile Facebook i Instagram) i raport tygodniowy „Trendy i rekomendacje”.
+ * Te same dane co na Macu i w telefonie (`op=stats`).
  */
-
-const changeClass = (label: string | null) =>
-  !label || label === '0%' ? 'text-[#e5e4e2]/45' : label.startsWith('−') ? 'text-red-300' : 'text-emerald-300';
-
-function ChangeBadge({ current, previous }: { current: number | null | undefined; previous: number | null | undefined }) {
-  const label = socialChangeLabel(current, previous);
-  if (!label) return null;
-  const Icon = label.startsWith('−') ? TrendingDown : TrendingUp;
-  return <span className={`inline-flex items-center gap-0.5 text-xs ${changeClass(label)}`} title="Wobec poprzedniego okresu"><Icon className="h-3 w-3" />{label}</span>;
-}
 
 function MetricsLine({ metrics }: { metrics: Partial<Record<SocialMetricKey, number>> }) {
   const parts = (['views', 'reach', 'interactions', 'saves'] as SocialMetricKey[])
@@ -141,6 +133,10 @@ export default function SocialStats({ companyId, initialReportId, onOpenPost }: 
             {sync.problems.map((problem) => <p key={problem}>{problem}</p>)}
           </div>
         </div>
+      )}
+
+      {data.brand && (
+        <SocialBrandInterestCard brand={data.brand} companyId={companyId} days={days} reportId={reportId} onStats={setData} />
       )}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">

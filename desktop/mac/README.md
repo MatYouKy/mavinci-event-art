@@ -33,7 +33,7 @@ Logowanie: konto pracownika z CRM, e-mail i hasło. Nie wpisano na stałe identy
 | Kontakty | Lista aktywnych kontaktów i podstawowe dane, uruchomienie systemowej obsługi telefonu i e-maila. |
 | Wydarzenia | Lista i podgląd podstawowych danych dostępnych według RLS; bez danych finansowych. |
 | Oferty | Lista i podstawowe metadane oferty, powiązanie z zapytaniem / wydarzeniem. Nie ma jeszcze edytora ani kwot i kalkulacji. |
-| Przetargi | Lista, termin, stan i powiązanie z zapytaniem. |
+| Przetargi | Lista, termin, stan i powiązanie z zapytaniem; konfiguracja filtrów i przeliczenie ocen. |
 | Powiadomienia | Lista, filtr nieprzeczytanych, odczyt treści, indywidualne oznaczenie przeczytania, obsługiwane powiązania natywne. |
 
 Tabele ze zmianą zaznaczenia, sortowaniem nagłówkami, wyszukiwaniem, menu kontekstowym i szczegółami obok listy. SF Symbols, systemowe menu, pola i formularze; interfejs po polsku. ⌘R — odśwież, ⌘1–3 — główne sekcje, ⌘N / ⌘E — nowe zadanie / edycja, ⇧⌘N / ⇧⌘T — nowe okno / nowa karta. Instrukcja jest dostępna pod znakiem zapytania w pasku bocznym.
@@ -331,6 +331,177 @@ Nowy kontakt (`createEntity`, CRM `/crm/contacts/new`) zapisuje telefony z kieru
 zapisywał się jako „48510233670”), a duplikat kontaktu rozpoznaje po numerze w każdym zapisie. Migracja
 `20261130111000_contact_phone_plus.sql` poprawia zapisane tak numery w bazie. CRM — wiersz telefonu z ikoną, wyrównany z resztą.
 
+## Nowe zadanie: przeciąganie załączników
+
+W oknie „Nowe zadanie” / „Edytuj zadanie” sekcja „Załączniki” ma strefę „Przeciągnij pliki tutaj” (`TaskAttachmentDropZone`
+w `Tasks/TaskEditorSheet.swift`): pliki z Findera upuszczone na strefę (podświetla się przy przeciąganiu) trafiają na listę
+załączników, jak z „Dodaj pliki”; foldery są pomijane z informacją, ten sam plik nie dodaje się dwa razy. Pliki przesyłają się
+po zapisaniu zadania (jak dotąd). W CRM ta sama strefa — `TaskAttachmentDropzone` w formularzu zadania.
+
+## Nowa wiadomość: podpowiedzi adresatów („Do”, „DW”, „UDW”)
+
+Jak w Thunderbirdzie: przy wpisywaniu imienia, nazwiska, fragmentu adresu albo nazwy firmy pod polem pojawia się lista
+adresów — kontakty, organizacje, pracownicy i osoby, z którymi była korespondencja (nadawcy odebranych i adresaci wysłanych
+wiadomości z 3 lat, bez adresów no-reply). Każda podpowiedź ma powiązanie: kontakt / organizacja / pracownik / korespondencja,
+organizację (bieżącą kontaktu albo po domenie adresu) i liczbę wiadomości, np. „Omega Hotel · 3 wysłane, 5 odebranych · ostatnio
+03.11.2026”. Kolejność: trafność (początek słowa przed fragmentem), częstość i świeżość korespondencji, znany kontakt.
+↑ / ↓ — wybór, ↩ lub ⇥ — wstawienie adresu (z „, ” na następny; adres już wpisany nie dubluje się), Esc — zamknięcie listy,
+kliknięcie też wstawia. Gdy lista jest otwarta, ↩ nie wysyła wiadomości, a Esc nie zamyka okna.
+
+Pola z podpowiedziami (`Messages/RecipientField.swift`): Nowa wiadomość / odpowiedź / przekazanie, wysyłka oferty, wiadomość
+z zapytania, faktura i przypomnienie o płatności, kalkulacja, umowa. Dane: `GET /bridge/native/v1/recipients?q=` → funkcja bazy
+`email_recipient_suggestions` (migracja `20261130140000_email_recipient_suggestions.sql`) z uprawnieniami pracownika — podpowiada
+tylko kontakty, organizacje i korespondencję ze skrzynek, które ta osoba widzi w CRM. CRM — `RecipientInput` w `UnifiedEmailComposer`,
+telefon — `mobile/src/components/RecipientInput.tsx`.
+
+## Social media → Statystyki: „Zainteresowanie marką”
+
+Na górze „Statystyk” social media (CRM, Mac, telefon) jest karta „Zainteresowanie marką” — jak często ktoś szuka marki z nazwy
+i wchodzi na jej profile, w wybranym okresie (7 / 28 / 90 dni) wobec poprzedniego:
+- „Wyszukiwania nazwy w Google” — ile razy strona marki pokazała się w Google na frazy zawierające nazwę (praktycznie tyle, ile razy
+  ktoś wpisał nazwę) i ile było kliknięć; lista „Jak nas szukają w Google” — 10 najczęstszych fraz (Search Console, opóźnienie 1–3 dni,
+  bardzo rzadkie frazy Google pomija),
+- „Wejścia na stronę Facebook” — wyświetlenia strony (`page_views_total`),
+- „Wejścia na profil Instagram” — wejścia na profil konta (`profile_views`); gdy Meta ich nie podaje — wejścia na profil z postów
+  opublikowanych z CRM (opis pod kafelkiem).
+Wykres dzień po dniu pokazuje, po którym poście, evencie albo kampanii rośnie zainteresowanie. Wyłącznie liczby: Google i Meta nie
+podają, kto szukał marki ani kto odwiedził profil (nazwiska widać tylko przy osobach, które same zareagowały — komentarze, wiadomości,
+obserwacje).
+
+Frazy marki: domyślnie z nazwy marki i adresu jej strony (np. „mavinci”); „Frazy marki” — do 10 fraz, każda liczy wszystkie wyszukiwania,
+które ją zawierają („event rulers” obejmuje też „eventrulers”). Zmienia je zarządzający marketingiem albo akceptujący social media marki;
+po zmianie wyniki Google z 90 dni pobierają się od nowa. „Odśwież” — każdy z dostępem do statystyk (kanały pobrane ponad 5 minut temu).
+Dane pobiera synchronizacja marketingu co 6 godzin (`src/lib/marketing/brandInterest.server.ts`); stan kanałów (niepołączone, czeka,
+niedostępne, błąd) jest w karcie. Migracja `20261130130000_brand_interest.sql`; serwer `src/lib/social/socialBrand.server.ts`
+(`op=stats` → `brand`, `op=brandRefresh`, `op=brandTerms`).
+
+## Przetargi: konfiguracja filtrów i płynna lista
+
+„Konfiguracja” na pasku Przetargów otwiera stronę „Konfiguracja filtrów” (`TenderFilterConfigView.swift`) — jak `/crm/tenders/config`
+w CRM i „Konfiguracja” w telefonie: lista konfiguracji (aktywna oznaczona), nazwa, minimalna ocena trafności, maks. dni do terminu,
+„Powiadom od oceny”, „Konfiguracja aktywna” oraz listy: słowa kluczowe, słowa wykluczające, kody CPV i lokalizacje. Pozycje dodaje ↩
+albo „Dodaj” (kilka naraz — rozdzielone nowymi liniami, przecinkami, średnikami albo kropkami), wklejenie kilku linii (⌘V) albo
+„Wklej listę” ze schowka; powtórzenia są pomijane (pole na chwilę podświetla się na czerwono), × przy pozycji ją usuwa. ⌘S — „Zapisz
+konfigurację”; przy przejściu do innej konfiguracji albo powrocie do listy z niezapisanymi zmianami aplikacja pyta, czy je odrzucić.
+Aktywna może być jedna konfiguracja (pobieranie przetargów i przeliczenie ocen używają jednej) — zapis aktywnej wyłącza pozostałe;
+aktywnej nie można usunąć. „Przelicz przetargi” przelicza ocenę trafności (0–100) i dopasowanie wszystkich przetargów według aktywnej
+konfiguracji, po czym lista odświeża oceny. Zmiany i przeliczenie — administrator CRM; pozostali pracownicy z dostępem do przetargów
+widzą konfigurację do odczytu. Serwer: `/bridge/native/v1/tenders` (`src/lib/tenders/tenderFilterConfig.server.ts`,
+`src/lib/tenders/tenderRelevance.server.ts`; reguły list wspólne z CRM i telefonem — `src/lib/tenders/tenderFilterConfig.ts`).
+Przeliczenie czyta wszystkie przetargi (wcześniej najwyżej 1000) i zapisuje tylko te ze zmienioną oceną. Migracja
+`20261130150000_tender_filter_config_policies.sql` usuwa politykę, która pozwalała każdemu z dostępem do przetargów usuwać konfiguracje.
+
+Zawieszanie się Przetargów (kilka tysięcy przetargów z opisami): lista po filtrach liczy się raz na zmianę danych, filtrów albo minuty
+(wcześniej trzy razy przy każdej publikacji stanu aplikacji, także kilkanaście razy w trakcie synchronizacji); daty z list są pamiętane
+razem z nieczytelnymi, bez tworzenia formaterów przy każdym odświeżeniu (`CalendarDates`); otwarcie szczegółów przetargu bez zmian na
+serwerze niczego nie zapisuje. Lokalna kopia zbiorów zapisuje się i odczytuje w tle (`LocalCacheWriter` w `Configuration.swift`):
+szyfrowanie i zapis poza wątkiem głównym, kolejne zmiany w ciągu 0,4 s jednym zapisem; wylogowanie i zmiana pracownika czekają
+na trwający zapis i unieważniają zaplanowane, więc kopia poprzedniej sesji nie wraca na dysk.
+
+## Oferta: akceptacja rabatu ponad limit w „Informacjach”
+
+Gdy rabat oferty przekracza limit (CRM: Ustawienia → „Progi akceptacji ofert”, obecnie 10%) albo marża spada poniżej progu, sekcja „Informacje”
+na stronie oferty — pod podsumowaniem i „Edytuj rabat” — pokazuje stan akceptacji (`OfferApprovalPanel` w `Offers/OfferPageView.swift`):
+- sprzedawca: „Rabat 30,07% przekracza limit 10%”, pole uzasadnienia i „Wyślij do akceptacji” — administratorzy dostają powiadomienie;
+  potem „Czeka na akceptację administratora” (z uzasadnieniem i datą prośby), a po decyzji — „zaakceptowany” albo powód odrzucenia
+  i ponowne „Wyślij do akceptacji”. Do akceptacji przycisk „Wyślij ofertę” jest wyłączony z podpowiedzią (serwer też blokuje wysyłkę);
+- administrator (albo zarządzający finansami): bez prośby — „jako administrator możesz wysłać ofertę od razu”; przy prośbie
+  sprzedawcy „Zaakceptuj” albo „Odrzuć” — powód odrzucenia jest wymagany, sprzedawca dostaje powiadomienie i widzi go przy ofercie.
+Akceptacja obowiązuje dla zaakceptowanych kwot — wyższy rabat albo inna wartość pozycji wymaga ponownej akceptacji. Teksty stanu
+liczy serwer (`src/lib/CRM/Offers/offerApproval.ts`, pole `approval` strony oferty; `op=approvalRequest`, `op=approvalDecide`),
+decyzje — baza (`request_offer_approval`, `decide_offer_approval`). CRM ma tę samą sekcję w karcie „Informacje” oferty.
+
+## Faktura z KSeF: zaznaczanie tekstu i „Kopiuj”
+
+Podgląd faktury KSeF (Finanse → KSeF, wyciągi, dokumenty miesiąca — `KsefPreviewSheet` w `Finance/FinanceReconciliationSheets.swift`):
+każdy tekst da się zaznaczyć i skopiować (⌘C), a przy kluczowych wartościach jest ikona kopiowania (`CopyValueButton.swift`, na 1,5 s
+„✓”): numer faktury, numer KSeF, nazwa i NIP sprzedawcy oraz nabywcy (NIP bez kresek), rachunek (bez spacji — do wklejenia
+w banku) i kwota do zapłaty („533,82” — bez waluty). Sposób płatności i stan płatności po polsku („Przelew”, „Nieopłacona”) zamiast
+kodu z XML („6”, „unpaid”); kolumna „Brutto” pozycji tylko wtedy, gdy XML podaje brutto pozycji. CRM — te same ikony w wizualizacji
+faktury (`InvoiceDetailsModal`, `src/components/crm/CopyValueButton.tsx`; na wydruku ukryte).
+
+## Wydarzenie → „Zarządzaj sprzętem”: drzewo kategorii i szerokość paska
+
+Pasek po lewej okna „Zarządzaj sprzętem” (`Events/EventEquipmentManager.swift`) pokazuje kategorie magazynu jak drzewo:
+kategoria główna (np. „Oświetlenie”) z rozwijanymi podkategoriami („Ruchome Głowy”, „Dekoracyjne”, „PAR LED”…), w kolejności
+z Magazynu. Kliknięcie kategorii głównej pokazuje cały jej sprzęt i zestawy (ze wszystkich podkategorii) i rozwija ją;
+podkategoria — tylko swoje pozycje; „Bez podkategorii” — pozycje leżące bezpośrednio w kategorii głównej. Liczniki obejmują
+podkategorie; „Zwiń” / „Rozwiń” przy nagłówku „Kategorie”; rozwinięte kategorie są zapamiętywane. Zestawy z kategorią są też
+w jej drzewie (oraz jak dotąd w „Zestawy”). Kolumna „Kategoria” pokazuje ścieżkę („Oświetlenie › Ruchome Głowy”), wyszukiwanie
+obejmuje też kategorię główną. Szerokość paska zmienia uchwyt między paskiem a listą (przeciągnięcie, 180–520 pt, zapamiętywana;
+dwuklik — domyślna), pełna nazwa kategorii jest w podpowiedzi. Serwer: katalog `op=equipmentCatalog` podaje kategorię główną
+i kolejność (`categoryPlacement` w `src/lib/native/eventEquipment.ts`); kopia katalogu sprzed aktualizacji pokazuje płaską listę
+do pierwszej synchronizacji.
+
+## Harmonogram wydarzenia: płynne przeciąganie faz
+
+Przesuwanie fazy i zmiana jej długości krawędziami (`Events/EventPhasesTab.swift`) działa jak w CRM (`useTimelineDrag`): przesunięcie
+liczy się od zakresu fazy sprzed przeciągnięcia o odległość kursora w układzie okna. Wcześniej odległość była liczona w układzie
+samego paska, który w trakcie przeciągania przesuwał się i zmieniał szerokość — faza „uciekała” i skakała. Przyciąganie do siatki
+(5 / 15 / 60 min zależnie od widoku), najkrótszy czas fazy i granice osi bez zmian; przesuwana faza dosuwa się do końca osi zamiast
+wychodzić poza nią. Uchwyty krawędzi są szersze (10 pt), widoczne także w trakcie przeciągania, a kursor zmiany szerokości nie zostaje
+po zniknięciu uchwytu. Tak samo przesuwanie przypisań w „Zasobach eventu” — także kolejne przeciągnięcie już zmienionego przypisania
+(od jego nowego czasu, nie od zapisanego).
+
+## Wysyłka e-maili: domyślnie od osoby wysyłającej
+
+Okna wysyłki (nowa wiadomość, odpowiedź, przekazanie, oferta, kalkulacja, umowa, faktura i monit, zapytanie, broszura) wybierają
+na start skrzynkę osoby wysyłającej: jej własną skrzynkę osobistą (domyślną przed innymi), potem osobiste przypisane i wspólne
+(np. biuro@); skrzynka systemowa (system@) — tylko gdy nie ma innej. Wcześniej w Wiadomościach przy „Wszystkie konta” pierwsza była
+skrzynka systemowa (lista skrzynek zaczyna się od systemowych), a w części okien wspólna skrzynka wygrywała alfabetycznie.
+Odpowiedź wychodzi ze skrzynki, na którą przyszła wiadomość, chyba że to skrzynka systemowa — wtedy od osoby wysyłającej.
+Inną skrzynkę nadal można wybrać w polu „Od:”. Mac: `MailAccount.preferredSender` (`Messages/MessageModels.swift`); serwer i CRM:
+`src/lib/CRM/messages/sendingAccount.ts` (kolejność skrzynek z `sendingAccounts` — pierwsza jest domyślna w oknach na Macu i telefonie).
+
+## Event → Agenda: „Wyślij e-mailem” (agenda i Karta Weselna) i wątek korespondencji eventu
+
+Zakładka „Agenda” ma przycisk „Wyślij e-mailem”, gdy zapisany PDF jest aktualny (osoba zarządzająca eventem — jak „Generuj PDF”);
+w wydarzeniu weselnym ten sam przycisk ma Karta Weselna (przy „Otwórz PDF”). Okno (`EventDocumentEmailSheet`, w CRM
+`SendEventDocumentEmailModal`): skrzynka osoby wysyłającej (pierwsza — własna), adresat z eventu (Karta Weselna — para młoda,
+inaczej osoba kontaktowa albo organizacja), temat i treść, stopka i szablon firmy („Podgląd”), PDF dokumentu zawsze w załączniku,
+dodatkowe pliki eventu (do 25 MB), wysyłka teraz albo zaplanowana. Dane okna: `loadEventDocumentEmailContext`
+(`src/lib/CRM/events/eventDocumentEmail.ts`), serwer: `src/lib/native/eventDocumentEmail.ts` (`emailSetup`, `emailPreview`,
+`op=documentEmail` w `/bridge/native/v1/events/card`).
+
+Każda wiadomość wysłana z eventu trafia do jego wątku (`event_email_links`, migracja `20261130160000_event_correspondence.sql`):
+agenda, Karta Weselna, kalkulacja, umowa oraz oferta i faktura (także monit) należące do eventu — w CRM i na Macu, wysłane od razu
+(`sentEmailId` funkcji poczty) albo zaplanowane (zlecenie; po wysyłce dochodzi wysłana wiadomość). Odpowiedzi klienta dochodzą
+same (wątek liczony przy odczycie). Wcześniejsze wysyłki migracja dołącza jednorazowo, gdy powiązanie jest jednoznaczne
+(załącznik z folderu eventu, numer oferty albo faktury jednego eventu w temacie, zaplanowana wysyłka z oznaczeniem eventu).
+Wspólne: `linkEventEmail` / `linkDocumentEmailToEvent` (`src/lib/CRM/events/eventCorrespondence.ts`). Wątek pokazuje zakładka „Korespondencja” (niżej).
+
+## Event → „Korespondencja”: wątek e-mailowy eventu z filtrem wiadomości systemowych
+
+Nowa zakładka karty eventu (obszar „Oferta, umowa i formalności” — `commercial_docs`, jak Oferta i Umowa; zawężana w uprawnieniach
+pracownika jak inne zakładki). Pokazuje wiadomości z klientem o evencie: wysłane z eventu (agenda, Karta Weselna, kalkulacja,
+umowa, oferta i faktura eventu — także zaplanowane), odpowiedzi w tych wątkach (In-Reply-To / References albo ten sam temat
+z tym samym rozmówcą), korespondencję zapytania, z którego powstał event, i wiadomości dołączone ręcznie — razem z wiadomościami
+systemowymi (np. „Potwierdzenie realizacji”). Filtry: „Ukryj systemowe” (zapamiętane), Wszystkie / Odebrane / Wysłane,
+wyszukiwanie w temacie, adresach, treści i nazwach załączników. Lista od najnowszej, obok treść (tekst, załączniki), „Odpowiedz”
+i „Otwórz w Wiadomościach” (wiadomości z własnych skrzynek), „Wyklucz z eventu” / „Przywróć” oraz „Dołącz…” (wyszukiwanie po
+temacie, z całą konwersacją) — osoba zarządzająca eventem. „Inne wiadomości z klientem” — niepowiązane wiadomości z adresami
+klienta (osoba kontaktowa, organizacja i jej osoby, domeny korespondencji) z okresu eventu, do dołączenia jednym kliknięciem.
+„Napisz do klienta” / „Odpowiedz” — od osoby wysyłającej (pierwsza skrzynka — własna), stopka i szablon firmy, cytat oryginału
+przy odpowiedzi; wysłana wiadomość trafia do wątku eventu. Zaplanowane wysyłki widać na górze listy (status i termin).
+
+Prywatność jak w Wiadomościach: wiadomości ze skrzynek osobistych i wspólnych widzi osoba z dostępem do skrzynki; wiadomości
+systemowe o evencie — każdy, kto widzi zakładkę. Baza: `get_event_correspondence`, `get_event_correspondence_suggestions`,
+`link_event_email`, `exclude_event_email` (migracja `20261130160000_event_correspondence.sql`). CRM:
+`src/components/crm/events/correspondence/EventCorrespondenceTab.tsx`; Mac: `Events/EventCorrespondenceTab.swift`, serwer
+`src/lib/native/eventCorrespondence.ts` (zakładka `correspondence`, `suggestions`, `search`, `composeSetup`, `link`, `exclude`,
+`preview`, `op=correspondenceEmail`); wspólne: `src/lib/CRM/events/eventCorrespondence.ts`. Telefon otwiera zakładkę w CRM
+(jak pozostałe zakładki handlowe).
+
+## Kontakty → karta: „Szybkie akcje”
+
+W nagłówku karty kontaktu i organizacji przycisk-menu „Szybkie akcje” (`ContactQuickActionsMenu`) — jak `ContactQuickActions`
+w CRM, z tymi samymi uprawnieniami: „Dodaj zapytanie” (zapytania albo `tasks_create`), „Wyślij broszurę…” (`offers_manage`
+i broszury), „Wyślij ofertę…” (`offers_manage`: do 100 najnowszych ofert odbiorcy — organizacji albo osoby i eventów, w których jest
+osobą kontaktową; bez aktualnego PDF tylko „Otwórz ofertę”; dalej `OfferEmailSheet`), „Utwórz event…” (`events_create` /
+`events_manage`: kreator `EventCreateSheet` z organizacją i osobą kontaktową; osoba w kilku organizacjach — najpierw wybór
+organizacji albo klient indywidualny), „Broszury klienta…” i „Historia wysyłek broszur…”. Wcześniej osobny przycisk
+„Dodaj zapytanie”. Oferty: `offersToSend` (`src/lib/native/contactCustomer360.ts`, `/bridge/native/v1/contacts`).
+
 ## Dysk → Materiały: link do pobrania („Udostępnij link”)
 
 Folder (z podfolderami — „na żywo”, pliki dodane później też są do pobrania), album albo zaznaczone pliki można udostępnić
@@ -454,7 +625,7 @@ Aktualny profil macOS uwzględnia `employees.finance_company_access` (model z wd
 4. **Kontakty:** wyłącznie tabele CRM, bez frameworku Contacts, książki adresowej urządzenia, automatycznego importowania czy scalania prywatnych osób. Dotychczasowe dane już zapisane w CRM pozostają kartoteką CRM. Edytor zmienia imię, nazwisko, e-mail, telefon, komórkę, stanowisko, adres i notatki; wysyła wyłącznie zmienione pola i wymaga contacts_manage, aktualnej wersji oraz RLS. Nie udostępnia numerów dokumentów, PESEL ani rachunków bankowych.
 5. **Kalendarz i Wydarzenia:** jeden predykat dostępu w kliencie macOS i ten sam zbiór wydarzeń z calendar; lista nie odczytuje innej, osobno zawężonej kopii. Uwzględniane są istniejące uprawnienia do wydarzeń / kalendarza / realizacji. Nie zmieniono uprawnień zapisanych pracownikom ani RLS. Domyślnie są ukryte wydarzenia przeszłe (według końca, a gdy go nie ma początku), anulowane, zakończone i rozliczone; przyszłe wydarzenie ze statusem samego zafakturowania nie jest uznawane za zakończone. Status wybierzesz filtrem. Pokaż również ukryte / Szukaj również w ukrytych poszerza filtr, a nie uprawnienia.
 6. **Oferty:** analogiczny filtr domyślny: odrzucone, anulowane, wygasłe oraz związane z dawnym / zamkniętym wydarzeniem. Dla niezaakceptowanej oferty uwzględniany jest koniec ważności; historyczna data ważności zaakceptowanej oferty sama jej nie ukrywa. Wyszukiwanie i filtr statusu współpracują z włącznikiem ukrytych. To wyłącznie filtr widoku, bez masowej zmiany danych historycznych.
-7. **Przetargi:** domyślnie aktywne, przed terminem i nieukryte. Lista pokazuje tytuł, zamawiającego, dopasowanie /100, termin i odliczanie, lokalizację, stan i obserwowanie. Filtry: zakres aktywne / moje / obserwowane / dopasowane, stan, tekst, przeszłe i ukryte. Szczegóły zawierają dane modalu CRM: opis, CPV, publikację, termin, wartość / walutę, opiekuna, źródło, notatki, status i ocenę manualną. Można obserwować, ukryć, przypisać do siebie / zwolnić oraz utworzyć zapytanie przez te same RPC assign_tender / create_inquiry_from_tender. Zapytanie istniejące otwiera się bez tworzenia drugiego. Po terminie przycisk tworzenia jest zablokowany; baza ponownie sprawdza warunki. Gdy przetarg jest prowadzony w zapytaniu, jego status wynika z etapu zapytania.
+7. **Przetargi:** domyślnie aktywne, przed terminem i nieukryte. Lista pokazuje tytuł, zamawiającego, dopasowanie /100, termin i odliczanie, lokalizację, stan i obserwowanie. Filtry: zakres aktywne / moje / obserwowane / dopasowane, stan, tekst, przeszłe i ukryte. Szczegóły zawierają dane modalu CRM: opis, CPV, publikację, termin, wartość / walutę, opiekuna, źródło, notatki, status i ocenę manualną. Można obserwować, ukryć, przypisać do siebie / zwolnić oraz utworzyć zapytanie przez te same RPC assign_tender / create_inquiry_from_tender. Zapytanie istniejące otwiera się bez tworzenia drugiego. Po terminie przycisk tworzenia jest zablokowany; baza ponownie sprawdza warunki. Gdy przetarg jest prowadzony w zapytaniu, jego status wynika z etapu zapytania. „Konfiguracja” na pasku listy otwiera stronę „Konfiguracja filtrów” (słowa kluczowe, słowa wykluczające, kody CPV, lokalizacje, progi oceny, „Przelicz przetargi”) — opis niżej, „Przetargi: konfiguracja filtrów i płynna lista”.
 8. **Powiadomienia:** dzwonek otwiera drawer po prawej, bez opuszczania bieżącej sekcji. Są filtr nieprzeczytanych, pojedyncze i zbiorcze przeczytanie. Obsługiwane cele: zadanie, zapytanie, kontakt, wydarzenie / istniejąca zakładka, oferta, przetarg i spotkanie. Rekord spoza obecnych filtrów jest doczytywany autoryzowanym zapytaniem, a filtr ustawiany tak, żeby go pokazać. Nieobsługiwana sekcja ma komunikat, bez losowego przekierowania do strony głównej ani panelu WWW.
 
 ### Transport i uprawnienia 0.3

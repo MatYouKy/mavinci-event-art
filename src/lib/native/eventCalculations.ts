@@ -8,6 +8,7 @@ import { guessCategory } from '@/components/crm/events/calculations/calculations
 import { composeOfferEmail, sendingAccounts } from './offerActions';
 import { emailPreviewDocument } from './messages';
 import { dispatchCrmEmail } from '@/lib/emailScheduling';
+import { linkEventEmail } from '@/lib/CRM/events/eventCorrespondence';
 import { fuelPriceQuote, vehicleConsumption } from './eventLogistics';
 import { inquiryCalculationContext } from './inquiryWorkspace';
 import { activeEquipmentItems, availableUnitCounts } from '@/lib/CRM/equipment/availableUnitCounts';
@@ -508,6 +509,8 @@ async function sendEmail(ctx: NativeContext, accessToken: string, scope: CalcSco
       bcc: String(body.bcc || '').trim(),
     },
   });
+  // Kalkulacja eventu — wiadomość trafia do korespondencji eventu.
+  await linkEventEmail(ctx.supabase, scope.eventId, result);
   return { scheduled: result.scheduled, scheduledAt: result.scheduledAt ?? null };
 }
 

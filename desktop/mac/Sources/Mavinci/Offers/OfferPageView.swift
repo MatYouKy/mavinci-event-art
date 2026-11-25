@@ -880,12 +880,17 @@ struct OfferHistoryCard: View {
             }
             // Wysyłka tylko aktualnego polskiego PDF (jak `!offer.modified_after_generation` w CRM).
             if language == "pl" && detail.canManage && !file.stale {
+                let blocked = detail.approval?.blocksSending == true
                 Button { emailOpen = true } label: {
                     Label("Wyślij ofertę", systemImage: "paperplane").frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
-                .disabled(!state.canWrite)
+                .disabled(!state.canWrite || blocked)
+                if blocked {
+                    Text("Rabat ponad limit — wysyłka po akceptacji administratora (sekcja „Informacje”).")
+                        .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                }
             }
         } else {
             Text("Oferta nie ma jeszcze wygenerowanego PDF (\(code)).").font(.caption).foregroundStyle(.secondary)
@@ -1143,6 +1148,8 @@ struct OfferDiscountPreview {
                     .controlSize(.small)
                 }
             }
+            // Rabat ponad limit: „Wyślij do akceptacji” (sprzedawca), „Zaakceptuj” / „Odrzuć” z powodem (administrator).
+            if let approval = detail.approval { OfferApprovalPanel(store: store, offerID: detail.offer.id, approval: approval) }
             if !detail.summary.calculation { discountDisplayPicker }
             Divider()
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
@@ -1230,6 +1237,107 @@ struct OfferDiscountPreview {
         savingDisplay = true
         defer { savingDisplay = false }
         _ = await store.change(detail.offer.id, "discountDisplaySave", ["display": .string(value)], success: "Zapisano — wygeneruj PDF ponownie, żeby klient zobaczył zmianę")
+    }
+}
+
+// MARK: Akceptacja rabatu ponad limit (jak `OfferApprovalBanner` w karcie „Informacje” w CRM)
+
+/// Rabat powyżej limitu (np. 10%) albo marża poniżej progu (`sales_offer_guardrails`). Sprzedawca: informacja, że rabat
+/// przekracza limit, i „Wyślij do akceptacji” z uzasadnieniem (administrator dostaje powiadomienie). Administrator: wysyła
+/// ofertę od razu; przy prośbie sprzedawcy „Zaakceptuj” albo „Odrzuć” — powód odrzucenia jest wymagany, sprzedawca dostaje
+/// powiadomienie i widzi powód tutaj. Teksty stanu liczy serwer (`src/lib/CRM/Offers/offerApproval.ts`), decyzje — baza.
+@MainActor struct OfferApprovalPanel: View {
+    @ObservedObject var store: OffersStore
+    let offerID: String
+    let approval: OfferDetail.Approval
+    @EnvironmentObject private var state: Workspace
+    @State private var note = ""
+    @State private var noteMissing = false
+
+    private static let rejectNote = "Podaj powód odrzucenia — sprzedawca zobaczy go przy ofercie."
+    private var actionable: Bool { approval.canRequest || approval.canApprove || approval.canReject }
+    private var tint: Color {
+        switch approval.tone {
+        case "success": return .green
+        case "pending": return .blue
+        case "warning": return .orange
+        default: return .secondary
+        }
+    }
+    private var symbol: String {
+        switch approval.tone {
+        case "success": return "checkmark.seal.fill"
+        case "pending": return "clock.fill"
+        case "warning": return "exclamationmark.shield.fill"
+        default: return "info.circle"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label {
+                Text(approval.title).font(.callout.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: symbol).foregroundStyle(tint)
+            }
+            ForEach(approval.reasons, id: \.self) { reason in
+                Text(reason).font(.caption)
+            }
+            if let entry = approval.note {
+                (Text(entry.label + ": ").bold() + Text(entry.text))
+                    .font(.caption).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }
+            if let meta = approval.meta { Text(meta).font(.caption).foregroundStyle(.secondary) }
+            if let hint = approval.hint {
+                Text(hint).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if actionable {
+                TextField("Uzasadnienie", text: $note, prompt: Text(approval.notePlaceholder), axis: .vertical)
+                    .lineLimit(2...5)
+                    .textFieldStyle(.roundedBorder)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.red.opacity(noteMissing ? 0.8 : 0), lineWidth: 1.5))
+                    .onChange(of: note) { _, _ in noteMissing = false }
+                if noteMissing { Text(Self.rejectNote).font(.caption).foregroundStyle(.red) }
+                HStack(spacing: 8) {
+                    if approval.canRequest {
+                        Button("Wyślij do akceptacji", systemImage: "paperplane") { Task { await request() } }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    if approval.canApprove {
+                        Button(approval.approveLabel, systemImage: "checkmark.circle") { Task { await decide(approve: true) } }
+                            .buttonStyle(.borderedProminent).tint(.green)
+                    }
+                    if approval.canReject {
+                        Button("Odrzuć", systemImage: "xmark.circle", role: .destructive) { Task { await decide(approve: false) } }
+                    }
+                }
+                .controlSize(.small)
+                .disabled(!state.canWrite)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.35)))
+        .onChange(of: offerID) { _, _ in note = ""; noteMissing = false }
+    }
+
+    private var trimmedNote: String { String(note.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2000)) }
+
+    private func request() async {
+        if await store.change(offerID, "approvalRequest", ["note": .string(trimmedNote)], pending: "Wysyłanie do akceptacji…",
+                              success: "Wysłano do akceptacji — administrator dostanie powiadomienie") {
+            note = ""
+        }
+    }
+
+    private func decide(approve: Bool) async {
+        if !approve && trimmedNote.isEmpty { noteMissing = true; return }
+        if await store.change(offerID, "approvalDecide", ["approve": .bool(approve), "note": .string(trimmedNote)],
+                              pending: approve ? "Zapisywanie akceptacji…" : "Zapisywanie odrzucenia…",
+                              success: approve ? "Warunki oferty zaakceptowane" : "Odrzucono — powód widać przy ofercie") {
+            note = ""
+        }
     }
 }
 

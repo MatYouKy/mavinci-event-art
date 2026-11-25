@@ -144,6 +144,8 @@ private enum DraftValue: Hashable { case text(String), flag(Bool) }
     @State private var creating = false
     @State private var generating = false
     @State private var preview: NativePreview?
+    /// „Wyślij e-mailem”: zapisany PDF Karty Weselnej do pary młodej (`EventDocumentEmailSheet`).
+    @State private var emailing = false
 
     private var data: WeddingTabData? { store.tab(eventID, "wedding", as: WeddingTabData.self) }
 
@@ -163,6 +165,9 @@ private enum DraftValue: Hashable { case text(String), flag(Bool) }
             if !editing { Task { await store.loadTab(eventID, "wedding") } }
         }
         .sheet(item: $preview) { NativeDocumentPreview(preview: $0) }
+        .sheet(isPresented: $emailing) {
+            EventDocumentEmailSheet(store: store, eventID: eventID, kind: .weddingCard) { await store.loadTab(eventID, "wedding") }
+        }
     }
 
     @ViewBuilder private func content(_ data: WeddingTabData) -> some View {
@@ -212,6 +217,9 @@ private enum DraftValue: Hashable { case text(String), flag(Bool) }
                 } else {
                     if let pdf = data.pdf {
                         Button { Task { await open(pdf.filePath) } } label: { Label("Otwórz PDF", systemImage: "arrow.down.doc") }
+                        Button { emailing = true } label: { Label("Wyślij e-mailem", systemImage: "envelope") }
+                            .disabled(generating)
+                            .help("Wyślij zapisany PDF Karty Weselnej do pary młodej")
                     }
                     Button { Task { await generate() } } label: { Label(generateTitle, systemImage: "printer") }
                         .disabled(generating)

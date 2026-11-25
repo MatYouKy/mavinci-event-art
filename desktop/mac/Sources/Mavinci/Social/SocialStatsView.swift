@@ -2,7 +2,8 @@ import SwiftUI
 
 // MARK: Social media → „Statystyki” — 1:1 z CRM (`SocialStats.tsx`): wyniki postów opublikowanych w okresie (7 / 28 / 90 dni)
 // wobec poprzedniego okresu, przyrost dzienny, kanały, najlepsze posty, najlepsze pory publikacji z własnych wyników
-// i raport tygodniowy „Trendy i rekomendacje”. Kopia ostatnich statystyk na dysku (widok od razu, także bez internetu).
+// i raport tygodniowy „Trendy i rekomendacje”, na górze „Zainteresowanie marką” (`SocialBrandInterestView.swift`).
+// Kopia ostatnich statystyk na dysku (widok od razu, także bez internetu).
 
 @MainActor struct SocialStatsView: View {
     @ObservedObject var store: SocialStore
@@ -32,6 +33,14 @@ import SwiftUI
             VStack(alignment: .leading, spacing: 14) {
                 toolbar(stats)
                 warnings(stats)
+                if let brand = stats.brand {
+                    SocialBrandInterestCard(
+                        brand: brand,
+                        days: stats.range.days,
+                        onRefresh: { Task { await store.refreshBrand() } },
+                        onSaveTerms: { await store.saveBrandTerms($0) }
+                    )
+                }
                 kpis(stats)
                 HStack(alignment: .top, spacing: 14) {
                     timelineCard(stats).frame(maxWidth: .infinity)

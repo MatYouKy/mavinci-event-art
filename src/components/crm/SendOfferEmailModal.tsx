@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase/browser';
 import { venueOutdatedOffers } from '@/lib/CRM/Offers/offerVenueBackground';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { compareSendingAccounts } from '@/lib/CRM/messages/sendingAccount';
+import { linkDocumentEmailToEvent } from '@/lib/CRM/events/eventCorrespondence';
 import {
   dispatchCrmEmail,
   formatScheduledEmailDate,
@@ -26,6 +28,7 @@ type EmailAccount = {
   from_name?: string | null;
   account_type?: 'personal' | 'shared' | 'system' | null;
   is_default?: boolean | null;
+  employee_id?: string | null;
 };
 
 interface SendOfferEmailModalProps {
@@ -94,7 +97,7 @@ W razie pytań proszę o kontakt.`),
         const [personalResult, assignmentsResult] = await Promise.all([
           supabase
             .from('employee_email_accounts')
-            .select('id, email_address, from_name, account_type, is_default')
+            .select('id, email_address, from_name, account_type, is_default, employee_id')
             .eq('employee_id', currentEmployee.id)
             .eq('is_active', true)
             .or('account_type.is.null,account_type.neq.system'),
@@ -113,7 +116,7 @@ W razie pytań proszę o kontakt.`),
         if (assignedIds.length > 0) {
           const { data, error } = await supabase
             .from('employee_email_accounts')
-            .select('id, email_address, from_name, account_type, is_default')
+            .select('id, email_address, from_name, account_type, is_default, employee_id')
             .in('id', assignedIds)
             .eq('is_active', true)
             .or('account_type.is.null,account_type.neq.system');
@@ -126,13 +129,8 @@ W razie pytań proszę o kontakt.`),
             [...(personalResult.data || []), ...assignedAccounts]
               .map((account) => [account.id, account]),
           ).values(),
-        ).sort((a, b) => {
-          if (Boolean(a.is_default) !== Boolean(b.is_default)) return a.is_default ? -1 : 1;
-          const aPersonal = (a.account_type || 'personal') === 'personal';
-          const bPersonal = (b.account_type || 'personal') === 'personal';
-          if (aPersonal !== bPersonal) return aPersonal ? -1 : 1;
-          return a.email_address.localeCompare(b.email_address, 'pl');
-        });
+        // Domyślnie własna skrzynka osoby wysyłającej (nie wspólna, np. biuro@).
+        ).sort(compareSendingAccounts(currentEmployee.id));
 
         if (cancelled) return;
         setEmailAccounts(accounts);
@@ -279,6 +277,8 @@ W razie pytań proszę o kontakt.`),
           recipientName: clientName,
         },
       });
+      // Oferta eventu — wiadomość trafia do korespondencji eventu.
+      await linkDocumentEmailToEvent(supabase, 'offer', offerId, result);
 
       showSnackbar(
         result.scheduled && result.scheduledAt

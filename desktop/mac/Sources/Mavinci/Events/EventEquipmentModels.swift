@@ -573,5 +573,26 @@ struct EquipmentCatalogEntry: Codable, Hashable, SyncKeyed {
     var maxSet: Double
     var contents: [EquipmentCatalog.KitContent]?
     var loaded: Bool
+    /// Miejsce w drzewie kategorii magazynu: kategoria pozycji i kategoria główna z kolejnością (starsza kopia — brak).
+    var categoryId: String?
+    var mainCategoryId: String?
+    var mainCategory: String?
+    var categoryOrder: Double?
+    var mainCategoryOrder: Double?
     var syncKey: String { "\(kind):\(id)" }
+
+    /// Klucz kategorii głównej (kopia sprzed drzewa kategorii — sama kategoria pozycji).
+    var mainCategoryKey: String? { mainCategoryId ?? category?.nonEmpty.map { "name:" + $0 } }
+    var mainCategoryName: String? { mainCategory?.nonEmpty ?? category?.nonEmpty }
+    /// Podkategoria, gdy pozycja nie leży bezpośrednio w kategorii głównej.
+    var subCategoryId: String? {
+        guard let categoryId, let mainCategoryId, categoryId != mainCategoryId else { return nil }
+        return categoryId
+    }
+    /// „Oświetlenie › Ruchome Głowy” albo sama kategoria.
+    var categoryPath: String? {
+        guard let main = mainCategoryName else { return nil }
+        guard subCategoryId != nil, let sub = category?.nonEmpty, sub != main else { return main }
+        return "\(main) › \(sub)"
+    }
 }

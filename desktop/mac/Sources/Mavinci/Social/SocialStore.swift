@@ -499,10 +499,12 @@ struct SocialLibraryFilter: Equatable {
         }
     }
 
-    /// „Odśwież z Meta” (wyniki z 90 dni) i „Raport za poprzedni tydzień” — odpowiedź to nowa zakładka „Statystyki”.
-    private func runStats(_ pending: String, _ op: String, _ extra: [String: JSONValue], success: String) async {
-        guard let workspace, let company = stats?.company.id ?? home?.company.id else { return }
-        guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return }
+    /// „Odśwież z Meta” (wyniki z 90 dni), „Raport za poprzedni tydzień” i „Zainteresowanie marką” („Odśwież”, „Frazy marki”)
+    /// — odpowiedź to nowa zakładka „Statystyki”.
+    @discardableResult
+    private func runStats(_ pending: String, _ op: String, _ extra: [String: JSONValue], success: String) async -> Bool {
+        guard let workspace, let company = stats?.company.id ?? home?.company.id else { return false }
+        guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return false }
         var body = extra
         body["companyId"] = .string(company)
         body["days"] = .number(Double(statsDays))
@@ -512,8 +514,10 @@ struct SocialLibraryFilter: Equatable {
             applyStats(reply)
             if let id = reply.report?.id, id != statsReportID { statsReportID = id }
             workspace.succeed(success)
+            return true
         } catch {
             workspace.error = failureText(error, "Operacja nie powiodła się")
+            return false
         }
     }
 
@@ -525,6 +529,21 @@ struct SocialLibraryFilter: Equatable {
 
     func generateReport() async {
         await runStats("Przygotowuję raport tygodniowy", "reportGenerate", [:], success: "Przygotowano raport za poprzedni tydzień")
+    }
+
+    /// „Zainteresowanie marką” → „Odśwież”: liczby z Google i Meta marki (kanały pobrane ponad 5 minut temu).
+    func refreshBrand() async {
+        var extra: [String: JSONValue] = [:]
+        if let statsReportID { extra["report"] = .string(statsReportID) }
+        await runStats("Pobieram liczby z Google i Meta", "brandRefresh", extra, success: "Odświeżono zainteresowanie marką")
+    }
+
+    /// „Frazy marki” — puste: frazy domyślne (z nazwy i adresu strony marki); wyniki Google pobierają się od nowa.
+    func saveBrandTerms(_ terms: [String]) async -> Bool {
+        var extra: [String: JSONValue] = ["terms": .array(terms.map { .string($0) })]
+        if let statsReportID { extra["report"] = .string(statsReportID) }
+        return await runStats("Zapisuję frazy marki", "brandTerms", extra,
+                              success: terms.isEmpty ? "Przywrócono frazy domyślne" : "Zapisano frazy marki")
     }
 
     /// Wyniki kanałów posta prosto z Meta (karta posta).

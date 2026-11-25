@@ -11,6 +11,7 @@ import {
   FileText,
   Gamepad2,
   Loader2,
+  Mail,
   MapPin,
   Music2,
   Printer,
@@ -25,6 +26,7 @@ import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
 import { isWeddingReceptionGame } from '@/lib/weddingAttractions';
 import WeddingThanksEditor from '@/components/wedding/WeddingThanksEditor';
 import WeddingThanksSummary from '@/components/wedding/WeddingThanksSummary';
+import SendEventDocumentEmailModal from '@/components/crm/events/SendEventDocumentEmailModal';
 import { readThanksEntries, WELCOME_GLASS_OPTIONS, type ThanksCardPerson } from '@/lib/weddingCardDetails';
 
 type WeddingCard = {
@@ -314,6 +316,8 @@ export default function EventWeddingCardTab({
   const [weddingCardPdf, setWeddingCardPdf] = useState<WeddingCardPdfMaterial | null>(null);
   const [generatingWeddingCardPdf, setGeneratingWeddingCardPdf] = useState(false);
   const [openingWeddingCardPdf, setOpeningWeddingCardPdf] = useState(false);
+  // „Wyślij e-mailem”: zapisany PDF Karty Weselnej do pary młodej (wiadomość trafia do korespondencji eventu).
+  const [showEmail, setShowEmail] = useState(false);
 
   const loadCard = useCallback(async () => {
     const [cardResult, projectResult, generatedPdfResult] = await Promise.all([
@@ -683,6 +687,9 @@ export default function EventWeddingCardTab({
         title="Generowanie Karty Weselnej"
         description="Zbieramy ustalenia, osoby, harmonogram, atrakcje i muzykę..."
       />
+      {showEmail && (
+        <SendEventDocumentEmailModal eventId={eventId} document="wedding-card" onClose={() => setShowEmail(false)} />
+      )}
       <div className="rounded-2xl border border-[#d3bb73]/20 bg-[#1e2035]/70 p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -742,6 +749,16 @@ export default function EventWeddingCardTab({
                           <Download className="h-4 w-4" />
                         )}
                         Otwórz PDF
+                      </button>
+                    )}
+                    {weddingCardPdf && (
+                      <button
+                        type="button"
+                        onClick={() => setShowEmail(true)}
+                        className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-[#e5e4e2]/70 hover:bg-white/[0.05]"
+                      >
+                        <Mail className="h-4 w-4" />
+                        Wyślij e-mailem
                       </button>
                     )}
                     <button

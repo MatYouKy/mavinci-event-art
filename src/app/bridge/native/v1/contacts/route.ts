@@ -4,7 +4,7 @@ import {
   CardFailure, contactCard, createEntity, createSegment, decisionMaker, invoiceBuyers, linkContact, linkNewContact, mergeContacts,
   organizationNote, quickContact, saveDomains, saveOwnership, saveSegmentation, searchLocations, unlinkContact, updateOrganization,
 } from '@/lib/native/contactCard';
-import { customer360, customer360Mail, customerInquiries, customerOffers, inquiryClient } from '@/lib/native/contactCustomer360';
+import { customer360, customer360Mail, customerInquiries, customerOffers, inquiryClient, offersToSend } from '@/lib/native/contactCustomer360';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -16,7 +16,7 @@ export const maxDuration = 60;
  * opiekun, segmentacja, domeny, scalanie, dodawanie). Tokenem pracownika — RLS i wyzwalacze jak w przeglądarce.
  * Zakładki „Klient 360°”, „Zapytania”, „Oferty” i dane do „Dodaj zapytanie” (`src/lib/native/contactCustomer360.ts`):
  * GET op=customer360&kind&id | customer360Mail&id&offset | customerOffers&kind&id&offset | customerInquiries&kind&id&offset |
- * inquiryClient&kind&id.
+ * inquiryClient&kind&id | offersToSend&kind&id („Szybkie akcje” → „Wyślij ofertę”).
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -70,6 +70,8 @@ export async function GET(request: Request) {
         return nativeJson(await customerInquiries(ctx, url.searchParams.get('kind') || '', url.searchParams.get('id'), url.searchParams.get('offset')));
       case 'inquiryClient':
         return nativeJson(await inquiryClient(ctx, url.searchParams.get('kind') || '', url.searchParams.get('id')));
+      case 'offersToSend':
+        return nativeJson(await offersToSend(ctx, url.searchParams.get('kind') || '', url.searchParams.get('id')));
       default:
         return failure('Nieznana operacja.');
     }

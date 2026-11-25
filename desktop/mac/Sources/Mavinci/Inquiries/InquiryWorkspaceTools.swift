@@ -1014,6 +1014,8 @@ private struct InquiryTaskSheet: View {
     @State private var previewHTML: String?
     @State private var working: String?
     @State private var problem: String?
+    /// Pole adresu z otwartą listą podpowiedzi (`RecipientField`) — wtedy ↩ i Esc obsługuje lista, nie przyciski okna.
+    @State private var recipientField: String?
 
     private var totalSize: Int { attachments.reduce(0) { $0 + $1.size } }
 
@@ -1028,9 +1030,9 @@ private struct InquiryTaskSheet: View {
                         } else {
                             Picker("Od:", selection: $accountId) { ForEach(setup.accounts) { Text($0.label).tag($0.id) } }
                         }
-                        TextField("Do:", text: $to, prompt: Text("email@example.com"))
-                        TextField("DW:", text: $cc, prompt: Text("Opcjonalnie"))
-                        TextField("UDW:", text: $bcc, prompt: Text("Opcjonalnie"))
+                        RecipientField("Do:", text: $to, prompt: "email@example.com", field: "to", openField: $recipientField, inForm: true)
+                        RecipientField("DW:", text: $cc, prompt: "Opcjonalnie", field: "cc", openField: $recipientField, inForm: true)
+                        RecipientField("UDW:", text: $bcc, prompt: "Opcjonalnie", field: "bcc", openField: $recipientField, inForm: true)
                         TextField("Temat:", text: $subject, prompt: Text("Temat wiadomości"))
                     }
                     Section {
@@ -1079,9 +1081,9 @@ private struct InquiryTaskSheet: View {
                 Button { Task { await showPreview() } } label: { Label("Podgląd", systemImage: "eye") }
                     .disabled(working != nil || accountId.isEmpty)
                 Spacer()
-                Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).disabled(working == "send")
+                Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(recipientField == nil ? .cancelAction : nil).disabled(working == "send")
                 Button { Task { await send() } } label: { Label(scheduled ? "Zaplanuj wysyłkę" : "Wyślij", systemImage: "paperplane") }
-                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent).keyboardShortcut(recipientField == nil ? .defaultAction : nil)
                     .disabled(working != nil || setup?.accounts.isEmpty != false)
             }
             .padding(16)

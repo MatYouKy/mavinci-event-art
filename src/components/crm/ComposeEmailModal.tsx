@@ -12,6 +12,7 @@ import UnifiedEmailComposer, {
   type UnifiedEmailDraft,
 } from './UnifiedEmailComposer';
 import { resolveScheduledEmailDate } from '@/lib/emailScheduling';
+import { preferredSendingAccountId } from '@/lib/CRM/messages/sendingAccount';
 
 interface ComposeEmailModalProps {
   isOpen: boolean;
@@ -188,15 +189,13 @@ export default function ComposeEmailModal({
       const accountStillAvailable = selectableEmailAccounts.some(
         (account) => account.id === currentAccountId,
       );
-      const incomingAccountAvailable = selectableEmailAccounts.some(
-        (account) => account.id === selectedReplyAccountId,
-      );
-
-      if (selectedReplyAccountId && (incomingAccountAvailable || selectableEmailAccounts.length === 0)) {
-        return selectedReplyAccountId;
-      }
+      // Skrzynka odpowiedzi (albo przeglądana) — o ile nie systemowa (system@ nie jest domyślnym nadawcą).
+      const replyAccount = selectableEmailAccounts.find((account) => account.id === selectedReplyAccountId);
+      if (replyAccount && (replyAccount.account_type || 'personal') !== 'system') return replyAccount.id;
+      if (selectedReplyAccountId && selectableEmailAccounts.length === 0) return selectedReplyAccountId;
       if (accountStillAvailable) return currentAccountId;
-      return selectableEmailAccounts[0]?.id || selectedReplyAccountId;
+      // Inaczej własna skrzynka osoby wysyłającej, potem wspólne; systemowa — tylko gdy nie ma innej.
+      return preferredSendingAccountId(selectableEmailAccounts, { employeeId: employee?.id }) || selectedReplyAccountId;
     });
   }, [isOpen, selectedReplyAccountId, emailAccountIdsKey]);
 

@@ -17,6 +17,7 @@ import {
   CreditCard as Edit3,
   Check,
   X,
+  Mail,
 } from 'lucide-react';
 import { useEvent } from '../../../hooks/useEvent';
 import { useGetContactByIdQuery } from '@/app/(crm)/crm/contacts/store/clientsApi';
@@ -25,6 +26,7 @@ import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBa
 import { ISimpleContact } from '../../EventDetailPageClient';
 import { useAppDispatch } from '@/store/hooks';
 import { eventsApi } from '../../../store/api/eventsApi';
+import SendEventDocumentEmailModal from '@/components/crm/events/SendEventDocumentEmailModal';
 
 // YYYY-MM-DD + HH:MM -> YYYY-MM-DDTHH:MM:00 (local time, no timezone conversion)
 const buildIsoDateTime = (dateOnly: string, timeStr: string): string | null => {
@@ -169,6 +171,8 @@ export default function EventAgendaTab({
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
   const [modifiedAfterGeneration, setModifiedAfterGeneration] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
+  // „Wyślij e-mailem”: zapisany PDF agendy do klienta (wiadomość trafia do korespondencji eventu).
+  const [showEmail, setShowEmail] = useState(false);
   const [createdByEmployee, setCreatedByEmployee] = useState<{
     name: string;
     phone_number: string;
@@ -1014,6 +1018,14 @@ export default function EventAgendaTab({
             variant: 'default',
           },
         );
+        if (canManage) {
+          result.push({
+            label: 'Wyślij e-mailem',
+            onClick: () => setShowEmail(true),
+            icon: <Mail className="h-4 w-4" />,
+            variant: 'default',
+          });
+        }
       }
 
       result.push({
@@ -1336,6 +1348,10 @@ export default function EventAgendaTab({
         </div>
 
       </div>
+
+      {showEmail && (
+        <SendEventDocumentEmailModal eventId={eventId} document="agenda" onClose={() => setShowEmail(false)} />
+      )}
 
       {pdfPreviewUrl && (
         <div className="fixed inset-0 z-[60] flex flex-col bg-black/80 backdrop-blur-sm">

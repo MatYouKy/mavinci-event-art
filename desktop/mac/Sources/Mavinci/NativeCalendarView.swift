@@ -3,23 +3,23 @@ import EventKit
 import AppKit
 
 @MainActor struct CalendarDates {
-    private static var parsed:[String:Date]=[:]
-    static var calendar:Calendar { var c=Calendar(identifier:.gregorian);c.locale=Locale(identifier:"pl_PL");c.timeZone=TimeZone(identifier:"Europe/Warsaw")!;c.firstWeekday=2;return c }
+    /// Odczytane daty (także nieczytelne — `nil`), żeby listy z tysiącami wierszy (przetargi, wydarzenia, oferty) nie tworzyły
+    /// formaterów przy każdym odświeżeniu widoku. Przy przepełnieniu pamięć jest czyszczona w całości.
+    private static var parsed:[String:Date?]=[:]
+    static let calendar:Calendar = { var c=Calendar(identifier:.gregorian);c.locale=Locale(identifier:"pl_PL");c.timeZone=TimeZone(identifier:"Europe/Warsaw")!;c.firstWeekday=2;return c }()
+    private static let fractional:ISO8601DateFormatter = { let f=ISO8601DateFormatter();f.formatOptions=[.withInternetDateTime,.withFractionalSeconds];return f }()
+    private static let internet:ISO8601DateFormatter = { let f=ISO8601DateFormatter();f.formatOptions=[.withInternetDateTime];return f }()
+    // Termin zapytania z CRM bywa zapisany bez sekund (`2027-01-08T19:00`, czas polski).
+    private static let local:[DateFormatter] = ["yyyy-MM-dd'T'HH:mm:ss","yyyy-MM-dd'T'HH:mm","yyyy-MM-dd"].map { format in
+        let f=DateFormatter();f.locale=Locale(identifier:"en_US_POSIX");f.timeZone=TimeZone(identifier:"Europe/Warsaw")!;f.dateFormat=format;return f
+    }
     static func date(_ raw:String) -> Date? {
-        if let existing=parsed[raw] {return existing}
         guard !raw.isEmpty else {return nil}
-        func remember(_ date:Date) -> Date {
-            if parsed.count>4096 {parsed.removeAll(keepingCapacity:true)}
-            parsed[raw]=date;return date
-        }
-        let iso=ISO8601DateFormatter();iso.formatOptions=[.withInternetDateTime,.withFractionalSeconds]
-        if let d=iso.date(from:raw) {return remember(d)};iso.formatOptions=[.withInternetDateTime]
-        if let d=iso.date(from:raw) {return remember(d)}
-        // Termin zapytania z CRM bywa zapisany bez sekund (`2027-01-08T19:00`, czas polski).
-        for format in ["yyyy-MM-dd'T'HH:mm:ss","yyyy-MM-dd'T'HH:mm","yyyy-MM-dd"] {
-            let f=DateFormatter();f.locale=Locale(identifier:"en_US_POSIX");f.timeZone=calendar.timeZone;f.dateFormat=format
-            if let d=f.date(from:raw) {return remember(d)}
-        };return nil
+        if let known=parsed[raw] {return known}
+        let value=fractional.date(from:raw) ?? internet.date(from:raw) ?? local.lazy.compactMap{$0.date(from:raw)}.first
+        if parsed.count>=50_000 {parsed.removeAll(keepingCapacity:true)}
+        parsed[raw]=value
+        return value
     }
     static func title(_ date:Date,format:String) -> String { let f=DateFormatter();f.locale=calendar.locale;f.timeZone=calendar.timeZone;f.dateFormat=format;return f.string(from:date) }
     /// Dni kalendarza zajmowane przez wpis — ta sama reguła co `calendarDaySpan` w CRM (`src/lib/CRM/calendar/calendarDays.ts`)

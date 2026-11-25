@@ -467,7 +467,8 @@ extension TimelineText {
 
 enum TimelineDragMode { case move, start, end }
 
-/// Nowy zakres po przeciągnięciu: przyciąganie do siatki, granice osi, najkrótszy czas jak w CRM.
+/// Nowy zakres po przeciągnięciu (jak `useTimelineDrag` w CRM): przesunięcie liczone od zakresu sprzed przeciągnięcia
+/// (`start`, `end`) o odległość kursora w układzie okna, przyciąganie do siatki, granice osi i najkrótszy czas.
 func timelineDragged(_ mode: TimelineDragMode, start: Date, end: Date, dx: CGFloat, scale: TimelineScale, zoom: TimelineZoom) -> (Date, Date) {
     let delta = scale.seconds(dx)
     let snap = zoom.snap
@@ -475,8 +476,11 @@ func timelineDragged(_ mode: TimelineDragMode, start: Date, end: Date, dx: CGFlo
     func clamp(_ date: Date) -> Date { min(max(date, scale.start), scale.end) }
     switch mode {
     case .move:
-        let newStart = snapped(clamp(start.addingTimeInterval(delta)))
-        return (newStart, newStart.addingTimeInterval(end.timeIntervalSince(start)))
+        let duration = end.timeIntervalSince(start)
+        var newStart = snapped(clamp(start.addingTimeInterval(delta)))
+        // Koniec nie wychodzi poza oś — faza dosuwa się do jej końca (jak w CRM).
+        if newStart.addingTimeInterval(duration) > scale.end { newStart = scale.end.addingTimeInterval(-duration) }
+        return (newStart, newStart.addingTimeInterval(duration))
     case .start:
         let newStart = min(snapped(clamp(start.addingTimeInterval(delta))), end.addingTimeInterval(-snap))
         return (newStart, end)
@@ -574,23 +578,42 @@ func timelineDragged(_ mode: TimelineDragMode, start: Date, end: Date, dx: CGFlo
     }
 
     private func handle(_ phase: PhasesTabData.Phase, _ mode: TimelineDragMode, color: Color) -> some View {
-        Rectangle().fill(hovered == phase.id ? color.opacity(0.4) : Color.clear).frame(width: 8)
-            .contentShape(Rectangle())
-            .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
-            .gesture(drag(phase, mode))
+        TimelineResizeHandle(color: color, visible: hovered == phase.id || preview?.id == phase.id)
+            .highPriorityGesture(drag(phase, mode))
     }
 
+    /// Przeciąganie w układzie okna (`.global`): pasek fazy przesuwa się i zmienia szerokość w trakcie przeciągania, więc
+    /// odległość liczona w jego własnym układzie „uciekała” razem z nim — faza skakała. Teraz, jak w CRM, liczy się tylko
+    /// przesunięcie kursora od miejsca chwycenia względem zakresu fazy sprzed przeciągnięcia; zapis po puszczeniu.
     private func drag(_ phase: PhasesTabData.Phase, _ mode: TimelineDragMode) -> some Gesture {
-        DragGesture(minimumDistance: 3)
+        DragGesture(minimumDistance: 2, coordinateSpace: .global)
             .onChanged { value in
                 let (start, end) = timelineDragged(mode, start: phase.startDate, end: phase.endDate, dx: value.translation.width, scale: scale, zoom: zoom)
-                preview = (phase.id, start, end)
+                if preview?.id != phase.id || preview?.start != start || preview?.end != end { preview = (phase.id, start, end) }
             }
             .onEnded { value in
                 let (start, end) = timelineDragged(mode, start: phase.startDate, end: phase.endDate, dx: value.translation.width, scale: scale, zoom: zoom)
                 preview = nil
                 if start != phase.startDate || end != phase.endDate { onChange(phase.id, start, end) }
             }
+    }
+}
+
+/// Uchwyt krawędzi fazy: kursor zmiany szerokości (z równowagą push / pop — kursor nie zostaje po zniknięciu uchwytu).
+private struct TimelineResizeHandle: View {
+    let color: Color
+    let visible: Bool
+    @State private var cursor = false
+
+    var body: some View {
+        Rectangle().fill(visible ? color.opacity(0.45) : Color.clear).frame(width: 10)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside && !cursor { NSCursor.resizeLeftRight.push(); cursor = true }
+                if !inside && cursor { NSCursor.pop(); cursor = false }
+            }
+            .onDisappear { if cursor { NSCursor.pop(); cursor = false } }
+            .help("Przeciągnij, aby zmienić czas trwania fazy")
     }
 }
 
@@ -696,16 +719,19 @@ func timelineDragged(_ mode: TimelineDragMode, start: Date, end: Date, dx: CGFlo
                "\(TimelineText.short(MeetingDates.iso(start))) – \(TimelineText.short(MeetingDates.iso(end)))"].compactMap { $0 }.joined(separator: "\n"))
     }
 
+    /// Przesuwanie przypisania w układzie okna (jak fazy) — od zakresu sprzed przeciągnięcia, także już zmienionego (szkic).
     private func drag(_ bar: TimelineResource.Bar, _ kind: TimelineResource.Kind) -> some Gesture {
-        DragGesture(minimumDistance: 3)
+        DragGesture(minimumDistance: 2, coordinateSpace: .global)
             .onChanged { value in
-                let (start, end) = timelineDragged(.move, start: bar.start, end: bar.end, dx: value.translation.width, scale: scale, zoom: zoom)
-                preview = (bar.id, start, end)
+                let base = draft?.id == bar.id ? (draft!.start, draft!.end) : (bar.start, bar.end)
+                let (start, end) = timelineDragged(.move, start: base.0, end: base.1, dx: value.translation.width, scale: scale, zoom: zoom)
+                if preview?.id != bar.id || preview?.start != start || preview?.end != end { preview = (bar.id, start, end) }
             }
             .onEnded { value in
-                let (start, end) = timelineDragged(.move, start: bar.start, end: bar.end, dx: value.translation.width, scale: scale, zoom: zoom)
+                let base = draft?.id == bar.id ? (draft!.start, draft!.end) : (bar.start, bar.end)
+                let (start, end) = timelineDragged(.move, start: base.0, end: base.1, dx: value.translation.width, scale: scale, zoom: zoom)
                 preview = nil
-                if start != bar.start { onChange(bar.id, kind, start, end) }
+                if start != base.0 { onChange(bar.id, kind, start, end) }
             }
     }
 }

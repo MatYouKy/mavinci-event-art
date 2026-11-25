@@ -34,8 +34,38 @@ struct MailAccount: Codable, Identifiable, Equatable {
     let display_name: String?
     let account_type: String?
     let can_send: Bool?
+    /// Właściciel skrzynki osobistej i skrzynka domyślna (starszy serwer — brak).
+    var employee_id: String? = nil
+    var is_default: Bool? = nil
     var name: String { display_name ?? account_name ?? email_address }
     var plainName: String { account_name ?? email_address }
+
+    /// Kolejność domyślnego nadawcy (jak `sendingAccountRank` w CRM): 0 — własna domyślna, 1 — własna osobista,
+    /// 2 — osobista przypisana, 3 — wspólna, 4 — systemowa (system@ tylko, gdy nie ma innej).
+    func sendingRank(employeeID: String?) -> Int {
+        let type = account_type ?? "personal"
+        if type == "system" { return 4 }
+        if type == "personal" {
+            let own = employee_id == nil || employeeID == nil || employee_id == employeeID
+            return own ? (is_default == true ? 0 : 1) : 2
+        }
+        return 3
+    }
+
+    /// Skrzynka na start okna wysyłki: wskazana (odpowiedź, przeglądana skrzynka), o ile nie systemowa; inaczej własna skrzynka
+    /// osoby wysyłającej, potem wspólne.
+    static func preferredSender(_ accounts: [MailAccount], preferred: [String?], employeeID: String?) -> String {
+        let usable = accounts.filter { $0.can_send != false && $0.id != "all" && $0.id != "contact_form" }
+        for id in preferred.compactMap({ $0 }) {
+            if let match = usable.first(where: { $0.id == id }), (match.account_type ?? "personal") != "system" { return match.id }
+        }
+        return usable.sorted { left, right in
+            let rank = left.sendingRank(employeeID: employeeID), other = right.sendingRank(employeeID: employeeID)
+            if rank != other { return rank < other }
+            if (left.is_default == true) != (right.is_default == true) { return left.is_default == true }
+            return left.email_address.localizedStandardCompare(right.email_address) == .orderedAscending
+        }.first?.id ?? ""
+    }
 }
 
 struct UnreadCounts: Codable, Equatable {

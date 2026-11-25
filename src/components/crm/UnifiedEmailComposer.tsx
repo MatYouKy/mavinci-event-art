@@ -10,6 +10,8 @@ import {
 } from '@/lib/buildCompanySignature';
 import type { EmailTemplatePurpose } from '@/lib/buildCompanySignature';
 import { supabase } from '@/lib/supabase/browser';
+import RecipientInput from '@/components/crm/RecipientInput';
+import { compareSendingAccounts } from '@/lib/CRM/messages/sendingAccount';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 
@@ -32,6 +34,7 @@ export interface UnifiedEmailAccount {
   account_name?: string | null;
   account_type?: string | null;
   is_default?: boolean | null;
+  employee_id?: string | null;
 }
 
 export const loadUnifiedEmailAccounts = async (): Promise<UnifiedEmailAccount[]> => {
@@ -51,7 +54,7 @@ export const loadUnifiedEmailAccounts = async (): Promise<UnifiedEmailAccount[]>
   const [personalResult, assignmentsResult] = await Promise.all([
     supabase
       .from('employee_email_accounts')
-      .select('id,email_address,from_name,account_name,account_type,is_default')
+      .select('id,email_address,from_name,account_name,account_type,is_default,employee_id')
       .eq('employee_id', employeeId)
       .eq('is_active', true)
       .or('account_type.is.null,account_type.neq.system'),
@@ -69,7 +72,7 @@ export const loadUnifiedEmailAccounts = async (): Promise<UnifiedEmailAccount[]>
   if (assignedIds.length) {
     const assignedResult = await supabase
       .from('employee_email_accounts')
-      .select('id,email_address,from_name,account_name,account_type,is_default')
+      .select('id,email_address,from_name,account_name,account_type,is_default,employee_id')
       .in('id', assignedIds)
       .eq('is_active', true)
       .or('account_type.is.null,account_type.neq.system');
@@ -81,13 +84,8 @@ export const loadUnifiedEmailAccounts = async (): Promise<UnifiedEmailAccount[]>
     new Map(
       [...(personalResult.data || []), ...assignedAccounts].map((account) => [account.id, account]),
     ).values(),
-  ).sort((left, right) => {
-    if (Boolean(left.is_default) !== Boolean(right.is_default)) return left.is_default ? -1 : 1;
-    const leftPersonal = (left.account_type || 'personal') === 'personal';
-    const rightPersonal = (right.account_type || 'personal') === 'personal';
-    if (leftPersonal !== rightPersonal) return leftPersonal ? -1 : 1;
-    return left.email_address.localeCompare(right.email_address, 'pl');
-  });
+  // Pierwsza skrzynka jest domyślna w oknach wysyłki: własna skrzynka osoby wysyłającej (nie wspólna ani systemowa).
+  ).sort(compareSendingAccounts(employeeId));
 };
 
 export interface UnifiedReplyContext {
@@ -467,12 +465,12 @@ export default function UnifiedEmailComposer({
             <label className="mb-2 block text-sm text-[#e5e4e2]/70">
               Do <span className="text-red-400">*</span>
             </label>
-            <input
-              type="text"
+            <RecipientInput
               value={draft.to}
-              onChange={(event) => change({ to: event.target.value })}
+              onChange={(to) => change({ to })}
               disabled={disabled}
-              placeholder="adres@email.pl lub kilka adresów po przecinku"
+              ariaLabel="Do"
+              placeholder="Imię, nazwisko, firma albo adres — kilka adresów po przecinku"
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
             />
             {recipientHint}
@@ -482,22 +480,22 @@ export default function UnifiedEmailComposer({
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/70">DW</label>
-              <input
-                type="text"
+              <RecipientInput
                 value={draft.cc}
-                onChange={(event) => change({ cc: event.target.value })}
+                onChange={(cc) => change({ cc })}
                 disabled={disabled}
+                ariaLabel="DW"
                 placeholder="adresy po przecinku"
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
               />
             </div>
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]/70">UDW</label>
-              <input
-                type="text"
+              <RecipientInput
                 value={draft.bcc}
-                onChange={(event) => change({ bcc: event.target.value })}
+                onChange={(bcc) => change({ bcc })}
                 disabled={disabled}
+                ariaLabel="UDW"
                 placeholder="adresy ukryte po przecinku"
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
               />

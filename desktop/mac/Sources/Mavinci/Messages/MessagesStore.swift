@@ -599,9 +599,9 @@ struct AttachmentFile: Identifiable, Equatable {
     }
 
     // MARK: Wysyłka
+    /// Nowa wiadomość: od osoby wysyłającej (własna skrzynka), a z przeglądanej skrzynki — o ile to nie skrzynka systemowa.
     func newDraft() -> ComposeDraft {
-        let account = info?.sendingAccounts.first { $0.id == scope.account }?.id ?? info?.sendingAccounts.first?.id ?? ""
-        return ComposeDraft(accountId: account)
+        ComposeDraft(accountId: MailAccount.preferredSender(info?.sendingAccounts ?? [], preferred: [scope.account], employeeID: workspace?.employee?.id))
     }
     func replyDraft(_ message: MessageItem) async -> ComposeDraft? {
         guard let detail = await loadDetail(message) else { workspace?.error = "Nie udało się pobrać pełnej treści wiadomości"; return nil }
@@ -613,10 +613,9 @@ struct AttachmentFile: Identifiable, Equatable {
         let text = "\n\n--- Przekazana wiadomość ---\nOd: \(message.from)\nData: \(MailDates.list(message.date))\nTemat: \(message.subject)\n\n\(detail.body)"
         return ComposeDraft(mode: .forward, accountId: sendingAccount(for: message), subject: "Fwd: \(message.subject)", text: text)
     }
+    /// Odpowiedź / przekazanie: ze skrzynki, na którą przyszła wiadomość (poza systemową), inaczej od osoby wysyłającej.
     private func sendingAccount(for message: MessageItem) -> String {
-        let accounts = info?.sendingAccounts ?? []
-        if let id = message.email_account_id, accounts.contains(where: { $0.id == id }) { return id }
-        return accounts.first { $0.id == scope.account }?.id ?? accounts.first?.id ?? ""
+        MailAccount.preferredSender(info?.sendingAccounts ?? [], preferred: [message.email_account_id, scope.account], employeeID: workspace?.employee?.id)
     }
     private func composeBody(_ draft: ComposeDraft) -> [String: JSONValue] {
         var body: [String: JSONValue] = ["accountId": .string(draft.accountId), "subject": .string(draft.subject), "text": .string(draft.text)]

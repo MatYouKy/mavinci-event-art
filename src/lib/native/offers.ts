@@ -10,6 +10,7 @@ import { expandConfiguredItems, hasOfferAddons } from '@/lib/CRM/Offers/offerAdd
 import { getCalculationNumber } from '@/lib/CRM/calculations/calculationNumber';
 import { offerPdfFileName } from '@/lib/CRM/Offers/offerPdfFileName';
 import { formatPhone } from '@/lib/CRM/client/phoneFormat';
+import { OFFER_APPROVAL_NOTE_LIMIT, OFFER_APPROVAL_REJECT_NOTE, loadOfferApproval } from '@/lib/CRM/Offers/offerApproval';
 import {
   LOCATION_BACKGROUND_BUCKET, locationSelectorLabel, offerUsesVenueBackground, offerVenue, offerVenueHint, offerVenueIds, offerVenueLabel,
   venueOutdatedOffers,
@@ -317,7 +318,7 @@ export async function offerDetail(ctx: NativeContext, id: string) {
   if (error) fail(error.message || 'Nie udało się pobrać oferty.');
   if (!data) fail('Nie znaleziono oferty');
   const offer = data as Row;
-  const [permission, history, amendment, calculation, english, draftRevision, season] = await Promise.all([
+  const [permission, history, amendment, calculation, english, draftRevision, season, approval] = await Promise.all([
     ctx.supabase.rpc('sales_can_manage_offer', { p_offer: key }),
     ctx.supabase.from('offer_history').select('id, change_type, change_description, created_at, new_values, changed_by_employee:employees!changed_by(name, surname)')
       .eq('offer_id', key).order('created_at', { ascending: false }),
@@ -332,6 +333,8 @@ export async function offerDetail(ctx: NativeContext, id: string) {
     ctx.supabase.from('offer_draft_revisions').select('saved_revision').eq('offer_id', key).maybeSingle(),
     // Cennik sezonowy (marka i data eventu, gwarancja ceny) — bez migracji `null`.
     loadSeasonPrices(ctx.supabase, { offerId: key }),
+    // Akceptacja rabatu ponad limit (sekcja „Informacje”, jak w CRM) — bez progów albo uprawnień `null`.
+    loadOfferApproval(ctx.supabase, key).catch(() => null),
   ]);
   // Rabat w PDF — osobno: bez migracji 20261124120000 kolumny nie ma (wtedy rabat przy pozycjach), a strona oferty działa dalej.
   const displayRow = await ctx.supabase.from('offers').select('discount_display').eq('id', key).maybeSingle();
@@ -500,6 +503,8 @@ export async function offerDetail(ctx: NativeContext, id: string) {
     draftRevision: draftRevision.data ? { savedRevision: (draftRevision.data as Row).saved_revision ?? null } : null,
     // Pasek „Cennik: …” nad pozycjami i „Przelicz według cennika…” (jak `OfferSeasonPricePanel` w CRM).
     seasonPrices: seasonPricesView(season),
+    // Rabat ponad limit: „Wyślij do akceptacji” (sprzedawca), „Zaakceptuj” / „Odrzuć” z powodem (administrator).
+    approval,
   };
 }
 
@@ -564,6 +569,33 @@ export async function applyOfferPriceList(ctx: NativeContext, body: Row) {
 async function requireManage(ctx: NativeContext, id: string) {
   const { data, error } = await ctx.supabase.rpc('sales_can_manage_offer', { p_offer: id });
   if (error || data !== true) fail('Nie masz uprawnień do zmiany tej oferty.');
+}
+
+const approvalNote = (value: unknown) => text(value).trim().slice(0, OFFER_APPROVAL_NOTE_LIMIT);
+
+/**
+ * „Wyślij do akceptacji” — rabat ponad limit albo marża poniżej progu (`request_offer_approval`: sprawdza uprawnienie do oferty,
+ * zapisuje prośbę z uzasadnieniem i powiadamia akceptujących). Zwraca odświeżoną ofertę.
+ */
+export async function requestOfferApproval(ctx: NativeContext, body: Row) {
+  const key = offerId(body.id);
+  const { error } = await ctx.supabase.rpc('request_offer_approval', { p_offer_id: key, p_note: approvalNote(body.note) || null });
+  if (error) fail(error.message || 'Nie udało się wysłać oferty do akceptacji.');
+  return offerDetail(ctx, key);
+}
+
+/**
+ * „Zaakceptuj” / „Odrzuć” (`decide_offer_approval`: administrator albo zarządzający finansami; powód odrzucenia wymagany,
+ * sprzedawca dostaje powiadomienie z decyzją). Zwraca odświeżoną ofertę.
+ */
+export async function decideOfferApproval(ctx: NativeContext, body: Row) {
+  const key = offerId(body.id);
+  const approve = body.approve === true;
+  const note = approvalNote(body.note);
+  if (!approve && !note) fail(OFFER_APPROVAL_REJECT_NOTE);
+  const { error } = await ctx.supabase.rpc('decide_offer_approval', { p_offer_id: key, p_approve: approve, p_note: note || null });
+  if (error) fail(error.message || 'Nie udało się zapisać decyzji.');
+  return offerDetail(ctx, key);
 }
 
 /**

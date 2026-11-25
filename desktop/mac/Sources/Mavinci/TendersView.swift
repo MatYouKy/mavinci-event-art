@@ -12,9 +12,22 @@ import AppKit
     @State private var minimumScore=0
     @State private var selectedID:String?
     @State private var modalID:String?
-    private var rows:[Row] {
+    /// Strona „Konfiguracja filtrów” (jak `/crm/tenders/config`) zamiast listy.
+    @State private var showingConfig=false
+    @State private var memo=TendersListMemo()
+    /// Lista po filtrach — liczona raz na zmianę przetargów, filtrów albo minuty, nie przy każdej publikacji `Workspace`
+    /// (w trakcie synchronizacji kilkanaście razy), bo przetargów jest kilka tysięcy.
+    private func rows(now:Date)->[Row] {
+        let buckets=state.snapshot?.collections[Module.tenders.rawValue]?.buckets ?? [:]
+        let key="\(search)|\(scope)|\(status)|\(includeHidden)|\(minimumScore)|\(state.employee?.id ?? "")|\(Int(now.timeIntervalSince1970/60))"
+        if let known=memo.rows(buckets:buckets,key:key){return known}
+        let fresh=filtered(now:now)
+        memo.store(fresh,buckets:buckets,key:key)
+        return fresh
+    }
+    private func filtered(now:Date)->[Row] {
         state.rows(.tenders).filter{row in
-            if !includeHidden && WorkspacePresentation.isArchived(row,module:.tenders){return false}
+            if !includeHidden && WorkspacePresentation.isArchived(row,module:.tenders,now:now){return false}
             if !status.isEmpty && row["status"] != status{return false}
             if (row.fields["relevance_score"]?.number ?? 0)<Double(minimumScore){return false}
             if scope=="mine" && row["assigned_to"] != state.employee?.id{return false}
@@ -27,38 +40,53 @@ import AppKit
         }
     }
     var body:some View {
-        GeometryReader { outer in
-            let wide=outer.size.width>=1180
-            VStack(spacing:0){
-                if let error=state.moduleErrors["tenders"]{Text(error).foregroundStyle(.orange).padding(10)}
-                HStack(spacing:12){
-                    Picker("Zakres",selection:$scope){Text("Aktywne").tag("active");Text("Moje").tag("mine");Text("Obserwowane").tag("watched");Text("Dopasowane").tag("matched")}.frame(maxWidth:200)
-                    Picker("Status",selection:$status){Text("Wszystkie statusy").tag("");ForEach(TenderDetails.statuses,id:\.self){Text(Labels.text($0)).tag($0)}}.frame(maxWidth:195)
-                    Toggle("Także przeszłe i ukryte",isOn:$includeHidden).toggleStyle(.checkbox)
-                    Spacer();Text("\(rows.count) pozycji").foregroundStyle(.secondary)
-                }.padding(.horizontal,14).frame(height:46).crmBar()
-                GeometryReader{available in
-                    let side=wide && selectedID != nil
-                    HStack(alignment:.top,spacing:0){
-                        table.frame(width:max(1,available.size.width-(side ? 421:0)),height:available.size.height)
-                        if side,let id=selectedID{
-                            Divider();TenderDetails(tenderID:id).id(id).frame(width:420,height:available.size.height)
-                        }
-                    }.frame(width:available.size.width,height:available.size.height,alignment:.topLeading)
-                }
-            }.frame(width:outer.size.width,height:outer.size.height,alignment:.topLeading)
-            .onChange(of:selectedID){_,id in if !wide{modalID=id}}
-            .onAppear{reveal(wide:wide)}.onChange(of:nav.focusToken){_,_ in reveal(wide:wide)}
-            .onChange(of:wide){_,isWide in if isWide{modalID=nil}else{modalID=selectedID}}
-        }.navigationTitle("Przetargi").searchable(text:$search,prompt:"Tytuł, zamawiający lub miejscowość")
+        Group{
+            if showingConfig{
+                TenderFilterConfigView{showingConfig=false}.navigationTitle("Konfiguracja filtrów")
+            }else{
+                list.navigationTitle("Przetargi").searchable(text:$search,prompt:"Tytuł, zamawiający lub miejscowość")
+            }
+        }
+        // Przetarg wskazany z powiadomienia albo wyszukiwania — powrót z konfiguracji do listy (lista pokaże go po pojawieniu się).
+        .onChange(of:nav.focusToken){_,_ in if showingConfig && nav.focusedID != nil{showingConfig=false}}
         .sheet(isPresented:Binding(get:{modalID != nil},set:{if !$0{modalID=nil}})){
             if let id=modalID{
                 VStack(spacing:0){HStack{Text("Szczegóły przetargu").font(.headline);Spacer();Button("Zamknij"){modalID=nil}.keyboardShortcut(.cancelAction)}.padding();TenderDetails(tenderID:id,onOpenInquiry:{id in modalID=nil;state.open(.inquiries,id:id)})}.frame(width:780,height:760)
             }
         }
     }
-    private var table:some View{
+    private var list:some View{
         TimelineView(.periodic(from:.now,by:60)){context in
+            let visible=rows(now:context.date)
+            GeometryReader { outer in
+                let wide=outer.size.width>=1180
+                VStack(spacing:0){
+                    if let error=state.moduleErrors["tenders"]{Text(error).foregroundStyle(.orange).padding(10)}
+                    HStack(spacing:12){
+                        Picker("Zakres",selection:$scope){Text("Aktywne").tag("active");Text("Moje").tag("mine");Text("Obserwowane").tag("watched");Text("Dopasowane").tag("matched")}.frame(maxWidth:200)
+                        Picker("Status",selection:$status){Text("Wszystkie statusy").tag("");ForEach(TenderDetails.statuses,id:\.self){Text(Labels.text($0)).tag($0)}}.frame(maxWidth:195)
+                        Toggle("Także przeszłe i ukryte",isOn:$includeHidden).toggleStyle(.checkbox)
+                        Spacer();Text("\(visible.count) pozycji").foregroundStyle(.secondary)
+                        Button("Konfiguracja",systemImage:"slider.horizontal.3"){showingConfig=true}
+                            .help("Konfiguracja filtrów — słowa kluczowe, kody CPV, lokalizacje i progi oceny (jak w CRM)")
+                    }.padding(.horizontal,14).frame(height:46).crmBar()
+                    GeometryReader{available in
+                        let side=wide && selectedID != nil
+                        HStack(alignment:.top,spacing:0){
+                            table(visible,now:context.date).frame(width:max(1,available.size.width-(side ? 421:0)),height:available.size.height)
+                            if side,let id=selectedID{
+                                Divider();TenderDetails(tenderID:id).id(id).frame(width:420,height:available.size.height)
+                            }
+                        }.frame(width:available.size.width,height:available.size.height,alignment:.topLeading)
+                    }
+                }.frame(width:outer.size.width,height:outer.size.height,alignment:.topLeading)
+                .onChange(of:selectedID){_,id in if !wide{modalID=id}}
+                .onAppear{reveal(wide:wide)}.onChange(of:nav.focusToken){_,_ in reveal(wide:wide)}
+                .onChange(of:wide){_,isWide in if isWide{modalID=nil}else{modalID=selectedID}}
+            }
+        }
+    }
+    private func table(_ rows:[Row],now:Date)->some View{
             Table(rows,selection:$selectedID){
                 TableColumn("Przetarg / zamawiający"){row in
                     VStack(alignment:.leading,spacing:4){
@@ -68,18 +96,43 @@ import AppKit
                 }.width(min:250,ideal:430)
                 TableColumn("Dopasowanie"){row in TenderScore(row:row)}.width(min:100,ideal:115,max:140)
                 TableColumn("Termin / pozostało"){row in
-                    VStack(alignment:.leading,spacing:3){Text(Labels.date(row["submission_deadline"])).font(.caption);Text(WorkspacePresentation.remaining(row["submission_deadline"],now:context.date)).font(.caption.weight(.semibold)).foregroundStyle(urgency(row,now:context.date))}.monospacedDigit()
+                    VStack(alignment:.leading,spacing:3){Text(Labels.date(row["submission_deadline"])).font(.caption);Text(WorkspacePresentation.remaining(row["submission_deadline"],now:now)).font(.caption.weight(.semibold)).foregroundStyle(urgency(row,now:now))}.monospacedDigit()
                 }.width(min:145,ideal:165,max:190)
                 TableColumn("Miejsce / stan"){row in VStack(alignment:.leading,spacing:4){Text(row["location"]).font(.caption).lineLimit(1);Text(Labels.text(row["status"])).font(.caption).foregroundStyle(.secondary)}}.width(min:110,ideal:150,max:190)
             }.contextMenu(forSelectionType:String.self){ids in if let id=ids.first{Button("Szczegóły"){selectedID=id;modalID=id}}}primaryAction:{ids in selectedID=ids.first}
              .overlay{if rows.isEmpty{ContentUnavailableView("Brak przetargów",systemImage:"briefcase",description:Text("Zmień filtry lub uwzględnij przeszłe i ukryte przetargi."))}}
-        }
     }
     private func urgency(_ row:Row,now:Date)->Color{
         guard let deadline=CalendarDates.date(row["submission_deadline"])else{return .secondary}
         return deadline<=now ? .secondary:deadline.timeIntervalSince(now)<=172800 ? .orange:.primary
     }
-    private func reveal(wide:Bool){guard let id=nav.focusedID,state.rows(.tenders).contains(where:{$0.id==id})else{return};search="";status="";scope="active";includeHidden=true;selectedID=id;if !wide{modalID=id}}
+    private func reveal(wide:Bool){guard let id=nav.focusedID,state.storedRow(.tenders,id:id) != nil else{return};search="";status="";scope="active";includeHidden=true;selectedID=id;if !wide{modalID=id}}
+}
+
+/// Wynik filtrowania listy przetargów: przeliczany, gdy zmienią się dane przetargów (porównanie zbiorów — przy tych samych
+/// danych natychmiastowe, bo tablice współdzielą pamięć) albo klucz filtrów i minuty.
+final class TendersListMemo {
+    private var buckets:[String:[Row]]?
+    private var key=""
+    private var cached:[Row]=[]
+    /// Zapamiętana lista, gdy dane i klucz się nie zmieniły; inaczej `nil`.
+    func rows(buckets current:[String:[Row]],key next:String)->[Row]? {
+        guard next==key,let buckets,buckets==current else{return nil}
+        return cached
+    }
+    func store(_ rows:[Row],buckets current:[String:[Row]],key next:String) {buckets=current;key=next;cached=rows}
+}
+
+@MainActor extension Workspace {
+    /// Rekord sekcji po identyfikatorze bez składania całej listy — ta sama kolejność co `rows(module)` (zbiory, potem powiązane).
+    func storedRow(_ module:Module,id:String)->Row? {
+        guard module != .events else{return rows(module).first{$0.id==id}}
+        guard let buckets=snapshot?.collections[module.rawValue]?.buckets else{return nil}
+        for key in buckets.keys.filter({$0 != "linked"}).sorted() {
+            if let row=buckets[key]?.first(where:{$0.id==id}) {return row}
+        }
+        return buckets["linked"]?.first{$0.id==id}
+    }
 }
 struct TenderScore:View{
     let row:Row
@@ -102,7 +155,7 @@ struct TenderScore:View{
     @State private var ready=false
     @State private var error:String?
     @State private var assignee=""
-    private var row:Row?{state.rows(.tenders).first{$0.id==tenderID} ?? loaded}
+    private var row:Row?{state.storedRow(.tenders,id:tenderID) ?? loaded}
     var body:some View{
         ScrollView{
             if let row{

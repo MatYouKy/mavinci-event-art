@@ -103,6 +103,7 @@ export type EventTabId =
   | 'calculations'
   | 'contract'
   | 'seller-arrangements'
+  | 'correspondence'
   | 'finances'
   | 'summary'
   | 'history';
@@ -119,7 +120,7 @@ export const EVENT_TAB_GROUPS: { id: EventTabGroupId; label: string; tabs: Event
   {
     id: 'commercial',
     label: 'Sprzedaż i rozliczenie',
-    tabs: ['offer', 'calculations', 'contract', 'seller-arrangements', 'finances', 'summary', 'history'],
+    tabs: ['offer', 'calculations', 'contract', 'seller-arrangements', 'correspondence', 'finances', 'summary', 'history'],
   },
 ];
 
@@ -139,6 +140,7 @@ export const EVENT_TAB_LABELS: Record<EventTabId, string> = {
   calculations: 'Kalkulacje',
   contract: 'Umowa',
   'seller-arrangements': 'Ustalenia',
+  correspondence: 'Korespondencja',
   finances: 'Finanse',
   summary: 'Podsumowanie',
   history: 'Historia',
@@ -161,6 +163,8 @@ export const EVENT_TAB_AREA: Record<EventTabId, EventAccessArea> = {
   calculations: 'values',
   contract: 'commercial_docs',
   'seller-arrangements': 'commercial_docs',
+  // Korespondencja z klientem o evencie (oferty, umowy, faktury, potwierdzenia) — RPC get_event_correspondence, migracja 20261130160000.
+  correspondence: 'commercial_docs',
   finances: 'billing',
   // Podsumowanie wydarzenia (przychody, koszty netto, prowizje) — RPC get_event_settlement, migracja 20261105130000.
   summary: 'values',

@@ -7,6 +7,7 @@ import { calculateOfferDiscount, type OfferDiscountMode } from '@/lib/CRM/Offers
 import { getOfferStatusBadgeProps } from '../../helpers/statusColors';
 import { getOfferPricingTotals, getOfferSummary } from '@/lib/CRM/Offers/offerTotals';
 import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
+import OfferApprovalBanner from '@/components/crm/offers/OfferApprovalBanner';
 
 /** Jak klient widzi rabat w PDF (`offers.discount_display`). */
 const DISCOUNT_DISPLAYS = [
@@ -134,6 +135,15 @@ export const OfferDetails = ({ offer, canEdit = false, onSaved }: { offer: any; 
               <button type="button" disabled={loading} onClick={() => { setEditingDiscount(false); setDiscountDraft(null); }} className="rounded-lg bg-white/5 px-3 py-2 text-sm text-[#e5e4e2]/70 disabled:opacity-40">Anuluj</button>
             </div>
           </section>}
+
+      {/* Rabat ponad limit: „Wyślij do akceptacji” (sprzedawca), „Zaakceptuj” / „Odrzuć” z powodem (administrator) — jak na Macu. */}
+      {offer.sales_channel !== 'seller_portal' && (
+        <OfferApprovalBanner
+          offerId={offer.id}
+          revision={`${offer.content_revision ?? ''}:${offer.total_amount ?? ''}:${offer.discount_amount ?? ''}:${offer.discount_percent ?? ''}:${offer.status}:${offer.updated_at ?? ''}`}
+          onChanged={onSaved}
+        />
+      )}
 
       <div className="space-y-3 text-sm">
         <div>

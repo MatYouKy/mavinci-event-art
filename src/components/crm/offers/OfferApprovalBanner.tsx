@@ -1,175 +1,160 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Loader2, ShieldAlert, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, Info, Send, ShieldAlert, XCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
+import {
+  OFFER_APPROVAL_DONE,
+  OFFER_APPROVAL_NOTE_LIMIT,
+  OFFER_APPROVAL_REJECT_NOTE,
+  loadOfferApproval,
+  type OfferApprovalView,
+} from '@/lib/CRM/Offers/offerApproval';
 
-type GuardrailStatus = {
-  required: boolean;
-  reasons: Array<{ kind: 'discount' | 'margin'; message: string }>;
-  discount_percent: number;
-  margin_percent: number | null;
-  margin_known: boolean;
-  approval_status: 'pending' | 'approved' | 'rejected' | null;
-  approval_valid: boolean;
-  approval_note: string | null;
-  can_send: boolean;
-  can_approve: boolean;
-  limits: { enabled: boolean; max_discount_percent: number; min_margin_percent: number };
+type Action = 'request' | 'approve' | 'reject';
+
+const TONES: Record<OfferApprovalView['tone'], { box: string; icon: typeof Info; iconClass: string }> = {
+  success: { box: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-50', icon: CheckCircle2, iconClass: 'text-emerald-300' },
+  pending: { box: 'border-sky-400/30 bg-sky-400/10 text-sky-50', icon: Clock, iconClass: 'text-sky-300' },
+  warning: { box: 'border-amber-400/30 bg-amber-400/10 text-amber-50', icon: ShieldAlert, iconClass: 'text-amber-200' },
+  info: { box: 'border-white/10 bg-white/[0.03] text-[#e5e4e2]/70', icon: Info, iconClass: 'text-[#d3bb73]' },
 };
 
-const percent = (value: number | null | undefined) =>
-  `${Number(value || 0).toLocaleString('pl-PL', { maximumFractionDigits: 2 })}%`;
+const PENDING_TITLES: Record<Action, string> = {
+  request: 'Wysyłam do akceptacji',
+  approve: 'Zapisuję akceptację',
+  reject: 'Zapisuję odrzucenie',
+};
 
 /**
- * Progi handlowe oferty (sales_offer_guardrails): rabat powyżej limitu lub marża poniżej progu
- * wymagają akceptacji administratora przed wysłaniem. Ta sama ocena blokuje wysyłkę w usłudze e-mail.
+ * Akceptacja rabatu ponad limit (progi `sales_offer_guardrails`) w karcie „Informacje” oferty — jak `OfferApprovalPanel`
+ * na Macu (ten sam opis stanu: `src/lib/CRM/Offers/offerApproval.ts`). Sprzedawca: „Wyślij do akceptacji” z uzasadnieniem.
+ * Administrator: wysyła od razu; prośbę sprzedawcy „Zaakceptuj” albo „Odrzuć” z powodem (sprzedawca go zobaczy).
  */
-export default function OfferApprovalBanner({ offerId, revision }: { offerId: string; revision?: unknown }) {
+export default function OfferApprovalBanner({ offerId, revision, onChanged }: {
+  offerId: string;
+  revision?: unknown;
+  onChanged?: () => unknown;
+}) {
   const { showSnackbar } = useSnackbar();
-  const [status, setStatus] = useState<GuardrailStatus | null>(null);
+  const [view, setView] = useState<OfferApprovalView | null>(null);
   const [note, setNote] = useState('');
-  const [busy, setBusy] = useState<'request' | 'approve' | 'reject' | null>(null);
+  const [noteMissing, setNoteMissing] = useState(false);
+  const [busy, setBusy] = useState<Action | null>(null);
 
   const load = useCallback(async () => {
-    const { data, error } = await supabase.rpc('get_offer_guardrail_status', { p_offer_id: offerId });
-    if (error) {
-      // Starsza baza bez progów — nic nie pokazujemy.
-      setStatus(null);
-      return;
-    }
-    setStatus((data as GuardrailStatus) || null);
+    setView(await loadOfferApproval(supabase, offerId).catch(() => null));
   }, [offerId]);
 
   useEffect(() => {
     void load();
   }, [load, revision]);
 
-  const run = async (kind: 'request' | 'approve' | 'reject') => {
-    if (kind === 'reject' && !note.trim()) {
-      showSnackbar('Podaj powód odrzucenia w polu notatki.', 'warning');
+  useEffect(() => {
+    setNote('');
+    setNoteMissing(false);
+  }, [offerId]);
+
+  const run = async (kind: Action) => {
+    const trimmed = note.trim().slice(0, OFFER_APPROVAL_NOTE_LIMIT);
+    if (kind === 'reject' && !trimmed) {
+      setNoteMissing(true);
+      showSnackbar(OFFER_APPROVAL_REJECT_NOTE, 'warning');
       return;
     }
     setBusy(kind);
     const { error } =
       kind === 'request'
-        ? await supabase.rpc('request_offer_approval', { p_offer_id: offerId, p_note: note.trim() || null })
-        : await supabase.rpc('decide_offer_approval', {
-            p_offer_id: offerId,
-            p_approve: kind === 'approve',
-            p_note: note.trim() || null,
-          });
+        ? await supabase.rpc('request_offer_approval', { p_offer_id: offerId, p_note: trimmed || null })
+        : await supabase.rpc('decide_offer_approval', { p_offer_id: offerId, p_approve: kind === 'approve', p_note: trimmed || null });
     setBusy(null);
     if (error) {
       showSnackbar(error.message || 'Nie udało się zapisać decyzji', 'error');
       return;
     }
     setNote('');
-    showSnackbar(
-      kind === 'request' ? 'Wysłano do akceptacji' : kind === 'approve' ? 'Oferta zaakceptowana' : 'Oferta odrzucona',
-      'success',
-    );
+    setNoteMissing(false);
+    showSnackbar(OFFER_APPROVAL_DONE[kind], 'success');
     await load();
+    await onChanged?.();
   };
 
-  if (!status || !status.limits?.enabled) return null;
-
-  if (!status.required) {
-    if (status.margin_known) return null;
-    return (
-      <p className="rounded-xl bg-white/[0.03] px-4 py-3 text-xs text-[#e5e4e2]/55">
-        Oferta nie ma kosztów pozycji — marża nie jest kontrolowana. Uzupełnij koszty w katalogu produktów, aby system
-        pilnował progu {percent(status.limits.min_margin_percent)}.
-      </p>
-    );
-  }
-
-  if (status.approval_valid) {
-    return (
-      <div className="flex items-start gap-3 rounded-xl bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
-        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-        <span>
-          Warunki zaakceptowane do wysyłki (rabat {percent(status.discount_percent)}
-          {status.margin_percent !== null ? `, marża ${percent(status.margin_percent)}` : ''}).
-          {status.approval_note ? ` Notatka: ${status.approval_note}` : ''}
-        </span>
-      </div>
-    );
-  }
-
-  const pending = status.approval_status === 'pending';
-  const rejected = status.approval_status === 'rejected';
+  if (!view) return null;
+  const tone = TONES[view.tone];
+  const Icon = tone.icon;
+  const actionable = view.canRequest || view.canApprove || view.canReject;
 
   return (
-    <div className="space-y-3 rounded-xl bg-amber-400/10 px-4 py-4 text-sm text-amber-50">
+    <div className={`mb-4 space-y-3 rounded-lg border px-4 py-3 text-sm ${tone.box}`}>
+      <FullScreenLoader show={busy !== null} title={busy ? PENDING_TITLES[busy] : ''} description="Czekamy na potwierdzenie serwera." />
       <div className="flex items-start gap-3">
-        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-200" />
-        <div className="space-y-1">
-          <p className="font-medium">
-            {pending
-              ? 'Oferta czeka na akceptację'
-              : rejected
-                ? 'Akceptacja odrzucona — popraw warunki albo wyślij ponownie z uzasadnieniem'
-                : status.approval_status === 'approved'
-                  ? 'Warunki zmieniły się po akceptacji — potrzebna ponowna akceptacja'
-                  : 'Oferta wymaga akceptacji przed wysłaniem'}
-          </p>
-          <ul className="text-xs text-amber-100/80">
-            {status.reasons.map((reason) => (
-              <li key={reason.kind}>{reason.message}</li>
-            ))}
-          </ul>
-          {status.approval_note && <p className="text-xs text-amber-100/70">Notatka: {status.approval_note}</p>}
-          {status.can_approve && !pending && (
-            <p className="text-xs text-amber-100/70">Jako osoba zatwierdzająca możesz wysłać ofertę bez dodatkowej akceptacji.</p>
+        <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${tone.iconClass}`} aria-hidden />
+        <div className="min-w-0 space-y-1">
+          <p className="font-medium">{view.title}</p>
+          {view.reasons.length > 0 && (
+            <ul className="text-xs opacity-80">
+              {view.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+            </ul>
           )}
+          {view.note && (
+            <p className="whitespace-pre-wrap break-words text-xs">
+              <span className="font-medium">{view.note.label}:</span> {view.note.text}
+            </p>
+          )}
+          {view.meta && <p className="text-xs opacity-60">{view.meta}</p>}
+          {view.hint && <p className="text-xs opacity-70">{view.hint}</p>}
         </div>
       </div>
 
-      <textarea
-        value={note}
-        onChange={(event) => setNote(event.target.value)}
-        rows={2}
-        placeholder={status.can_approve ? 'Notatka do decyzji (wymagana przy odrzuceniu)' : 'Uzasadnienie dla akceptującego (np. klient strategiczny)'}
-        className="w-full rounded-lg bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30"
-      />
-
-      <div className="flex flex-wrap gap-2">
-        {!pending && (
-          <button
-            type="button"
-            onClick={() => void run('request')}
-            disabled={busy !== null}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] disabled:opacity-50"
-          >
-            {busy === 'request' && <Loader2 className="h-4 w-4 animate-spin" />}
-            Wyślij do akceptacji
-          </button>
-        )}
-        {status.can_approve && (
-          <>
-            <button
-              type="button"
-              onClick={() => void run('approve')}
-              disabled={busy !== null}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-400/20 px-4 py-2 text-sm text-emerald-100 disabled:opacity-50"
-            >
-              {busy === 'approve' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              Zatwierdź
-            </button>
-            <button
-              type="button"
-              onClick={() => void run('reject')}
-              disabled={busy !== null}
-              className="inline-flex items-center gap-2 rounded-lg bg-red-400/15 px-4 py-2 text-sm text-red-100 disabled:opacity-50"
-            >
-              {busy === 'reject' ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
-              Odrzuć
-            </button>
-          </>
-        )}
-      </div>
+      {actionable && (
+        <>
+          <textarea
+            value={note}
+            onChange={(event) => { setNote(event.target.value); if (noteMissing) setNoteMissing(false); }}
+            rows={2}
+            maxLength={OFFER_APPROVAL_NOTE_LIMIT}
+            placeholder={view.notePlaceholder}
+            aria-label="Uzasadnienie"
+            aria-invalid={noteMissing}
+            className={`w-full rounded-lg border bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 ${noteMissing ? 'border-red-400/70' : 'border-white/10'}`}
+          />
+          {noteMissing && <p role="alert" className="text-xs text-red-300">{OFFER_APPROVAL_REJECT_NOTE}</p>}
+          <div className="flex flex-wrap gap-2">
+            {view.canRequest && (
+              <button
+                type="button"
+                onClick={() => void run('request')}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] disabled:opacity-50"
+              >
+                <Send className="h-4 w-4" aria-hidden /> Wyślij do akceptacji
+              </button>
+            )}
+            {view.canApprove && (
+              <button
+                type="button"
+                onClick={() => void run('approve')}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-400/20 px-4 py-2 text-sm text-emerald-100 disabled:opacity-50"
+              >
+                <CheckCircle2 className="h-4 w-4" aria-hidden /> {view.approveLabel}
+              </button>
+            )}
+            {view.canReject && (
+              <button
+                type="button"
+                onClick={() => void run('reject')}
+                disabled={busy !== null}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-400/15 px-4 py-2 text-sm text-red-100 disabled:opacity-50"
+              >
+                <XCircle className="h-4 w-4" aria-hidden /> Odrzuć
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

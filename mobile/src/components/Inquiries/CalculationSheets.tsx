@@ -9,6 +9,7 @@ import {
   type CalcCategory, type CalcEmailSetup, type CalcImportSources, type CalcItemPayload,
 } from '../../lib/inquiryCalculations';
 import { DateTimeField, Label, Segmented, SelectField, Sheet, SmallButton, kit } from './InquiryKit';
+import RecipientInput from '../RecipientInput';
 
 /*
  * Okna edytora kalkulacji na tablecie: „Importuj z oferty” (`ImportFromOfferModal`: produkty ofert zapytania, zawartość —
@@ -224,12 +225,12 @@ export function CalculationEmailSheet({ inquiryId, calculationId, name, hasEvent
             <SelectField value={accountId} onChange={setAccountId} placeholder="Wybierz skrzynkę" options={setup.accounts.map((account) => ({ id: account.id, label: account.label }))} />
           ) : <Text style={kit.warningText}>Nie masz skonfigurowanych kont pocztowych.</Text>}
           <Label>Do</Label>
-          <TextInput value={to} onChangeText={setTo} style={kit.input} placeholder="email@example.com" placeholderTextColor={ink(0.35)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+          <RecipientInput value={to} onChangeText={setTo} style={kit.input} placeholder="Imię, nazwisko, firma albo adres e-mail" placeholderTextColor={ink(0.35)} accessibilityLabel="Do" />
           {setup.contact ? <Text style={kit.muted}>Osoba kontaktowa: {setup.contact}</Text> : null}
           <Label>DW</Label>
-          <TextInput value={cc} onChangeText={setCc} style={kit.input} placeholder="Opcjonalnie" placeholderTextColor={ink(0.35)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+          <RecipientInput value={cc} onChangeText={setCc} style={kit.input} placeholder="Opcjonalnie" placeholderTextColor={ink(0.35)} accessibilityLabel="DW" />
           <Label>UDW</Label>
-          <TextInput value={bcc} onChangeText={setBcc} style={kit.input} placeholder="Opcjonalnie" placeholderTextColor={ink(0.35)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+          <RecipientInput value={bcc} onChangeText={setBcc} style={kit.input} placeholder="Opcjonalnie" placeholderTextColor={ink(0.35)} accessibilityLabel="UDW" />
           <Label>Temat</Label>
           <TextInput value={subject} onChangeText={setSubject} style={kit.input} placeholder="Temat wiadomości" placeholderTextColor={ink(0.35)} />
           <Label>Wiadomość</Label>

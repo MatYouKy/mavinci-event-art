@@ -2,8 +2,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from './supabase';
 import type {
-  SocialAccess, SocialAssetStatus, SocialChannel, SocialCommentPlatform, SocialConsentSource, SocialCrop, SocialFormat, SocialGraphicStyle, SocialMetricValues,
-  SocialPostAction, SocialPostStatus,
+  SocialAccess, SocialAssetStatus, SocialBrandInterest, SocialChannel, SocialCommentPlatform, SocialConsentSource, SocialCrop, SocialFormat,
+  SocialGraphicStyle, SocialMetricValues, SocialPostAction, SocialPostStatus,
 } from './socialShared';
 
 /*
@@ -77,6 +77,8 @@ export type SocialStats = {
   reports: SocialReportSummary[]; report: SocialReport | null;
   settings: { aiReportsEnabled: boolean; aiReportsConsentAt: string | null };
   canRefresh: boolean; canGenerate: boolean; lastWeekStart: string;
+  /** „Zainteresowanie marką” — `null` przed migracją bazy (karta ukryta). */
+  brand?: SocialBrandInterest | null;
 };
 export type SocialComment = {
   id: string; platform: SocialCommentPlatform; authorName: string; isOwn: boolean; message: string; commentedAt: string;

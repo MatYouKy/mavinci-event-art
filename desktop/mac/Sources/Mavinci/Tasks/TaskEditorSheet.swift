@@ -1,7 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Nowe zadanie i edycja — jak formularz w CRM: tytuł, opis, załączniki (każda tablica, jak w aplikacji na telefonie), priorytet,
+/// Nowe zadanie i edycja — jak formularz w CRM: tytuł, opis, załączniki (każda tablica, jak w aplikacji na telefonie; pliki
+/// przeciągnięte z Findera na strefę „Przeciągnij pliki tutaj” albo „Dodaj pliki”), priorytet,
 /// kolumna, termin wykonania (dzień i opcjonalnie godzina — bez godziny cały dzień, jak w CRM i w aplikacji) i przypisani pracownicy
 /// (tablica firmowa). Tablica prywatna zapisuje zadanie prywatne z identyfikatorem nadanym raz na formularz, więc ponowienie po
 /// zerwanym połączeniu nie tworzy duplikatu. Treść arkusza nie czyta wpisywanego tytułu ani wyszukiwania pracownika — czytają
@@ -24,6 +25,8 @@ import UniformTypeIdentifiers
     @State private var hasTime = false
     @State private var assignees: [String] = []
     @State private var files: [AttachmentFile] = []
+    /// Informacja o pominiętych folderach (dodajemy tylko pliki).
+    @State private var filesNote: String?
     @State private var importing = false
     @State private var saving = false
     @State private var savedID: String?
@@ -63,8 +66,8 @@ import UniformTypeIdentifiers
                                 .buttonStyle(.borderless).foregroundStyle(.red).disabled(saving || savedID != nil).help("Usuń załącznik")
                         }
                     }
-                    Button { importing = true } label: { Label("Dodaj pliki", systemImage: "paperclip") }.disabled(saving || savedID != nil)
-                    Text("Zdjęcia, PDF-y, dokumenty i inne pliki. Możesz wybrać kilka naraz.").font(.caption).foregroundStyle(.secondary)
+                    TaskAttachmentDropZone(disabled: saving || savedID != nil, choose: { importing = true }, drop: addFiles)
+                    if let filesNote { Text(filesNote).font(.caption).foregroundStyle(.orange) }
                 }
 
                 Section {
@@ -127,12 +130,7 @@ import UniformTypeIdentifiers
         .interactiveDismissDisabled(saving)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result else { return }
-            for url in urls {
-                let access = url.startAccessingSecurityScopedResource()
-                defer { if access { url.stopAccessingSecurityScopedResource() } }
-                let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-                if !files.contains(where: { $0.url == url }) { files.append(AttachmentFile(url: url, size: size)) }
-            }
+            addFiles(urls)
         }
         .onChange(of: hasTime) { _, on in
             // Godzina włączona przy terminie bez godziny — zaczynamy od 18:00 (zamiast końca dnia).
@@ -152,6 +150,24 @@ import UniformTypeIdentifiers
             }
             if company { await store.loadEmployees() }
         }
+    }
+
+    /// Pliki z „Dodaj pliki” i przeciągnięte z Findera — bez powtórzeń; foldery pomijane z informacją.
+    private func addFiles(_ urls: [URL]) {
+        var skipped = 0
+        for url in urls {
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            var directory: ObjCBool = false
+            guard url.isFileURL, FileManager.default.fileExists(atPath: url.path, isDirectory: &directory), !directory.boolValue else {
+                skipped += 1
+                continue
+            }
+            guard !files.contains(where: { $0.url.standardizedFileURL == url.standardizedFileURL }) else { continue }
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            files.append(AttachmentFile(url: url, size: size))
+        }
+        filesNote = skipped > 0 ? "Foldery nie są dodawane — przeciągnij pliki z ich wnętrza." : nil
     }
 
     private func personName(_ id: String) -> String {
@@ -193,6 +209,45 @@ import UniformTypeIdentifiers
             let message = store.failureText(error, "Błąd podczas zapisywania zadania")
             problem = savedID != nil ? "Zadanie zapisane. \(message) Ponów przesyłanie pozostałych plików." : message
         }
+    }
+}
+
+/// Strefa załączników zadania: przeciągnięcie plików z Findera (podświetlenie przy przeciąganiu) albo „Dodaj pliki”.
+/// Jak strefa w formularzu zadania w CRM.
+@MainActor struct TaskAttachmentDropZone: View {
+    let disabled: Bool
+    let choose: () -> Void
+    let drop: ([URL]) -> Void
+    @Environment(\.crmTheme) private var theme
+    @State private var targeted = false
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: targeted ? "arrow.down.doc.fill" : "arrow.down.doc")
+                .font(.system(size: 26)).foregroundStyle(theme.accent)
+            Text(targeted ? "Upuść, aby dodać pliki" : "Przeciągnij pliki tutaj").font(.headline)
+            Button(action: choose) { Label("Dodaj pliki", systemImage: "paperclip") }.disabled(disabled)
+            Text("Zdjęcia, PDF-y, dokumenty i inne pliki — możesz dodać kilka naraz.")
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18).padding(.horizontal, 12)
+        .background(RoundedRectangle(cornerRadius: 10).fill(theme.accent.opacity(targeted ? 0.14 : 0.04)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(theme.accent.opacity(targeted ? 0.9 : 0.4), style: StrokeStyle(lineWidth: targeted ? 2 : 1.5, dash: [7, 5]))
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .opacity(disabled ? 0.5 : 1)
+        .dropDestination(for: URL.self) { urls, _ in
+            let fileURLs = urls.filter(\.isFileURL)
+            guard !disabled, !fileURLs.isEmpty else { return false }
+            drop(fileURLs)
+            return true
+        } isTargeted: { targeted = $0 && !disabled }
+        .animation(.easeOut(duration: 0.12), value: targeted)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Strefa upuszczania załączników")
     }
 }
 

@@ -179,3 +179,44 @@ struct LocalCache {
         if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
     }
 }
+
+/// Zapis i usuwanie lokalnej kopii zbiorów poza wątkiem głównym. Kopia z kilkoma tysiącami wierszy (np. przetargi z opisami)
+/// to dziesiątki MB JSON-a i szyfrowanie — zapisywana na wątku głównym zatrzymywała okno (wybór przetargu, koniec odświeżania).
+/// Zapisy idą po kolei (blokada zapisu). Zapis zlecony przed `invalidate()` (wylogowanie, inny pracownik) jest pomijany, a
+/// `clear` czeka na trwający zapis — kopia poprzedniej sesji nie wraca na dysk. Wątek główny bierze tylko krótką blokadę
+/// pokolenia (`current`, `invalidate`), nigdy blokady zapisu.
+final class LocalCacheWriter: @unchecked Sendable {
+    private let state = NSLock()
+    private let writing = NSLock()
+    private var epoch = 0
+
+    /// Bieżące pokolenie zapisów.
+    var current: Int {
+        state.lock(); defer { state.unlock() }
+        return epoch
+    }
+
+    /// Unieważnia zapisy zlecone wcześniej (przed usunięciem kopii).
+    func invalidate() {
+        state.lock(); defer { state.unlock() }
+        epoch += 1
+    }
+
+    /// Zapis kopii zleconej w pokoleniu `generation` (w tle). `false` — zapis się nie udał; zapis unieważniony jest pomijany.
+    func save(_ snapshot: Snapshot, to cache: LocalCache, generation: Int) -> Bool {
+        writing.lock(); defer { writing.unlock() }
+        guard generation == current else { return true }
+        do {
+            try cache.save(snapshot)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Usuwa kopię po zakończeniu trwającego zapisu (w tle).
+    func clear(_ cache: LocalCache) throws {
+        writing.lock(); defer { writing.unlock() }
+        try cache.clear()
+    }
+}

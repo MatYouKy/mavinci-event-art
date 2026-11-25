@@ -29,6 +29,8 @@ import SwiftUI
     @State private var previewLoading = false
     @State private var sending = false
     @State private var problem: String?
+    /// Pole adresu z otwartą listą podpowiedzi (`RecipientField`) — wtedy ↩ i Esc obsługuje lista, nie przyciski okna.
+    @State private var recipientField: String?
 
     /// Monit z listy „Należności” (Terminy i monity).
     init(store: FinanceStore, receivable: FinDeadlines.Receivable) {
@@ -71,13 +73,13 @@ import SwiftUI
                 }
                 .disabled(previewLoading || accountId.isEmpty || setup == nil)
                 Spacer()
-                Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).disabled(sending)
+                Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(recipientField == nil ? .cancelAction : nil).disabled(sending)
                 Button { Task { await send() } } label: {
                     if sending { Text(scheduled ? "Planowanie..." : "Wysyłanie...") }
                     else if isReminder { Label(scheduled ? "Zaplanuj przypomnienie" : "Wyślij przypomnienie", systemImage: "paperplane") }
                     else { Label(scheduled ? "Zaplanuj fakturę" : "Wyślij fakturę", systemImage: "paperplane") }
                 }
-                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent).keyboardShortcut(recipientField == nil ? .defaultAction : nil)
                 .disabled(sending || setup == nil)
             }
             .padding(16).crmBar()
@@ -117,16 +119,16 @@ import SwiftUI
                 } else {
                     Picker("Od:", selection: $accountId) { ForEach(setup.accounts) { Text($0.label).tag($0.id) } }
                 }
-                TextField("Do:", text: Binding(get: { to }, set: { value in
+                RecipientField("Do:", text: Binding(get: { to }, set: { value in
                     if value != to { recipientName = "" }
                     to = value
-                }), prompt: Text("email@example.com"))
+                }), prompt: "email@example.com", field: "to", openField: $recipientField, inForm: true)
                 if !setup.organizationName.isEmpty {
                     Text("Nabywca faktury: \(setup.organizationName)").font(.caption).foregroundStyle(.secondary)
                 }
                 recipients(setup)
-                TextField("DW:", text: $cc, prompt: Text("Opcjonalnie"))
-                TextField("UDW:", text: $bcc, prompt: Text("Opcjonalnie"))
+                RecipientField("DW:", text: $cc, prompt: "Opcjonalnie", field: "cc", openField: $recipientField, inForm: true)
+                RecipientField("UDW:", text: $bcc, prompt: "Opcjonalnie", field: "bcc", openField: $recipientField, inForm: true)
                 TextField("Temat:", text: $subject, prompt: Text("Temat wiadomości"))
             }
             Section("Wiadomość:") {

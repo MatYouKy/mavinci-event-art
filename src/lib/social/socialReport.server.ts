@@ -7,11 +7,12 @@ import {
 } from './socialCommon.server';
 import { errorMessage, loadMetaAccount, metaStatusDTO, socialMetaAccount } from './socialMeta.server';
 import { syncSocialMetrics, warsawDate } from './socialMetrics.server';
+import { brandInterestFor, brandRange, refreshBrandInterest, saveBrandTerms } from './socialBrand.server';
 import {
   SOCIAL_BEST_TIMES_MIN_POSTS, SOCIAL_BEST_TIMES_MIN_SAMPLE, SOCIAL_CHANNELS, SOCIAL_CHANNEL_LABELS, SOCIAL_FORMATS, SOCIAL_METRICS,
   SOCIAL_STATS_RANGES, SOCIAL_TIME_BANDS, SOCIAL_WEEKDAYS, formatSocialNumber, formatSocialPercent, socialChangeLabel,
   socialEngagementRate, socialMetricsFromRow, socialPeriodLabel, socialPlural, socialSlotLabel, socialTimeBand,
-  type SocialAccess, type SocialChannel, type SocialMetricValues,
+  type SocialAccess, type SocialBrandInterest, type SocialChannel, type SocialMetricValues,
 } from './socialShared';
 
 /*
@@ -321,6 +322,8 @@ export type SocialStatsDTO = {
   canRefresh: boolean;
   canGenerate: boolean;
   lastWeekStart: string;
+  /** „Zainteresowanie marką” (`null` — przed migracją 20261130130000 albo przy błędzie odczytu). */
+  brand: SocialBrandInterest | null;
 };
 
 /** Zakładka „Statystyki”: `company`, `days` (7 | 28 | 90), `report` (raport do pokazania; domyślnie najnowszy). */
@@ -341,8 +344,9 @@ export async function socialStats(ctx: NativeContext, params: URLSearchParams): 
   const now = Date.now();
   const from = new Date(now - days * DAY);
   const previousFrom = new Date(now - 2 * days * DAY);
+  const today = warsawDate(new Date(now));
 
-  const [access, periodResult, bestResult, timelineResult, reportsResult, meta, settingsResult, lastWeekResult] = await Promise.all([
+  const [access, periodResult, bestResult, timelineResult, reportsResult, meta, settingsResult, lastWeekResult, brand] = await Promise.all([
     socialAccess(ctx, company.id),
     ctx.supabase.from('social_publications').select(PUBLICATION_FIELDS).eq('company_id', company.id).eq('status', 'published')
       .gte('published_at', previousFrom.toISOString()).order('published_at', { ascending: false }).limit(1000),
@@ -357,6 +361,11 @@ export async function socialStats(ctx: NativeContext, params: URLSearchParams): 
     }),
     ctx.supabase.from('social_settings').select('ai_reports_enabled, ai_reports_consent_at').eq('company_id', company.id).maybeSingle(),
     ctx.supabase.rpc('social_report_last_week'),
+    // Okres sekcji: dokładnie `days` dni do dziś i tyle samo wcześniej.
+    brandInterestFor(ctx, company.id, brandRange(addDays(today, -(days - 1)), today), true).catch((error) => {
+      console.warn('[social-stats] zainteresowanie marką', errorMessage(error));
+      return null;
+    }),
   ]);
   check(periodResult.error || bestResult.error || reportsResult.error, 'Nie udało się pobrać statystyk social media.');
   if (timelineResult.error) console.warn('[social-stats] timeline', timelineResult.error.message);
@@ -420,7 +429,26 @@ export async function socialStats(ctx: NativeContext, params: URLSearchParams): 
     canRefresh: access.view,
     canGenerate: access.create,
     lastWeekStart: text(lastWeekResult.data) || fallbackLastWeek(),
+    brand: brand ? { ...brand, canRefresh: access.view } : null,
   };
+}
+
+/** Parametry zakładki po akcji (marka, zakres dni, wybrany raport). */
+function statsParams(companyId: string, body: Row) {
+  const params = new URLSearchParams({ company: companyId });
+  if (body.days) params.set('days', String(body.days));
+  if (uuidOrNull(body.report)) params.set('report', String(body.report));
+  return params;
+}
+
+/** „Odśwież” w sekcji „Zainteresowanie marką” — Google i Meta marki, potem zakładka. */
+export async function refreshBrandStats(ctx: NativeContext, body: Row) {
+  return socialStats(ctx, statsParams(await refreshBrandInterest(ctx, body), body));
+}
+
+/** „Frazy marki” — zapis, pobranie Google od nowa, potem zakładka. */
+export async function saveBrandTermsStats(ctx: NativeContext, body: Row) {
+  return socialStats(ctx, statsParams(await saveBrandTerms(ctx, body), body));
 }
 
 /** „Odśwież wyniki” w karcie posta — kanały posta z Meta (dostęp „view” marki). */
@@ -438,10 +466,7 @@ export async function refreshCompanyMetrics(ctx: NativeContext, body: Row) {
   if (!companyId) fail('Wybierz markę.');
   if (!(await socialAccess(ctx, companyId)).view) fail('Nie masz dostępu do social media tej marki.', 403);
   await syncSocialMetrics({ companyId, days: 90, limit: 80 });
-  const params = new URLSearchParams({ company: companyId });
-  if (body.days) params.set('days', String(body.days));
-  if (uuidOrNull(body.report)) params.set('report', String(body.report));
-  return socialStats(ctx, params);
+  return socialStats(ctx, statsParams(companyId, body));
 }
 
 // Raport tygodniowy ----------------------------------------------------------------------------------------------------

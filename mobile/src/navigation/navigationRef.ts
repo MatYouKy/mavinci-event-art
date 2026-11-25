@@ -182,9 +182,9 @@ export function routeSalesUrl(url: string | null | undefined): boolean {
   if (event) {
     // np. /crm/events/<id>?tab=overview (kroki realizacji) → zakładka Szczegóły.
     const tab = url.match(/[?&]tab=([a-z_-]+)/i)?.[1];
-    // Zakładki handlowe (oferta, kalkulacje, umowa, ustalenia, finanse, historia) są tylko w CRM.
+    // Zakładki handlowe (oferta, kalkulacje, umowa, ustalenia, korespondencja, finanse, historia) są tylko w CRM.
     // „Podsumowanie” (?tab=summary) otwiera się w aplikacji (getEventNotificationTab → 'summary').
-    if (tab && /^(offer|calculations|contract|seller-arrangements|finances|history)$/i.test(tab)) {
+    if (tab && /^(offer|calculations|contract|seller-arrangements|correspondence|finances|history)$/i.test(tab)) {
       openInCrmWeb(url);
       return true;
     }

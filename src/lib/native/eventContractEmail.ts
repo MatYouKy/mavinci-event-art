@@ -5,6 +5,7 @@ import { sendingAccounts } from './offerActions';
 import { emailPreviewDocument, plainTextToEmailHtml } from './messages';
 import { buildCompanyEmailBody, buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
 import { dispatchCrmEmail } from '@/lib/emailScheduling';
+import { linkEventEmail } from '@/lib/CRM/events/eventCorrespondence';
 
 /*
  * Wysyłka umowy wydarzenia e-mailem dla Maca — jak „Wyślij draft” / „Wyślij umowę” w zakładce „Umowa”
@@ -234,6 +235,8 @@ export async function sendContractEmail(ctx: NativeContext, accessToken: string,
       bcc: String(body.bcc || '').trim(),
     },
   });
+  // Wiadomość trafia do korespondencji eventu.
+  await linkEventEmail(ctx.supabase, eventId, result);
   if (!draft && !result.scheduled) {
     const { error } = await ctx.supabase.from('contracts').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', contract.id);
     if (error) console.error('[native-contract-email] status', error);

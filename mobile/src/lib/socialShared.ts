@@ -623,3 +623,152 @@ export function socialPlural(count: number, one: string, few: string, many: stri
 }
 
 export const SOCIAL_RECOMMENDATION_PRIORITY_LABELS: Record<string, string> = { high: 'Wysoki', medium: 'Średni', low: 'Niski' };
+
+// Zainteresowanie marką ------------------------------------------------------------------------------------------------------
+
+/*
+ * Statystyki → „Zainteresowanie marką” (migracja 20261130130000_brand_interest.sql): jak często ktoś szuka marki z nazwy
+ * i wchodzi na jej profile — wyłącznie liczby (Google i Meta nie podają, kto szukał ani kto odwiedził profil).
+ *  - Google: ile razy strona marki pokazała się w wynikach na frazy z nazwą (praktycznie liczba wyszukiwań nazwy)
+ *    i ile było kliknięć — Search Console, frazy marki z ustawień albo z nazwy i adresu strony marki,
+ *  - Facebook: wyświetlenia strony (`page_views_total`),
+ *  - Instagram: wejścia na profil konta (`profile_views`); gdy Meta ich nie podaje — wejścia z postów opublikowanych z CRM.
+ */
+
+export const SOCIAL_BRAND_CHANNELS = ['google', 'facebook', 'instagram'] as const;
+export type SocialBrandChannel = (typeof SOCIAL_BRAND_CHANNELS)[number];
+
+export const SOCIAL_BRAND_LABELS: Record<SocialBrandChannel, string> = {
+  google: 'Wyszukiwania nazwy w Google',
+  facebook: 'Wejścia na stronę Facebook',
+  instagram: 'Wejścia na profil Instagram',
+};
+
+export const SOCIAL_BRAND_SHORT_LABELS: Record<SocialBrandChannel, string> = { google: 'Google', facebook: 'Facebook', instagram: 'Instagram' };
+
+export const SOCIAL_BRAND_HINTS: Record<SocialBrandChannel, string> = {
+  google: 'Ile razy nasza strona pokazała się w Google na frazy z nazwą marki — praktycznie tyle, ile razy ktoś wpisał naszą nazwę. Google podaje dane z 1–3-dniowym opóźnieniem i pomija bardzo rzadkie frazy.',
+  facebook: 'Ile razy ktoś otworzył stronę marki na Facebooku (zalogowani i niezalogowani). Meta nie podaje, kto to był.',
+  instagram: 'Ile razy ktoś wszedł na profil marki na Instagramie. Meta nie podaje, kto to był.',
+};
+
+export const SOCIAL_BRAND_INSTAGRAM_POSTS_HINT = 'Wejścia na profil z postów opublikowanych z CRM — Meta nie podaje wejść na profil całego konta.';
+
+/** Kolory serii wykresu (paleta wykresów CRM). */
+export const SOCIAL_BRAND_COLORS: Record<SocialBrandChannel, string> = { google: '#d3bb73', facebook: '#93c5fd', instagram: '#fda4af' };
+
+export type SocialBrandStatus = 'ok' | 'pending' | 'unavailable' | 'error' | 'not_connected';
+
+export const SOCIAL_BRAND_STATUS_LABELS: Record<SocialBrandStatus, string> = {
+  ok: 'Pobrane', pending: 'Czeka na pobranie', unavailable: 'Niedostępne', error: 'Błąd pobrania', not_connected: 'Niepołączone',
+};
+
+export type SocialBrandChannelState = {
+  status: SocialBrandStatus;
+  message: string | null;
+  /** Ostatnie udane pobranie. */
+  syncedAt: string | null;
+  /** Ostatnia próba pobrania. */
+  checkedAt: string | null;
+};
+
+/** `null` — kanał bez danych (niepołączony albo Meta / Google nie podaje), 0 — dane są, ale zero. */
+export type SocialBrandValues = { google: number | null; googleClicks: number | null; facebook: number | null; instagram: number | null };
+export type SocialBrandDay = SocialBrandValues & { date: string };
+export type SocialBrandQuery = { query: string; searches: number; clicks: number };
+
+export type SocialBrandInterest = {
+  /** Frazy liczone w Google (zapisane albo domyślne). */
+  terms: string[];
+  /** Frazy domyślne — z nazwy i adresu strony marki. */
+  defaultTerms: boolean;
+  canEditTerms: boolean;
+  canRefresh: boolean;
+  range: { from: string; to: string; previousFrom: string; previousTo: string };
+  totals: SocialBrandValues;
+  previous: SocialBrandValues;
+  days: SocialBrandDay[];
+  queries: SocialBrandQuery[];
+  channels: Record<SocialBrandChannel, SocialBrandChannelState>;
+  /** Instagram: wejścia na profil konta (`account`) albo z postów opublikowanych z CRM (`posts`). */
+  instagramSource: 'account' | 'posts' | null;
+};
+
+export const SOCIAL_BRAND_TERMS_LIMITS = { count: 10, min: 2, max: 60 } as const;
+
+const BRAND_TERM_PATTERN = /^[a-z0-9à-öø-ÿąćęłńśźż][a-z0-9à-öø-ÿąćęłńśźż &.'+-]*$/;
+const BRAND_TERM_STRIP = /[^a-z0-9à-öø-ÿąćęłńśźż &.'+-]+/g;
+const BRAND_LEGAL_SUFFIX = /(?:\s|,)+(?:sp\.?\s*z\s*o\.?\s*o\.?|sp\.?\s*j\.?|sp\.?\s*k\.?|sp\.?\s*p\.?|s\.?\s*a\.?|s\.?\s*c\.?|spółka.*)$/;
+
+/** Fraza marki: małe litery, pojedyncze spacje, bez skrajnych spacji. */
+export function socialBrandTerm(value: string): string {
+  return String(value || '').normalize('NFC').toLowerCase().replace(/’/g, "'").replace(/[\s ]+/g, ' ').trim();
+}
+
+/** Frazy z pola tekstowego (każda w osobnym wierszu albo po przecinku) — błąd po polsku albo `null`. */
+export function socialBrandTermsFromText(value: string): { terms: string[]; error: string | null } {
+  const terms: string[] = [];
+  for (const part of String(value || '').split(/[\n,;]+/)) {
+    const term = socialBrandTerm(part);
+    if (!term) continue;
+    if (term.length < SOCIAL_BRAND_TERMS_LIMITS.min || term.length > SOCIAL_BRAND_TERMS_LIMITS.max) {
+      return { terms, error: `Fraza „${term.slice(0, 40)}” musi mieć od ${SOCIAL_BRAND_TERMS_LIMITS.min} do ${SOCIAL_BRAND_TERMS_LIMITS.max} znaków.` };
+    }
+    if (!BRAND_TERM_PATTERN.test(term)) {
+      return { terms, error: `Fraza „${term.slice(0, 40)}” może zawierać tylko litery, cyfry, spacje i znaki & . ' + -.` };
+    }
+    if (!terms.includes(term)) terms.push(term);
+  }
+  if (terms.length > SOCIAL_BRAND_TERMS_LIMITS.count) {
+    return { terms, error: `Najwyżej ${SOCIAL_BRAND_TERMS_LIMITS.count} fraz.` };
+  }
+  return { terms, error: null };
+}
+
+const brandCompact = (term: string) => term.replace(/[\s.'+&-]+/g, '');
+
+function brandCandidate(value: string): string {
+  return socialBrandTerm(value).replace(BRAND_LEGAL_SUFFIX, '').replace(BRAND_TERM_STRIP, ' ').replace(/\s+/g, ' ')
+    .replace(/^[\s&.'+-]+|[\s&.'+-]+$/g, '').slice(0, SOCIAL_BRAND_TERMS_LIMITS.max).trim();
+}
+
+/**
+ * Frazy domyślne marki: nazwa (bez formy prawnej) i nazwa domeny strony („www.event-rulers.pl” → „event rulers”).
+ * Fraza zawierająca krótszą (po pominięciu spacji i łączników) jest pomijana — krótsza i tak ją obejmuje.
+ */
+export function socialBrandDefaultTerms(name: string | null | undefined, website?: string | null): string[] {
+  const host = String(website || '').trim().toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split(/[/?#:]/)[0] || '';
+  const candidates = [brandCandidate(String(name || '')), brandCandidate((host.split('.')[0] || '').replace(/[-_]+/g, ' '))]
+    .filter((term) => term.length >= SOCIAL_BRAND_TERMS_LIMITS.min && BRAND_TERM_PATTERN.test(term));
+  const ordered = candidates.map((term, index) => ({ term, index, compact: brandCompact(term) }))
+    .filter((item) => item.compact.length >= SOCIAL_BRAND_TERMS_LIMITS.min)
+    .sort((a, b) => a.compact.length - b.compact.length || a.index - b.index);
+  const kept: typeof ordered = [];
+  for (const item of ordered) {
+    if (!kept.some((other) => item.compact.includes(other.compact))) kept.push(item);
+  }
+  return kept.sort((a, b) => a.index - b.index).map((item) => item.term);
+}
+
+/**
+ * Wyrażenie RE2 dla filtra Search Console (`includingRegex`): dowolna z fraz, bez względu na wielkość liter,
+ * spacja / kropka / łącznik między słowami opcjonalne („event rulers” obejmuje też „eventrulers” i „event-rulers”).
+ */
+export function socialBrandTermsRegex(terms: readonly string[]): string {
+  const parts = terms.map(socialBrandTerm).filter(Boolean).map((term) => term.split(/[\s.-]+/).filter(Boolean)
+    .map((word) => word.replace(/[\\^$.|?*+()[\]{}]/g, '\\$&')).join('[\\s.\\-]*')).filter(Boolean);
+  return parts.length ? `(?i)(?:${parts.join('|')})` : '';
+}
+
+/** Dzień wykresu: „RRRR-MM-DD” → „24.11”. */
+export const socialBrandDayLabel = (date: string) => (/^\d{4}-\d{2}-\d{2}$/.test(date) ? `${date.slice(8, 10)}.${date.slice(5, 7)}` : date);
+
+/** Suma wartości kanału w dniach; `null`, gdy żaden dzień nie ma danych. */
+export function socialBrandSum(days: readonly SocialBrandDay[], key: keyof SocialBrandValues): number | null {
+  let total: number | null = null;
+  for (const day of days) {
+    const value = day[key];
+    if (value != null && Number.isFinite(value)) total = (total ?? 0) + value;
+  }
+  return total;
+}

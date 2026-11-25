@@ -1773,3 +1773,71 @@ Panel „Przegląd” w karcie wydarzenia otwiera się domyślnie. Na stałe (na
 - **CRM**: „Udostępnij link…” w menu prawym przyciskiem (plik, folder, zaznaczone, pusty obszar folderu), w czynnościach zaznaczenia i w albumie; okno `MaterialShareDialog` (tytuł, wiadomość, ważność 1–30 dni, dostęp, e-maile, hasło puste — generowane) z wynikiem: link, hasło raz, wiadomość dla odbiorcy (kopiuj, e-mail); „Linki” — `MaterialSharesPanel` (kopiuj, otwórz, przedłuż, wyłącz / włącz, zmień, nowe hasło, usuń, otwarcia i pobrania).
 - **Mac**: to samo — `MaterialSharing.swift` (`MaterialShareSheet`, `MaterialSharesSheet`), pozycje w menu plików, folderów, zaznaczenia i pustego obszaru, „Udostępnij album”, „Linki” w nagłówku Materiałów / Dysku.
 - **Telefon i tablet**: Dysk → Materiały — „Udostępnij link do pobrania” po przytrzymaniu pliku, folderu albo albumu i w otwartym albumie, „Linki” obok Kosza (`MaterialShareModal`, `MaterialSharesModal`); wiadomość z linkiem i hasłem przez „Udostępnij…” (SMS, WhatsApp, poczta) albo kopia.
+
+### Social media → Statystyki: „Zainteresowanie marką” — wyszukiwania nazwy w Google i wejścia na profile (25.11.2026)
+- **Baza** (migracja `20261130130000_brand_interest.sql`): `marketing_brand_interest_daily` (dzień × kanał: Google — wyświetlenia strony w wynikach na frazy z nazwą marki ≈ wyszukiwania nazwy i kliknięcia; Facebook — wyświetlenia strony; Instagram — wejścia na profil konta), `marketing_brand_queries_daily` (frazy z nazwą marki z Google, dzień × fraza), `marketing_brand_interest_sync` (stan kanału), `marketing_company_settings.brand_terms` (frazy marki; puste — z nazwy i adresu strony marki), `marketing_brand_interest_save` (tylko serwer), `marketing_brand_terms_save` / `marketing_brand_terms_can_edit` (zarządzający marketingiem albo akceptujący social media marki), `marketing_brand_queries_top`, `social_profile_visits_timeline` (wejścia na profil z postów Instagram opublikowanych z CRM). Odczyt — dostęp do social media albo marketingu marki (RLS).
+- **Serwer**: `src/lib/marketing/brandInterest.server.ts` — Search Console (`includingRegex` z fraz marki, 90 dni, dzień × fraza), Facebook `page_views_total`, Instagram `profile_views` (`metric_type=total_value`, dzień po dniu; gdy Meta odrzuci metrykę — wejścia z postów); pobieranie w synchronizacji marketingu (co 6 godzin), „Odśwież” w sekcji (`op=brandRefresh`) i po zmianie fraz (`op=brandTerms`); `op=stats` → `brand` (`src/lib/social/socialBrand.server.ts`). Wyłącznie liczby — Google i Meta nie podają, kto szukał ani kto odwiedził profil. Przy okazji: synchronizacja Google Ads czyta daty kampanii z `campaign.start_date_time` / `end_date_time` (Google Ads API v23+ usunęło `start_date` / `end_date` — błąd UNRECOGNIZED_FIELD).
+- **CRM**: Marketing → Social media → Statystyki — karta „Zainteresowanie marką” (`SocialBrandInterest.tsx`): trzy kafelki ze zmianą wobec poprzedniego okresu, wykres dzień po dniu, „Jak nas szukają w Google” (10 fraz), liczone frazy, stan kanałów, „Frazy marki” i „Odśwież”.
+- **Mac**: to samo natywnie w „Statystykach” (`SocialStatsView.swift`, `SocialBrandInterestView.swift`), arkusz „Frazy marki”.
+- **Telefon i tablet**: to samo w Social media → Statystyki (`SocialBrandInterestCard.tsx`): kafelki, słupki dzień po dniu dla każdego kanału, frazy z Google, stan kanałów, „Odśwież”, „Frazy marki”.
+
+### Nowa wiadomość: podpowiedzi adresatów w „Do”, „DW” i „UDW” jak w Thunderbirdzie (25.11.2026)
+- **Baza** (migracja `20261130140000_email_recipient_suggestions.sql`): `email_recipient_suggestions(p_query, p_limit)` — z uprawnieniami osoby (SECURITY INVOKER, RLS): kontakty (nazwa, e-mail, firma, bieżące organizacje), organizacje (nazwa, alias, e-mail), aktywni pracownicy i korespondencja z 3 lat (nadawcy odebranych, adresaci wysłanych; bez adresów no-reply). Jeden wiersz na adres z powiązaniem (kontakt, pracownik, organizacja — także po domenie z `correspondence_domains`) i liczbą wiadomości wysłanych / odebranych; kolejność: trafność (początek słowa), liczba wiadomości, świeżość, znany kontakt.
+- **Wspólne**: `src/lib/CRM/messages/recipientSuggestions.ts` = `mobile/src/lib/recipientSuggestions.ts` (para w `scripts/ci/check-shared-copies.mjs`) — fragment przy kursorze, wstawienie adresu z „, ”, opis podpowiedzi.
+- **CRM**: `RecipientInput` w `UnifiedEmailComposer` — wszystkie okna wysyłki korzystające z kompozytora (Nowa wiadomość, oferta, faktura, umowa, kalkulacja): lista pod polem, ↑ / ↓, Enter lub Tab — wstawienie, Esc — zamknięcie, kliknięcie.
+- **Mac**: `RecipientField` (`GET /bridge/native/v1/recipients`) w oknach: Nowa wiadomość, oferta, wiadomość z zapytania, faktura / przypomnienie, kalkulacja, umowa; gdy lista jest otwarta, ↩ i Esc obsługuje lista (okno nie wyśle się ani nie zamknie).
+- **Telefon i tablet**: `RecipientInput` — wiadomość do klienta z zapytania i wysyłka kalkulacji; dotknięcie podpowiedzi wstawia adres.
+
+### Nowe zadanie: strefa „Przeciągnij pliki tutaj” w załącznikach (25.11.2026)
+- **Mac**: `TaskAttachmentDropZone` w `TaskEditorSheet` — pliki przeciągnięte z Findera (podświetlenie przy przeciąganiu) albo „Dodaj pliki”; foldery pomijane z informacją, bez powtórzeń.
+- **CRM**: `TaskAttachmentDropzone` w formularzu zadania tablicy firmowej (`TaskPageClient`) i prywatnej (`PrivateTasksBoardTab`) — to samo; wklejenie zrzutu ekranu (⌘V) bez zmian.
+- **Mobile: nie dotyczy** — przeciąganie plików z Findera / pulpitu; na telefonie i tablecie załączniki dodaje się przyciskiem (pliki, zdjęcia, aparat).
+
+### Przetargi: konfiguracja filtrów na Macu i w telefonie, przeliczenie ocen (25.11.2026)
+- **Mac**: „Konfiguracja” na pasku Przetargów → strona „Konfiguracja filtrów” (`TenderFilterConfigView`) — konfiguracje, progi oceny, „Konfiguracja aktywna”, listy słów kluczowych, wykluczających, kodów CPV i lokalizacji (kilka pozycji naraz, „Wklej listę”, bez powtórzeń), zapis, nowa / usuń, „Przelicz przetargi”. Lista przetargów bez zawieszania: filtrowanie raz na zmianę danych lub filtrów, daty z pamięci, zapis i odczyt lokalnej kopii w tle (`LocalCacheWriter`).
+- **CRM**: `/crm/tenders/config` przez `/bridge/native/v1/tenders` (to samo API co Mac i telefon): podgląd dla pracowników bez uprawnień administratora, wklejona lista trafia do właściwego pola (wcześniej słowa wykluczające, CPV i lokalizacje wklejały się do słów kluczowych), ostrzeżenie o niezapisanych zmianach, jedna aktywna konfiguracja, blokada usunięcia aktywnej. „Przelicz przetargi” obejmuje wszystkie przetargi (wcześniej najwyżej 1000) i zapisuje tylko zmienione oceny (`src/lib/tenders/tenderRelevance.server.ts`, także `/bridge/tenders/recalculate`).
+- **Mobile**: „Konfiguracja” w filtrach Przetargów → `TenderFilterConfigSheet` — te same pola, listy, zapis, nowa / usuń i przeliczenie; reguły list `mobile/src/lib/tenderFilterConfig.ts` (kopia `src/lib/tenders/tenderFilterConfig.ts`, `check-shared-copies`).
+- **Baza**: `20261130150000_tender_filter_config_policies.sql` — usuwanie konfiguracji filtrów tylko przez administratora (wcześniej każdy z `tenders_view`).
+
+### Oferta: akceptacja rabatu ponad limit w karcie „Informacje” (25.11.2026)
+- **Mac**: `OfferApprovalPanel` w sekcji „Informacje” strony oferty — sprzedawca: rabat ponad limit (10%) i „Wyślij do akceptacji” z uzasadnieniem, stan prośby, powód odrzucenia; administrator: wysyła od razu, przy prośbie „Zaakceptuj” / „Odrzuć” z wymaganym powodem. „Wyślij ofertę” wyłączony do akceptacji. Serwer: `approval` w `op=offer`, `op=approvalRequest`, `op=approvalDecide` (`src/lib/native/offers.ts`).
+- **CRM**: `OfferApprovalBanner` przeniesiony z nagłówka strony do karty „Informacje” (`OfferDetails`), ten sam opis stanu co na Macu (`src/lib/CRM/Offers/offerApproval.ts`): administrator nie widzi „Wyślij do akceptacji”, „Zaakceptuj” / „Odrzuć” z powodem, kto i kiedy prosił / zdecydował, okno ładowania przy decyzji.
+- **Mobile: nie dotyczy** — telefon nie ma strony oferty ani wysyłki oferty (oferty otwierają się w CRM, powiadomienia o prośbie i decyzji prowadzą do oferty w CRM).
+
+### Faktura z KSeF: zaznaczanie tekstu i ikony „Kopiuj” (25.11.2026)
+- **Mac**: `KsefPreviewSheet` — cały tekst do zaznaczenia, `CopyValueButton` przy numerze faktury, numerze KSeF, nazwie i NIP stron, rachunku (bez spacji) i kwocie do zapłaty; sposób i stan płatności po polsku zamiast kodów XML, kolumna „Brutto” pozycji tylko z brutto w XML.
+- **CRM**: `InvoiceDetailsModal` (wizualizacja faktury KSeF i faktur CRM) — te same ikony kopiowania (`src/components/crm/CopyValueButton.tsx`), ukryte na wydruku.
+- **Mobile: nie dotyczy** — telefon nie ma podglądu faktur KSeF.
+
+### Wydarzenie → „Zarządzaj sprzętem”: drzewo kategorii i szerokość paska (25.11.2026)
+- **Mac**: pasek kategorii okna „Zarządzaj sprzętem” jako drzewo — kategoria główna (cały jej sprzęt i zestawy) z rozwijanymi podkategoriami, „Bez podkategorii”, liczniki z podkategoriami, „Zwiń” / „Rozwiń”, zapamiętane rozwinięcie; uchwyt zmiany szerokości paska (zapamiętywany, dwuklik — domyślna); kolumna „Kategoria” ze ścieżką.
+- **Serwer**: katalog wydarzenia (`equipmentCatalogEntries`, `src/lib/native/eventEquipment.ts`) z kategorią główną, kategorią pozycji i kolejnością z Magazynu — także dla zestawów.
+- **CRM**: bez zmian — okno „Dodaj sprzęt” w CRM nie ma paska kategorii (lista z wyszukiwaniem).
+- **Mobile: nie dotyczy** — telefon nie dodaje sprzętu z katalogu do wydarzenia.
+
+### Harmonogram wydarzenia na Macu: płynne przeciąganie faz (25.11.2026)
+- **Mac**: przesuwanie i zmiana długości faz oraz przesuwanie przypisań zasobów liczone w układzie okna od zakresu sprzed przeciągnięcia (jak `useTimelineDrag` w CRM) — faza nie skacze; szersze uchwyty, faza nie wychodzi poza oś, kursor bez „zawieszania”.
+- **CRM**: bez zmian (wzorzec zachowania).
+- **Mobile: nie dotyczy** — telefon nie edytuje faz przeciąganiem.
+
+### Wysyłka e-maili: domyślny nadawca — osoba wysyłająca (25.11.2026)
+- **CRM**: `preferredSendingAccountId` / `compareSendingAccounts` (`src/lib/CRM/messages/sendingAccount.ts`) w `ComposeEmailModal` (nowa wiadomość, odpowiedź, przekazanie), `loadUnifiedEmailAccounts` (umowa, kalkulacja, broszury), `SendOfferEmailModal`, `SendInvoiceEmailModal` — na start własna skrzynka osoby wysyłającej, systemowa tylko bez innej; odpowiedź ze skrzynki wiadomości, chyba że systemowej.
+- **Mac**: `MailAccount.preferredSender` w Wiadomościach; okna wysyłki oferty, kalkulacji, umowy, monitu, zapytania i broszur — pierwsza skrzynka z serwera (`sendingAccounts` posortowane tą samą regułą).
+- **Mobile**: okna wysyłki z zapytania i kalkulacji biorą skrzynkę z serwera (`sendingAccounts`, `inquiryWorkspaceTools`) — ta sama reguła bez zmian w aplikacji.
+
+### Agenda i Karta Weselna e-mailem, wiadomości wysłane z eventu w jego wątku (25.11.2026)
+- **CRM**: „Wyślij e-mailem” w zakładce „Agenda” (aktualny PDF agendy) i przy Karcie Weselnej — `SendEventDocumentEmailModal` (dane: `loadEventDocumentEmailContext` w `src/lib/CRM/events/eventDocumentEmail.ts`): własna skrzynka osoby wysyłającej, adresat z eventu (para młoda / osoba kontaktowa / organizacja), PDF zawsze w załączniku, pliki eventu, wysyłka teraz albo zaplanowana. Kalkulacja, umowa, oferta i faktura (także monit) eventu po wysyłce trafiają do wątku eventu (`linkEventEmail` / `linkDocumentEmailToEvent`).
+- **Mac**: `EventDocumentEmailSheet` w zakładce „Agenda” i w Karcie Weselnej; serwer `src/lib/native/eventDocumentEmail.ts` (`emailSetup`, `emailPreview`, `op=documentEmail`); wysyłki kalkulacji, umowy, oferty i faktury z Maca wiązane z eventem tak samo.
+- **Mobile**: zakładka „Agenda” w aplikacji jest tylko do odczytu (bez generowania PDF) — wysyłka agendy z CRM i Maca; wiadomości z telefonu (zapytanie, kalkulacja) bez zmian.
+- **Baza**: migracja `20261130160000_event_correspondence.sql` — `event_email_links`, `event_email_exclusions`, `link_event_email`, `exclude_event_email`, `get_event_correspondence`, `get_event_correspondence_suggestions` (prywatność skrzynek bez zmian; wiadomości systemowe o evencie — dla osób z dokumentami handlowymi eventu), jednorazowe dołączenie wcześniejszych jednoznacznych wysyłek. Kolejki Karty Weselnej (`/bridge/events/wedding-card-delivery`) też trafiają do wątku.
+
+### Event → „Korespondencja”: wątek e-mailowy eventu z filtrem wiadomości systemowych (25.11.2026)
+- **CRM**: zakładka „Korespondencja” (`EventCorrespondenceTab`, obszar `commercial_docs`): wiadomości wysłane z eventu, odpowiedzi w wątkach, korespondencja zapytania, dołączone ręcznie i systemowe (potwierdzenie realizacji); filtry „Ukryj systemowe”, kierunek, wyszukiwanie; „Napisz do klienta”, „Odpowiedz” (od osoby wysyłającej, wiadomość w wątku eventu), „Dołącz wiadomość lub konwersację”, „Wyklucz” / „Przywróć”, „Inne wiadomości z klientem”, zaplanowane wysyłki. Zakładka w uprawnieniach pracownika (`EVENT_TABS`).
+- **Mac**: `EventCorrespondenceTab` (lista i treść obok, te same filtry i czynności, okna „Napisz do klienta” / „Odpowiedź”, „Dołącz…”, „Inne wiadomości z klientem”); serwer `src/lib/native/eventCorrespondence.ts`, wysyłka `op=correspondenceEmail`.
+- **Mobile**: `eventAccess.ts` (wspólna kopia) zna zakładkę `correspondence`; jak pozostałe zakładki handlowe otwiera się w CRM (`navigationRef`: `?tab=correspondence`).
+- **Baza**: bez nowej migracji — `get_event_correspondence` i pozostałe funkcje z `20261130160000_event_correspondence.sql`.
+
+### Kontakty → karta: „Szybkie akcje” na Macu (25.11.2026)
+- **CRM**: bez zmian — `ContactQuickActions` („Szybkie akcje” w karcie kontaktu i organizacji).
+- **Mac**: `ContactQuickActionsMenu` w nagłówku karty: „Dodaj zapytanie”, „Wyślij broszurę…”, „Wyślij ofertę…” (wybór oferty odbiorcy → `OfferEmailSheet`), „Utwórz event…” (`EventCreateSheet` z organizacją i osobą kontaktową, wybór organizacji osoby), „Broszury klienta…”, „Historia wysyłek broszur…” — uprawnienia jak w CRM; serwer `offersToSend` w `src/lib/native/contactCustomer360.ts`.
+- **Mobile**: karta kontaktu w aplikacji nie ma tych czynności (broszury i wysyłka ofert są w CRM / na Macu) — bez zmian w tym etapie.

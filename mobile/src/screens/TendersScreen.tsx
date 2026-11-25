@@ -11,6 +11,7 @@ import PermissionGate from '../components/PermissionGate';
 import { useNotice } from '../components/Inquiries/InquiryKit';
 import { canView } from '../lib/permissions';
 import { navigateToInquiry } from '../navigation/navigationRef';
+import TenderFilterConfigSheet from '../components/Tenders/TenderFilterConfigSheet';
 import { colors, spacing, typography, borderRadius, withAlpha } from '../theme';
 
 /*
@@ -18,6 +19,7 @@ import { colors, spacing, typography, borderRadius, withAlpha } from '../theme';
  * „Także przeszłe i ukryte”, wyszukiwanie; szczegóły z oceną dopasowania, opiekunem („Przypisz do mnie” / „Zwolnij” —
  * assign_tender), zapytaniem (create_inquiry_from_tender), obserwowaniem, statusem i notatkami, oceną manualną i ukrywaniem.
  * Domyślnie wszystkie aktywne przetargi (otwarty termin, nieukryte, niezakończone). Dostęp: tenders_view (RLS).
+ * „Konfiguracja” — konfiguracja filtrów i przeliczenie ocen (`TenderFilterConfigSheet`, jak /crm/tenders/config i Mac).
  */
 
 const LIST_FIELDS = 'id, title, contracting_authority, submission_deadline, publication_date, estimated_value, currency, status, assigned_to, inquiry_id, source_url, location, is_matched, is_watched, is_hidden, manual_relevance, relevance_score';
@@ -110,6 +112,7 @@ function TendersContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [configOpen, setConfigOpen] = useState(false);
   const request = useRef(0);
 
   // Przeszłe i ukryte: wyszukiwanie w bazie (po chwili od wpisania), aktywne — na liście w telefonie.
@@ -321,6 +324,11 @@ function TendersContent() {
           ))}
         </ScrollView>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          <TouchableOpacity onPress={() => setConfigOpen(true)} style={styles.chip} accessibilityRole="button"
+            accessibilityLabel="Konfiguracja filtrów przetargów">
+            <Feather name="sliders" size={13} color={colors.text.secondary} />
+            <Text style={styles.chipText}>Konfiguracja</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setArchive((value) => !value)} style={[styles.chip, archive && styles.chipActive]}
             accessibilityRole="checkbox" accessibilityState={{ checked: archive }}>
             <Feather name={archive ? 'check-square' : 'square'} size={13} color={archive ? colors.primary.gold : colors.text.secondary} />
@@ -469,6 +477,7 @@ function TendersContent() {
           {notice.overlay}
         </KeyboardAvoidingView>
       </Modal>
+      <TenderFilterConfigSheet visible={configOpen} onClose={() => setConfigOpen(false)} onRecalculated={() => void load(true)} />
       {notice.overlay}
     </View>
   );

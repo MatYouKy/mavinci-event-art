@@ -90,6 +90,38 @@ const dayAfter = (iso: string) => {
   return date.toISOString();
 };
 
+type WarehouseCategoryNode = { id: string; name: string; parentId: string | null; order: number };
+
+/** Kategorie magazynu (`warehouse_categories`): id → kategoria z rodzicem i kolejnością (jak w Magazynie). */
+async function warehouseCategoryTree(ctx: NativeContext) {
+  const tree = new Map<string, WarehouseCategoryNode>();
+  const { data, error } = await ctx.supabase.from('warehouse_categories').select('id, name, parent_id, order_index');
+  if (error) return tree;
+  for (const row of (data || []) as any[]) {
+    tree.set(String(row.id), {
+      id: String(row.id), name: String(row.name || '').trim() || 'Bez nazwy', parentId: row.parent_id ? String(row.parent_id) : null,
+      order: Number.isFinite(Number(row.order_index)) ? Number(row.order_index) : 0,
+    });
+  }
+  return tree;
+}
+
+/**
+ * Miejsce pozycji w drzewie kategorii: kategoria główna (najwyższa) i kategoria pozycji (podkategoria albo sama główna) —
+ * okno „Dodaj sprzęt” na Macu grupuje po nich pasek kategorii (np. „Oświetlenie” → „Ruchome Głowy”, „Dekoracyjne”).
+ */
+function categoryPlacement(tree: Map<string, WarehouseCategoryNode>, categoryId: unknown) {
+  const own = typeof categoryId === 'string' ? tree.get(categoryId) : undefined;
+  if (!own) return { categoryId: null, mainCategoryId: null, mainCategory: null, categoryOrder: null, mainCategoryOrder: null };
+  let main = own;
+  const seen = new Set<string>([own.id]);
+  while (main.parentId && tree.has(main.parentId) && !seen.has(main.parentId)) {
+    main = tree.get(main.parentId)!;
+    seen.add(main.id);
+  }
+  return { categoryId: own.id, mainCategoryId: main.id, mainCategory: main.name, categoryOrder: own.order, mainCategoryOrder: main.order };
+}
+
 /**
  * `fetchAvailableEquipment` z `useEventEquipment`: dostępność w terminie (RPC magazynu), kable, sprawdzenie pojedynczych pozycji
  * bez stanu w RPC i limity zestawów (`kitEventLimits`). `catalog` — także pełne listy sprzętu i zestawów do okna „Dodaj sprzęt”.
@@ -142,6 +174,8 @@ async function availability(ctx: NativeContext, event: EventDates, catalog: bool
 
   const { data: allItems, error: itemsError } = await s.from('equipment_items')
     .select(catalog ? '*, category:warehouse_categories(name)' : 'id, total_quantity').order('name');
+  // Drzewo kategorii magazynu (kategoria główna → podkategoria) do paska okna „Dodaj sprzęt”; bez dostępu — pusta mapa.
+  const categoryTree = catalog ? await warehouseCategoryTree(ctx) : new Map<string, WarehouseCategoryNode>();
   let items: any[] = [];
   if (!itemsError && allItems) {
     const candidates = (allItems as any[]).filter((item) => num(item.total_quantity) > 0 && num(byKey[keyOf('item', item.id)]?.total_quantity) === 0);
@@ -164,6 +198,7 @@ async function availability(ctx: NativeContext, event: EventDates, catalog: bool
         const a = byKey[keyOf('item', it.id)];
         return {
           id: it.id, name: it.name || 'Sprzęt', brand: it.brand || '', model: it.model || '', category: (one(it.category) as any)?.name || '',
+          ...categoryPlacement(categoryTree, it.warehouse_category_id),
           thumbnail: it.thumbnail_url || null, total: a?.total_quantity ?? 0, reserved: a?.reserved_quantity ?? 0, used: a?.used_by_this_event ?? 0,
           availableInTerm: a?.available_in_term ?? 0, maxAdd: a?.max_add ?? 0, maxSet: a?.max_set ?? 0,
         };
@@ -190,6 +225,7 @@ async function availability(ctx: NativeContext, event: EventDates, catalog: bool
       };
       return {
         id: kit.id, name: kit.name || 'Zestaw', description: kit.description || '', thumbnail: kit.thumbnail_url || null,
+        ...(catalog ? { category: categoryTree.get(String(kit.warehouse_category_id || ''))?.name || '', ...categoryPlacement(categoryTree, kit.warehouse_category_id) } : {}),
         total: num(kit.quantity), reserved: reservedElsewhere, used, availableInTerm: maxSet, maxAdd, maxSet,
         contents: list(kit.equipment_kit_items).map((it: any, index: number) => {
           const eq = one(it.equipment_items) as any, cb = one(it.cables) as any;

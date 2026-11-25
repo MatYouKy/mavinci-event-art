@@ -269,6 +269,10 @@ struct EventFormField<Content: View>: View {
     var initialDate: Date? = nil
     /// Rodzaj klienta z „Co chcesz dodać?” w kalendarzu: `business` albo `individual`.
     var initialClientType: String? = nil
+    /// Klient z „Szybkie akcje” → „Utwórz event” w karcie kontaktu (`ContactQuickActions` → `EventWizard`): organizacja
+    /// (z tą osobą kontaktową) albo osoba bez organizacji.
+    var initialOrganizationID: String? = nil
+    var initialContactID: String? = nil
     @EnvironmentObject private var state: Workspace
     @Environment(\.dismiss) private var dismiss
     @Environment(\.crmTheme) private var theme
@@ -311,6 +315,7 @@ struct EventFormField<Content: View>: View {
     @State private var offerWizard: OfferWizardRoute?
     @State private var offerCreated = false
     @State private var initialApplied = false
+    @State private var initialClientApplied = false
 
     private static let steps = ["Szczegóły", "Oferta", "Sprzęt"]
 
@@ -723,10 +728,26 @@ struct EventFormField<Content: View>: View {
             let next = try await store.createSetup()
             guard next.canCreate else { throw NativeFailure(status: 403, message: "Nie masz uprawnień do tworzenia eventów.", fieldErrors: [:]) }
             setup = next
+            applyInitialClient(next)
             // `CompanySelector` bez opcji „wszystkie”: domyślna działalność albo pierwsza z listy.
             if companyID.isEmpty { companyID = next.companies.first(where: \.isDefault)?.id ?? next.companies.first?.id ?? "" }
         } catch {
             loadError = store.failureText(error, "Nie udało się wczytać danych kreatora.")
+        }
+    }
+
+    /// Klient z karty kontaktu — raz, po wczytaniu list organizacji i osób (wybór organizacji ustawia jej osobę kontaktową).
+    private func applyInitialClient(_ setup: EventCreateSetup) {
+        guard !initialClientApplied else { return }
+        initialClientApplied = true
+        let contact = initialContactID ?? ""
+        if let organization = initialOrganizationID, !organization.isEmpty, setup.organizations.contains(where: { $0.id == organization }) {
+            clientType = "business"
+            pickOrganization(organization)
+            if !contact.isEmpty, setup.contacts.contains(where: { $0.id == contact && $0.organizationIds.contains(organization) }) { contactID = contact }
+        } else if !contact.isEmpty, setup.contacts.contains(where: { $0.id == contact }) {
+            clientType = "individual"
+            contactID = contact
         }
     }
 

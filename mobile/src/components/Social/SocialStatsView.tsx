@@ -8,11 +8,13 @@ import {
   socialPlural, type SocialMetricKey, type SocialMetricValues,
 } from '../../lib/socialShared';
 import { socialErrorMessage, socialGet, socialPost, type SocialStats, type SocialTotals } from '../../lib/socialApi';
+import SocialBrandInterestCard from './SocialBrandInterestCard';
 
 /*
  * Social media → „Statystyki” w aplikacji (jak w CRM i na Macu): wyniki postów opublikowanych w okresie (7 / 28 / 90 dni)
  * wobec poprzedniego okresu, przyrost dzienny, kanały, najlepsze posty, najlepsze pory publikacji z własnych wyników
  * i raport tygodniowy „Trendy i rekomendacje”. „Odśwież z Meta” — każdy z dostępem, „Raport za poprzedni tydzień” — twórca treści.
+ * Na górze „Zainteresowanie marką” (`SocialBrandInterestCard`): wyszukiwania nazwy w Google i wejścia na profile.
  */
 
 type Props = { companyId: string; initialReportId?: string | null; refreshKey?: number; onOpenPost: (id: string) => void };
@@ -68,10 +70,10 @@ export default function SocialStatsView({ companyId, initialReportId, refreshKey
 
   useEffect(() => { void load(); }, [load, refreshKey]);
 
-  const run = async (label: string, op: 'metricsRefresh' | 'reportGenerate', success: string) => {
+  const run = async (label: string, op: 'metricsRefresh' | 'reportGenerate' | 'brandRefresh', success: string) => {
     setBusy(label);
     try {
-      const result = await socialPost<SocialStats>(op, { companyId, days, ...(op === 'metricsRefresh' && reportId ? { report: reportId } : {}) });
+      const result = await socialPost<SocialStats>(op, { companyId, days, ...(op !== 'reportGenerate' && reportId ? { report: reportId } : {}) });
       setData(result);
       if (result.report) setReportId(result.report.id);
       Alert.alert('Statystyki', success);
@@ -80,6 +82,12 @@ export default function SocialStatsView({ companyId, initialReportId, refreshKey
     } finally {
       setBusy(null);
     }
+  };
+
+  /** „Frazy marki” — błąd jako wyjątek (komunikat w oknie fraz). */
+  const saveBrandTerms = async (terms: string[]) => {
+    const result = await socialPost<SocialStats>('brandTerms', { companyId, days, terms, ...(reportId ? { report: reportId } : {}) });
+    setData(result);
   };
 
   const values = useMemo(() => (data?.timeline || []).map((item) => item[chart]), [data?.timeline, chart]);
@@ -139,6 +147,12 @@ export default function SocialStatsView({ companyId, initialReportId, refreshKey
           {sync.problems.map((problem) => <Text key={problem} style={styles.warning}>{problem}</Text>)}
         </View>
       )}
+
+      {data.brand ? (
+        <SocialBrandInterestCard brand={data.brand} days={data.range.days} errorText={socialErrorMessage}
+          onRefresh={() => void run('Pobieram liczby z Google i Meta', 'brandRefresh', 'Odświeżono zainteresowanie marką.')}
+          saveTerms={saveBrandTerms} />
+      ) : null}
 
       <Tiles totals={data.totals} previous={data.previous} />
 

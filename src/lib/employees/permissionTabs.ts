@@ -12,6 +12,7 @@ export const EVENT_TABS = [
   { value: 'logistics', label: 'Logistyka', description: 'Pojazdy i transport' },
   { value: 'subcontractors', label: 'Podwykonawcy', description: 'Zewnętrzni wykonawcy' },
   { value: 'files', label: 'Pliki', description: 'Dokumenty i załączniki' },
+  { value: 'correspondence', label: 'Korespondencja', description: 'Wiadomości e-mail z klientem o evencie' },
   { value: 'tasks', label: 'Zadania', description: 'Zarządzanie zadaniami' },
   { value: 'history', label: 'Historia', description: 'Dziennik zmian eventu' },
 ];

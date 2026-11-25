@@ -120,6 +120,9 @@ import Network
     private var dashboardLoadedAt: Date?
     private var backend: HTTPBackend?
     private var cache: LocalCache?
+    /// Zapis i usuwanie kopii zbiorów w tle (`LocalCacheWriter`) oraz zaplanowany zapis (kilka zmian w krótkim czasie — jeden zapis).
+    private let cacheWriter = LocalCacheWriter()
+    private var persistTask: Task<Void, Never>?
     /// Przestrzeń kopii lokalnej zalogowanego pracownika (dashboard, plan dnia — obok kopii zbiorów i Wiadomości).
     private var cacheNamespace: String?
     /// Plan dnia (`get_employee_schedule`) — z dysku od razu, odświeżany w tle.
@@ -196,6 +199,7 @@ import Network
         guard !loading, snapshot == nil, connection.valid else { return }
         loading = true
         defer { loading = false }
+        let ticket = generation
         do {
             guard let data = try Vault.read("session-\(connection.identity)") else { return }
             let session = try JSONDecoder().decode(Session.self, from: data)
@@ -227,7 +231,10 @@ import Network
             Task { await BrandStore.refresh(nativeAPI()) }
             // Kopia z dysku od razu (bez czekania na sieć); zapis dopiero po potwierdzeniu profilu na serwerze.
             // Bez połączenia kopia starsza niż 24 h jest ukrywana (`refresh` — ochrona przed odebranymi uprawnieniami).
-            let saved = try cache?.load()
+            // Odczyt i odszyfrowanie kopii (dziesiątki MB) w tle — okno odpowiada od razu po starcie.
+            let stored = cache
+            let saved = try await Task.detached(priority: .userInitiated) { try stored?.load() }.value
+            guard ticket == generation else { return }
             if let saved, Date().timeIntervalSince(saved.savedAt) <= 30 * 86_400 { snapshot = saved; restoreNavigation() }
             await refresh(force: true)
         } catch {
@@ -270,8 +277,11 @@ import Network
             finance.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
             openLocalViews(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
+            let stored = cache
+            let saved = await Task.detached(priority: .userInitiated) { try? stored?.load() }.value
+            guard ticket == generation else { return }
             snapshot = Snapshot(employee: employee)
-            if let saved = try? cache?.load(), saved.employee == employee { snapshot = saved }
+            if let saved, saved.employee == employee { snapshot = saved }
             restoreNavigation()
             verifiedConnection = true; offline = false; snack = nil
             await refresh(force: true)
@@ -305,13 +315,15 @@ import Network
             guard current.is_active else { throw AppError.noEmployee }
             if let raw = await backend.crmTheme, let next = CrmTheme(rawValue: raw), next != theme { theme = next; next.remember() }
             if snapshot?.employee != current {
-                try cache?.clear()
+                // Dane poprzedniego profilu znikają od razu; kopia na dysku — po zakończeniu trwającego zapisu (w tle).
                 snapshot = Snapshot(employee: current)
                 for nav in allNavigations {
                     nav.eventRoute = nil
                     nav.focusedID = nil
                     if let selection = nav.selection, !current.canView(selection) { nav.selection = .day }
                 }
+                try await clearCache()
+                guard ticket == generation else { return }
             }
             if snapshot == nil { snapshot = Snapshot(employee: current) }
             verifiedConnection = true; offline = false; error = nil
@@ -385,10 +397,7 @@ import Network
             if current.canView(.calendar), moduleErrors["calendar"] == nil, snapshot?.collections["calendar"]?.lastSync != nil {
                 appleCalendar.refreshed(rows: rows(.calendar), employee: current.id, identity: connection.identity)
             }
-            if let snapshot {
-                do { try cache?.save(snapshot) }
-                catch { notice = "Nie udało się zapisać lokalnej kopii. Dane są dostępne do zamknięcia aplikacji." }
-            }
+            if snapshot != nil { scheduleSnapshotWrite(after: nil, reportFailure: true) }
         } catch {
             guard ticket == generation else { return }
             if error is URLError {
@@ -511,7 +520,7 @@ import Network
         cacheNamespace = nil
         do { try Vault.delete("session-\(connection.identity)") }
         catch { self.error = "Nie udało się usunąć danych logowania z pęku kluczy. Zamknij aplikację i sprawdź dostęp do pęku kluczy." }
-        do { try cache?.clear() }
+        do { try await clearCache() }
         catch { self.error = "Nie udało się usunąć lokalnej kopii. Sprawdź dostęp aplikacji do plików i pęku kluczy." }
         cache = nil
         await old?.logout()
@@ -535,12 +544,38 @@ import Network
         sidebarHref = navigation.flatMap(\.flattened).first { $0.module == module }?.href ?? sidebarHref
     }
     func eventAPI() -> HTTPBackend? { backend }
-    func persistSnapshot() {if let snapshot {try? cache?.save(snapshot)}}
+    /// Zapis lokalnej kopii po chwili (zmiany w ciągu 0,4 s — jeden zapis); szyfrowanie i zapis w tle (`LocalCacheWriter`).
+    func persistSnapshot() { scheduleSnapshotWrite(after: .milliseconds(400), reportFailure: false) }
+    private func scheduleSnapshotWrite(after delay: Duration?, reportFailure: Bool) {
+        persistTask?.cancel()
+        persistTask = Task { [weak self] in
+            if let delay { try? await Task.sleep(for: delay) }
+            guard !Task.isCancelled, let self else { return }
+            let saved = await self.writeSnapshot()
+            if !saved && reportFailure { self.notice = "Nie udało się zapisać lokalnej kopii. Dane są dostępne do zamknięcia aplikacji." }
+        }
+    }
+    /// Zapis bieżącej kopii w tle; `false` — zapis się nie udał.
+    private func writeSnapshot() async -> Bool {
+        guard let snapshot, let cache else { return true }
+        let writer = cacheWriter
+        let epoch = writer.current
+        return await Task.detached(priority: .utility) { writer.save(snapshot, to: cache, generation: epoch) }.value
+    }
+    /// Usuwa kopię (wylogowanie, inny pracownik): zaplanowane i trwające zapisy nie odtworzą jej na dysku.
+    private func clearCache() async throws {
+        persistTask?.cancel()
+        persistTask = nil
+        cacheWriter.invalidate()
+        guard let cache else { return }
+        let writer = cacheWriter
+        try await Task.detached(priority: .userInitiated) { try writer.clear(cache) }.value
+    }
     func saveEventPage(_ page: EventPageCache) {
         guard employee != nil else { return }
         if snapshot?.eventPages == nil { snapshot?.eventPages = [:] }
         snapshot?.eventPages?[page.event.id] = page
-        if let snapshot { try? cache?.save(snapshot) }
+        persistSnapshot()
     }
     func showEvent(_ id: String,tab:EventTab? = nil) {
         showEvent(id, cardTab: tab?.cardTabID)

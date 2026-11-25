@@ -69,7 +69,7 @@ import AppKit
         var symbol: String { members.first?.symbol ?? "circle" }
         func contains(_ tab: String) -> Bool { members.contains { $0.id == tab } }
     }
-    static let tabOrder: [String] = ["details", "offer", "calculations", "contract", "equipment", "team", "subcontractors", "phases", "logistics",
+    static let tabOrder: [String] = ["details", "offer", "calculations", "contract", "correspondence", "equipment", "team", "subcontractors", "phases", "logistics",
                                      "agenda", "seller-arrangements", "finances", "summary", "tasks", "files", "history"]
     static let merged: [[String]] = [["offer", "calculations"], ["team", "subcontractors"], ["finances", "summary"]]
     static func groupLabel(_ ids: [String], _ fallback: String) -> String {
@@ -568,6 +568,7 @@ import AppKit
         case "summary": EventSettlementTab(store: store, eventID: eventID)
         case "finances": EventFinancesTab(store: store, eventID: eventID, navigate: { tab = $0 })
         case "seller-arrangements": EventSellerTab(store: store, eventID: eventID, navigate: { tab = $0 })
+        case "correspondence": EventCorrespondenceTab(store: store, eventID: eventID)
         case "calculations": EventCalculationsTab(store: store, eventID: eventID)
         case "contract": EventContractTab(store: store, eventID: eventID, canViewAmounts: page.flags?.canViewValues == true)
         case "tasks": TasksBoardView(store: store.tasksStore(eventID), embedded: true).id("tasks-event-\(eventID)")

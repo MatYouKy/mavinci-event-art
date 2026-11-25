@@ -13,7 +13,6 @@ import {
   Play,
   Clock,
   FileText,
-  Paperclip,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { shouldAutomateTaskTimer } from '@/lib/CRM/tasks/taskTimerPreference';
@@ -23,6 +22,7 @@ import { useMobile } from '@/hooks/useMobile';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import TaskAssigneeAvatars, { Assignee } from '@/components/crm/TaskAssigneeAvatars';
 import TaskDueField from '@/components/crm/tasks/TaskDueField';
+import TaskAttachmentDropzone from '@/components/crm/tasks/TaskAttachmentDropzone';
 import { taskDueIso, taskDueLabel, taskDueParts } from '@/lib/CRM/tasks/taskDue';
 
 /** Miniatura wybranego załącznika (zdjęcie) albo ikona pliku — jak w formularzu „Zadania firmowe”. */
@@ -727,11 +727,6 @@ export default function PrivateTasksBoardTab({
     )]);
   };
 
-  const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    addAttachmentFiles(Array.from(e.target.files || []));
-    e.target.value = '';
-  };
-
   /** Wklejenie obrazu (np. zrzutu ekranu) w formularzu dodaje go do załączników; zwykły tekst wkleja się jak dotąd. */
   const handleAttachmentPaste = (e: React.ClipboardEvent) => {
     if (saving) return;
@@ -1180,11 +1175,7 @@ export default function PrivateTasksBoardTab({
 
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/80">Załączniki</label>
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20">
-                  <input type="file" multiple onChange={handleAttachmentSelect} className="sr-only" disabled={saving} />
-                  <Paperclip className="h-4 w-4" /> Dodaj pliki
-                </label>
-                <p className="mt-2 text-xs text-[#e5e4e2]/60">Zdjęcia, PDF-y, dokumenty i inne pliki. Możesz wybrać kilka naraz albo wkleić zrzut ekranu (Ctrl+V / ⌘V).</p>
+                <TaskAttachmentDropzone disabled={saving} onFiles={addAttachmentFiles} />
                 <div className="mt-3 space-y-2">
                   {attachmentFiles.map((file, index) => (
                     <div key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-3 rounded-lg bg-[#e5e4e2]/5 p-2">

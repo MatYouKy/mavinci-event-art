@@ -1,7 +1,8 @@
 'use client';
 
+import { TrendingDown, TrendingUp } from 'lucide-react';
 import {
-  SOCIAL_CONSENT_LABELS, SOCIAL_CONSENT_SOURCE_LABELS, socialConsentAllows, socialPostStatusLabel,
+  SOCIAL_CONSENT_LABELS, SOCIAL_CONSENT_SOURCE_LABELS, socialChangeLabel, socialConsentAllows, socialPostStatusLabel,
   type SocialConsentStatus, type SocialPostStatus,
 } from '@/lib/social/socialShared';
 import type { SocialConsentState } from './socialApi';
@@ -85,3 +86,14 @@ export function dateTimeLabel(value: string | null | undefined) {
 }
 
 export const errorMessage = (error: unknown, fallback: string) => (error instanceof Error && error.message ? error.message : fallback);
+
+const changeClass = (label: string | null) =>
+  !label || label === '0%' ? 'text-[#e5e4e2]/45' : label.startsWith('−') ? 'text-red-300' : 'text-emerald-300';
+
+/** Zmiana wobec poprzedniego okresu („+12%”, „−5%”, „nowe”) — statystyki social media. */
+export function ChangeBadge({ current, previous }: { current: number | null | undefined; previous: number | null | undefined }) {
+  const label = socialChangeLabel(current, previous);
+  if (!label) return null;
+  const Icon = label.startsWith('−') ? TrendingDown : TrendingUp;
+  return <span className={`inline-flex items-center gap-0.5 text-xs ${changeClass(label)}`} title="Wobec poprzedniego okresu"><Icon className="h-3 w-3" />{label}</span>;
+}

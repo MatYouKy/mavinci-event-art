@@ -5,6 +5,8 @@ import { X, Send, Mail, Loader, Paperclip } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { compareSendingAccounts } from '@/lib/CRM/messages/sendingAccount';
+import { linkDocumentEmailToEvent } from '@/lib/CRM/events/eventCorrespondence';
 import {
   dispatchCrmEmail,
   formatScheduledEmailDate,
@@ -53,6 +55,7 @@ interface EmailAccount {
   from_name?: string | null;
   account_type?: 'personal' | 'shared' | 'system' | null;
   is_default?: boolean | null;
+  employee_id?: string | null;
 }
 
 const formatReminderDate = (value: string) =>
@@ -158,7 +161,7 @@ export default function SendInvoiceEmailModal({
         const [personalResult, assignmentsResult] = await Promise.all([
           supabase
             .from('employee_email_accounts')
-            .select('id,email_address,from_name,account_type,is_default')
+            .select('id,email_address,from_name,account_type,is_default,employee_id')
             .eq('employee_id', currentEmployee.id)
             .eq('is_active', true)
             .or('account_type.is.null,account_type.neq.system'),
@@ -176,7 +179,7 @@ export default function SendInvoiceEmailModal({
         if (assignedIds.length) {
           const result = await supabase
             .from('employee_email_accounts')
-            .select('id,email_address,from_name,account_type,is_default')
+            .select('id,email_address,from_name,account_type,is_default,employee_id')
             .in('id', assignedIds)
             .eq('is_active', true)
             .or('account_type.is.null,account_type.neq.system');
@@ -188,10 +191,8 @@ export default function SendInvoiceEmailModal({
           new Map(
             [...(personalResult.data || []), ...assignedAccounts].map((account) => [account.id, account]),
           ).values(),
-        ).sort((left, right) => {
-          if (Boolean(left.is_default) !== Boolean(right.is_default)) return left.is_default ? -1 : 1;
-          return left.email_address.localeCompare(right.email_address, 'pl');
-        });
+        // Domyślnie własna skrzynka osoby wysyłającej (nie wspólna, np. biuro@).
+        ).sort(compareSendingAccounts(currentEmployee.id));
         if (cancelled) return;
         setEmailAccounts(accounts);
         setFormData((current) => ({
@@ -526,6 +527,8 @@ export default function SendInvoiceEmailModal({
           recipientName: selectedRecipientName || clientName,
         },
       });
+      // Faktura eventu (także monit) — wiadomość trafia do korespondencji eventu.
+      await linkDocumentEmailToEvent(supabase, 'invoice', invoiceId, result);
 
       const scheduledFor = result.scheduled && result.scheduledAt ? result.scheduledAt : null;
       if (isReminder) {

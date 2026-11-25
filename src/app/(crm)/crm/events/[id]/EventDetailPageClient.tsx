@@ -128,6 +128,7 @@ import { useEventWorkspace } from '@/components/crm/events/EventWorkspaceProvide
 import { EVENT_STATUS_BADGE_CLASSES } from '@/components/crm/events/eventStatusPalette';
 import EventEquipmentStatusBadge from '@/components/crm/events/equipment/EventEquipmentStatusBadge';
 import EventSellerCorrespondence from '@/components/seller/EventSellerCorrespondence';
+import EventCorrespondenceTab from '@/components/crm/events/correspondence/EventCorrespondenceTab';
 
 type EventDetailTab = EventTabId;
 
@@ -148,6 +149,7 @@ const EVENT_TAB_ICONS: Record<EventTabId, ComponentType<{ className?: string }>>
   calculations: Calculator,
   contract: ScrollText,
   'seller-arrangements': Icons.MessageSquare,
+  correspondence: Icons.Mail,
   finances: Wallet,
   summary: ClipboardCheck,
   history: History,
@@ -1370,6 +1372,8 @@ export default function EventDetailPageClient({
       {effectiveTab === 'summary' && <EventSettlementTab key={eventId} eventId={eventId} />}
 
       {effectiveTab === 'contract' && <EventPartnerArrangement key={eventId} eventId={eventId} canManage={!!canEventManage} hideSection={signedContractEventId === eventId}><EventContractTab eventId={eventId} canViewAmounts={canViewValues} onSignedDocumentChange={present => setSignedContractEventId(present ? eventId : null)} /></EventPartnerArrangement>}
+
+      {effectiveTab === 'correspondence' && <EventCorrespondenceTab key={eventId} eventId={eventId} />}
 
       {effectiveTab === 'seller-arrangements' && canViewSellerCorrespondence && (
         <EventSellerCorrespondence key={eventId} eventId={eventId} />

@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase/browser';
 import type { SocialLayoutDefinition } from '@/lib/social/socialLayout';
-import type { SocialAccess, SocialAssetSource, SocialAssetStatus, SocialChannel, SocialCommentPlatform, SocialConsentSource, SocialConsentStatus, SocialCrop, SocialCrops, SocialFormat, SocialGraphicStyle, SocialMetricValues, SocialPostAction, SocialPostStatus } from '@/lib/social/socialShared';
+import type { SocialAccess, SocialAssetSource, SocialAssetStatus, SocialBrandInterest, SocialChannel, SocialCommentPlatform, SocialConsentSource, SocialConsentStatus, SocialCrop, SocialCrops, SocialFormat, SocialGraphicStyle, SocialMetricValues, SocialPostAction, SocialPostStatus } from '@/lib/social/socialShared';
 import type { SocialTemplateSettings } from '@/lib/social/socialGraphic';
 
 /*
@@ -82,6 +82,8 @@ export type SocialStats = {
   reports: SocialReportSummary[]; report: SocialReport | null;
   settings: { aiReportsEnabled: boolean; aiReportsConsentAt: string | null };
   canRefresh: boolean; canGenerate: boolean; lastWeekStart: string;
+  /** „Zainteresowanie marką” — `null` przed migracją bazy (sekcja ukryta). */
+  brand?: SocialBrandInterest | null;
 };
 export type SocialComment = {
   id: string; platform: SocialCommentPlatform; authorName: string; isOwn: boolean; message: string; commentedAt: string; likeCount: number;

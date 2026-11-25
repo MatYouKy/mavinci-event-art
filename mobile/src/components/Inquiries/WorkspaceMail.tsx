@@ -12,6 +12,7 @@ import {
   type MailRef, type WorkspaceAttachment, type WorkspaceCorrespondence, type WorkspaceEmailSetup, type WorkspaceMail, type WorkspaceMailHit,
 } from '../../lib/inquiryWorkspace';
 import { navigateToEmailMessage, openInCrmWeb } from '../../navigation/navigationRef';
+import RecipientInput from '../RecipientInput';
 import { Chip, DateTimeField, Label, Segmented, SelectField, Sheet, SmallButton, kit } from './InquiryKit';
 
 /*
@@ -19,6 +20,7 @@ import { Chip, DateTimeField, Label, Segmented, SelectField, Sheet, SmallButton,
  * oraz zakładka „Korespondencja” i okno e-maila na Macu: wiadomości od najstarszej (treść bez stopek i cytatów, „Pokaż całą
  * wiadomość”), dołączanie wiadomości lub całej konwersacji po temacie, wykluczanie i przywracanie; e-mail ze skrzynki firmy
  * z podglądem stopki, „Popraw z AI”, załącznikami (pliki, zdjęcia — do 25 MB) i wysyłką teraz albo o wybranej porze.
+ * Pola adresów podpowiadają kontakty, organizacje i osoby z korespondencji (`RecipientInput`).
  */
 
 type Run = <T>(label: string, action: () => Promise<T>, success?: string) => Promise<T | null>;
@@ -370,13 +372,13 @@ export function EmailSheet({ inquiryId, visible, onClose, onSent }: {
             <SelectField value={accountId} onChange={setAccountId} placeholder="Wybierz skrzynkę" options={setup.accounts.map((account) => ({ id: account.id, label: account.label }))} />
           )}
           <Label>Do</Label>
-          <TextInput value={to} onChangeText={setTo} style={kit.input} placeholder="email@example.com" placeholderTextColor={ink(0.35)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+          <RecipientInput value={to} onChangeText={setTo} style={kit.input} placeholder="Imię, nazwisko, firma albo adres e-mail" placeholderTextColor={ink(0.35)} accessibilityLabel="Do" />
           {copies ? (
             <>
               <Label>DW</Label>
-              <TextInput value={cc} onChangeText={setCc} style={kit.input} placeholder="Opcjonalnie" placeholderTextColor={ink(0.35)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+              <RecipientInput value={cc} onChangeText={setCc} style={kit.input} placeholder="Opcjonalnie" placeholderTextColor={ink(0.35)} accessibilityLabel="DW" />
               <Label>UDW</Label>
-              <TextInput value={bcc} onChangeText={setBcc} style={kit.input} placeholder="Opcjonalnie" placeholderTextColor={ink(0.35)} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
+              <RecipientInput value={bcc} onChangeText={setBcc} style={kit.input} placeholder="Opcjonalnie" placeholderTextColor={ink(0.35)} accessibilityLabel="UDW" />
             </>
           ) : <TouchableOpacity onPress={() => setCopies(true)}><Text style={kit.link}>Dodaj DW / UDW</Text></TouchableOpacity>}
           <Label>Temat</Label>

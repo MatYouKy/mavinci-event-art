@@ -87,6 +87,8 @@ extension EventCardStore {
     @State private var previewLoading = false
     @State private var sending = false
     @State private var problem: String?
+    /// Pole adresu z otwartą listą podpowiedzi (`RecipientField`) — wtedy ↩ i Esc obsługuje lista, nie przyciski okna.
+    @State private var recipientField: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -113,12 +115,12 @@ extension EventCardStore {
                 }
                 .disabled(previewLoading || accountId.isEmpty || setup == nil)
                 Spacer()
-                Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).disabled(sending)
+                Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(recipientField == nil ? .cancelAction : nil).disabled(sending)
                 Button { Task { await send() } } label: {
                     if sending { Text(scheduled ? "Planowanie..." : "Wysyłanie...") }
                     else { Label(scheduled ? "Zaplanuj wysyłkę" : "Wyślij email", systemImage: "paperplane") }
                 }
-                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent).keyboardShortcut(recipientField == nil ? .defaultAction : nil)
                 .disabled(sending || accountId.isEmpty || setup?.pdfReady != true)
             }
             .padding(16).crmBar()
@@ -150,10 +152,10 @@ extension EventCardStore {
                 } else {
                     Picker("Od:", selection: $accountId) { ForEach(setup.accounts) { Text($0.label).tag($0.id) } }
                 }
-                TextField("Do:", text: $to, prompt: Text("email@example.com"))
+                RecipientField("Do:", text: $to, prompt: "email@example.com", field: "to", openField: $recipientField, inForm: true)
                 if !setup.contact.isEmpty { Text("Osoba kontaktowa: \(setup.contact)").font(.caption).foregroundStyle(.secondary) }
-                TextField("DW:", text: $cc, prompt: Text("Opcjonalnie"))
-                TextField("UDW:", text: $bcc, prompt: Text("Opcjonalnie"))
+                RecipientField("DW:", text: $cc, prompt: "Opcjonalnie", field: "cc", openField: $recipientField, inForm: true)
+                RecipientField("UDW:", text: $bcc, prompt: "Opcjonalnie", field: "bcc", openField: $recipientField, inForm: true)
                 TextField("Temat:", text: $subject, prompt: Text("Temat wiadomości"))
             }
             Section("Wiadomość:") {

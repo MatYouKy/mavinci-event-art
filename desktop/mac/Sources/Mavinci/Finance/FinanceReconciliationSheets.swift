@@ -1048,22 +1048,51 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
     let invoice: KsefPreview
     @Environment(\.dismiss) private var dismiss
 
+    /// Forma płatności z XML (kod `FormaPlatnosci` 1–7 albo opis) — jak wizualizacja faktury w CRM.
+    private static let paymentMethods: [String: String] = [
+        "1": "Gotówka", "2": "Karta", "3": "Bon", "4": "Czek", "5": "Kredyt", "6": "Przelew", "7": "Płatność mobilna",
+        "cash": "Gotówka", "card": "Karta", "transfer": "Przelew", "bank_transfer": "Przelew",
+    ]
+    private var paymentMethod: String {
+        guard let raw = invoice.paymentMethod?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return "—" }
+        return Self.paymentMethods[raw.lowercased()] ?? raw
+    }
+    private var paymentStatus: String {
+        guard let raw = invoice.paymentStatus, !raw.isEmpty else { return "—" }
+        return FinInvoiceText.payment(raw) ?? raw
+    }
+    /// Kolumna „Brutto” pozycji — tylko gdy XML podaje wartości brutto pozycji (faktura w cenach netto ich nie ma).
+    private var showsLineGross: Bool { invoice.items.contains { $0.gross != nil } }
+    /// Kwota do przelewu: „Do zapłaty” z XML, a bez niej brutto.
+    private var amountDue: Double? { invoice.toPay ?? invoice.gross }
+
     var body: some View {
         BankSheetFrame("Faktura \(invoice.number ?? "KSeF")", symbol: "doc.richtext",
-                       subtitle: "Wizualizacja faktury z zapisanego XML KSeF. To nie jest oryginalny plik PDF. Podgląd jest tylko do odczytu.") {
+                       subtitle: "Wizualizacja faktury z zapisanego XML KSeF. To nie jest oryginalny plik PDF. Tekst można zaznaczyć, a ikona kopiowania przy wartości zapisuje ją w schowku.") {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(alignment: .top, spacing: 14) {
                         party("Sprzedawca", invoice.seller)
                         party("Nabywca", invoice.buyer)
                     }
-                    Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 4) {
-                        GridRow { label("Numer KSeF"); Text(invoice.ksefNumber ?? "—").textSelection(.enabled) }
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 18, verticalSpacing: 6) {
+                        GridRow { label("Numer faktury"); copyable(invoice.number, copy: invoice.number, name: "Numer faktury") }
+                        GridRow { label("Numer KSeF"); copyable(invoice.ksefNumber, copy: invoice.ksefNumber, name: "Numer KSeF") }
                         GridRow { label("Data wystawienia"); Text(FinFormat.day(invoice.issueDate)) }
                         GridRow { label("Termin płatności"); Text(FinFormat.day(invoice.dueDate)) }
-                        GridRow { label("Sposób płatności"); Text(invoice.paymentMethod ?? "—") }
-                        GridRow { label("Rachunek"); Text(invoice.bankAccount.map { BankFormat.account($0) } ?? "—").textSelection(.enabled) }
-                        GridRow { label("Stan płatności"); Text(invoice.paymentStatus ?? "—") }
+                        GridRow { label("Sposób płatności"); Text(paymentMethod) }
+                        GridRow {
+                            label("Rachunek")
+                            copyable(invoice.bankAccount.map { BankFormat.account($0) }, copy: invoice.bankAccount.map { $0.filter { !$0.isWhitespace } },
+                                     name: "Numer rachunku")
+                        }
+                        GridRow { label("Stan płatności"); Text(paymentStatus) }
+                        if let amountDue {
+                            GridRow {
+                                label(invoice.toPay != nil ? "Do zapłaty" : "Kwota brutto")
+                                copyable(FinFormat.money(amountDue, invoice.currency), copy: BankFormat.plain(amountDue), name: "Kwota do zapłaty")
+                            }
+                        }
                     }
                     .font(.callout)
                     if !invoice.items.isEmpty {
@@ -1074,7 +1103,7 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
                                 Text("Cena netto").frame(width: 100, alignment: .trailing)
                                 Text("VAT").frame(width: 50, alignment: .trailing)
                                 Text("Netto").frame(width: 100, alignment: .trailing)
-                                Text("Brutto").frame(width: 100, alignment: .trailing)
+                                if showsLineGross { Text("Brutto").frame(width: 100, alignment: .trailing) }
                             }
                             .font(.caption).foregroundStyle(.secondary).padding(.vertical, 4)
                             Divider()
@@ -1085,7 +1114,9 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
                                     Text(item.unitPrice.map { FinFormat.money($0, invoice.currency) } ?? "—").frame(width: 100, alignment: .trailing)
                                     Text(item.vatRate.map { $0.hasSuffix("%") || Double($0) == nil ? $0 : "\($0)%" } ?? "—").frame(width: 50, alignment: .trailing)
                                     Text(item.net.map { FinFormat.money($0, invoice.currency) } ?? "—").frame(width: 100, alignment: .trailing)
-                                    Text(item.gross.map { FinFormat.money($0, invoice.currency) } ?? "—").frame(width: 100, alignment: .trailing)
+                                    if showsLineGross {
+                                        Text(item.gross.map { FinFormat.money($0, invoice.currency) } ?? "—").frame(width: 100, alignment: .trailing)
+                                    }
                                 }
                                 .font(.callout).monospacedDigit().padding(.vertical, 4)
                                 Divider()
@@ -1101,6 +1132,8 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
                     }
                 }
                 .padding(18)
+                // Każdy tekst podglądu da się zaznaczyć i skopiować (⌘C).
+                .textSelection(.enabled)
             }
         } footer: {
             Spacer()
@@ -1111,11 +1144,27 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
 
     private func label(_ text: String) -> some View { Text(text).foregroundStyle(.secondary) }
 
+    /// Wartość z ikoną „Kopiuj” (kopiowana wartość może różnić się od pokazanej — np. rachunek bez spacji, kwota bez waluty).
+    private func copyable(_ shown: String?, copy: String?, name: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(shown?.isEmpty == false ? shown ?? "—" : "—").fixedSize(horizontal: false, vertical: true)
+            if let copy, !copy.isEmpty { CopyValueButton(label: name, value: copy) }
+        }
+    }
+
     private func party(_ title: String, _ party: KsefPreview.Party) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(party.name ?? "—").font(.callout.weight(.semibold)).textSelection(.enabled)
-            if let nip = party.nip { Text("NIP \(nip)").font(.caption).textSelection(.enabled) }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(party.name ?? "—").font(.callout.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                if let name = party.name, !name.isEmpty { CopyValueButton(label: "\(title) — nazwa", value: name) }
+            }
+            if let nip = party.nip, !nip.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("NIP \(nip)").font(.caption)
+                    CopyValueButton(label: "\(title) — NIP", value: nip.filter { !$0.isWhitespace && $0 != "-" })
+                }
+            }
             if let address = party.address { Text(address).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
         }
         .padding(10)

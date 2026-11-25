@@ -1,7 +1,7 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
 import {
-  applyOfferPriceList, deleteOffer, deleteOfferPdf, linkOfferLocation, offerDetail, offerEnglish, offerPdf, offersAccess, offersState,
-  previewOfferPriceList, setOfferStatus,
+  applyOfferPriceList, decideOfferApproval, deleteOffer, deleteOfferPdf, linkOfferLocation, offerDetail, offerEnglish, offerPdf, offersAccess,
+  offersState, previewOfferPriceList, requestOfferApproval, setOfferStatus,
 } from '@/lib/native/offers';
 import {
   deleteOfferItem,
@@ -94,7 +94,9 @@ export const maxDuration = 300;
  * templateBackgroundDelete | templateFieldsSave | templateTableSave. Konfigurator produktów modułowych — scena, LED
  * (`src/lib/native/modularConfigurator.ts`): POST op=modular (konfiguracja po zmianach z widokiem dla Maca). Cennik sezonowy
  * (`src/lib/native/offers.ts`, `seasonPrices.ts`): POST op=priceListPreview {id, priceListId?} (różnice cen, nic nie zmienia) |
- * priceListApply {id, priceListId} (zmiana cen pozycji według cennika; oferta pamięta cennik).
+ * priceListApply {id, priceListId} (zmiana cen pozycji według cennika; oferta pamięta cennik). Akceptacja rabatu ponad limit
+ * (strona oferty → `approval`, `src/lib/CRM/Offers/offerApproval.ts`): POST op=approvalRequest {id, note} („Wyślij do akceptacji”) |
+ * approvalDecide {id, approve, note} („Zaakceptuj” / „Odrzuć” — powód wymagany); odpowiedź — odświeżona oferta.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -167,6 +169,8 @@ export async function POST(request: Request) {
       case 'assumptionsAI': return nativeJson(await draftOfferAssumptions(ctx, body));
       case 'discountSave': return nativeJson(await saveOfferDiscount(ctx, body));
       case 'discountDisplaySave': return nativeJson(await saveOfferDiscountDisplay(ctx, body));
+      case 'approvalRequest': return nativeJson(await requestOfferApproval(ctx, body));
+      case 'approvalDecide': return nativeJson(await decideOfferApproval(ctx, body));
       case 'itemsReorder': return nativeJson(await reorderOfferItems(ctx, body));
       case 'itemPresentation': return nativeJson(await updateOfferItemPresentation(ctx, body));
       case 'itemDelete': return nativeJson(await deleteOfferItem(ctx, body));

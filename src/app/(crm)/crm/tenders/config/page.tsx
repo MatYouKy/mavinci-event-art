@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase/browser';
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent } from 'react';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase/browser';
 import {
   Save,
   Plus,
@@ -17,209 +17,231 @@ import {
   X,
   ArrowLeft,
   RefreshCw,
+  Lock,
 } from 'lucide-react';
+import {
+  TENDER_FILTER_LIST_FIELDS,
+  addTenderFilterValues,
+  tenderFilterChanged,
+  tenderFilterInput,
+  validateTenderFilterInput,
+  type TenderConfigState,
+  type TenderFilterConfig,
+  type TenderFilterListField,
+} from '@/lib/tenders/tenderFilterConfig';
 
-type ListField = 'positive_keywords' | 'negative_keywords' | 'cpv_codes' | 'locations';
+/*
+ * Konfiguracja filtrów przetargów — to samo API co Mac (`TenderFilterConfigView`) i telefon (`TenderFilterConfigSheet`):
+ * `/bridge/native/v1/tenders` (token sesji, `x-mavinci-client: web`, RLS `tender_filter_config`). Zmiany zapisuje
+ * administrator; pozostali pracownicy z dostępem do przetargów widzą konfigurację do odczytu. Listy: Enter, przycisk „+”
+ * albo wklejenie kilku pozycji naraz (nowe linie, przecinki, średniki, kropki) — powtórzenia są pomijane.
+ */
 
-interface FilterConfig {
-  id: string;
-  name: string;
-  positive_keywords: string[];
-  negative_keywords: string[];
-  cpv_codes: string[];
-  locations: string[];
-  sources: string[];
-  min_relevance_score: number;
-  notification_score_threshold: number;
-  max_days_to_deadline: number;
-  is_active: boolean;
+const ENDPOINT = '/bridge/native/v1/tenders';
+
+type ConfigReply = TenderConfigState & { selectedId?: string | null; message?: string | null };
+type RecalculationReply = { checked: number; updated: number; message: string };
+
+async function requestHeaders(json: boolean): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error('Sesja wygasła. Zaloguj się ponownie.');
+  return { Authorization: `Bearer ${token}`, 'x-mavinci-client': 'web', ...(json ? { 'Content-Type': 'application/json' } : {}) };
 }
 
+async function parse<T>(response: Response): Promise<T> {
+  const body = (await response.json().catch(() => null)) as (T & { error?: string }) | null;
+  if (!response.ok || !body) throw new Error(body?.error || `Operacja nie powiodła się (HTTP ${response.status}).`);
+  return body;
+}
+
+const fetchState = async () =>
+  parse<ConfigReply>(await fetch(`${ENDPOINT}?op=config`, { headers: await requestHeaders(false), cache: 'no-store' }));
+
+const post = async <T,>(op: string, body: Record<string, unknown> = {}) =>
+  parse<T>(await fetch(ENDPOINT, { method: 'POST', headers: await requestHeaders(true), body: JSON.stringify({ ...body, op }) }));
+
+const LIST_STYLE: Record<TenderFilterListField, { icon: typeof Tag; iconClass: string; chip: string; button: string }> = {
+  positive_keywords: {
+    icon: Tag,
+    iconClass: 'text-green-400',
+    chip: 'border-green-500/20 bg-green-500/10 text-green-400',
+    button: 'bg-green-500/20 text-green-400 hover:bg-green-500/30',
+  },
+  negative_keywords: {
+    icon: Tag,
+    iconClass: 'text-red-400',
+    chip: 'border-red-500/20 bg-red-500/10 text-red-400',
+    button: 'bg-red-500/20 text-red-400 hover:bg-red-500/30',
+  },
+  cpv_codes: {
+    icon: Tag,
+    iconClass: 'text-[#d3bb73]',
+    chip: 'border-[#d3bb73]/20 bg-[#d3bb73]/10 text-[#d3bb73]',
+    button: 'bg-[#d3bb73]/20 text-[#d3bb73] hover:bg-[#d3bb73]/30',
+  },
+  locations: {
+    icon: MapPin,
+    iconClass: 'text-blue-400',
+    chip: 'border-blue-500/20 bg-blue-500/10 text-blue-400',
+    button: 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30',
+  },
+};
+
+const EMPTY_INPUTS: Record<TenderFilterListField, string> = { positive_keywords: '', negative_keywords: '', cpv_codes: '', locations: '' };
+const numberValue = (value: number) => (Number.isFinite(value) ? value : '');
+const numberInput = (value: string) => (value.trim() === '' ? NaN : Number(value));
+
 export default function FilterConfigPage() {
-  const [configs, setConfigs] = useState<FilterConfig[]>([]);
-  const [selected, setSelected] = useState<FilterConfig | null>(null);
+  const [state, setState] = useState<TenderConfigState | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<TenderFilterConfig | null>(null);
+  const [inputs, setInputs] = useState<Record<TenderFilterListField, string>>(EMPTY_INPUTS);
+  const [duplicates, setDuplicates] = useState<Partial<Record<TenderFilterListField, boolean>>>({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const duplicateTimers = useRef<Partial<Record<TenderFilterListField, number>>>({});
 
-  const [newKeyword, setNewKeyword] = useState('');
-  const [newNegKeyword, setNewNegKeyword] = useState('');
-  const [newCpv, setNewCpv] = useState('');
-  const [newLocation, setNewLocation] = useState('');
-  const [isCounting, setIsCounting] = useState(false);
+  const saved = state?.configs.find((config) => config.id === selectedId) ?? null;
+  const canEdit = state?.canEdit === true;
+  const dirty = !!saved && !!draft && draft.id === saved.id && tenderFilterChanged(saved, draft);
 
-  const [duplicateFields, setDuplicateFields] = useState<
-    Partial<Record<'positive_keywords' | 'negative_keywords' | 'cpv_codes' | 'locations', boolean>>
-  >({});
-
-  useEffect(() => {
-    fetchConfigs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  /** Nowy stan z serwera: zostaje wybrana konfiguracja (albo wskazana w odpowiedzi), formularz — jej zapisana wersja. */
+  const apply = useCallback((reply: ConfigReply, prefer: string | null) => {
+    const next: TenderConfigState = { configs: reply.configs, canEdit: reply.canEdit, canRecalculate: reply.canRecalculate };
+    const chosen = next.configs.find((config) => config.id === (reply.selectedId ?? prefer)) ?? next.configs[0] ?? null;
+    setState(next);
+    setSelectedId(chosen?.id ?? null);
+    setDraft(chosen ? { ...chosen } : null);
+    setInputs(EMPTY_INPUTS);
   }, []);
 
-  const fetchConfigs = async () => {
-    setLoading(true);
-    const { data } = await supabase
-      .from('tender_filter_config')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (data) {
-      setConfigs(data);
-      if (data.length > 0 && !selected) setSelected(data[0]);
-    }
-    setLoading(false);
-  };
-
-  const handleSave = async () => {
-    if (!selected) return;
-    setSaving(true);
-    setMessage(null);
-
-    const { error } = await supabase
-      .from('tender_filter_config')
-      .update({
-        name: selected.name,
-        positive_keywords: selected.positive_keywords,
-        negative_keywords: selected.negative_keywords,
-        cpv_codes: selected.cpv_codes,
-        locations: selected.locations,
-        sources: selected.sources,
-        min_relevance_score: selected.min_relevance_score,
-        notification_score_threshold: selected.notification_score_threshold,
-        max_days_to_deadline: selected.max_days_to_deadline,
-        is_active: selected.is_active,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', selected.id);
-
-    if (error) {
-      setMessage({ type: 'error', text: error.message });
-    } else {
-      setMessage({ type: 'success', text: 'Konfiguracja zapisana' });
-      fetchConfigs();
-    }
-    setSaving(false);
-  };
-
-  const handleCreate = async () => {
-    const { data } = await supabase
-      .from('tender_filter_config')
-      .insert({ name: 'Nowa konfiguracja', is_active: false })
-      .select()
-      .single();
-
-    if (data) {
-      setConfigs((prev) => [data, ...prev]);
-      setSelected(data);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!selected || !confirm('Czy na pewno usunąć tę konfigurację?')) return;
-    await supabase.from('tender_filter_config').delete().eq('id', selected.id);
-    setSelected(null);
-    fetchConfigs();
-  };
-
-  const splitBulkValues = (value: string) => {
-    return value
-      .split(/[\n,;.]+/g)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  };
-
-  const normalizeValue = (value: string) => {
-    return value.trim().toLowerCase();
-  };
-
-  const addItems = (field: ListField, value: string) => {
-    if (!selected || !value.trim()) return;
-
-    const values = splitBulkValues(value);
-    const existingNormalized = new Set(selected[field].map(normalizeValue));
-
-    const uniqueToAdd: string[] = [];
-    let hasDuplicates = false;
-
-    for (const item of values) {
-      const normalized = normalizeValue(item);
-
-      if (existingNormalized.has(normalized)) {
-        hasDuplicates = true;
-        continue;
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const reply = await fetchState();
+        if (!cancelled) { apply(reply, null); setLoadError(null); }
+      } catch (error) {
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : 'Nie udało się wczytać konfiguracji filtrów.');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
+    })();
+    return () => { cancelled = true; };
+  }, [apply]);
 
-      if (uniqueToAdd.some((v) => normalizeValue(v) === normalized)) {
-        hasDuplicates = true;
-        continue;
-      }
+  useEffect(() => {
+    const timers = duplicateTimers.current;
+    return () => { Object.values(timers).forEach((timer) => window.clearTimeout(timer)); };
+  }, []);
 
-      uniqueToAdd.push(item);
-    }
+  // Niezapisane zmiany: przeglądarka pyta przed zamknięciem karty lub odświeżeniem strony.
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
 
-    setDuplicateFields((prev) => ({
-      ...prev,
-      [field]: hasDuplicates,
-    }));
+  const discardAllowed = () => !dirty || window.confirm('Masz niezapisane zmiany w konfiguracji. Odrzucić je?');
 
-    if (hasDuplicates) {
-      window.setTimeout(() => {
-        setDuplicateFields((prev) => ({
-          ...prev,
-          [field]: false,
-        }));
-      }, 1800);
-    }
-
-    if (uniqueToAdd.length === 0) return;
-
-    setSelected({
-      ...selected,
-      [field]: [...selected[field], ...uniqueToAdd],
-    });
-  };
-
-  const removeItem = (
-    field: 'positive_keywords' | 'negative_keywords' | 'cpv_codes' | 'locations',
-    index: number,
-  ) => {
-    if (!selected) return;
-    setSelected({
-      ...selected,
-      [field]: selected[field].filter((_, i) => i !== index),
-    });
-  };
-
-  const handleRecalculateTenders = async () => {
-    setIsCounting(true);
-    setSaving(true);
+  const run = async (label: string, action: () => Promise<void>) => {
+    setBusy(label);
     setMessage(null);
-
     try {
-      const response = await fetch('/bridge/tenders/recalculate', {
-        method: 'POST',
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Nie udało się przeliczyć przetargów');
-      }
-
-      setMessage({
-        type: 'success',
-        text: `Przeliczono ${data.updated ?? 0} przetargów`,
-      });
-    } catch (err) {
-      setMessage({
-        type: 'error',
-        text: err instanceof Error ? err.message : 'Nieznany błąd',
-      });
+      await action();
+    } catch (error) {
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Operacja nie powiodła się.' });
     } finally {
-      setSaving(false);
-      setIsCounting(false);
+      setBusy(null);
     }
+  };
+
+  const selectConfig = (config: TenderFilterConfig) => {
+    if (config.id === selectedId || !discardAllowed()) return;
+    setSelectedId(config.id);
+    setDraft({ ...config });
+    setInputs(EMPTY_INPUTS);
+    setMessage(null);
+  };
+
+  const handleSave = () => {
+    if (!draft || !saved || !canEdit) return;
+    const input = tenderFilterInput(draft as unknown as Record<string, unknown>);
+    const problem = validateTenderFilterInput(input);
+    if (problem) { setMessage({ type: 'error', text: problem }); return; }
+    void run('Zapisywanie konfiguracji…', async () => {
+      const reply = await post<ConfigReply>('configSave', { id: draft.id, config: input, updatedAt: saved.updated_at });
+      apply(reply, draft.id);
+      setMessage({ type: 'success', text: reply.message || 'Konfiguracja zapisana.' });
+    });
+  };
+
+  const handleCreate = () => {
+    if (!canEdit || !discardAllowed()) return;
+    void run('Dodawanie konfiguracji…', async () => {
+      const reply = await post<ConfigReply>('configCreate');
+      apply(reply, null);
+      setMessage({ type: 'success', text: reply.message || 'Dodano konfigurację.' });
+    });
+  };
+
+  const handleDelete = () => {
+    if (!saved || !canEdit || saved.is_active) return;
+    if (!window.confirm(`Usunąć konfigurację „${saved.name}”? Tej operacji nie można cofnąć.`)) return;
+    void run('Usuwanie konfiguracji…', async () => {
+      const reply = await post<ConfigReply>('configDelete', { id: saved.id });
+      apply(reply, null);
+      setMessage({ type: 'success', text: reply.message || 'Konfiguracja usunięta.' });
+    });
+  };
+
+  const handleRecalculate = () => {
+    if (!state?.canRecalculate) return;
+    if (dirty) {
+      setMessage({ type: 'error', text: 'Najpierw zapisz zmiany — przeliczenie używa zapisanej aktywnej konfiguracji.' });
+      return;
+    }
+    void run('Przeliczanie przetargów', async () => {
+      const reply = await post<RecalculationReply>('recalculate');
+      setMessage({ type: 'success', text: reply.message });
+    });
+  };
+
+  const flashDuplicates = (field: TenderFilterListField) => {
+    setDuplicates((current) => ({ ...current, [field]: true }));
+    window.clearTimeout(duplicateTimers.current[field]);
+    duplicateTimers.current[field] = window.setTimeout(() => {
+      setDuplicates((current) => ({ ...current, [field]: false }));
+    }, 1800);
+  };
+
+  const addValues = (field: TenderFilterListField, value: string) => {
+    if (!draft || !canEdit || !value.trim()) return;
+    const result = addTenderFilterValues(draft[field], value);
+    if (result.duplicates) flashDuplicates(field);
+    if (result.added) setDraft({ ...draft, [field]: result.list });
+  };
+
+  const submitInput = (field: TenderFilterListField) => {
+    addValues(field, inputs[field]);
+    setInputs((current) => ({ ...current, [field]: '' }));
+  };
+
+  // Wklejona lista (z separatorami) trafia od razu do tej samej listy; tekst wpisany w polu zostaje.
+  const pasteValues = (field: TenderFilterListField) => (event: ClipboardEvent<HTMLInputElement>) => {
+    const pasted = event.clipboardData.getData('text');
+    if (!/[\r\n,;.]/.test(pasted)) return;
+    event.preventDefault();
+    addValues(field, pasted);
+  };
+
+  const removeValue = (field: TenderFilterListField, index: number) => {
+    if (!draft || !canEdit) return;
+    setDraft({ ...draft, [field]: draft[field].filter((_, i) => i !== index) });
   };
 
   if (loading) {
@@ -230,20 +252,22 @@ export default function FilterConfigPage() {
     );
   }
 
+  const inputClass =
+    'w-full rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none disabled:opacity-60';
+
   return (
     <div className="p-6 lg:p-8">
-      {isCounting && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      {busy && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm" role="alertdialog" aria-live="polite" aria-label={busy}>
           <div className="w-full max-w-sm rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 text-center shadow-2xl">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10">
               <RefreshCw className="h-7 w-7 animate-spin text-[#d3bb73]" />
             </div>
-
-            <h2 className="text-lg font-medium text-[#e5e4e2]">Przeliczanie przetargów</h2>
-
+            <h2 className="text-lg font-medium text-[#e5e4e2]">{busy}</h2>
             <p className="mt-2 text-sm leading-relaxed text-[#e5e4e2]/50">
-              Aktualizuję ocenę trafności na podstawie aktywnej konfiguracji. Proszę nie zamykać
-              okna.
+              {busy === 'Przeliczanie przetargów'
+                ? 'Aktualizuję ocenę trafności na podstawie aktywnej konfiguracji. Proszę nie zamykać okna.'
+                : 'Czekamy na potwierdzenie serwera.'}
             </p>
           </div>
         </div>
@@ -261,56 +285,79 @@ export default function FilterConfigPage() {
             Definiuj kryteria dopasowania przetargów do profilu firmy
           </p>
         </div>
-        <button
-          onClick={handleCreate}
-          className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-        >
-          <Plus className="h-4 w-4" /> Nowa konfiguracja
-        </button>
+        {canEdit && (
+          <button
+            onClick={handleCreate}
+            disabled={!!busy}
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" /> Nowa konfiguracja
+          </button>
+        )}
       </div>
+
+      {loadError && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <FileX className="h-4 w-4" /> {loadError}
+        </div>
+      )}
+
+      {state && !canEdit && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 px-4 py-3 text-sm text-[#e5e4e2]/70">
+          <Lock className="h-4 w-4 text-[#d3bb73]" /> Podgląd konfiguracji — zmiany zapisuje administrator CRM.
+        </div>
+      )}
 
       {message && (
         <div
+          role="status"
           className={`mb-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm ${
             message.type === 'success'
               ? 'border-green-500/30 bg-green-500/10 text-green-400'
               : 'border-red-500/30 bg-red-500/10 text-red-400'
           }`}
         >
-          {message.type === 'success' ? (
-            <FileCheck className="h-4 w-4" />
-          ) : (
-            <FileX className="h-4 w-4" />
-          )}
+          {message.type === 'success' ? <FileCheck className="h-4 w-4" /> : <FileX className="h-4 w-4" />}
           {message.text}
         </div>
       )}
 
-      <div className="flex gap-6">
-        <div className="w-64 flex-shrink-0 space-y-2">
-          {configs.map((cfg) => (
-            <button
-              key={cfg.id}
-              onClick={() => setSelected(cfg)}
-              className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                selected?.id === cfg.id
-                  ? 'border-[#d3bb73]/40 bg-[#d3bb73]/10'
-                  : 'border-[#d3bb73]/10 bg-[#1c1f33] hover:border-[#d3bb73]/20'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-[#e5e4e2]">{cfg.name}</span>
-                {cfg.is_active && (
-                  <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] text-green-400">
-                    Aktywna
-                  </span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
+      {state && state.configs.length === 0 && (
+        <p className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 text-sm text-[#e5e4e2]/60">
+          Brak konfiguracji filtrów.{canEdit ? ' Dodaj pierwszą przyciskiem „Nowa konfiguracja”.' : ''}
+        </p>
+      )}
 
-        {selected && (
+      <div className="flex gap-6">
+        {state && state.configs.length > 0 && (
+          <div className="w-64 flex-shrink-0 space-y-2">
+            {state.configs.map((cfg) => (
+              <button
+                key={cfg.id}
+                onClick={() => selectConfig(cfg)}
+                className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                  selectedId === cfg.id
+                    ? 'border-[#d3bb73]/40 bg-[#d3bb73]/10'
+                    : 'border-[#d3bb73]/10 bg-[#1c1f33] hover:border-[#d3bb73]/20'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-[#e5e4e2]">
+                    {cfg.name}
+                    {selectedId === cfg.id && dirty && <span className="ml-1 text-[#d3bb73]" title="Niezapisane zmiany">•</span>}
+                  </span>
+                  {cfg.is_active && (
+                    <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] text-green-400">
+                      Aktywna
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {draft && (
           <div className="flex-1 space-y-5">
             <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
               <div className="mb-4 flex items-center gap-3">
@@ -323,9 +370,11 @@ export default function FilterConfigPage() {
                   <label className="mb-1 block text-xs text-[#e5e4e2]/50">Nazwa konfiguracji</label>
                   <input
                     type="text"
-                    value={selected.name}
-                    onChange={(e) => setSelected({ ...selected, name: e.target.value })}
-                    className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
+                    value={draft.name}
+                    disabled={!canEdit}
+                    maxLength={120}
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                    className={inputClass}
                   />
                 </div>
                 <div>
@@ -336,11 +385,10 @@ export default function FilterConfigPage() {
                     type="number"
                     min={0}
                     max={100}
-                    value={selected.min_relevance_score}
-                    onChange={(e) =>
-                      setSelected({ ...selected, min_relevance_score: Number(e.target.value) })
-                    }
-                    className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
+                    value={numberValue(draft.min_relevance_score)}
+                    disabled={!canEdit}
+                    onChange={(e) => setDraft({ ...draft, min_relevance_score: numberInput(e.target.value) })}
+                    className={inputClass}
                   />
                 </div>
                 <div>
@@ -351,11 +399,10 @@ export default function FilterConfigPage() {
                     type="number"
                     min={1}
                     max={365}
-                    value={selected.max_days_to_deadline}
-                    onChange={(e) =>
-                      setSelected({ ...selected, max_days_to_deadline: Number(e.target.value) })
-                    }
-                    className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
+                    value={numberValue(draft.max_days_to_deadline)}
+                    disabled={!canEdit}
+                    onChange={(e) => setDraft({ ...draft, max_days_to_deadline: numberInput(e.target.value) })}
+                    className={inputClass}
                   />
                 </div>
                 <div>
@@ -366,14 +413,10 @@ export default function FilterConfigPage() {
                     type="number"
                     min={0}
                     max={100}
-                    value={selected.notification_score_threshold ?? 70}
-                    onChange={(e) =>
-                      setSelected({
-                        ...selected,
-                        notification_score_threshold: Number(e.target.value),
-                      })
-                    }
-                    className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
+                    value={numberValue(draft.notification_score_threshold)}
+                    disabled={!canEdit}
+                    onChange={(e) => setDraft({ ...draft, notification_score_threshold: numberInput(e.target.value) })}
+                    className={inputClass}
                   />
                   <p className="mt-1 text-[11px] text-[#e5e4e2]/35">
                     Dla nowych przetargów z taką oceną CRM utworzy powiadomienie i banner push.
@@ -383,282 +426,114 @@ export default function FilterConfigPage() {
                   <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
                     <input
                       type="checkbox"
-                      checked={selected.is_active}
-                      onChange={(e) => setSelected({ ...selected, is_active: e.target.checked })}
+                      checked={draft.is_active}
+                      disabled={!canEdit}
+                      onChange={(e) => setDraft({ ...draft, is_active: e.target.checked })}
                       className="rounded border-[#d3bb73]/30 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]/30"
                     />
                     Konfiguracja aktywna
                   </label>
+                  <p className="mt-1 text-[11px] text-[#e5e4e2]/35">
+                    Pobieranie przetargów i przeliczenie ocen używają jednej konfiguracji — zapis aktywnej wyłącza pozostałe.
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
-              <div className="mb-4 flex items-center gap-3">
-                <Tag className="h-5 w-5 text-green-400" />
-                <h2 className="text-base font-medium text-[#e5e4e2]">Słowa kluczowe (pozytywne)</h2>
-              </div>
-              <div className="mb-3 flex gap-2">
-                <input
-                  type="text"
-                  value={newKeyword}
-                  onChange={(e) => setNewKeyword(e.target.value)}
-                  onPaste={(e) => {
-                    const pasted = e.clipboardData.getData('text');
-                  
-                    if (/[\n,;.]/.test(pasted)) {
-                      e.preventDefault();
-                      addItems('positive_keywords', pasted);
-                      setNewKeyword('');
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      addItems('positive_keywords', newKeyword);
-                      setNewKeyword('');
-                    }
-                  }}
-                  placeholder="Dodaj słowo kluczowe..."
-                  className={`flex-1 rounded-lg border bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:outline-none ${
-                    duplicateFields.positive_keywords
-                      ? 'border-red-500/80 focus:border-red-500'
-                      : 'border-[#d3bb73]/15 focus:border-[#d3bb73]/40'
-                  }`}
-                />
-                <button
-                  onClick={() => {
-                    addItems('positive_keywords', newKeyword);
-                    setNewKeyword('');
-                  }}
-                  className="rounded-lg bg-green-500/20 px-3 py-2 text-sm text-green-400 hover:bg-green-500/30"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {selected.positive_keywords.map((kw, i) => (
-                  <span
-                    key={i}
-                    className="flex items-center gap-1 rounded-lg border border-green-500/20 bg-green-500/10 px-2 py-1 text-xs text-green-400"
-                  >
-                    {kw}
-                    <button
-                      onClick={() => removeItem('positive_keywords', i)}
-                      className="ml-1 hover:text-white"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </div>
+            {TENDER_FILTER_LIST_FIELDS.map((field) => {
+              const style = LIST_STYLE[field.key];
+              const Icon = style.icon;
+              return (
+                <div key={field.key} className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+                  <div className="mb-4 flex items-center gap-3">
+                    <Icon className={`h-5 w-5 ${style.iconClass}`} />
+                    <h2 className="text-base font-medium text-[#e5e4e2]">{field.label}</h2>
+                    <span className="text-xs text-[#e5e4e2]/40">{draft[field.key].length}</span>
+                  </div>
+                  {canEdit && (
+                    <div className="mb-3 flex gap-2">
+                      <input
+                        type="text"
+                        value={inputs[field.key]}
+                        onChange={(e) => setInputs((current) => ({ ...current, [field.key]: e.target.value }))}
+                        onPaste={pasteValues(field.key)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            submitInput(field.key);
+                          }
+                        }}
+                        placeholder={field.placeholder}
+                        aria-label={field.label}
+                        className={`flex-1 rounded-lg border bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:outline-none ${
+                          duplicates[field.key]
+                            ? 'border-red-500/80 focus:border-red-500'
+                            : 'border-[#d3bb73]/15 focus:border-[#d3bb73]/40'
+                        }`}
+                      />
+                      <button
+                        onClick={() => submitInput(field.key)}
+                        aria-label={`Dodaj: ${field.label}`}
+                        className={`rounded-lg px-3 py-2 text-sm ${style.button}`}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  {duplicates[field.key] && <p className="mb-2 text-xs text-red-400">Pominięto pozycje, które już są na liście.</p>}
+                  <div className="flex flex-wrap gap-1.5">
+                    {draft[field.key].map((value, i) => (
+                      <span key={`${value}-${i}`} className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-xs ${style.chip}`}>
+                        {value}
+                        {canEdit && (
+                          <button onClick={() => removeValue(field.key, i)} className="ml-1 hover:text-white" aria-label={`Usuń „${value}”`}>
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                    {draft[field.key].length === 0 && <span className="text-xs text-[#e5e4e2]/35">Brak pozycji.</span>}
+                  </div>
+                </div>
+              );
+            })}
 
-            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
-              <div className="mb-4 flex items-center gap-3">
-                <Tag className="h-5 w-5 text-red-400" />
-                <h2 className="text-base font-medium text-[#e5e4e2]">Słowa wykluczające</h2>
-              </div>
-              <div className="mb-3 flex gap-2">
-                <input
-                  type="text"
-                  value={newNegKeyword}
-                  onChange={(e) => setNewNegKeyword(e.target.value)}
-                  onPaste={(e) => {
-                    const pasted = e.clipboardData.getData('text');
-                  
-                    if (/[\n,;.]/.test(pasted)) {
-                      e.preventDefault();
-                      addItems('positive_keywords', pasted);
-                      setNewKeyword('');
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      addItems('negative_keywords', newNegKeyword);
-                      setNewNegKeyword('');
-                    }
-                  }}
-                  placeholder="Dodaj frazę wykluczającą..."
-                  className={`flex-1 rounded-lg border bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:outline-none ${
-                    duplicateFields.negative_keywords
-                      ? 'border-red-500/80 focus:border-red-500'
-                      : 'border-[#d3bb73]/15 focus:border-[#d3bb73]/40'
-                  }`}
-                />
-                <button
-                  onClick={() => {
-                    addItems('negative_keywords', newNegKeyword);
-                    setNewNegKeyword('');
-                  }}
-                  className="rounded-lg bg-red-500/20 px-3 py-2 text-sm text-red-400 hover:bg-red-500/30"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {selected.negative_keywords.map((kw, i) => (
-                  <span
-                    key={i}
-                    className="flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs text-red-400"
+            {(canEdit || state?.canRecalculate) && (
+              <div className="flex items-center justify-between">
+                {canEdit ? (
+                  <button
+                    onClick={handleDelete}
+                    disabled={!!busy || !saved || saved.is_active}
+                    title={saved?.is_active ? 'Aktywnej konfiguracji nie można usunąć — najpierw zapisz inną jako aktywną.' : undefined}
+                    className="flex items-center gap-2 rounded-lg border border-red-500/20 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 disabled:opacity-40"
                   >
-                    {kw}
-                    <button
-                      onClick={() => removeItem('negative_keywords', i)}
-                      className="ml-1 hover:text-white"
+                    <Trash2 className="h-4 w-4" /> Usuń konfigurację
+                  </button>
+                ) : <span />}
+                <div className="flex gap-2">
+                  {state?.canRecalculate && (
+                    <button data-crm-action="secondary"
+                      onClick={handleRecalculate}
+                      disabled={!!busy}
+                      className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
                     >
-                      <X className="h-3 w-3" />
+                      <RefreshCw className={`h-4 w-4 ${busy === 'Przeliczanie przetargów' ? 'animate-spin' : ''}`} />
+                      Przelicz przetargi
                     </button>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
-              <div className="mb-4 flex items-center gap-3">
-                <Tag className="h-5 w-5 text-[#d3bb73]" />
-                <h2 className="text-base font-medium text-[#e5e4e2]">Kody CPV</h2>
-              </div>
-              <div className="mb-3 flex gap-2">
-                <input
-                  type="text"
-                  value={newCpv}
-                  onChange={(e) => setNewCpv(e.target.value)}
-                  onPaste={(e) => {
-                    const pasted = e.clipboardData.getData('text');
-                  
-                    if (/[\n,;.]/.test(pasted)) {
-                      e.preventDefault();
-                      addItems('positive_keywords', pasted);
-                      setNewKeyword('');
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      addItems('cpv_codes', newCpv);
-                      setNewCpv('');
-                    }
-                  }}
-                  placeholder="np. 79952000-2"
-                  className={`flex-1 rounded-lg border bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:outline-none ${
-                    duplicateFields.cpv_codes
-                      ? 'border-red-500/80 focus:border-red-500'
-                      : 'border-[#d3bb73]/15 focus:border-[#d3bb73]/40'
-                  }`}
-                />
-                <button
-                  onClick={() => {
-                    addItems('cpv_codes', newCpv);
-                    setNewCpv('');
-                  }}
-                  className="rounded-lg bg-[#d3bb73]/20 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/30"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {selected.cpv_codes.map((cpv, i) => (
-                  <span
-                    key={i}
-                    className="flex items-center gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]"
-                  >
-                    {cpv}
+                  )}
+                  {canEdit && (
                     <button
-                      onClick={() => removeItem('cpv_codes', i)}
-                      className="ml-1 hover:text-white"
+                      onClick={handleSave}
+                      disabled={!!busy || !dirty}
+                      className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
                     >
-                      <X className="h-3 w-3" />
+                      <Save className="h-4 w-4" />
+                      {busy === 'Zapisywanie konfiguracji…' ? 'Zapisywanie...' : 'Zapisz konfigurację'}
                     </button>
-                  </span>
-                ))}
+                  )}
+                </div>
               </div>
-            </div>
-
-            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
-              <div className="mb-4 flex items-center gap-3">
-                <MapPin className="h-5 w-5 text-blue-400" />
-                <h2 className="text-base font-medium text-[#e5e4e2]">Lokalizacje</h2>
-              </div>
-              <div className="mb-3 flex gap-2">
-                <input
-                  type="text"
-                  value={newLocation}
-                  onChange={(e) => setNewLocation(e.target.value)}
-                  onPaste={(e) => {
-                    const pasted = e.clipboardData.getData('text');
-                  
-                    if (/[\n,;.]/.test(pasted)) {
-                      e.preventDefault();
-                      addItems('positive_keywords', pasted);
-                      setNewKeyword('');
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      addItems('locations', newLocation);
-                      setNewLocation('');
-                    }
-                  }}
-                  placeholder="np. Warszawa, małopolskie..."
-                  className={`flex-1 rounded-lg border bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:outline-none ${
-                    duplicateFields.locations
-                      ? 'border-red-500/80 focus:border-red-500'
-                      : 'border-[#d3bb73]/15 focus:border-[#d3bb73]/40'
-                  }`}
-                />
-                <button
-                  onClick={() => {
-                    addItems('locations', newLocation);
-                    setNewLocation('');
-                  }}
-                  className="rounded-lg bg-blue-500/20 px-3 py-2 text-sm text-blue-400 hover:bg-blue-500/30"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {selected.locations.map((loc, i) => (
-                  <span
-                    key={i}
-                    className="flex items-center gap-1 rounded-lg border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-xs text-blue-400"
-                  >
-                    {loc}
-                    <button
-                      onClick={() => removeItem('locations', i)}
-                      className="ml-1 hover:text-white"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <button
-                onClick={handleDelete}
-                className="flex items-center gap-2 rounded-lg border border-red-500/20 px-4 py-2 text-sm text-red-400 hover:bg-red-500/10"
-              >
-                <Trash2 className="h-4 w-4" /> Usuń konfigurację
-              </button>
-              <div className="flex gap-2">
-                <button data-crm-action="secondary"
-                  onClick={handleRecalculateTenders}
-                  disabled={saving || isCounting}
-                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isCounting ? 'animate-spin' : ''}`} />
-                  Przelicz przetargi
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
-                >
-                  <Save className="h-4 w-4" />
-                  {saving ? 'Zapisywanie...' : 'Zapisz konfigurację'}
-                </button>
-              </div>
-            </div>
+            )}
           </div>
         )}
       </div>

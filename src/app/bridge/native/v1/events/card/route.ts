@@ -11,6 +11,8 @@ import { applyTravelTimes, eventMutate, eventTabAction, eventTabQuery, eventTabW
 import { equipmentCatalogEntries, uploadReturnPhoto } from '@/lib/native/eventEquipment';
 import { sendCalculationEmail } from '@/lib/native/eventCalculations';
 import { sendContractEmail } from '@/lib/native/eventContractEmail';
+import { sendEventDocumentEmail } from '@/lib/native/eventDocumentEmail';
+import { sendCorrespondenceEmail } from '@/lib/native/eventCorrespondence';
 import { collectionItems, collectionState, invalidateNativeSyncPrefix } from '@/lib/native/sync';
 import '@/lib/native/eventLogistics';
 import '@/lib/native/eventAgenda';
@@ -258,6 +260,24 @@ export async function POST(request: Request) {
         return nativeJson(result);
       } catch (error) {
         return nativeJson({ error: (error as Error).message || 'Błąd podczas wysyłania email' }, 400);
+      }
+    }
+    // Agenda / Karta Weselna e-mailem (`SendEventDocumentEmailModal`) — funkcja poczty tokenem pracownika, jak w przeglądarce.
+    if (body.op === 'documentEmail') {
+      const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';
+      try {
+        return nativeJson(await sendEventDocumentEmail(ctx, token, id, body));
+      } catch (error) {
+        return nativeJson({ error: (error as Error).message || 'Błąd podczas wysyłania email' }, 400);
+      }
+    }
+    // Zakładka „Korespondencja”: nowa wiadomość do klienta albo odpowiedź — funkcja poczty tokenem pracownika.
+    if (body.op === 'correspondenceEmail') {
+      const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';
+      try {
+        return nativeJson(await sendCorrespondenceEmail(ctx, token, id, body));
+      } catch (error) {
+        return nativeJson({ error: (error as Error).message || 'Nie udało się wysłać wiadomości' }, 400);
       }
     }
     if (body.op === 'duplicate') {

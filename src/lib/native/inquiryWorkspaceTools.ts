@@ -144,7 +144,8 @@ export async function inquiryEmailSetup(ctx: NativeContext, rawId: unknown) {
       id: account.id,
       label: `${account.from_name ? `${account.from_name} — ` : ''}${account.email_address}${account.account_type === 'shared' ? ' (wspólna)' : ''}`,
     })),
-    accountId: (accounts.find((account) => account.is_default) || accounts[0])?.id || '',
+    // Pierwsza skrzynka z `sendingAccounts` — własna skrzynka osoby wysyłającej (nie wspólna ani systemowa).
+    accountId: accounts[0]?.id || '',
     to: client.email,
     subject: `Zapytanie: ${inquiryTitleLabel(inquiry.title)}`,
     text: `Dzień dobry${contactName ? ` ${contactName}` : ''},\n\nDziękuję za przesłane zapytanie.\n\n`,

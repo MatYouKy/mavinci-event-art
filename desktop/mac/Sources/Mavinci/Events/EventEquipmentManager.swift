@@ -299,6 +299,9 @@ struct EquipmentReservations: Decodable {
     @State private var search = ""
     @State private var scope: String? = "all"
     @AppStorage("equipmentManager.onlyAvailable") private var onlyAvailable = false
+    /// Szerokość paska kategorii (przeciąganie uchwytu, dwuklik — domyślna) i rozwinięte kategorie główne — zapamiętywane.
+    @AppStorage("equipmentManager.sidebarWidth") private var sidebarWidth = EquipmentManagerSheet.defaultSidebarWidth
+    @AppStorage("equipmentManager.expandedCategories") private var expandedRaw = ""
     @State private var selection: String?
     @State private var preview: String?
     @State private var noteFor: EquipmentEditor.Target?
@@ -366,10 +369,11 @@ struct EquipmentReservations: Decodable {
         let matching = all.filter { line in
             if current == "event" && value(line) == 0 && line.current == 0 { return false }
             if current == "kits" && !line.isKit { return false }
-            if current.hasPrefix("cat:") && (line.isKit || (line.entry.category ?? "") != String(current.dropFirst(4))) { return false }
+            if !EquipmentCategoryScope.matches(current, line.entry) { return false }
             if onlyAvailable && line.maxAdd <= 0 && line.current == 0 { return false }
             if terms.isEmpty { return true }
-            let parts: [String] = [line.entry.name, line.entry.brand ?? "", line.entry.model ?? "", line.entry.category ?? ""] + (line.entry.contents ?? []).map(\.name)
+            let parts: [String] = [line.entry.name, line.entry.brand ?? "", line.entry.model ?? "", line.entry.category ?? "", line.entry.mainCategory ?? ""]
+                + (line.entry.contents ?? []).map(\.name)
             let text = EquipmentSearch.normalize(parts.joined(separator: " "))
             return terms.allSatisfy { text.contains($0) }
         }
@@ -383,12 +387,17 @@ struct EquipmentReservations: Decodable {
         return CGSize(width: max(1000, frame.width - 40), height: max(620, frame.height - 70))
     }
 
-    private func categories(_ all: [Line]) -> [(name: String, count: Int)] {
-        var counts: [String: Int] = [:]
-        for line in all where !line.isKit {
-            if let name = line.entry.category?.trimmingCharacters(in: .whitespaces), !name.isEmpty { counts[name, default: 0] += 1 }
-        }
-        return counts.map { (name: $0.key, count: $0.value) }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    static let defaultSidebarWidth = 260.0
+    static let sidebarRange = 180.0...520.0
+
+    private var expanded: Set<String> { Set(expandedRaw.split(separator: "|").map(String.init)) }
+    private func setExpanded(_ keys: Set<String>) { expandedRaw = keys.sorted().joined(separator: "|") }
+    private func expandedBinding(_ key: String) -> Binding<Bool> {
+        Binding(get: { expanded.contains(key) }, set: { open in
+            var keys = expanded
+            if open { keys.insert(key) } else { keys.remove(key) }
+            setExpanded(keys)
+        })
     }
 
     var body: some View {
@@ -398,8 +407,9 @@ struct EquipmentReservations: Decodable {
         let pieces = inEvent.reduce(0) { $0 + $1.current }
         HStack(spacing: 0) {
             sidebar(all, inEvent: inEvent.count)
-                .frame(width: 220)
+                .frame(width: CGFloat(min(Self.sidebarRange.upperBound, max(Self.sidebarRange.lowerBound, sidebarWidth))))
                 .background(Color.primary.opacity(0.03))
+            SidebarResizeHandle(width: $sidebarWidth, range: Self.sidebarRange, standard: Self.defaultSidebarWidth)
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -469,6 +479,12 @@ struct EquipmentReservations: Decodable {
             addedAtOpen = editor.added
             if let focus { selection = focus }
         }
+        // Wybrana kategoria główna rozwija się (widać jej podkategorie).
+        .onChange(of: scope) { _, next in
+            guard let next, next.hasPrefix(EquipmentCategoryScope.mainPrefix) else { return }
+            let key = String(next.dropFirst(EquipmentCategoryScope.mainPrefix.count))
+            if !expanded.contains(key) { setExpanded(expanded.union([key])) }
+        }
         .task { await store.syncEquipmentCatalog(eventID) }
         .task(id: selection) { await loadReservations() }
         .task(id: pendingReview?.review.id) {
@@ -493,20 +509,48 @@ struct EquipmentReservations: Decodable {
     }
 
     private func sidebar(_ all: [Line], inEvent: Int) -> some View {
-        List(selection: $scope) {
+        let tree = EquipmentCategoryNode.tree(all.map(\.entry))
+        let allOpen = !tree.isEmpty && tree.filter { !$0.children.isEmpty }.allSatisfy { expanded.contains($0.key) }
+        return List(selection: $scope) {
             Section {
                 Label("Cały katalog", systemImage: "square.grid.2x2").badge(all.count).tag("all")
                 Label("W evencie", systemImage: "checklist").badge(inEvent).tag("event")
                 Label("Zestawy", systemImage: "shippingbox.fill").badge(all.filter(\.isKit).count).tag("kits")
             }
-            Section("Kategorie") {
-                ForEach(categories(all), id: \.name) { category in
-                    Label(category.name, systemImage: "folder").lineLimit(1).badge(category.count).tag("cat:" + category.name)
+            Section {
+                ForEach(tree) { node in
+                    if node.children.isEmpty {
+                        categoryRow(node.name, symbol: "folder", count: node.count, tag: EquipmentCategoryScope.mainPrefix + node.key)
+                    } else {
+                        DisclosureGroup(isExpanded: expandedBinding(node.key)) {
+                            ForEach(node.children) { child in
+                                categoryRow(child.name, symbol: child.direct ? "tray" : "folder", count: child.count, tag: child.tag)
+                            }
+                        } label: {
+                            categoryRow(node.name, symbol: "folder.fill", count: node.count, tag: EquipmentCategoryScope.mainPrefix + node.key)
+                        }
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("Kategorie")
+                    Spacer()
+                    if tree.contains(where: { !$0.children.isEmpty }) {
+                        Button(allOpen ? "Zwiń" : "Rozwiń") {
+                            setExpanded(allOpen ? [] : Set(tree.filter { !$0.children.isEmpty }.map(\.key)))
+                        }
+                        .buttonStyle(.borderless).font(.caption)
+                        .help(allOpen ? "Zwiń wszystkie kategorie" : "Rozwiń wszystkie kategorie")
+                    }
                 }
             }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
+    }
+
+    private func categoryRow(_ name: String, symbol: String, count: Int, tag: String) -> some View {
+        Label(name, systemImage: symbol).lineLimit(1).truncationMode(.middle).badge(count).help(name).tag(tag)
     }
 
     private func table(_ lines: [Line]) -> some View {
@@ -528,8 +572,9 @@ struct EquipmentReservations: Decodable {
                 .help(line.entry.name)
             }.width(min: 200, ideal: 340)
             TableColumn("Kategoria") { (line: Line) in
-                Text(line.isKit ? "Zestaw" : (line.entry.category?.nonEmpty ?? "—")).foregroundStyle(.secondary).lineLimit(1)
-            }.width(min: 90, ideal: 160)
+                let path = line.entry.categoryPath ?? "—"
+                Text(line.isKit ? "Zestaw · \(path)" : path).foregroundStyle(.secondary).lineLimit(1).help(path)
+            }.width(min: 90, ideal: 200)
             TableColumn("Magazyn") { (line: Line) in
                 Text("\(Int(line.entry.total))").monospacedDigit().foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .trailing)
             }.width(min: 56, ideal: 70)
@@ -693,7 +738,7 @@ struct EquipmentReservations: Decodable {
 
     @ViewBuilder private func detail(_ all: [Line]) -> some View {
         if let line = all.first(where: { $0.id == selection }) {
-            let meta = [line.entry.brand ?? "", line.entry.model ?? "", line.isKit ? "Zestaw" : (line.entry.category ?? "")].filter { !$0.isEmpty }.joined(separator: " • ")
+            let meta = [line.entry.brand ?? "", line.entry.model ?? "", line.isKit ? "Zestaw" : (line.entry.categoryPath ?? "")].filter { !$0.isEmpty }.joined(separator: " • ")
             ScrollView {
                 HStack(alignment: .top, spacing: 22) {
                     HStack(alignment: .top, spacing: 12) {
@@ -855,5 +900,117 @@ struct EquipmentCatalogPreview: View {
         }
         .padding(14)
         .frame(width: 300)
+    }
+}
+
+// MARK: Drzewo kategorii okna „Zarządzaj sprzętem” i uchwyt szerokości paska
+
+/// Zakres listy z paska kategorii: `main:<klucz>` — kategoria główna z podkategoriami (całe „Oświetlenie”),
+/// `sub:<id>` — podkategoria, `direct:<klucz>` — pozycje leżące bezpośrednio w kategorii głównej (bez podkategorii).
+enum EquipmentCategoryScope {
+    static let mainPrefix = "main:"
+    static let subPrefix = "sub:"
+    static let directPrefix = "direct:"
+
+    static func matches(_ scope: String, _ entry: EquipmentCatalogEntry) -> Bool {
+        if scope.hasPrefix(mainPrefix) { return entry.mainCategoryKey == String(scope.dropFirst(mainPrefix.count)) }
+        if scope.hasPrefix(subPrefix) { return entry.subCategoryId == String(scope.dropFirst(subPrefix.count)) }
+        if scope.hasPrefix(directPrefix) {
+            return entry.mainCategoryKey == String(scope.dropFirst(directPrefix.count)) && entry.subCategoryId == nil
+        }
+        return true
+    }
+}
+
+/// Kategoria główna z podkategoriami — z pozycji katalogu (tylko kategorie, w których jest sprzęt lub zestaw), w kolejności
+/// z Magazynu (`order_index`, potem nazwa).
+struct EquipmentCategoryNode: Identifiable {
+    struct Child: Identifiable {
+        let id: String
+        let name: String
+        let order: Double
+        var count: Int
+        /// „Bez podkategorii” — pozycje bezpośrednio w kategorii głównej, która ma też podkategorie.
+        let direct: Bool
+        let tag: String
+    }
+    let key: String
+    let name: String
+    let order: Double
+    var count: Int
+    var children: [Child]
+    var id: String { key }
+
+    static func tree(_ entries: [EquipmentCatalogEntry]) -> [EquipmentCategoryNode] {
+        var mains: [String: EquipmentCategoryNode] = [:]
+        var subs: [String: [String: Child]] = [:]
+        var direct: [String: Int] = [:]
+        for entry in entries {
+            guard let key = entry.mainCategoryKey, let name = entry.mainCategoryName else { continue }
+            mains[key, default: EquipmentCategoryNode(key: key, name: name, order: entry.mainCategoryOrder ?? 0, count: 0, children: [])].count += 1
+            if let sub = entry.subCategoryId {
+                let child = subs[key]?[sub] ?? Child(id: sub, name: entry.category?.nonEmpty ?? "Bez nazwy", order: entry.categoryOrder ?? 0, count: 0,
+                                                     direct: false, tag: EquipmentCategoryScope.subPrefix + sub)
+                subs[key, default: [:]][sub] = Child(id: child.id, name: child.name, order: child.order, count: child.count + 1, direct: false, tag: child.tag)
+            } else {
+                direct[key, default: 0] += 1
+            }
+        }
+        let ordered: (Double, String, Double, String) -> Bool = { leftOrder, leftName, rightOrder, rightName in
+            leftOrder != rightOrder ? leftOrder < rightOrder : leftName.localizedStandardCompare(rightName) == .orderedAscending
+        }
+        return mains.values.map { node in
+            var node = node
+            var children = (subs[node.key] ?? [:]).values.sorted { ordered($0.order, $0.name, $1.order, $1.name) }
+            if !children.isEmpty, let count = direct[node.key], count > 0 {
+                children.append(Child(id: "direct-" + node.key, name: "Bez podkategorii", order: .greatestFiniteMagnitude, count: count, direct: true,
+                                      tag: EquipmentCategoryScope.directPrefix + node.key))
+            }
+            node.children = children
+            return node
+        }
+        .sorted { ordered($0.order, $0.name, $1.order, $1.name) }
+    }
+}
+
+/// Pionowy uchwyt między paskiem a treścią: przeciągnięcie zmienia szerokość paska (zakres `range`, wartość zapamiętywana
+/// przez wywołującego), dwuklik przywraca domyślną. VoiceOver: zwiększ / zmniejsz o 20 pt.
+struct SidebarResizeHandle: View {
+    @Binding var width: Double
+    let range: ClosedRange<Double>
+    let standard: Double
+    @State private var start: Double?
+    @State private var hovering = false
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(hovering || start != nil ? 0.3 : 0.1))
+            .frame(width: hovering || start != nil ? 2 : 1)
+            .frame(width: 8)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                hovering = inside
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { value in
+                    let origin = start ?? width
+                    if start == nil { start = width }
+                    width = min(range.upperBound, max(range.lowerBound, origin + value.translation.width))
+                }
+                .onEnded { _ in start = nil })
+            .onTapGesture(count: 2) { width = standard }
+            .help("Przeciągnij, aby zmienić szerokość listy kategorii · dwuklik — szerokość domyślna")
+            .accessibilityElement()
+            .accessibilityLabel("Szerokość listy kategorii")
+            .accessibilityValue("\(Int(width)) punktów")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: width = min(range.upperBound, width + 20)
+                case .decrement: width = max(range.lowerBound, width - 20)
+                @unknown default: break
+                }
+            }
     }
 }

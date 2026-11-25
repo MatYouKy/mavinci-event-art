@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { decodeTextEntities } from '@/lib/textEncoding';
 import { getPaymentAwareInvoiceFooterNote } from '@/lib/invoices/paymentAwareFooterNote';
 import Image from 'next/image';
+import CopyValueButton from '@/components/crm/CopyValueButton';
 
 interface InvoiceDetailsModalProps {
   invoice: any;
@@ -727,16 +728,18 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
                     <h1 className="text-2xl font-bold text-gray-900">
                       FAKTURA {invoiceType.toUpperCase()}
                     </h1>
-                    <div className="mt-1 text-base font-semibold text-gray-800">
+                    <div className="mt-1 flex items-center gap-1 text-base font-semibold text-gray-800">
                       Nr: {inv.invoice_number || xmlData.invoice_number || 'Brak numeru'}
+                      <CopyValueButton label="Numer faktury" value={inv.invoice_number || xmlData.invoice_number} />
                     </div>
                   </div>
                 </div>
                 {inv.ksef_reference_number && (
                   <div className="text-right">
                     <div className="text-xs font-medium uppercase text-gray-500">Numer KSeF</div>
-                    <div className="mt-0.5 font-mono text-xs text-gray-700">
+                    <div className="mt-0.5 flex items-center justify-end gap-1 font-mono text-xs text-gray-700">
                       {inv.ksef_reference_number}
+                      <CopyValueButton label="Numer KSeF" value={inv.ksef_reference_number} />
                     </div>
                   </div>
                 )}
@@ -751,9 +754,15 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
                   <span className="text-sm font-bold uppercase tracking-wide text-gray-700">Sprzedawca</span>
                 </div>
                 <div className="space-y-1 text-sm">
-                  <div className="font-semibold text-gray-900">{sellerName}</div>
+                  <div className="flex items-center gap-1 font-semibold text-gray-900">
+                    {sellerName}
+                    <CopyValueButton label="Sprzedawca — nazwa" value={sellerName === 'Brak danych sprzedawcy' ? null : sellerName} />
+                  </div>
                   {sellerNip && (
-                    <div className="text-gray-700"><span className="text-gray-500">NIP:</span> {sellerNip}</div>
+                    <div className="flex items-center gap-1 text-gray-700">
+                      <span><span className="text-gray-500">NIP:</span> {sellerNip}</span>
+                      <CopyValueButton label="Sprzedawca — NIP" value={String(sellerNip).replace(/[\s-]+/g, '')} />
+                    </div>
                   )}
                   {sellerAddress && (
                     <div className="text-gray-700"><span className="text-gray-500">Adres:</span> {sellerAddress}</div>
@@ -773,9 +782,15 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
                   <span className="text-sm font-bold uppercase tracking-wide text-gray-700">Nabywca</span>
                 </div>
                 <div className="space-y-1 text-sm">
-                  <div className="font-semibold text-gray-900">{buyerName}</div>
+                  <div className="flex items-center gap-1 font-semibold text-gray-900">
+                    {buyerName}
+                    <CopyValueButton label="Nabywca — nazwa" value={buyerName === 'Brak danych nabywcy' ? null : buyerName} />
+                  </div>
                   {buyerNip && (
-                    <div className="text-gray-700"><span className="text-gray-500">NIP:</span> {buyerNip}</div>
+                    <div className="flex items-center gap-1 text-gray-700">
+                      <span><span className="text-gray-500">NIP:</span> {buyerNip}</span>
+                      <CopyValueButton label="Nabywca — NIP" value={String(buyerNip).replace(/[\s-]+/g, '')} />
+                    </div>
                   )}
                   {buyerAddress && (
                     <div className="text-gray-700"><span className="text-gray-500">Adres:</span> {buyerAddress}</div>
@@ -960,7 +975,10 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
                         {vatAmount != null ? Number(vatAmount).toFixed(2) : '—'}
                       </td>
                       <td className="px-3 py-2 text-right text-gray-900">
-                        {grossAmount != null ? Number(grossAmount).toFixed(2) : '—'}
+                        <span className="inline-flex items-center justify-end gap-1">
+                          {grossAmount != null && <CopyValueButton label="Kwota brutto" value={Number(grossAmount).toFixed(2).replace('.', ',')} />}
+                          {grossAmount != null ? Number(grossAmount).toFixed(2) : '—'}
+                        </span>
                       </td>
                     </tr>
                   </tbody>
@@ -1017,7 +1035,9 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
                         <>
                           <tr className="border-b border-gray-200">
                             <td className="px-3 py-2 font-medium text-gray-700 w-48">Pełny numer rachunku</td>
-                            <td className="px-3 py-2 font-mono text-gray-900">{formatBankAccount(bankAccount)}</td>
+                            <td className="px-3 py-2 font-mono text-gray-900">
+                              <span className="inline-flex items-center gap-1">{formatBankAccount(bankAccount)}<CopyValueButton label="Numer rachunku" value={String(bankAccount).replace(/\s+/g, '')} /></span>
+                            </td>
                           </tr>
                           {bankSwift && (
                             <tr className="border-b border-gray-200">
@@ -1037,7 +1057,9 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
                         <>
                           <tr className="border-b border-gray-200 border-t-2 border-t-gray-300">
                             <td className="px-3 py-2 font-medium text-gray-700">Rachunek VAT</td>
-                            <td className="px-3 py-2 font-mono text-gray-900">{formatBankAccount(vatBankAccount)}</td>
+                            <td className="px-3 py-2 font-mono text-gray-900">
+                              <span className="inline-flex items-center gap-1">{formatBankAccount(vatBankAccount)}<CopyValueButton label="Rachunek VAT" value={String(vatBankAccount).replace(/\s+/g, '')} /></span>
+                            </td>
                           </tr>
                           {vatBankName && (
                             <tr className="border-b border-gray-200">

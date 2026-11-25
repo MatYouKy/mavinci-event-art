@@ -13,7 +13,6 @@ import {
   GripVertical,
   Play,
   Clock,
-  Paperclip,
   FileText,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -25,6 +24,7 @@ import { useMobile } from '@/hooks/useMobile';
 import TaskCard from '@/components/crm/TaskCard';
 import TaskSearchInput, { useTaskSearch } from '@/components/crm/TaskSearchInput';
 import TaskDueField from '@/components/crm/tasks/TaskDueField';
+import TaskAttachmentDropzone from '@/components/crm/tasks/TaskAttachmentDropzone';
 import { taskDueIso, taskDueParts } from '@/lib/CRM/tasks/taskDue';
 import {
   useGetTasksListQuery,
@@ -441,12 +441,11 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openCreateModal, canCreateTasks]);
 
-  const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files || []);
+  /** Pliki z „Dodaj pliki” i przeciągnięte na strefę załączników — bez powtórzeń. */
+  const addAttachmentFiles = (selected: File[]) => {
     setAttachmentFiles((previous) => [...previous, ...selected.filter((file) =>
       !previous.some((existing) => existing.name === file.name && existing.size === file.size && existing.lastModified === file.lastModified),
     )]);
-    e.target.value = '';
   };
 
   /** Wklejenie obrazu (np. zrzutu ekranu) w formularzu dodaje go do załączników; zwykły tekst wkleja się jak dotąd. */
@@ -942,11 +941,7 @@ export function TasksPageClient({ initialTasks, inquiryId, employeeId, canManage
 
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Załączniki</label>
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20">
-                  <input type="file" multiple onChange={handleAttachmentSelect} className="sr-only" disabled={saving || Boolean(savedTaskId)} />
-                  <Paperclip className="h-4 w-4" /> Dodaj pliki
-                </label>
-                <p className="mt-2 text-xs text-[#e5e4e2]/60">Zdjęcia, PDF-y, dokumenty i inne pliki. Możesz wybrać kilka naraz albo wkleić zrzut ekranu (Ctrl+V / ⌘V).</p>
+                <TaskAttachmentDropzone disabled={saving || Boolean(savedTaskId)} onFiles={addAttachmentFiles} />
                 <div className="mt-3 space-y-2">
                   {attachmentFiles.map((file, index) => (
                     <div key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-3 rounded-lg bg-[#e5e4e2]/5 p-2">

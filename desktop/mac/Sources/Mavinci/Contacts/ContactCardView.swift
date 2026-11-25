@@ -7,7 +7,8 @@ import AppKit
 // segmentacja i komunikacja, domeny organizacji, duplikaty i scalanie, zapytania, broszury). Edycja i dodawanie — arkusze
 // `OrganizationEditorSheet` / `PersonEditorSheet`; zapisy przez `/bridge/native/v1/contacts` (RLS i wyzwalacze jak w CRM).
 // „Klient 360°”, „Zapytania”, „Oferty”, „Sprzedaż sprzedawcy” — `ContactCustomer360View.swift`; „Usługi” podwykonawcy —
-// `SubcontractorServicesPanel`; „Dodaj zapytanie” — `NewInquirySheet` z danymi klienta. „Branding ofert” (`CrmOfferBrandingPanel`)
+// `SubcontractorServicesPanel`; „Szybkie akcje” (`ContactQuickActionsMenu`: zapytanie — `NewInquirySheet` z danymi klienta,
+// broszura, oferta, event, broszury klienta, historia wysyłek). „Branding ofert” (`CrmOfferBrandingPanel`)
 // — `OfferBrandingPanel`; „Sale i przestrzenie” hotelu (`OrganizationHotelSpaces`) — lokalizacja i `LocationSpacesPanel` (z „Tłem ofert”).
 
 enum ContactCardTab: String, Identifiable {
@@ -273,10 +274,12 @@ enum ContactCardConfirm: Identifiable {
                     .disabled(entry?.email.isEmpty ?? true)
                 Button { if let entry { actions.meeting(entry) } } label: { Label("Spotkanie", systemImage: "calendar.badge.plus") }
                     .disabled(entry == nil)
-                if canCreateInquiry {
-                    Button { Task { await startInquiry() } } label: { Label("Dodaj zapytanie", systemImage: "plus") }
-                        .help("Utwórz zapytanie w lejku sprzedażowym z danymi klienta.").disabled(preparingInquiry)
-                }
+                // „Szybkie akcje” jak w CRM: zapytanie, broszura, oferta, event, broszury klienta i historia wysyłek.
+                ContactQuickActionsMenu(context: BrochureRecipientContext(type: isOrganization ? "organization" : "contact", id: ref.id, name: title),
+                                        organizations: isOrganization ? [] : (card?.organizations ?? []),
+                                        addInquiry: inquiryAction,
+                                        preparingInquiry: preparingInquiry)
+                    .id(ref.id)
                 // Osoba (kontakt lub osoba prywatna): mianowanie sprzedawcą albo karta istniejącego sprzedawcy.
                 if !isOrganization && canManageSalespeople {
                     if entry?.seller == true {
@@ -305,6 +308,12 @@ enum ContactCardConfirm: Identifiable {
     private func openSellerChat() {
         state.showSellerChat(SellerChatRequest(sellerID: nil, contactID: ref.id, name: title, conversationID: nil),
                              href: "/crm/contacts/\(ref.id)?tab=seller&section=chat")
+    }
+
+    /// „Dodaj zapytanie” w „Szybkich akcjach” — tylko z uprawnieniem do zapytań.
+    private var inquiryAction: (() -> Void)? {
+        guard canCreateInquiry else { return nil }
+        return { Task { await startInquiry() } }
     }
 
     /// Jak `canCreateInquiry` w `ContactQuickActions`.

@@ -3,6 +3,7 @@ import { can, type NativeContext } from './auth';
 import { CardFailure } from './contactCard';
 import { formatSystemSubject, inquiryTitleLabel, systemLabel, systemTone } from '@/lib/ui/systemLabels';
 import { STAGES } from '@/lib/CRM/inquiries/pipeline';
+import { venueOutdatedOffers } from '@/lib/CRM/Offers/offerVenueBackground';
 
 /*
  * Zakładki karty kontaktu dla Maca, dotąd tylko w CRM (`/crm/contacts/[id]`):
@@ -11,7 +12,7 @@ import { STAGES } from '@/lib/CRM/inquiries/pipeline';
  *   połączenia, zapytania, oferty, wydarzenia, faktury, korespondencja z dociąganiem starszej; wskaźniki, kontakty,
  *   sprzedawcy organizacji — `OrganizationSellersPanel`);
  * - „Zapytania” (`CustomerInquiryHistory`) i „Oferty” (`CustomerOffersPanel`) — po 25, z dociąganiem starszych;
- * - dane klienta do „Dodaj zapytanie” (`ContactQuickActions`).
+ * - dane klienta do „Dodaj zapytanie” i oferty do „Wyślij ofertę” (`ContactQuickActions` — „Szybkie akcje”).
  * Te same zapytania co w przeglądarce, tokenem pracownika (RLS decyduje, co widać).
  */
 
@@ -350,4 +351,35 @@ export async function inquiryClient(ctx: NativeContext, kind: string, idParam: u
   const ids = [...new Set(rows(links.data).map((link) => str(link.organization_id)).filter(Boolean))];
   const row = contact.data as Row;
   return { contactId: id, organizationId: ids.length === 1 ? ids[0] : null, name: str(row.full_name), email: str(row.email), phone: str(row.phone) };
+}
+
+/**
+ * „Szybkie akcje” → „Wyślij ofertę” (`ContactQuickActions.loadOffers`): do 100 najnowszych ofert odbiorcy — organizacja: jej
+ * oferty; osoba: jej oferty i oferty eventów, w których jest osobą kontaktową. PDF bez zmian po wygenerowaniu i bez zmiany
+ * „Tła ofert” miejsca — gotowa do wysyłki.
+ */
+export async function offersToSend(ctx: NativeContext, kind: string, idParam: unknown) {
+  const id = idOf(idParam);
+  let query = ctx.supabase.from('offers').select('id,offer_number,event_id,generated_pdf_url,modified_after_generation')
+    .order('created_at', { ascending: false }).limit(100);
+  if (kind === 'organization') {
+    query = query.eq('organization_id', id);
+  } else {
+    const events = await ctx.supabase.from('events').select('id').eq('contact_person_id', id).limit(500);
+    if (events.error) fail('Nie udało się pobrać ofert powiązanych z tym odbiorcą.', 500);
+    const ids = rows(events.data).map((row) => str(row.id)).filter((value) => UUID.test(value));
+    query = ids.length ? query.or(`contact_id.eq.${id},event_id.in.(${ids.join(',')})`) : query.eq('contact_id', id);
+  }
+  const { data, error } = await query;
+  if (error) fail('Nie udało się pobrać ofert powiązanych z tym odbiorcą.', 500);
+  const list = rows(data);
+  const outdated = await venueOutdatedOffers(ctx.supabase, list.map((offer) => str(offer.id)));
+  return {
+    items: list.map((offer) => ({
+      id: str(offer.id),
+      number: str(offer.offer_number) || 'Oferta',
+      eventId: str(offer.event_id) || null,
+      ready: Boolean(offer.generated_pdf_url) && offer.modified_after_generation !== true && !outdated.has(str(offer.id).toLowerCase()),
+    })),
+  };
 }

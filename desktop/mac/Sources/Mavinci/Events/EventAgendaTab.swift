@@ -107,6 +107,8 @@ private struct AgendaTimeField: View {
     @State private var saveError: String?
     @State private var generating = false
     @State private var preview: NativePreview?
+    /// „Wyślij e-mailem”: zapisany PDF agendy do klienta (`EventDocumentEmailSheet`).
+    @State private var emailing = false
 
     private var data: AgendaTabData? { store.tab(eventID, "agenda", as: AgendaTabData.self) }
     private var dirty: Bool { rows != loadedRows || notes != loadedNotes }
@@ -131,6 +133,9 @@ private struct AgendaTimeField: View {
         .onChange(of: rows) { _, _ in changed() }
         .onChange(of: notes) { _, _ in changed() }
         .sheet(item: $preview) { NativeDocumentPreview(preview: $0) }
+        .sheet(isPresented: $emailing) {
+            EventDocumentEmailSheet(store: store, eventID: eventID, kind: .agenda) { await store.loadTab(eventID, "agenda") }
+        }
     }
 
     // MARK: Wczytanie i zapis
@@ -280,6 +285,11 @@ private struct AgendaTimeField: View {
                     Button("Drukuj", systemImage: "printer") { Task { await printPdf(agenda) } }
                 } label: { Label(generating ? "Generowanie…" : "PDF", systemImage: "doc.richtext") }
                 .fixedSize()
+                if data.canManage && agenda.generatedPdfPath != nil && agenda.pdfExists && !agenda.modified {
+                    Button { emailing = true } label: { Label("Wyślij e-mailem", systemImage: "envelope") }
+                        .disabled(dirty || generating)
+                        .help(dirty ? "Zapisz zmiany i wygeneruj PDF przed wysyłką" : "Wyślij zapisany PDF agendy do klienta")
+                }
             }
         }
     }
