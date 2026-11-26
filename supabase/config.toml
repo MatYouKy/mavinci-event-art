@@ -16,6 +16,10 @@ verify_jwt = true
 [functions.assist-inquiry]
 verify_jwt = true
 
+# Mavinci LIVE — kreator rebusów (asystent AI); wywołanie z sesją zalogowanego pracownika.
+[functions.assist-quiz-rebus]
+verify_jwt = true
+
 [functions.audit-contract]
 verify_jwt = true
 
