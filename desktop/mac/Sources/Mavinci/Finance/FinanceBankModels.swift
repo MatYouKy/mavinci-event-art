@@ -203,6 +203,8 @@ struct BankTx: Decodable, Identifiable {
     var id: String
     var statementId: String
     var date: String
+    /// Data księgowania, gdy operacja jest z innego miesiąca niż wyciąg (np. karta 29.09 zaksięgowana 01.10 — wyciąg za październik).
+    var bookedDate: String?
     var amount: Double
     var direction: String
     var currency: String

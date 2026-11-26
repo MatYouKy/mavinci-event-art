@@ -230,6 +230,31 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
     fetchConversations();
   }, [currentEmployeeId, fetchConversations]);
 
+  // Konkretna rozmowa (np. „Czat spotkania” w szczegółach spotkania): panel otwiera się od razu, rozmowa — po odświeżeniu
+  // listy, jeśli dopiero powstała.
+  const [pendingConversationId, setPendingConversationId] = useState<string | null>(null);
+  useEffect(() => {
+    const openConversation = (event: Event) => {
+      const target = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId;
+      if (!currentEmployeeId || !target) return;
+      setIsOpen(true);
+      setIsMinimized(false);
+      setPendingConversationId(target);
+      void fetchConversations();
+    };
+    window.addEventListener('crm-chat-open-conversation', openConversation);
+    return () => window.removeEventListener('crm-chat-open-conversation', openConversation);
+  }, [currentEmployeeId, fetchConversations]);
+
+  useEffect(() => {
+    if (!pendingConversationId) return;
+    const target = conversations.find((conversation) => conversation.id === pendingConversationId);
+    if (!target) return;
+    setActiveConversation(target);
+    setView('conversation');
+    setPendingConversationId(null);
+  }, [pendingConversationId, conversations]);
+
   useEffect(() => {
     const publish = () => window.dispatchEvent(new CustomEvent('crm-chat-state', {
       detail: { active: Boolean(currentEmployeeId), count: totalUnread, open: isOpen },

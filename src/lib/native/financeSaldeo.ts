@@ -6,6 +6,7 @@ import { canFinanceCompany, loadInvoiceFinanceAccess } from '@/lib/invoices/fina
 import { decodeTextEntities } from '@/lib/textEncoding';
 import { BANK_STATEMENT_DEDUPLICATION_COLUMNS, deduplicateStatementTransactions, type BankStatementDeduplicationMetadata } from '@/lib/bankStatementDeduplication';
 import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
+import { bookedOutsideMonth, bookedOutsideMonthNote } from '@/lib/invoices/bankBookingDate';
 import { hasKsefRegistration, saldeoDocumentExclusionReason } from '@/lib/saldeoDeliveryEligibility';
 import {
   buildSaldeoControlReport, buildSaldeoCollectivePaymentCsv, buildSaldeoCollectivePaymentHtml, saldeoCollectivePayments,
@@ -744,8 +745,13 @@ export async function saldeoMonth(ctx: NativeContext, query: Record<string, unkn
         key: str(document.key || document.number), number: document.number, counterparty: document.counterparty, allocated: document.allocatedAmount,
       })),
     })),
-    unlinked: unlinked.map((bank) => ({
+    // Kolejność po dacie księgowania: operacja z poprzedniego miesiąca zaksięgowana w tym (np. karta 29.09 → 01.10) nie stoi
+    // na początku listy, a przy niej jest wyjaśnienie, czemu jest na wyciągu za ten miesiąc (`bankBookingDate.ts`).
+    unlinked: unlinked.map((bank) => ({ bank, booked: bookedOutsideMonth(bank.transaction_date, bank.posting_date, month, year) }))
+      .sort((a, b) => (a.booked || str(a.bank.transaction_date)).localeCompare(b.booked || str(b.bank.transaction_date)))
+      .map(({ bank, booked }) => ({
       id: bank.id, key: `bank_transaction:${bank.id}`, date: bank.transaction_date, credit: bank.transaction_type === 'credit',
+      bookedDate: booked, dateNote: booked ? bookedOutsideMonthNote(bank.transaction_date, booked, month) : null,
       amount: Math.abs(Number(bank.amount)), currency: bank.currency, counterparty: str(bank.counterparty_name), status: status(bank),
       reference: str(bank.reference_number), note: str(bank.accounting_note),
       canAcknowledge: canAcknowledgeMissingDocument(snapshot, bank),

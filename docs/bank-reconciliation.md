@@ -292,3 +292,25 @@ nie zmieni mu kwoty, waluty, działalności i sposobu zapłaty.
   oraz zamknięcie okna — drugie kliknięcie „Importuj” nie wyśle pliku ponownie (wcześniej postęp był w oknie głównym, pod
   arkuszem, a powtórne wysłanie kończyło się komunikatem „MT940 … jest już zapisany”). Tak samo pozostałe okna Finansów
   oparte na `BankSheetFrame` (wybór dokumentu, wyjaśnienie, deklaracje, umowy stałe, zwroty, wpisy, zapłaty i korekty).
+
+## 11. Okno postępu, „Dopasowane faktury (PDF)” i operacje zaksięgowane w następnym miesiącu (26.11.2026)
+
+- **Okno postępu** (CRM `PendingOverlay`, Mac `FinanceBankStore.reconcileAction`): „Zatwierdź”, „Odrzuć”, „Cofnij”,
+  „Uzgodnij automatycznie” i zapis w oknach (wybór dokumentu, wyjaśnienie, deklaracja, umowa stała, zwrot) pokazują okno
+  postępu od kliknięcia do odświeżonej listy — wcześniej znikało po zapisie, a przez kilka sekund lista pokazywała starą
+  propozycję, jakby nic się nie stało. Okno blokuje drugie kliknięcie; w CRM lista nie znika przy odświeżeniu.
+- **„Dopasowane faktury (PDF)”** (przycisk obok „Braki (CSV)”, CRM i Mac): jeden PDF dla księgowej — zestawienie płatności
+  z wyciągów miesiąca z przypisanymi dokumentami (data, rachunek, kontrahent, kwota, dokumenty, „str.” — strona, na której
+  zaczyna się dokument) i za nim same dokumenty: faktury z KSeF (wizualizacja jak w Dysku), faktury CRM (wydruk) i dokumenty
+  spoza KSeF (wgrany PDF albo zdjęcie JPG / PNG — strona A4). Dokument opłacony kilkoma przelewami jest w pliku raz. Dokument
+  bez pliku, w innym formacie (HEIC, WebP) albo z uszkodzonym PDF — na liście „Bez pliku w zestawieniu” z powodem.
+  Liczy serwer CRM (`financeMatchedDocumentsPdf` w `drive.server.ts`, szablon `matchedDocumentsPdf.server.ts`; dostęp
+  i pliki jak w Dysku → Finanse, „Podgląd finansów” działalności); plik trafia do magazynu Finansów (jeden na działalność
+  i miesiąc) i pobiera się przez podpisany adres. Mac — plik w Pobranych, zaznaczony w Finderze (do przeciągnięcia
+  do wiadomości). Natywne API: `GET …/finance/bank?op=matchedPdf&company&year&month` albo `POST { op: 'matchedPdf' }`.
+- **Operacja z innego miesiąca niż wyciąg** (`bankBookingDate.ts`): MT940 podaje datę operacji, a bank księguje ją
+  później — np. płatność kartą albo wpływ z 29.09 zaksięgowany 01.10 jest na wyciągu za październik (wyciąg za wrzesień jej
+  nie ma). Taka operacja należy do miesiąca wyciągu: tam się ją rozlicza i tam widzi ją księgowa. Uzgodnienie wyciągów
+  pokazuje pod datą operacji „księg. 01.10”, a Przekazanie księgowej („Braki i do dosłania”) — datę księgowania
+  z wyjaśnieniem i kolejność listy po dacie księgowania. Dopasowanie (np. karta w dniu wystawienia faktury) nadal liczy się
+  od daty operacji.

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Bell,
@@ -47,6 +47,7 @@ import {
 import NewMeetingModal from '@/components/crm/NewMeetingModal';
 import MeetingsTimeline, { isoDay, type TimelineMeeting } from '@/components/crm/meetings/MeetingsTimeline';
 import TeamAvailabilityView from '@/components/crm/meetings/TeamAvailabilityView';
+import MeetingChatSection from '@/components/crm/meetings/MeetingChatSection';
 import {
   meetingMailNotice,
   notifyMeetingContacts,
@@ -292,6 +293,42 @@ function MeetingsContent() {
   const openMeeting = useCallback((id: string) => router.push(`/crm/meetings?meetingId=${id}`), [router]);
   const closeMeeting = useCallback(() => router.push('/crm/meetings'), [router]);
 
+  // Spotkanie z powiadomienia albo odnośnika (`?meetingId=`): szczegóły i jego dzień w siatce. Spotkania nie ma na liście —
+  // sprawdzenie w bazie: jest (np. dodane przed chwilą) — odświeżenie listy; nie ma albo brak dostępu — komunikat.
+  const revealedMeetingRef = useRef<string | null>(null);
+  const lookupMeetingRef = useRef<string | null>(null);
+  const meetingParamRef = useRef(meetingIdParam);
+  meetingParamRef.current = meetingIdParam;
+  useEffect(() => {
+    if (!meetingIdParam) {
+      revealedMeetingRef.current = null;
+      lookupMeetingRef.current = null;
+      return;
+    }
+    if (loading) return;
+    const meeting = meetings.find((m) => m.id === meetingIdParam);
+    if (meeting) {
+      if (revealedMeetingRef.current !== meetingIdParam) {
+        revealedMeetingRef.current = meetingIdParam;
+        setAnchor(startOfDay(new Date(meeting.datetime_start)));
+      }
+      return;
+    }
+    if (lookupMeetingRef.current === meetingIdParam) return;
+    lookupMeetingRef.current = meetingIdParam;
+    const id = meetingIdParam;
+    void (async () => {
+      const { data, error } = await supabase.from('meetings').select('id').eq('id', id).is('deleted_at', null).maybeSingle();
+      if (error || meetingParamRef.current !== id) return;
+      if (data) {
+        void fetchMeetings(true);
+        return;
+      }
+      showSnackbar('Nie znaleziono spotkania — mogło zostać usunięte albo nie masz do niego dostępu.', 'error');
+      router.replace('/crm/meetings');
+    })();
+  }, [meetingIdParam, loading, meetings, fetchMeetings, router, showSnackbar]);
+
   const isMine = useCallback(
     (m: Meeting): boolean => {
       if (!employee) return false;
@@ -453,7 +490,7 @@ function MeetingsContent() {
       showSnackbar(
         `Nowy termin: ${shortDayFormatter.format(start)}, ${timeFormatter.format(start)}–${timeFormatter.format(end)}` +
           (meeting.series_id ? ' (tylko ten termin cyklu)' : '') +
-          (others ? '. Uczestnicy potwierdzą go ponownie.' : ''),
+          (others ? '. Uczestnicy dostaną powiadomienie i potwierdzą go ponownie.' : ''),
         'success',
       );
       void fetchMeetings(true);
@@ -1039,6 +1076,9 @@ function MeetingDetailModal({
               <p className="whitespace-pre-wrap">{meeting.notes}</p>
             </DetailRow>
           )}
+
+          {/* Czat organizatora i zaproszonych (także przed odpowiedzią) z plikami — tylko dla uczestników. */}
+          {employeeId && (mine || organizer) && <MeetingChatSection meetingId={meeting.id} />}
 
           {canEdit && (
             <div>

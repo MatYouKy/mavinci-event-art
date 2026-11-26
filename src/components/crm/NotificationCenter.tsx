@@ -110,6 +110,11 @@ function getNotificationActionUrl(notification: {
       || notification.related_entity_id === metadata.inquiry_id)) {
     return `/crm/inquiries/${metadata.inquiry_id}`;
   }
+  // Spotkania (zaproszenie, odpowiedź, zmiana, przypomnienie — także starsze adresy `/crm/calendar?meeting=`
+  // i `/crm/calendar/meeting/<id>`): zawsze szczegóły spotkania na stronie Spotkań, jak na Macu i w telefonie.
+  if (notification.related_entity_type === 'meeting' && isUuid(notification.related_entity_id)) {
+    return `/crm/meetings?meetingId=${notification.related_entity_id}`;
+  }
   if (notification.action_url) {
     return notification.action_url;
   }

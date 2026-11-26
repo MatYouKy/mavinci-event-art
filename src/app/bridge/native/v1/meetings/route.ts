@@ -1,6 +1,7 @@
 import { can, nativeContext, nativeJson, nativeUnauthorized, readJson, type NativeContext } from '@/lib/native/auth';
 import { invalidateMeetings, meetingsItems, meetingsState } from '@/lib/native/meetings';
 import { notifyMeetingContacts, parseMeetingBefore } from '@/lib/native/meetingMail';
+import { parseMeetingChat } from '@/lib/meetings/meetingChat';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +12,7 @@ export const maxDuration = 60;
  * (pełna lista uczestników), odpowiedzi przez `respond_to_meeting`, usuwanie przez `delete_meeting_occurrences`.
  * Widok „Pracownicy” i ostrzeżenia o zajętości: `people` (`get_schedule_people`) i `availability` (`get_team_availability`).
  * `notify` — e-mail do uczestników spoza firmy po zapisie / usunięciu (CRM, Mac i telefon; `src/lib/native/meetingMail.ts`).
+ * `chat` / `chatOpen` — czat spotkania w Komunikatorze (`meeting_chat`, `docs/meeting-chat.md`): liczniki i pliki, otwarcie.
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -94,6 +96,14 @@ export async function GET(request: Request) {
           })),
         });
       }
+      case 'chat': {
+        // Czat spotkania: rozmowa (jeśli już jest), wiadomości, nieprzeczytane i pliki — tylko uczestnik albo organizator.
+        const id = q('id');
+        if (!uuid.test(id)) return failure('Nieprawidłowe spotkanie.');
+        const { data, error } = await ctx.supabase.rpc('meeting_chat', { p_meeting_id: id, p_create: false });
+        if (error) return failure(errorText(error, 'Nie udało się pobrać czatu spotkania.'), error.code === '42501' ? 403 : 400);
+        return nativeJson(parseMeetingChat(data));
+      }
       case 'holidays': {
         // Dni ustawowo wolne w nagłówku osi czasu (jak w CRM — `fetchPublicHolidays`).
         const day = /^\d{4}-\d{2}-\d{2}$/;
@@ -173,6 +183,14 @@ export async function POST(request: Request) {
           const status = (error as { status?: number })?.status;
           return failure(errorText(error, 'Nie udało się wysłać wiadomości do osób spoza firmy.'), status === 403 ? 403 : 400);
         }
+      }
+      case 'chatOpen': {
+        // „Otwórz czat”: rozmowa powstaje przy pierwszym otwarciu, skład = uczestnicy spotkania i organizator.
+        const id = String(body.id || '');
+        if (!uuid.test(id)) return failure('Nieprawidłowe spotkanie.');
+        const { data, error } = await ctx.supabase.rpc('meeting_chat', { p_meeting_id: id, p_create: true });
+        if (error) return failure(errorText(error, 'Nie udało się otworzyć czatu spotkania.'), error.code === '42501' ? 403 : 400);
+        return nativeJson(parseMeetingChat(data));
       }
       case 'delete': {
         const id = String(body.id || '');

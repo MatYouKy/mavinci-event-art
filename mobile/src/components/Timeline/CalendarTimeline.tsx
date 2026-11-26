@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Modal, PanResponder, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
+  ActivityIndicator, PanResponder, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ import {
 } from '../../lib/scheduleTimeline';
 import { colors, spacing } from '../../theme';
 import type { TimelineDetailAction, TimelineDetails, TimelineIcon } from './ScheduleTimeline';
+import TimelineSheet from './TimelineSheet';
 
 /*
  * Kalendarz spotkań w aplikacji — jak w Teams i jak kalendarz spotkań w CRM (`MeetingsTimeline`) i na Macu: godziny w pionie
@@ -524,15 +525,10 @@ export default function CalendarTimeline<E extends CalendarEntry>({
       </View>
 
       {!wide ? (
-        <Modal visible={selected !== null} transparent animationType="slide" onRequestClose={() => setSelectedId(null)} supportedOrientations={['portrait', 'landscape']}>
-          <View style={styles.sheetBackdrop}>
-            <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setSelectedId(null)} accessibilityLabel="Zamknij szczegóły" />
-            <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.sm }]}>
-              <View style={styles.grabber} />
-              {detailsCard(true)}
-            </View>
-          </View>
-        </Modal>
+        // Szuflada od dołu — zamyka ją przeciągnięcie uchwytu w dół, dotknięcie tła albo „Zamknij” (`TimelineSheet`).
+        <TimelineSheet visible={selected !== null} onClose={() => setSelectedId(null)} style={[styles.sheet, { paddingBottom: insets.bottom + spacing.sm }]}>
+          {detailsCard(true)}
+        </TimelineSheet>
       ) : null}
     </View>
   );
@@ -685,12 +681,10 @@ const styles = StyleSheet.create({
   monthChip: { borderLeftWidth: 2, borderRadius: 3, paddingHorizontal: 2, paddingVertical: 1 },
   monthChipText: { color: colors.text.primary, fontSize: 9.5 },
   monthMore: { color: colors.primary.gold, fontSize: 10, textAlign: 'center' },
-  sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     backgroundColor: colors.background.secondary, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingTop: 6, paddingHorizontal: spacing.sm,
     borderWidth: 1, borderColor: colors.border.default, width: '100%', maxWidth: 680, alignSelf: 'center',
   },
-  grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border.hover, marginBottom: 6 },
   card: { flexDirection: 'row', borderRadius: 14, overflow: 'hidden', backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.hover, flexShrink: 1 },
   cardStripe: { width: 5 },
   cardBody: { flex: 1, padding: spacing.md, gap: spacing.sm },

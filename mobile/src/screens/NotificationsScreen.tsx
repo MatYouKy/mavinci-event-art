@@ -304,7 +304,8 @@ export default function NotificationsScreen() {
     const entityId = notification.related_entity_id;
     const category = notification.category;
     if (entityType === 'meeting' && entityId) {
-      navigation.navigate('Main', { screen: 'Meetings', params: { meetingId: entityId } });
+      // Szczegóły spotkania; `requestId` — ponowne dotknięcie tego samego powiadomienia znów je otwiera.
+      navigation.navigate('Main', { screen: 'Meetings', params: { meetingId: entityId, requestId: Date.now() } });
       return;
     }
 

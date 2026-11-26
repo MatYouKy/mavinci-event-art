@@ -242,12 +242,17 @@ enum BankPreviewItem: Identifiable {
     @discardableResult func act(_ pending: String, _ op: String, _ body: [String: JSONValue], timeout: TimeInterval? = nil) async -> [String: JSONValue]? {
         guard let workspace else { return nil }
         guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return nil }
+        return await withBusy(workspace, pending) { await send(op, body, timeout: timeout) }
+    }
+
+    /// Zapis bez własnego okna postępu (pokazuje je wywołujący), komunikat serwera; `nil` przy błędzie.
+    private func send(_ op: String, _ body: [String: JSONValue], timeout: TimeInterval?) async -> [String: JSONValue]? {
         do {
-            let reply = try await withBusy(workspace, pending) { try await post(op, body, timeout: timeout) }
+            let reply = try await post(op, body, timeout: timeout)
             announce(reply)
             return reply
         } catch {
-            workspace.error = failureText(error, "Operacja nie powiodła się.")
+            workspace?.error = failureText(error, "Operacja nie powiodła się.")
             return nil
         }
     }
@@ -311,13 +316,18 @@ enum BankPreviewItem: Identifiable {
         selectedTx = nil
     }
 
-    /// Czynność na operacji / miesiącu, potem świeże uzgodnienie (i deklaracje, gdy dotyczy).
+    /// Czynność na operacji / miesiącu, potem świeże uzgodnienie (i deklaracje, gdy dotyczy). Okno postępu trwa do końca
+    /// odświeżenia — wcześniej znikało po zapisie i przez kilka sekund lista pokazywała starą propozycję, jakby nic się nie stało.
     @discardableResult func reconcileAction(_ pending: String, _ op: String, _ body: [String: JSONValue]) async -> Bool {
-        let reply = await act(pending, op, body, timeout: 180)
-        guard reply != nil else { return false }
-        await loadMonth(force: true)
-        invalidateDeclarations()
-        return true
+        guard let workspace else { return false }
+        guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return false }
+        let done = await withBusy(workspace, pending) { () async -> Bool in
+            guard await send(op, body, timeout: 180) != nil else { return false }
+            await loadMonth(force: true)
+            return true
+        }
+        if done { invalidateDeclarations() }
+        return done
     }
 
     func runReconciliation() async {
@@ -346,6 +356,37 @@ enum BankPreviewItem: Identifiable {
         var body: [String: JSONValue] = ["transactionId": .string(tx.id), "kind": .string(kind)]
         if let id { body["id"] = .string(id) }
         await reconcileAction("Cofanie…", "undo", body)
+    }
+
+    /// „Dopasowane faktury (PDF)”: zestawienie płatności i wszystkie dokumenty przypisane w miesiącu w jednym pliku dla księgowej
+    /// (serwer CRM skleja faktury z KSeF, CRM i spoza KSeF — `financeMatchedDocumentsPdf`) — plik w Pobranych, zaznaczony w Finderze.
+    func exportMatchedPdf() async {
+        guard let period, let workspace else { return }
+        do {
+            let (reply, data) = try await withBusy(workspace, "Przygotowywanie PDF z dopasowanymi fakturami…") { () async throws -> ([String: JSONValue], Data) in
+                let info = try await post("matchedPdf", [
+                    "companyId": .string(period.companyId), "year": .number(Double(period.year)), "month": .number(Double(period.month)),
+                ], timeout: 300)
+                guard let url = URL(string: info["url"]?.text ?? ""), url.scheme?.hasPrefix("http") == true else {
+                    throw NativeFailure(status: 500, message: info["error"]?.text.nonEmpty ?? "Serwer nie przygotował pliku PDF.", fieldErrors: [:])
+                }
+                let (bytes, response) = try await URLSession.shared.data(from: url)
+                guard (response as? HTTPURLResponse)?.statusCode == 200, !bytes.isEmpty else { throw URLError(.badServerResponse) }
+                return (info, bytes)
+            }
+            let name = reply["name"]?.text.nonEmpty ?? "Dopasowane dokumenty.pdf"
+            let saved = try ContractFiles.saveToDownloads(data, name: name)
+            let documents = Int(reply["documents"]?.number ?? 0), pages = Int(reply["pages"]?.number ?? 0)
+            let skipped = reply["skipped"]?.array.count ?? 0
+            let summary = "Zapisano „\(saved.lastPathComponent)” w Pobranych — dokumenty: \(documents), strony: \(pages)."
+            if skipped > 0 {
+                workspace.notice = summary + " Bez pliku: \(skipped) (lista na pierwszej stronie)."
+            } else {
+                workspace.succeed(summary)
+            }
+        } catch {
+            workspace.error = failureText(error, "Nie udało się przygotować PDF z dopasowanymi fakturami.")
+        }
     }
 
     /// Lista dla księgowej: operacje bez dokumentu (jak „Braki dokumentów (CSV)” w CRM) — plik w Pobranych.

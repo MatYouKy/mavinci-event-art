@@ -85,6 +85,9 @@ struct SaldeoMonth: Decodable {
         var id: String
         var key: String
         var date: String
+        /// Data księgowania, gdy operacja jest z innego miesiąca niż wyciąg (np. karta 29.09 zaksięgowana 01.10), i wyjaśnienie.
+        var bookedDate: String?
+        var dateNote: String?
         var credit: Bool
         var amount: Double
         var currency: String

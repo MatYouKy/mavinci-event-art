@@ -31,7 +31,7 @@ import CustomDrawer, { setMenuBadge } from '../components/CustomDrawer';
 import { useTabletLayout } from '../hooks/useTabletLayout';
 import { useUnreadChatCount } from '../services/chatNotifications';
 import { consumeNotificationTarget } from '../../App';
-import { routeNotification, navigateToCalendarTab, NotificationTargetData } from './navigationRef';
+import { routeNotification, navigateToMeeting, NotificationTargetData } from './navigationRef';
 import { handleEventInvitationNotificationAction, handleInquiryFollowupNotificationAction } from '../services/pushNotifications';
 import { listenWidgetLinks } from '../lib/widgetLinks';
 
@@ -62,7 +62,6 @@ export default function MainTabNavigator() {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentScreen, setCurrentScreen] = useState('Dashboard');
   const [unreadCount, setUnreadCount] = useState(0);
-  const [pendingMeetingId, setPendingMeetingId] = useState<string | null>(null);
   const { unreadCount: unreadChatCount } = useUnreadChatCount(canView(employee, 'chat') ? employee?.id : undefined);
   // Tablet w poziomie: stały pasek boczny (RootNavigator) zastępuje przycisk menu i dolny pasek zakładek.
   const { sidebar } = useTabletLayout();
@@ -101,10 +100,10 @@ export default function MainTabNavigator() {
     return () => supabase.removeChannel(channel);
   }, [employee?.id]);
 
-  // Open a meeting on the Calendar tab (meetings live in the Calendar screen state).
+  // Spotkanie z powiadomienia: od razu szczegóły na ekranie Spotkań (jak w CRM i na Macu); każde dotknięcie powiadomienia
+  // otwiera je ponownie (`requestId` w `navigateToMeeting`), także gdy ekran Spotkań jest już otwarty.
   const openMeeting = (meetingId: string) => {
-    setPendingMeetingId(meetingId);
-    navigateToCalendarTab();
+    navigateToMeeting(meetingId);
   };
 
   // Handle notification taps - open the specific task / inquiry / event / meeting / chat
@@ -270,12 +269,7 @@ export default function MainTabNavigator() {
             tabBarIcon: ({ color, size }) => <Feather name="calendar" color={color} size={size} />,
           }}
         >
-          {() => (
-            <CalendarScreen
-              initialMeetingId={pendingMeetingId}
-              key={pendingMeetingId ?? 'calendar'}
-            />
-          )}
+          {() => <CalendarScreen />}
         </Tab.Screen>
         <Tab.Screen
           name="Meetings"

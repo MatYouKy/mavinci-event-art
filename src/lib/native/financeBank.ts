@@ -393,6 +393,19 @@ export async function bankMonth(ctx: NativeContext, companyParam: unknown, yearP
   const raw = object(data);
   const period = { year, month };
   const lastRun = raw.last_run ? object(raw.last_run) : null;
+  // Operacja z datą spoza miesiąca wyciągu (np. karta 29.09 zaksięgowana 01.10 — na wyciągu za październik): data księgowania
+  // obok daty operacji, żeby było widać, czemu jest w tym miesiącu.
+  const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
+  const outside = rows(raw.transactions).filter((t) => { const value = day(t.date); return Boolean(value) && !String(value).startsWith(monthPrefix); })
+    .map((t) => str(t.id)).filter(Boolean);
+  const booked = new Map<string, string>();
+  if (outside.length) {
+    const { data: postings } = await ctx.supabase.from('bank_transactions').select('id,posting_date').in('id', outside.slice(0, 500));
+    for (const row of rows(postings)) {
+      const value = day(row.posting_date);
+      if (value) booked.set(str(row.id), value);
+    }
+  }
   return {
     companyId,
     year,
@@ -411,7 +424,10 @@ export async function bankMonth(ctx: NativeContext, companyParam: unknown, yearP
       confirmed: num(s.confirmed),
       unconfirmed: num(s.unconfirmed),
     })),
-    transactions: rows(raw.transactions).map((t) => transactionOf(t, period)),
+    transactions: rows(raw.transactions).map((t) => {
+      const bookedDate = booked.get(str(t.id));
+      return { ...transactionOf(t, period), bookedDate: bookedDate && bookedDate !== day(t.date) ? bookedDate : null };
+    }),
     declarations: rows(raw.declarations).map((d) => ({
       id: str(d.id),
       label: str(d.label),

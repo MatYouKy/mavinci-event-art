@@ -36,10 +36,11 @@ import { type TimelineDetails, type TimelineIcon } from '../components/Timeline/
 import CalendarTimeline, { type CalendarEntry } from '../components/Timeline/CalendarTimeline';
 import TeamAvailabilityTimeline from '../components/Timeline/TeamAvailabilityTimeline';
 import MeetingConflictsNotice from '../components/Meetings/MeetingConflictsNotice';
+import MeetingChatCard from '../components/Meetings/MeetingChatCard';
 import { Segmented, afterModal } from '../components/Inquiries/InquiryKit';
 import { HOUR, SCREEN_VIEWS, addDays, formatEntryTime, startOfDay, useScreenTimeline, type ScreenView } from '../lib/scheduleTimeline';
 import { notifyMeetingContacts, type MeetingMailBefore } from '../lib/teamAvailabilityApi';
-import { navigateToEvent } from '../navigation/navigationRef';
+import { navigateToChat, navigateToEvent } from '../navigation/navigationRef';
 
 import * as Notifications from 'expo-notifications';
 
@@ -255,12 +256,14 @@ async function requestNotificationPermissions() {
 
 interface MeetingsScreenProps {
   initialMeetingId?: string | null;
-  route?: { params?: { meetingId?: string } };
+  /** `requestId` — kolejne wskazanie tego samego spotkania (powiadomienie, plan dnia) otwiera szczegóły ponownie. */
+  route?: { params?: { meetingId?: string; requestId?: number } };
   onBack?: () => void;
 }
 
 export default function MeetingsScreen({ initialMeetingId: initialId, route, onBack }: MeetingsScreenProps) {
   const initialMeetingId = initialId || route?.params?.meetingId;
+  const meetingRequestId = route?.params?.requestId;
   const { employee } = useAuth();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -320,6 +323,8 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
   const [activeMeetingPicker, setActiveMeetingPicker] = useState<MeetingPickerType | null>(null);
 
   const meetingFormScrollRef = useRef<ScrollView>(null);
+  /** Lista spotkań wczytana choć raz bez błędu (dopiero wtedy brak wskazanego spotkania znaczy, że go nie ma). */
+  const meetingsLoadedRef = useRef(false);
   const savingMeetingRef = useRef(false);
 
   const handleFormInputFocus = () => {
@@ -404,6 +409,7 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
           );
 
           setMeetings(myMeetings);
+          meetingsLoadedRef.current = true;
           setAvailabilityRefresh((value) => value + 1);
 
           await cancelObsoleteMeetingAlerts().catch((error) => console.warn('[Meetings] Alert cleanup:', error));
@@ -427,15 +433,34 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
     fetchMeetings();
   }, [fetchMeetings]);
 
+  // Spotkanie wskazane z powiadomienia (telefon, tablet), planu dnia albo widżetu: szczegóły otwierają się raz na każde
+  // wskazanie — odświeżenie listy po zamknięciu ich nie otwiera ponownie. Spotkania nie ma na liście (np. zaproszenie sprzed
+  // chwili przy otwartym ekranie) — najpierw odświeżenie listy, dopiero potem komunikat.
+  const openedMeetingRef = useRef<string | null>(null);
+  const refreshedMeetingRef = useRef<string | null>(null);
+  const [meetingLookup, setMeetingLookup] = useState<string | null>(null);
   useEffect(() => {
-    if (!initialMeetingId || meetings.length === 0) return;
+    if (!initialMeetingId || isLoading || !meetingsLoadedRef.current) return;
+    const key = `${initialMeetingId}:${meetingRequestId ?? ''}`;
+    if (openedMeetingRef.current === key) return;
 
     const meeting = meetings.find((item) => item.id === initialMeetingId);
 
     if (meeting) {
+      openedMeetingRef.current = key;
       setSelectedMeeting(meeting);
+      return;
     }
-  }, [initialMeetingId, meetings]);
+    if (refreshedMeetingRef.current !== key) {
+      refreshedMeetingRef.current = key;
+      void fetchMeetings(true).finally(() => setMeetingLookup(key));
+      return;
+    }
+    if (meetingLookup !== key) return;
+    openedMeetingRef.current = key;
+    Alert.alert('Spotkanie niedostępne', 'Nie znaleziono tego spotkania — mogło zostać usunięte albo nie jesteś już jego uczestnikiem.');
+    onBack?.();
+  }, [initialMeetingId, meetingRequestId, isLoading, meetings, meetingLookup, fetchMeetings, onBack]);
 
   const resetForm = () => {
     setForm(createInitialForm());
@@ -600,6 +625,13 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
     });
   };
 
+  // Czat spotkania: najpierw zamknięcie szczegółów (iOS nie pokaże rozmowy pod otwartym oknem), potem rozmowa w Komunikatorze.
+  const openMeetingChat = (conversationId: string) => {
+    setSelectedMeeting(null);
+    if (initialMeetingId) onBack?.();
+    setTimeout(() => navigateToChat(conversationId), Platform.OS === 'ios' ? 400 : 0);
+  };
+
   const handleDeleteMeeting = async (meetingId: string) => {
     const meeting = meetings.find((item) => item.id === meetingId);
     const remove = async (scope: 'single' | 'future') => {
@@ -714,7 +746,7 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
       if (error) throw error;
       void cancelObsoleteMeetingAlerts().catch((cause: unknown) => console.warn('[Meetings] Alert cleanup:', cause));
       setToast(`Nowy termin: ${formatEntryTime({ start: start.getTime(), end: end.getTime() })}`
-        + (meeting.series_id ? ' (tylko ten termin cyklu)' : '') + (others ? '. Uczestnicy potwierdzą go ponownie.' : '.'));
+        + (meeting.series_id ? ' (tylko ten termin cyklu)' : '') + (others ? '. Uczestnicy dostaną powiadomienie i potwierdzą go ponownie.' : '.'));
       await fetchMeetings(true);
       askContactMail(meeting, mail, 'Wysłać osobom spoza firmy e-mail o nowym terminie?');
     } catch (err: any) {
@@ -1777,6 +1809,11 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
                   <Text style={styles.detailSectionLabel}>Notatki</Text>
                   <Text style={styles.detailNotes}>{selectedMeeting.notes}</Text>
                 </View>
+              )}
+
+              {/* Czat organizatora i zaproszonych (także przed odpowiedzią) z plikami — tylko dla uczestników. */}
+              {(myMeetingResponse(selectedMeeting, employee?.id) || selectedMeeting.created_by === employee?.id) && (
+                <MeetingChatCard meetingId={selectedMeeting.id} onOpen={openMeetingChat} />
               )}
 
               {selectedMeeting.participants && selectedMeeting.participants.length > 0 && (

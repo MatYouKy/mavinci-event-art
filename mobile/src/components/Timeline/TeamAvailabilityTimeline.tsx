@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Chip, Sheet, SelectList, SheetActions, afterModal, kit } from '../Inquiries/InquiryKit';
@@ -19,6 +19,7 @@ import {
   type SchedulePerson,
 } from '../../lib/teamAvailability';
 import { fetchAvailability, fetchSchedulePeople, peopleSelectionMemory } from '../../lib/teamAvailabilityApi';
+import TimelineSheet from './TimelineSheet';
 import { colors, spacing } from '../../theme';
 
 /*
@@ -299,57 +300,52 @@ export default function TeamAvailabilityTimeline({ day, onDayChange, refreshKey,
         ) : null}
       </View>
 
-      <Modal visible={detail !== null} transparent animationType="slide" onRequestClose={() => setDetail(null)} supportedOrientations={['portrait', 'landscape']}>
-        <View style={styles.sheetBackdrop}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setDetail(null)} accessibilityLabel="Zamknij szczegóły" />
-          {detail ? (
-            <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.sm }]}>
-              <View style={styles.grabber} />
-              <View style={styles.card}>
-                <View style={[styles.cardStripe, { backgroundColor: availabilityColor(detail) }]} />
-                <View style={styles.cardBody}>
-                  <Text style={styles.cardTitle} numberOfLines={3}>{availabilityTitle(detail)}</Text>
-                  <View style={styles.fact}>
-                    <Feather name="clock" size={14} color={colors.primary.gold} />
-                    <Text style={styles.factText}>{availabilityTime(detail)}{detail.tentative ? ' · niepotwierdzone' : ''}</Text>
-                  </View>
-                  {detailPerson ? (
-                    <View style={styles.fact}>
-                      <Feather name="user" size={14} color={colors.primary.gold} />
-                      <Text style={styles.factText}>{schedulePersonName(detailPerson)}</Text>
-                    </View>
-                  ) : null}
-                  {detail.detailed ? (
-                    <View style={styles.fact}>
-                      <Feather name="tag" size={14} color={colors.primary.gold} />
-                      <Text style={styles.factText}>{availabilityKindLabel(detail.kind)}</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.muted}>Szczegóły tej pozycji nie są widoczne w Twoim zakresie planu.</Text>
-                  )}
-                  {detail.subtitle ? (
-                    <View style={styles.fact}>
-                      <Feather name="map-pin" size={14} color={colors.primary.gold} />
-                      <Text style={styles.factText}>{detail.subtitle}</Text>
-                    </View>
-                  ) : null}
-                  <View style={styles.actions}>
-                    {detail.detailed && detail.itemId && detail.kind !== 'absence' ? (
-                      <TouchableOpacity onPress={() => open(detail)} style={[styles.action, styles.actionPrimary]} accessibilityRole="button">
-                        <Feather name="maximize-2" size={15} color={colors.background.primary} />
-                        <Text style={[styles.actionText, styles.actionPrimaryText]}>Otwórz</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    <TouchableOpacity onPress={() => setDetail(null)} style={styles.action} accessibilityRole="button">
-                      <Text style={styles.actionText}>Zamknij</Text>
-                    </TouchableOpacity>
-                  </View>
+      {/* Szuflada od dołu — zamyka ją przeciągnięcie uchwytu w dół, dotknięcie tła albo „Zamknij” (`TimelineSheet`). */}
+      <TimelineSheet visible={detail !== null} onClose={() => setDetail(null)} style={[styles.sheet, { paddingBottom: insets.bottom + spacing.sm }]}>
+        {detail ? (
+          <View style={styles.card}>
+            <View style={[styles.cardStripe, { backgroundColor: availabilityColor(detail) }]} />
+            <View style={styles.cardBody}>
+              <Text style={styles.cardTitle} numberOfLines={3}>{availabilityTitle(detail)}</Text>
+              <View style={styles.fact}>
+                <Feather name="clock" size={14} color={colors.primary.gold} />
+                <Text style={styles.factText}>{availabilityTime(detail)}{detail.tentative ? ' · niepotwierdzone' : ''}</Text>
+              </View>
+              {detailPerson ? (
+                <View style={styles.fact}>
+                  <Feather name="user" size={14} color={colors.primary.gold} />
+                  <Text style={styles.factText}>{schedulePersonName(detailPerson)}</Text>
                 </View>
+              ) : null}
+              {detail.detailed ? (
+                <View style={styles.fact}>
+                  <Feather name="tag" size={14} color={colors.primary.gold} />
+                  <Text style={styles.factText}>{availabilityKindLabel(detail.kind)}</Text>
+                </View>
+              ) : (
+                <Text style={styles.muted}>Szczegóły tej pozycji nie są widoczne w Twoim zakresie planu.</Text>
+              )}
+              {detail.subtitle ? (
+                <View style={styles.fact}>
+                  <Feather name="map-pin" size={14} color={colors.primary.gold} />
+                  <Text style={styles.factText}>{detail.subtitle}</Text>
+                </View>
+              ) : null}
+              <View style={styles.actions}>
+                {detail.detailed && detail.itemId && detail.kind !== 'absence' ? (
+                  <TouchableOpacity onPress={() => open(detail)} style={[styles.action, styles.actionPrimary]} accessibilityRole="button">
+                    <Feather name="maximize-2" size={15} color={colors.background.primary} />
+                    <Text style={[styles.actionText, styles.actionPrimaryText]}>Otwórz</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity onPress={() => setDetail(null)} style={styles.action} accessibilityRole="button">
+                  <Text style={styles.actionText}>Zamknij</Text>
+                </TouchableOpacity>
               </View>
             </View>
-          ) : null}
-        </View>
-      </Modal>
+          </View>
+        ) : null}
+      </TimelineSheet>
 
       <Sheet visible={pickerOpen} title="Osoby" subtitle={`Najwyżej ${MAX_PEOPLE} osób naraz · wybrano ${selected.length}`}
         onClose={() => setPickerOpen(false)}
@@ -418,12 +414,10 @@ const styles = StyleSheet.create({
   blockTitle: { color: colors.text.primary, fontSize: 11.5, fontWeight: '600' },
   blockMeta: { color: colors.text.secondary, fontSize: 10.5, fontVariant: ['tabular-nums'] },
   nowLine: { position: 'absolute', left: 0, right: 0, height: 2, backgroundColor: colors.status.error, zIndex: 5 },
-  sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' },
   sheet: {
     backgroundColor: colors.background.secondary, borderTopLeftRadius: 18, borderTopRightRadius: 18, paddingTop: 6, paddingHorizontal: spacing.sm,
     borderWidth: 1, borderColor: colors.border.default, width: '100%', maxWidth: 680, alignSelf: 'center',
   },
-  grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border.hover, marginBottom: 6 },
   card: { flexDirection: 'row', borderRadius: 14, overflow: 'hidden', backgroundColor: colors.background.secondary, borderWidth: 1, borderColor: colors.border.hover },
   cardStripe: { width: 5 },
   cardBody: { flex: 1, padding: spacing.md, gap: spacing.sm },

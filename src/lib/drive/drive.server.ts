@@ -9,6 +9,7 @@ import { assetRegisterRows } from '@/lib/assets/assets.server';
 import type { AssetRegisterRow } from '@/lib/assets/assetsShared';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import { latestDesktopRelease, signedDesktopLink } from '@/lib/native/desktopRelease';
+import type { MatchedFile, MatchedPayment } from './matchedDocumentsPdf.server';
 import {
   DRIVE_CORPORATE_CATEGORIES, DRIVE_EMPLOYEE_GROUPS, DRIVE_FINANCE_AGREEMENTS, DRIVE_FINANCE_ASSETS, DRIVE_FINANCE_BOOKS, DRIVE_FINANCE_CLARIFY,
   DRIVE_FINANCE_CORPORATE, DRIVE_FINANCE_GROUPS, DRIVE_MONTHS, driveAssetsNodeId, driveClarifyNodeId, driveMonthCloseFileId,
@@ -1944,6 +1945,116 @@ function equipmentFilesFrom(item: Equipment, images: Row[], attachments: Row[]):
 }
 
 /** Adres pliku Dysku: PDF-y — podpisany adres (1 h; `download` — z nazwą pliku do zapisu), pliki magazynu i księgi znaku — adres publiczny bucketu. */
+/** Dokument z uzgodnienia wyciągu → plik Finansów na Dysku (te same uprawnienia, kopie i wizualizacje co w Dysku). */
+const MATCHED_SOURCES: Record<string, { type: DriveFileType; label: string }> = {
+  ksef: { type: 'ksef-invoice', label: 'Faktura KSeF' },
+  invoice: { type: 'sales-invoice', label: 'Faktura CRM' },
+  external: { type: 'cost-document', label: 'Dokument spoza KSeF' },
+};
+const MATCHED_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Plik dokumentu dopasowanego do płatności; faktura z KSeF wystawiona z CRM (jest w Sprzedaży) — wydruk faktury CRM. */
+async function matchedDownload(ctx: NativeContext, type: DriveFileType, id: string): Promise<DriveDownload> {
+  try {
+    return await financeDownload(ctx, { type, id }, 'download');
+  } catch (error) {
+    if (type !== 'ksef-invoice') throw error;
+    const { data } = await ctx.supabase.from('ksef_invoices').select('invoice_id').eq('id', id).maybeSingle();
+    const invoiceId = lower((data as Row | null)?.invoice_id);
+    if (!MATCHED_UUID.test(invoiceId)) throw error;
+    return financeDownload(ctx, { type: 'sales-invoice', id: invoiceId }, 'download');
+  }
+}
+
+/**
+ * „Dopasowane faktury (PDF)” w Uzgodnieniu wyciągów (CRM i Mac): płatności z wyciągów miesiąca z przypisanymi dokumentami
+ * (faktury z KSeF, faktury CRM, dokumenty spoza KSeF) i same dokumenty w jednym pliku dla księgowej
+ * (`matchedDocumentsPdf.server.ts`). Dane — uzgodnienie miesiąca (`get_bank_reconciliation_month`, token pracownika), pliki —
+ * jak w Dysku (`financeDownload`: dostęp, kopie wizualizacji KSeF i wydruków). Plik trafia do magazynu Finansów (jeden na
+ * działalność i miesiąc, kolejne pobranie go zastępuje) — wynik to podpisany adres do pobrania.
+ */
+export async function financeMatchedDocumentsPdf(ctx: NativeContext, companyParam: unknown, yearParam: unknown, monthParam: unknown) {
+  const companyId = lower(companyParam);
+  const year = Number(yearParam);
+  const month = Number(monthParam);
+  if (!MATCHED_UUID.test(companyId) || !Number.isInteger(year) || year < 2000 || year > 2100 || !Number.isInteger(month) || month < 1 || month > 12) {
+    fail('Nieprawidłowa działalność albo miesiąc.');
+  }
+  const owner = (await financeCompanies(ctx)).find((entry) => entry.id === companyId);
+  if (!owner?.finance) fail('Nie masz dostępu do wyciągów tej działalności.', 403);
+  const { data, error } = await ctx.supabase.rpc('get_bank_reconciliation_month', { p_company_id: companyId, p_year: year, p_month: month });
+  check(error, 'Nie udało się wczytać uzgodnienia wyciągów.');
+  const transactions = (Array.isArray((data as Row | null)?.transactions) ? (data as Row).transactions : []) as Row[];
+  const monthPrefix = `${year}-${pad2(month)}`;
+  // Operacja z innego miesiąca niż wyciąg (np. karta 29.09 zaksięgowana 01.10) — w zestawieniu także data księgowania.
+  const outside = transactions.filter((t) => dayOf(t.date) && !dayOf(t.date).startsWith(monthPrefix)).map((t) => lower(t.id)).filter((id) => MATCHED_UUID.test(id));
+  const booked = new Map<string, string>();
+  if (outside.length) {
+    const { data: postings, error: postingError } = await ctx.supabase.from('bank_transactions').select('id,posting_date').in('id', outside.slice(0, 500));
+    check(postingError, 'Nie udało się odczytać dat księgowania.');
+    for (const row of (postings || []) as Row[]) if (dayOf(row.posting_date)) booked.set(lower(row.id), dayOf(row.posting_date));
+  }
+  const files = new Map<string, MatchedFile & { type: DriveFileType; id: string }>();
+  const payments: MatchedPayment[] = [];
+  const ordered = [...transactions].sort((a, b) => dayOf(a.date).localeCompare(dayOf(b.date)) || text(a.account_kind).localeCompare(text(b.account_kind)));
+  for (const t of ordered) {
+    const allocations = (Array.isArray(t.allocations) ? t.allocations : []) as Row[];
+    const documents = allocations.filter((a) => MATCHED_SOURCES[text(a.source)] && MATCHED_UUID.test(lower(a.document_id)));
+    if (!documents.length) continue;
+    const currency = text(t.currency).toUpperCase() || 'PLN';
+    const bookedDay = booked.get(lower(t.id));
+    payments.push({
+      date: dayOf(t.date), booked: bookedDay && bookedDay !== dayOf(t.date) ? bookedDay : null,
+      account: t.account_kind === 'vat' ? 'vat' : 'regular', credit: t.direction === 'credit',
+      amount: Math.abs(Number(t.amount) || 0), currency, counterparty: text(t.counterparty), title: text(t.title),
+      documents: documents.map((a) => {
+        const source = MATCHED_SOURCES[text(a.source)];
+        const id = lower(a.document_id);
+        const key = `${text(a.source)}:${id}`;
+        if (!files.has(key)) {
+          files.set(key, {
+            key, type: source.type, id, number: text(a.number), party: text(a.party), sourceLabel: source.label, bytes: null, mime: '', problem: null,
+          });
+        }
+        return { key, number: text(a.number), party: text(a.party), amount: Math.abs(Number(a.amount) || 0) };
+      }),
+    });
+  }
+  if (!payments.length) fail('W tym miesiącu żadna płatność z wyciągu nie ma jeszcze przypisanej faktury.', 404);
+  // Pliki po kilka naraz — wizualizacje KSeF i wydruki CRM powstają na serwerze (pierwszy raz), potem są w kopiach.
+  const queue = [...files.values()];
+  const worker = async () => {
+    for (let file = queue.shift(); file; file = queue.shift()) {
+      try {
+        const link = await matchedDownload(ctx, file.type, file.id);
+        const response = await fetch(link.url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        file.bytes = new Uint8Array(await response.arrayBuffer());
+        file.mime = link.mime;
+      } catch (error) {
+        file.problem = error instanceof DriveError ? error.message : 'nie udało się pobrać pliku dokumentu';
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
+  const builder = await import('./matchedDocumentsPdf.server');
+  const result = await builder.renderMatchedDocumentsPdf({ company: owner.name, year, month, payments, files: [...files.values()] });
+  const name = driveName(`Dopasowane dokumenty — ${owner.name} — ${DRIVE_MONTHS[month - 1]} ${year}.pdf`, 'Dopasowane dokumenty.pdf');
+  const path = `${owner.id}/matched/${monthPrefix}.pdf`;
+  const admin = createSupabaseAdminClient();
+  const { error: uploadError } = await admin.storage.from(FINANCE_BUCKET).upload(path, result.pdf, { contentType: 'application/pdf', upsert: true });
+  if (uploadError) {
+    console.error('[native drive] matched pdf', uploadError.message);
+    if (/bucket not found/i.test(uploadError.message)) fail(FINANCE_PENDING, 503, { code: 'pending' });
+    fail('Nie udało się zapisać pliku PDF. Spróbuj ponownie za chwilę.', 500);
+  }
+  const { data: signed } = await admin.storage.from(FINANCE_BUCKET).createSignedUrl(path, SIGNED_TTL, { download: name });
+  if (!signed?.signedUrl) fail('Nie udało się przygotować pliku PDF. Spróbuj ponownie za chwilę.', 500);
+  return {
+    url: signed.signedUrl, name, payments: payments.length, documents: result.documents, pages: result.pages, skipped: result.skipped,
+  };
+}
+
 export async function driveDownload(ctx: NativeContext, idValue: string, mode: 'preview' | 'download' = 'download'): Promise<DriveDownload> {
   const ref = parseDriveFileId(idValue);
   if (!ref) fail('Nieprawidłowy plik Dysku.', 400);

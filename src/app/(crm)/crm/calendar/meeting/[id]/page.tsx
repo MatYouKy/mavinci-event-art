@@ -40,6 +40,7 @@ import {
   type MeetingStatus,
 } from '@/lib/CRM/meetings/meetingStatus';
 import MeetingConflictsNotice from '@/components/crm/meetings/MeetingConflictsNotice';
+import MeetingChatSection from '@/components/crm/meetings/MeetingChatSection';
 import {
   meetingMailNotice,
   notifyMeetingContacts,
@@ -1131,6 +1132,12 @@ export default function MeetingDetailPage() {
               </p>
             )}
           </div>
+
+          {/* Czat organizatora i zaproszonych (także przed odpowiedzią) z plikami — tylko dla uczestników. */}
+          {!isEditing && currentEmployee?.id
+            && (myMeetingResponse(meeting, currentEmployee.id) || isMeetingOrganizer(meeting, currentEmployee.id)) && (
+            <MeetingChatSection meetingId={meeting.id} />
+          )}
 
           {isEditing && (
             <div>

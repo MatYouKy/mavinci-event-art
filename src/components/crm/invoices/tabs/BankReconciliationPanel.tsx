@@ -13,6 +13,7 @@ import {
   HelpCircle,
   Download,
   Eye,
+  FileDown,
   FileQuestion,
   Info,
   FileSearch,
@@ -40,6 +41,7 @@ import { DeclarationLinkModal } from './FinanceDeclarationsPanel';
 import { RecurringContractLinkModal } from './RecurringContractsPanel';
 import BankRefundPairModal from './BankRefundPairModal';
 import ProposalComparisonTable from './ProposalComparisonTable';
+import PendingOverlay from '@/components/crm/PendingOverlay';
 import { proposalComparison } from '@/lib/invoices/proposalComparison';
 import {
   DECLARATION_STATUS_META,
@@ -155,6 +157,10 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  // Okno postępu nad stroną — od kliknięcia do odświeżonej listy (bez tego zatwierdzenie wyglądało, jakby nic się nie stało).
+  const [pending, setPending] = useState<string | null>(null);
+  // Data księgowania operacji spoza miesiąca wyciągu (np. karta 29.09 zaksięgowana 01.10 — na wyciągu za październik).
+  const [booked, setBooked] = useState<Record<string, string>>({});
   const [statusFilter, setStatusFilter] = useState<'todo' | 'all' | ReconciliationStatus>('todo');
   const [accountFilter, setAccountFilter] = useState<'all' | 'regular' | 'vat'>('all');
   const [search, setSearch] = useState('');
@@ -210,20 +216,43 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyKey, access]);
 
-  const load = useCallback(async () => {
+  /** `quiet` — odświeżenie po czynności: lista zostaje na miejscu (bez „Wczytywanie…”), postęp pokazuje `PendingOverlay`. */
+  const load = useCallback(async (quiet = false) => {
     if (!period) return;
-    setLoading(true);
+    if (!quiet) setLoading(true);
     const { data: result, error } = await supabase.rpc('get_bank_reconciliation_month', {
       p_company_id: period.companyId, p_year: period.year, p_month: period.month,
     });
     if (error) {
       showSnackbar(error.message || 'Nie udało się wczytać uzgodnienia.', 'error');
-      setData(null);
+      if (!quiet) setData(null);
     } else {
-      setData(result as ReconciliationMonth);
+      const month = result as ReconciliationMonth;
+      const prefix = `${period.year}-${String(period.month).padStart(2, '0')}`;
+      const outside = (month?.transactions || []).filter((t) => t.date && !t.date.startsWith(prefix)).map((t) => t.id);
+      const dates: Record<string, string> = {};
+      if (outside.length) {
+        const { data: postings } = await supabase.from('bank_transactions').select('id,posting_date').in('id', outside.slice(0, 500));
+        for (const row of (postings || []) as Array<{ id: string; posting_date: string | null }>) {
+          const value = row.posting_date?.slice(0, 10);
+          if (value && value.startsWith(prefix)) dates[row.id] = value;
+        }
+      }
+      setBooked(dates);
+      setData(month);
     }
-    setLoading(false);
+    if (!quiet) setLoading(false);
   }, [period, showSnackbar]);
+
+  /** Odświeżenie po zapisie w oknie (wybór dokumentu, wyjaśnienie…) — z oknem postępu. */
+  const refreshAfterChange = async () => {
+    setPending('Odświeżanie uzgodnienia…');
+    try {
+      await load(true);
+    } finally {
+      setPending(null);
+    }
+  };
 
   useEffect(() => { void load(); }, [load]);
 
@@ -283,29 +312,73 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
   const runReconciliation = async () => {
     if (!period) return;
     setRunning(true);
-    const { data: summary, error } = await supabase.rpc('reconcile_bank_month', {
-      p_company_id: period.companyId, p_year: period.year, p_month: period.month,
-    });
-    setRunning(false);
-    if (error) {
-      showSnackbar(error.message || 'Uzgodnienie nie powiodło się.', 'error');
-      return;
+    setPending('Uzgadnianie wyciągu…');
+    try {
+      const { data: summary, error } = await supabase.rpc('reconcile_bank_month', {
+        p_company_id: period.companyId, p_year: period.year, p_month: period.month,
+      });
+      if (error) {
+        showSnackbar(error.message || 'Uzgodnienie nie powiodło się.', 'error');
+        return;
+      }
+      await load(true);
+      showSnackbar(reconciliationRunSentence(summary as Record<string, unknown>), 'success');
+    } finally {
+      setRunning(false);
+      setPending(null);
     }
-    showSnackbar(reconciliationRunSentence(summary as Record<string, unknown>), 'success');
-    await load();
   };
 
-  const callAction = async (key: string, action: () => PromiseLike<{ error: { message?: string } | null }>, success: string): Promise<boolean> => {
+  /** Czynność na operacji z oknem postępu do końca: zapis, odświeżenie listy, komunikat. */
+  const callAction = async (key: string, action: () => PromiseLike<{ error: { message?: string } | null }>, success: string,
+    pendingText = 'Zapisywanie…'): Promise<boolean> => {
     setBusyKey(key);
-    const { error } = await action();
-    setBusyKey(null);
-    if (error) {
-      showSnackbar(error.message || 'Operacja nie powiodła się.', 'error');
-      return false;
+    setPending(pendingText);
+    try {
+      const { error } = await action();
+      if (error) {
+        showSnackbar(error.message || 'Operacja nie powiodła się.', 'error');
+        return false;
+      }
+      await load(true);
+      showSnackbar(success, 'success');
+      return true;
+    } finally {
+      setBusyKey(null);
+      setPending(null);
     }
-    showSnackbar(success, 'success');
-    await load();
-    return true;
+  };
+
+  /** „Dopasowane faktury (PDF)”: zestawienie płatności i dokumenty przypisane w miesiącu w jednym pliku (serwer CRM). */
+  const exportMatchedPdf = async () => {
+    if (!period) return;
+    setPending('Przygotowywanie PDF z dopasowanymi fakturami…');
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      if (!token) throw new Error('Sesja wygasła. Zaloguj się ponownie.');
+      const query = new URLSearchParams({ op: 'matchedPdf', company: period.companyId, year: String(period.year), month: String(period.month) });
+      const response = await fetch(`/bridge/native/v1/finance/bank?${query}`, {
+        headers: { Authorization: `Bearer ${token}`, 'x-mavinci-client': 'web' },
+      });
+      const body = (await response.json().catch(() => null)) as {
+        error?: string; url?: string; name?: string; documents?: number; pages?: number; skipped?: unknown[];
+      } | null;
+      if (!response.ok || !body?.url) throw new Error(body?.error || 'Nie udało się przygotować PDF z dopasowanymi fakturami.');
+      const link = document.createElement('a');
+      link.href = body.url;
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      const skipped = Array.isArray(body.skipped) ? body.skipped.length : 0;
+      showSnackbar(`Pobieranie „${body.name || 'Dopasowane dokumenty.pdf'}” — dokumenty: ${body.documents ?? 0}, strony: ${body.pages ?? 0}.`
+        + (skipped ? ` Bez pliku: ${skipped} (lista na pierwszej stronie).` : ''), skipped ? 'warning' : 'success');
+    } catch (error) {
+      showSnackbar(error instanceof Error ? error.message : 'Nie udało się przygotować PDF z dopasowanymi fakturami.', 'error');
+    } finally {
+      setPending(null);
+    }
   };
 
   const REJECT_MESSAGE = 'Propozycja odrzucona. Ten dokument nie wróci do tej płatności; dla innych płatności nadal czeka na dopasowanie.';
@@ -314,7 +387,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
     if (!t.proposal) return;
     const refund = t.proposal.rule === 'zwrot_platnosci';
     void callAction(`reject:${t.id}`, () => supabase.rpc('reject_bank_reconciliation_proposal', { p_proposal_id: t.proposal!.id }),
-      refund ? REJECT_REFUND_MESSAGE : REJECT_MESSAGE)
+      refund ? REJECT_REFUND_MESSAGE : REJECT_MESSAGE, 'Odrzucanie propozycji…')
       .then((ok) => { if (ok && thenPick) (refund ? setRefundFor : setPickerFor)(t); });
   };
 
@@ -328,7 +401,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
     void callAction(`accept:${t.id}`, () => supabase.rpc('accept_bank_reconciliation_proposal', {
       p_proposal_id: t.proposal!.id, p_document_index: index,
     }), t.proposal.rule === 'zwrot_platnosci'
-      ? 'Płatność i zwrot powiązane — obie operacje są rozliczone bez faktury.' : 'Płatność rozliczona.');
+      ? 'Płatność i zwrot powiązane — obie operacje są rozliczone bez faktury.' : 'Płatność rozliczona.', 'Zatwierdzanie propozycji…');
   };
 
   // Lista dla księgowej: operacje bez dokumentu (brak, częściowe, propozycje do sprawdzenia).
@@ -584,6 +657,11 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
           className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50">
           <Download className="h-3.5 w-3.5" /> Braki dokumentów (CSV)
         </button>
+        <button type="button" onClick={() => void exportMatchedPdf()} disabled={!data || pending !== null}
+          title="Zestawienie płatności i wszystkie dokumenty przypisane w tym miesiącu w jednym PDF — np. do wiadomości dla księgowej"
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50">
+          <FileDown className="h-3.5 w-3.5" /> Dopasowane faktury (PDF)
+        </button>
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/35" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Szukaj: kontrahent, tytuł, kwota, numer faktury"
@@ -610,6 +688,12 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                   <div className="flex flex-col gap-2 md:flex-row md:items-start">
                     <div className="w-24 shrink-0 text-xs text-[#e5e4e2]/55">
                       {date(t.date)}
+                      {booked[t.id] && (
+                        <div className="mt-0.5 text-[10px] text-sky-300/80"
+                          title="Operacja z poprzedniego miesiąca — bank zaksięgował ją w tym, dlatego jest na wyciągu za ten miesiąc i tu się ją rozlicza.">
+                          zaksięg. {date(booked[t.id])}
+                        </div>
+                      )}
                       <div className="mt-0.5 text-[10px] text-[#e5e4e2]/35">{t.account_kind === 'vat' ? 'Rach. VAT' : 'Rach. bieżący'}</div>
                     </div>
                     <div className="min-w-0 flex-1">
@@ -932,7 +1016,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
             allocated_amount: pickerFor.allocated,
           }}
           onClose={() => setPickerFor(null)}
-          onMatched={async () => { setPickerFor(null); await load(); }}
+          onMatched={async () => { setPickerFor(null); await refreshAfterChange(); }}
         />
       )}
       {detailsFor && period && (
@@ -943,12 +1027,13 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
         />
       )}
       {previewModal}
+      <PendingOverlay text={pending} />
       {declarationFor && period && (
         <DeclarationLinkModal
           companyId={period.companyId}
           transaction={{ id: declarationFor.id, date: declarationFor.date, amount: declarationFor.amount, remaining: declarationFor.remaining, title: text(declarationFor.title) }}
           onClose={() => setDeclarationFor(null)}
-          onLinked={async () => { setDeclarationFor(null); await load(); }}
+          onLinked={async () => { setDeclarationFor(null); await refreshAfterChange(); }}
         />
       )}
       {contractFor && period && (
@@ -960,7 +1045,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
             direction: contractFor.direction, currency: contractFor.currency,
           }}
           onClose={() => setContractFor(null)}
-          onLinked={async () => { setContractFor(null); await load(); }}
+          onLinked={async () => { setContractFor(null); await refreshAfterChange(); }}
         />
       )}
       {refundFor && period && (
@@ -972,7 +1057,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
             counterparty: text(refundFor.counterparty), title: text(refundFor.title),
           }}
           onClose={() => setRefundFor(null)}
-          onLinked={async () => { setRefundFor(null); await load(); }}
+          onLinked={async () => { setRefundFor(null); await refreshAfterChange(); }}
         />
       )}
       {detailsOther && period && (
@@ -991,7 +1076,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
           }}
           initialSubtype={explainFor.direction === 'credit' && isCashDeposit(explainFor) ? 'owner_deposit' : 'other'}
           onClose={() => setExplainFor(null)}
-          onSaved={async () => { setExplainFor(null); await load(); }}
+          onSaved={async () => { setExplainFor(null); await refreshAfterChange(); }}
         />
       )}
     </div>

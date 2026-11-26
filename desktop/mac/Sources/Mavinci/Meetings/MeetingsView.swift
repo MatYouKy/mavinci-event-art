@@ -749,6 +749,109 @@ struct MeetingHatch: Shape {
     }
 }
 
+// MARK: Czat spotkania
+
+/// Szczegóły spotkania → „Czat spotkania” (jak w CRM, `MeetingChatSection`): rozmowa organizatora i zaproszonych
+/// w Komunikatorze — także przed odpowiedzią na zaproszenie (prośba o inny termin, ustalenia, agenda). „Otwórz czat” zakłada
+/// rozmowę przy pierwszym otwarciu i otwiera ją w panelu Komunikatora; pliki dodaje się w czacie, tu widać ostatnie.
+@MainActor struct MeetingChatBox: View {
+    let meeting: Meeting
+    @ObservedObject var store: MeetingsStore
+    @Environment(\.crmTheme) private var theme
+    @Environment(\.openURL) private var openURL
+    @State private var info: MeetingChatInfo?
+    @State private var opening = false
+    private static let filesShown = 5
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Czat spotkania", systemImage: "bubble.left.and.bubble.right").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                    Text(summary).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 6)
+                Button {
+                    opening = true
+                    Task {
+                        if let next = await store.openChat(meeting) { info = next }
+                        opening = false
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        if opening { ProgressView().controlSize(.mini) } else { Image(systemName: "bubble.left") }
+                        Text("Otwórz czat")
+                        if unread > 0 {
+                            Text(unread > 99 ? "99+" : "\(unread)").font(.caption2.bold())
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(Color.red, in: Capsule()).foregroundStyle(.white)
+                        }
+                    }
+                }
+                .disabled(opening)
+            }
+            if !files.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Pliki z czatu").font(.caption2).foregroundStyle(.tertiary)
+                    ForEach(files.prefix(Self.filesShown)) { file in
+                        Button { if let url = URL(string: file.url) { openURL(url) } } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "paperclip").foregroundStyle(theme.accent)
+                                Text(file.name).lineLimit(1).truncationMode(.middle)
+                                Spacer(minLength: 6)
+                                Text(detail(file)).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(file.name)
+                    }
+                    if files.count > Self.filesShown {
+                        Text("…i \(files.count - Self.filesShown) więcej w czacie").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        .task(id: meeting.id) {
+            info = nil
+            info = await store.chatInfo(meeting.id)
+        }
+    }
+
+    private var messages: Int { info?.member == true ? info?.messages ?? 0 : 0 }
+    private var unread: Int { info?.member == true ? info?.unread ?? 0 : 0 }
+    private var files: [MeetingChatInfo.File] { info?.member == true ? info?.files ?? [] : [] }
+    private var summary: String {
+        guard messages > 0 else {
+            return "Napisz do organizatora i uczestników — np. prośba o inny termin, ustalenia albo agenda (pliki dodasz w czacie)."
+        }
+        return (messages == 1 ? "1 wiadomość" : "\(messages) wiadomości") + (unread > 0 ? " · " + Self.unreadLabel(unread) : "")
+    }
+    /// „1 nowa”, „3 nowe”, „5 nowych”.
+    private static func unreadLabel(_ count: Int) -> String {
+        let ones = count % 10, tens = count % 100
+        if count == 1 { return "1 nowa" }
+        if (2...4).contains(ones) && !(12...14).contains(tens) { return "\(count) nowe" }
+        return "\(count) nowych"
+    }
+    private func detail(_ file: MeetingChatInfo.File) -> String {
+        var parts: [String] = []
+        if let size = file.size, size >= 0 {
+            parts.append(size < 1024 ? "\(size) B" : size < 1_048_576 ? "\(size / 1024) KB"
+                         : String(format: "%.1f MB", Double(size) / 1_048_576).replacingOccurrences(of: ".", with: ","))
+        }
+        if let sender = file.sender, !sender.isEmpty { parts.append(sender) }
+        if let created = file.createdAt, let date = MeetingDates.parse(created) {
+            parts.append(MeetingDates.format(date, "d MMM, HH:mm"))
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
 // MARK: Szczegóły (inspektor)
 
 @MainActor struct MeetingInspector: View {
@@ -849,6 +952,8 @@ struct MeetingHatch: Shape {
             }
             if !alerts.isEmpty { section("Przypomnienia", symbol: "bell") { VStack(alignment: .leading, spacing: 2) { ForEach(alerts, id: \.self) { Text($0) } } } }
             if !m.notes.isEmpty { section("Notatki", symbol: "note.text") { Text(m.notes).textSelection(.enabled) } }
+            // Czat organizatora i zaproszonych (także przed odpowiedzią) z plikami — tylko dla uczestników.
+            if mine != nil || organizer { MeetingChatBox(meeting: m, store: store) }
 
             if store.canEdit(m) {
                 VStack(alignment: .leading, spacing: 6) {

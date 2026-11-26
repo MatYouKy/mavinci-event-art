@@ -317,7 +317,11 @@ private struct SaldeoNote: View {
 
     private func unlinkedRow(_ bank: SaldeoMonth.Unlinked, data: SaldeoMonth) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("\(FinFormat.day(bank.date)) · \(bank.credit ? "Wpływ" : "Wydatek") \(FinFormat.money(bank.amount, bank.currency))").fontWeight(.medium)
+            Text("\(FinFormat.day(bank.bookedDate ?? bank.date)) · \(bank.credit ? "Wpływ" : "Wydatek") \(FinFormat.money(bank.amount, bank.currency))").fontWeight(.medium)
+            if let note = bank.dateNote {
+                Label(note, systemImage: "calendar.badge.clock").font(.caption).foregroundStyle(CrmTheme.rgb(0x7dd3fc))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text("\(bank.counterparty.isEmpty ? "Brak nazwy kontrahenta" : bank.counterparty) · \(bank.status)").font(.caption).foregroundStyle(.secondary)
             Text("Nr płatności: \(bank.reference.isEmpty ? "nie zapisano" : bank.reference)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             if bank.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

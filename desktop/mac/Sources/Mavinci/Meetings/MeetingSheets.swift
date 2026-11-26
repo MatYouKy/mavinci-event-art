@@ -134,7 +134,7 @@ import AppKit
                     .disabled(store.employees.isEmpty)
                     MeetingContactSearch(store: store, guests: $guests)
                     if editing != nil && !guests.isEmpty {
-                        Text("Zmiana terminu poprosi uczestników o ponowną odpowiedź.").font(.caption).foregroundStyle(.secondary)
+                        Text("Uczestnicy dostaną powiadomienie o zmianach, a zmiana terminu poprosi ich o ponowne potwierdzenie.").font(.caption).foregroundStyle(.secondary)
                     }
                     if !conflictIDs.isEmpty {
                         MeetingConflictsRow(store: store, ids: conflictIDs, from: range.from, to: range.to, exclude: editing?.id, names: conflictNames)

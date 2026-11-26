@@ -7,6 +7,7 @@ import { dispatchCrmEmail } from '@/lib/emailScheduling';
 import { loadUnifiedEmailAccounts, type UnifiedEmailAccount } from '@/components/crm/UnifiedEmailComposer';
 import { decodeTextEntities } from '@/lib/textEncoding';
 import { BANK_STATEMENT_DEDUPLICATION_COLUMNS, deduplicateStatementTransactions, type BankStatementDeduplicationMetadata } from '@/lib/bankStatementDeduplication';
+import { bookedOutsideMonth, bookedOutsideMonthNote } from '@/lib/invoices/bankBookingDate';
 import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
 import { annotateSaldeoDocument } from '@/lib/saldeoDocumentAnnotation';
 import { hasKsefRegistration, saldeoDocumentExclusionReason } from '@/lib/saldeoDeliveryEligibility';
@@ -645,7 +646,11 @@ export default function SaldeoDeliveryPanel({ filterCompanyIds = null, period, c
   const fileDocuments = useMemo(() => snapshot ? reviewDocuments(snapshot).filter((document) => document.bucket) : [], [snapshot]);
   const pending = fileDocuments.filter((document) => !document.sentAt); const sent = fileDocuments.filter((document) => document.sentAt);
   const statementOnlyPayments = snapshot?.transactions.filter(isStatementOnlyPayment) || [];
-  const unlinkedPayments = snapshot?.transactions.filter((bank) => !isStatementOnlyPayment(bank) && !bankHasDocumentLink(snapshot, bank)) || [];
+  // Po dacie księgowania: operacja z poprzedniego miesiąca zaksięgowana w tym (np. karta 29.09 → 01.10) ma wyjaśnienie
+  // i nie stoi na początku listy (`bankBookingDate.ts`).
+  const bookedIn = (bank: Bank) => bookedOutsideMonth(bank.transaction_date, bank.posting_date, month, year);
+  const unlinkedPayments = (snapshot?.transactions.filter((bank) => !isStatementOnlyPayment(bank) && !bankHasDocumentLink(snapshot, bank)) || [])
+    .slice().sort((a, b) => (bookedIn(a) || a.transaction_date).localeCompare(bookedIn(b) || b.transaction_date));
   const blockingErrors = snapshot ? deliveryBlockers(snapshot) : [];
   const followupRows = snapshot ? documentFollowupRows(snapshot) : [];
   const collectivePayments = snapshot ? collectivePaymentDetails(snapshot) : [];
@@ -1069,7 +1074,8 @@ export default function SaldeoDeliveryPanel({ filterCompanyIds = null, period, c
             {statementOnlyPayments.length > 0 && <p className="mt-2 rounded-lg bg-blue-400/[0.05] p-3 text-xs leading-5 text-blue-200">Tylko na wyciągach i w rejestrze: {statementOnlyPayments.length} operacji VAT / ZUS / PIT. Nie trafiają do brakujących dokumentów ani jako osobne pliki do Saldeo. Ich opisy i dane pozostają w analizie CRM.</p>}
             {!unlinkedPayments.length && <p className="mt-3 text-xs text-green-200">Brak pozostałych płatności bez powiązanego dokumentu.</p>}
             <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">{unlinkedPayments.map((bank) => <div key={bank.id} className="rounded-lg bg-black/20 p-3">
-              <p className="text-sm text-gray-100">{bank.transaction_date} · {bank.transaction_type === 'credit' ? 'Wpływ' : 'Wydatek'} {money(Math.abs(Number(bank.amount)), bank.currency)}</p><p className="mt-1 text-xs text-gray-400">{bank.counterparty_name || 'Brak nazwy kontrahenta'} · {status(bank)}</p>
+              <p className="text-sm text-gray-100">{bookedIn(bank) || bank.transaction_date} · {bank.transaction_type === 'credit' ? 'Wpływ' : 'Wydatek'} {money(Math.abs(Number(bank.amount)), bank.currency)}</p><p className="mt-1 text-xs text-gray-400">{bank.counterparty_name || 'Brak nazwy kontrahenta'} · {status(bank)}</p>
+              {bookedIn(bank) && <p className="mt-1 text-xs text-sky-200">{bookedOutsideMonthNote(bank.transaction_date, bookedIn(bank) || '', month)}</p>}
               <p className="mt-1 break-all text-xs text-gray-500">Nr płatności: {bank.reference_number || 'nie zapisano'}</p>
               {bank.accounting_note?.trim() ? <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-xs text-gray-300">Opis z analizy: {bank.accounting_note}</p> : <p className="mt-2 text-xs text-amber-200">Brak opisu w analizie — wróć do analizy, aby go uzupełnić.</p>}
               {canAcknowledgeMissingDocument(snapshot, bank) && <div className="mt-3 rounded-lg bg-amber-400/[0.05] p-3 text-xs leading-5 text-amber-100"><label className="flex cursor-pointer items-start gap-2"><input type="checkbox" checked={hasMissingDocumentAcknowledgment(snapshot, bank)} onChange={(event) => void updateDocumentFollowup(bank.id, event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#d3bb73]" /><span>Świadomie wysyłam pozostałe dokumenty — dokument do tego wydatku doślę później.</span></label>{snapshot.followups.some((item) => item.active && item.bank_transaction_id === bank.id) && !hasMissingDocumentAcknowledgment(snapshot, bank) && <p className="mt-2">Dane lub opis zmieniły się od potwierdzenia. Sprawdź je i zaznacz ponownie.</p>}<p className="mt-1 pl-6 text-amber-100/60">Zapis na liście „Do dosłania” nie zmienia dopasowania ani statusu rozliczenia.</p></div>}

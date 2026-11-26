@@ -110,6 +110,9 @@ enum ReconSheet: Identifiable {
                 Button { store.exportMissing() } label: { Label("Braki (CSV)", systemImage: "arrow.down.doc") }
                     .disabled(month == nil).fixedSize()
                     .help("Lista operacji bez dokumentu dla księgowej — plik CSV w Pobranych")
+                Button { Task { await store.exportMatchedPdf() } } label: { Label("Dopasowane faktury (PDF)", systemImage: "doc.on.doc") }
+                    .disabled(month == nil || store.busy != nil).fixedSize()
+                    .help("Zestawienie płatności i wszystkie dokumenty przypisane w tym miesiącu w jednym PDF — np. do wiadomości dla księgowej (plik w Pobranych)")
                 Button { Task { await reload() } } label: {
                     if store.monthLoading { ProgressView().controlSize(.small) } else { Label("Odśwież", systemImage: "arrow.clockwise") }
                 }
@@ -421,6 +424,11 @@ private struct ReconciliationRow: View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(BankFormat.shortDate(tx.date, year: year)).monospacedDigit()
+                if let booked = tx.bookedDate {
+                    // Operacja z poprzedniego miesiąca zaksięgowana w tym — dlatego jest na wyciągu za ten miesiąc.
+                    Text("księg. \(BankFormat.shortDate(booked, year: year))").font(.caption2).foregroundStyle(CrmTheme.rgb(0x7dd3fc))
+                        .help("Operacja z \(FinFormat.day(tx.date)) — bank zaksięgował ją \(FinFormat.day(booked)), dlatego jest na wyciągu za ten miesiąc i tu się ją rozlicza.")
+                }
                 Text(tx.accountKind == "vat" ? "VAT" : "bieżący").font(.caption2).foregroundStyle(.tertiary)
             }
             .font(.caption).foregroundStyle(.secondary).frame(width: 48, alignment: .leading)

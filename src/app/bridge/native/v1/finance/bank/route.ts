@@ -33,6 +33,7 @@ import {
   transactionDetails,
   undoLink,
 } from '@/lib/native/financeBank';
+import { financeMatchedDocumentsPdf } from '@/lib/drive/drive.server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -42,8 +43,10 @@ export const maxDuration = 300;
  * Bank i deklaracje dla aplikacji na Maca (`src/lib/native/financeBank.ts`) — token pracownika, uprawnienia jak w CRM.
  * GET op=periods | month&company&year&month | picker&transaction&allocated | explain&transaction | details&transaction |
  *   contracts&transaction&remaining | refunds&transaction&search | declarations&company&years | statements&company&year |
- *   file&kind=statement|declaration|supporting&id | document&source=invoice|external|ksef&id.
- * POST JSON op=run | accept | reject | undo | match | explain | linkDeclaration | linkContract | saveContract | linkRefund |
+ *   file&kind=statement|declaration|supporting&id | document&source=invoice|external|ksef&id |
+ *   matchedPdf&company&year&month (też POST JSON — Mac z dłuższym czasem oczekiwania).
+ *   matchedPdf — „Dopasowane faktury (PDF)”: zestawienie i dokumenty przypisane w miesiącu, adres do pobrania (`drive.server.ts`).
+ * POST JSON op=run | accept | reject | undo | match | explain | linkDeclaration | linkContract | saveContract | linkRefund | matchedPdf |
  *   declarationSave | declarationDelete | lineSave | lineDelete | linesPrefill | declarationFileRemove |
  *   statementRename | statementCheck | statementDelete.
  * POST multipart (pole „file”) ?op=statementImport (companyId, year, month, accountType, format, confirmAccount) |
@@ -87,6 +90,8 @@ export async function GET(request: Request) {
         return nativeJson(await fileContent(ctx, params.get('kind'), params.get('id')));
       case 'document':
         return nativeJson(await documentPreview(ctx, params.get('source'), params.get('id')));
+      case 'matchedPdf':
+        return nativeJson(await financeMatchedDocumentsPdf(ctx, params.get('company'), params.get('year'), params.get('month')));
       default:
         return failure('Nieznana operacja.');
     }
@@ -161,6 +166,8 @@ export async function POST(request: Request) {
         return nativeJson(await saveContract(ctx, body));
       case 'linkRefund':
         return nativeJson(await linkRefund(ctx, body));
+      case 'matchedPdf':
+        return nativeJson(await financeMatchedDocumentsPdf(ctx, body.companyId, body.year, body.month));
       case 'declarationSave':
         return nativeJson(await saveDeclaration(ctx, body));
       case 'declarationDelete':

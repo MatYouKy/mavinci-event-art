@@ -204,7 +204,7 @@ struct MeetingIndex: Codable {
                 }
             }
             workspace?.succeed("Nowy termin: \(MeetingDates.format(start, "EEE d MMM")), \(MeetingDates.time(start))–\(MeetingDates.time(end))"
-                + (meeting.seriesId != nil ? " (tylko ten termin cyklu)" : "") + (others ? ". Uczestnicy potwierdzą go ponownie." : ""))
+                + (meeting.seriesId != nil ? " (tylko ten termin cyklu)" : "") + (others ? ". Uczestnicy dostaną powiadomienie i potwierdzą go ponownie." : ""))
             offerMail(meeting, mail, "Wysłać osobom spoza firmy e-mail o nowym terminie?")
             Task { await sync(force: true) }
         } catch {
@@ -361,6 +361,26 @@ struct MeetingIndex: Codable {
         guard let data = try? await api.get("/meetings", query: ["op": "locations", "query": query]) else { return [] }
         return (try? JSONDecoder().decode(Reply.self, from: data))?.locations ?? []
     }
+
+    // MARK: Czat spotkania
+    /// Liczniki i pliki czatu spotkania (bez zakładania rozmowy).
+    func chatInfo(_ id: String) async -> MeetingChatInfo? {
+        guard let api, let data = try? await api.get("/meetings", query: ["op": "chat", "id": id]) else { return nil }
+        return try? JSONDecoder().decode(MeetingChatInfo.self, from: data)
+    }
+    /// „Otwórz czat”: rozmowa powstaje przy pierwszym otwarciu (skład — uczestnicy spotkania) i otwiera się w Komunikatorze.
+    func openChat(_ meeting: Meeting) async -> MeetingChatInfo? {
+        guard let api else { return nil }
+        do {
+            let data = try await api.post("/meetings", ["op": .string("chatOpen"), "id": .string(meeting.id)])
+            let info = try JSONDecoder().decode(MeetingChatInfo.self, from: data)
+            if let conversation = info.conversationId { workspace?.openChat(conversationID: conversation) }
+            return info
+        } catch {
+            report(error, "Nie udało się otworzyć czatu spotkania.")
+            return nil
+        }
+    }
 }
 
 extension Workspace {
@@ -369,7 +389,17 @@ extension Workspace {
         if navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/meetings" }) {
             openHref("/crm/meetings")
             meetings.focusID = id
-            if meetings.meeting(id) == nil { Task { await meetings.sync(force: true) } }
+            if meetings.meeting(id) == nil {
+                Task {
+                    let synced = meetings.lastSync
+                    await meetings.sync(force: true)
+                    // Po udanej synchronizacji nadal brak (usunięte albo już bez udziału) — komunikat zamiast braku reakcji.
+                    if meetings.meeting(id) == nil, meetings.lastSync != synced, meetings.focusID == id {
+                        meetings.focusID = nil
+                        notice = "Nie znaleziono spotkania — mogło zostać usunięte albo nie jesteś już jego uczestnikiem."
+                    }
+                }
+            }
         } else if employee?.canView(.calendar) == true {
             eventRoute = nil; selection = .calendar; focusedID = "meeting:\(id)"
         } else {

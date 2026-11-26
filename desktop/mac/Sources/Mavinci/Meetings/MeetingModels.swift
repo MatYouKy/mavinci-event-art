@@ -142,6 +142,25 @@ struct MeetingPlace: Decodable, Hashable, Identifiable {
     var detail: String?
 }
 
+/// Czat spotkania (`meeting_chat`, `docs/meeting-chat.md`): rozmowa w Komunikatorze, liczba wiadomości, nieprzeczytane
+/// i ostatnie pliki z czatu (np. agenda). Liczby i pliki — tylko gdy bieżący pracownik jest w rozmowie (`member`).
+struct MeetingChatInfo: Decodable, Equatable {
+    struct File: Decodable, Equatable, Identifiable {
+        let id: String
+        let name: String
+        let url: String
+        var size: Int?
+        var type: String?
+        var createdAt: String?
+        var sender: String?
+    }
+    var conversationId: String?
+    var member: Bool
+    var messages: Int
+    var unread: Int
+    var files: [File]
+}
+
 enum MeetingDates {
     static let zone = TimeZone(identifier: "Europe/Warsaw") ?? .current
     static let calendar: Calendar = {
