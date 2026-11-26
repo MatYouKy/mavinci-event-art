@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CompanyNumbering, CompanyNumberingCard } from '../CompanyNumberingCard';
 import { supabase } from '@/lib/supabase/browser';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { AlertTriangle } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
@@ -32,7 +33,8 @@ export function InvoiceSettingsTab() {
       const invoicesData = invoicesRes.data || [];
       setExistingNumbers(invoicesData.map((i: any) => i.invoice_number));
 
-      let companiesList = companiesRes.data || [];
+      // Numeracja faktur — tylko działalności (firmy z NIP); marka bez NIP (np. Event Rulers) nie wystawia faktur.
+      let companiesList = financeEntities(companiesRes.data || []);
 
       // Numeracja i ustawienia faktur: tylko działalności z poziomem „Zarządzanie finansami”.
       if (!isAdmin) {

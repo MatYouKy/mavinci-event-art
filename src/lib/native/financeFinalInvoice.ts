@@ -1,5 +1,6 @@
 import 'server-only';
 import type { NativeContext } from './auth';
+import { isFinanceEntity } from '@/lib/invoices/financeEntities';
 import { getAcceptedCalculationInvoicePrefill, getAcceptedOfferInvoicePrefill } from '@/lib/invoices/acceptedOfferPrefill';
 import { calculateFinalInvoice } from '@/lib/invoices/finalInvoiceCalculation';
 import { inheritFinalInvoicePresentation } from '@/lib/invoices/inheritFinalInvoicePresentation';
@@ -217,7 +218,9 @@ export async function finalSetup(ctx: NativeContext) {
   const { data, error } = await ctx.supabase.from('my_companies').select('id, name, nip, is_default')
     .eq('is_active', true).order('is_default', { ascending: false }).order('name');
   if (error) fail('Nie udało się wczytać działalności.', 500);
-  return { companies: rows(data).map((company) => ({ id: str(company.id), name: str(company.name), nip: str(company.nip), isDefault: company.is_default === true })) };
+  // Fakturę końcową wystawia działalność (firma z NIP) — marka bez NIP (np. Event Rulers) nie.
+  return { companies: rows(data).filter((company) => isFinanceEntity(company))
+    .map((company) => ({ id: str(company.id), name: str(company.name), nip: str(company.nip), isDefault: company.is_default === true })) };
 }
 
 /** Wyszukiwanie wydarzenia albo podmiotu (50 wyników, jak w oknie CRM). */

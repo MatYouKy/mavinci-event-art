@@ -259,7 +259,8 @@ struct PermissionDraft: Equatable {
     }
 
     private func finance(_ data: EmployeePermissionsData, _ d: PermissionDraft) -> some View {
-        let available = data.companies.filter { $0.active && (d.companyAccessMode == "all" || d.myCompanyIds.contains($0.id)) }
+        // Tylko działalności (firmy z NIP) — marka bez NIP (np. Event Rulers) nie ma własnych finansów.
+        let available = data.companies.filter { $0.active && ($0.financeEntity ?? true) && (d.companyAccessMode == "all" || d.myCompanyIds.contains($0.id)) }
         return TeamCard(title: "Finanse według działalności", symbol: "shield") {
             Text("Dla każdej działalności, do której pracownik ma dostęp, określ, co widzi w finansach. Bez wybranego poziomu nie widzi żadnych finansów tej działalności — także faktur, wyciągów i deklaracji. Fakturowanie zostaje przy administratorze, chyba że nadasz „Wystawianie faktur”. Zmienia wyłącznie administrator.")
                 .font(.callout).foregroundStyle(.secondary)

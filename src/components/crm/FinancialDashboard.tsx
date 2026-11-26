@@ -13,6 +13,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface FinancialData {
@@ -78,14 +79,16 @@ export default function FinancialDashboard() {
     try {
       const { data, error } = await supabase
         .from('my_companies')
-        .select('id, name')
+        .select('id, name, nip')
         .eq('is_active', true)
         .order('is_default', { ascending: false });
 
       if (error) throw error;
+      // Działalności (firmy z NIP) — marka bez NIP (np. Event Rulers) nie ma własnych finansów.
+      const entities = financeEntities(data || []);
       const filtered = allowedCompanyIds
-        ? (data || []).filter((c: any) => allowedCompanyIds.includes(c.id))
-        : data || [];
+        ? entities.filter((c: any) => allowedCompanyIds.includes(c.id))
+        : entities;
       setMyCompanies(filtered);
       if (selectedCompany !== 'all' && allowedCompanyIds && !allowedCompanyIds.includes(selectedCompany)) {
         setSelectedCompany('all');

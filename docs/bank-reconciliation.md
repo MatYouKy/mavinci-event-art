@@ -314,3 +314,58 @@ nie zmieni mu kwoty, waluty, działalności i sposobu zapłaty.
   pokazuje pod datą operacji „księg. 01.10”, a Przekazanie księgowej („Braki i do dosłania”) — datę księgowania
   z wyjaśnieniem i kolejność listy po dacie księgowania. Dopasowanie (np. karta w dniu wystawienia faktury) nadal liczy się
   od daty operacji.
+
+## 12. Stan filtrów, „Wszystkie dokumenty” i drzewo sekcji Finansów (26.11.2026)
+
+- **Stan filtrów w oknie „Dopasuj dokument do płatności”** (CRM `BankTransactionDocumentPickerModal`, Mac
+  `BankDocumentPickerSheet`): filtry działają od razu po zmianie, a pod nimi jest wiersz stanu (`FilterSummaryBar`,
+  na Macu `FinFilterSummary`) — „Pokazano 14 z 212”, etykieta każdego włączonego filtra (typ, status, wystawione od / do,
+  wyszukiwanie; × wyłącza jeden) i „Wyczyść filtry”; bez filtrów — „Bez filtrów · 212 dokumentów”. Zmienione pole filtra
+  ma złotą obwódkę i tło; lista typów pokazuje liczbę dokumentów każdego typu. Pusta lista przy włączonych filtrach — ich
+  lista i „Wyczyść filtry”. Na Macu zakres „od” / „do” po włączeniu zaczyna od trzech miesięcy przed płatnością do dnia płatności.
+- **„Wszystkie dokumenty”** (CRM: Finanse → Dokumenty → Wszystkie dokumenty; Mac: Finanse → Koszty i dokumenty →
+  Wszystkie dokumenty): jeden rejestr faktur z KSeF (wystawione i otrzymane), faktur CRM (bez tych, które są już w KSeF pod
+  tym samym numerem) i dokumentów spoza KSeF (faktury zagraniczne, paragony, polisy, noty). Filtry: źródło (Wszystkie /
+  KSeF / CRM / Spoza KSeF — z liczbą dokumentów), rodzaj (kosztowe / sprzedażowe), stan zapłaty (nieopłacone — także częściowo
+  i po terminie, po terminie, opłacone) i wyszukiwanie, z tym samym wierszem stanu. Jeden stan zapłaty dla wszystkich źródeł
+  liczy `src/lib/invoices/documentRegister.ts` (status zapłaty, szkic / anulowana, termin wobec dnia w Polsce). Mac: zakres
+  dat wystawienia (domyślnie od początku miesiąca sprzed dwóch miesięcy), dwuklik — podgląd (KSeF z XML, faktura CRM — PDF,
+  spoza KSeF — wgrany plik), „Otwórz w CRM”, „Dodaj dokument spoza KSeF” (CRM — wgranie pliku z odczytem danych). Natywne
+  API: `GET …/finance/bank?op=documents&company&from&to` (`documentRegister`, „Podgląd finansów” działalności, RLS).
+- **Drzewo sekcji Finansów w CRM** (`FinanceNavTree`): sekcje są w drzewie po lewej, pogrupowane jak na Macu — Przegląd
+  (Centrum finansów, Przegląd finansowy), Bank (Wyciągi i płatności, Uzgodnienie wyciągów), Podatki i terminy (Terminy i monity,
+  ZUS i podatki, Umowy stałe, Dla księgowej), Dokumenty (Wszystkie dokumenty, Faktury sprzedaży, KSeF, Dokumenty spoza KSeF,
+  Umowy personelu), Koszty i rozliczenia (Koszty i wypłaty, Sprzedawcy i prowizje), Ustawienia (Ustawienia faktur). Zastępuje
+  zakładki strony i drugi rząd zakładek „Dokumentów i rozliczeń”; adresy bez zmian (`?tab=…&section=…`), więc linki
+  i powiadomienia prowadzą w to samo miejsce. Sprzedawca widzi jak dotąd: Przegląd finansowy, Moje faktury, Sprzedawcy
+  i prowizje. Poniżej szerokości `xl` (laptop z paskiem bocznym CRM) — lista wyboru z grupami, żeby tabele miały całą szerokość.
+
+## 13. Zatwierdzenie propozycji przy różnicy 1 grosza z ręcznym oznaczeniem zapłaty (26.11.2026)
+
+Faktura KSeF oznaczona wcześniej ręcznie jako opłacona (np. FKO/8/2026: do zapłaty 11 515,87 zł) i przelew klienta
+o grosz wyższy (11 515,88 zł). Propozycja „Zgodna kwota i kontrahent” traktuje taki grosz jako zaokrąglenie, ale
+zatwierdzenie kończyło się w bazie błędem „Nie udalo sie przygotowac platnosci recznej do zamiany” —
+`reconcile_paid_ksef_invoice_with_bank_transaction` po zastąpieniu ręcznej wpłaty zostawała z 0,01 zł i przerywała zapis.
+Nic się nie zapisywało, a po odświeżeniu propozycja wracała (CRM i Mac — ta sama funkcja bazy). Migracja
+`20261202160000_ksef_manual_payment_grosz_tolerance.sql` przyjmuje resztę do 1 grosza jako zaokrąglenie, tak jak pozostałe
+warunki tej funkcji i `match_bank_transaction_to_document`; większa różnica nadal zatrzymuje zapis. Funkcja jest poprawiana
+w miejscu (aktualna treść z bazy, jedna zmiana warunku, uprawnienia bez zmian). Po zatwierdzeniu płatność jest rozliczona
+w całości, a faktura opłacona z wyciągu (ręczne oznaczenie zastąpione powiązaniem bankowym, bez podwójnej zapłaty).
+
+## 14. Działalności, a nie marki; dokument spoza KSeF — domyślna działalność i rozpoznanie po NIP-ie (26.11.2026)
+
+- **Działalność a marka** (`src/lib/invoices/financeEntities.ts`): finanse prowadzi się dla działalności — podmiotu z NIP
+  (Mavinci, NASTROJOWO). Marka bez NIP (Event Rulers) realizuje wydarzenia, ale nie ma własnych finansów, więc nie ma jej
+  w listach działalności: dokument spoza KSeF, koszty i wypłaty, przegląd finansowy, konfiguracja i ustawienia KSeF,
+  numeracja faktur, wystawianie faktury (nowa, edycja, z wydarzenia, końcowa), deklaracje, umowy stałe, Saldeo, wybór firmy
+  na ekranach finansów (`CompanySelector` z poziomem dostępu), „Finanse według działalności” w uprawnieniach pracownika
+  (CRM i Mac — zapis nie zostawia poziomów dla marek), umowy personelu (migracja
+  `20261202170000_personnel_companies_without_brands.sql`) i listy na Macu (faktura, edycja, faktura końcowa). Wcześniej
+  pomijały ją już Centrum finansów, terminy, zamknięcia, zakupy i serwer Finansów na Macu. Bez zmian: wybór marki
+  realizującej wydarzenie i „Marki i spółki” w uprawnieniach. Formularz edycji zachowuje firmę zapisaną w dokumencie.
+- **Dodaj dokument spoza KSeF** (`InvoiceFormModal`): nowy dokument ma od razu domyślną działalność (Mavinci), więc „Odczytaj
+  AI” działa bez wybierania. Po odczycie NIP nabywcy z dokumentu wskazuje działalność (`financeEntityByNip` — NIP bez
+  „PL”, myślników i spacji): inna niż wybrana — formularz sam się na nią przełącza („Dokument jest wystawiony na
+  NASTROJOWO… — ustawiono tę działalność”); zgodna — potwierdzenie; NIP spoza działalności — ostrzeżenie. Z rozliczenia
+  miesiąca (działalność ustalona z góry) tylko ostrzeżenie. Bez wybranej działalności odczyt idzie z domyślną (uprawnienia
+  funkcji odczytu `extract-external-invoice` — bez zmian), a działalność ustala NIP nabywcy.

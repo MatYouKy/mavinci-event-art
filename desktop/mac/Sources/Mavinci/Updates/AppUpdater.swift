@@ -385,6 +385,9 @@ private final class UpdateDownload: NSObject, URLSessionDownloadDelegate, @unche
             try AppUpdateSupport.scheduleReplacement(new: prepared.app, work: prepared.work)
             UserDefaults.standard.set(prepared.release.version, forKey: "updates.installingVersion")
             phase = .restarting
+            // Pozostałe kopie aplikacji (proces główny, okna w osobnych procesach) też kończą pracę — po instalacji uruchamia się
+            // nowa wersja, a nie działająca jeszcze stara kopia.
+            AppInstance.post(.update)
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(600))
                 NSApp.terminate(nil)

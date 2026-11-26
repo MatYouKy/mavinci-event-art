@@ -11,6 +11,7 @@ import {
   deleteDeclarationLine,
   deleteStatement,
   documentPreview,
+  documentRegister,
   explainSetup,
   explainTransaction,
   fileContent,
@@ -44,6 +45,7 @@ export const maxDuration = 300;
  * GET op=periods | month&company&year&month | picker&transaction&allocated | explain&transaction | details&transaction |
  *   contracts&transaction&remaining | refunds&transaction&search | declarations&company&years | statements&company&year |
  *   file&kind=statement|declaration|supporting&id | document&source=invoice|external|ksef&id |
+ *   documents&company&from&to — „Wszystkie dokumenty”: faktury KSeF, CRM i dokumenty spoza KSeF działalności za zakres dat |
  *   matchedPdf&company&year&month (też POST JSON — Mac z dłuższym czasem oczekiwania).
  *   matchedPdf — „Dopasowane faktury (PDF)”: zestawienie i dokumenty przypisane w miesiącu, adres do pobrania (`drive.server.ts`).
  * POST JSON op=run | accept | reject | undo | match | explain | linkDeclaration | linkContract | saveContract | linkRefund | matchedPdf |
@@ -90,6 +92,8 @@ export async function GET(request: Request) {
         return nativeJson(await fileContent(ctx, params.get('kind'), params.get('id')));
       case 'document':
         return nativeJson(await documentPreview(ctx, params.get('source'), params.get('id')));
+      case 'documents':
+        return nativeJson(await documentRegister(ctx, params.get('company'), params.get('from'), params.get('to')));
       case 'matchedPdf':
         return nativeJson(await financeMatchedDocumentsPdf(ctx, params.get('company'), params.get('year'), params.get('month')));
       default:

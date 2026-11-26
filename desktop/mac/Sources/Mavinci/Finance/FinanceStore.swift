@@ -8,7 +8,7 @@ import SwiftUI
 
 /// Części ekranu Finanse (lewa kolumna).
 enum FinancePart: String, CaseIterable, Identifiable {
-    case center, statements, reconciliation, deadlines, declarations, accountant, periods, invoices, ksef, entries
+    case center, statements, reconciliation, deadlines, declarations, accountant, periods, documents, invoices, ksef, entries
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -20,7 +20,8 @@ enum FinancePart: String, CaseIterable, Identifiable {
         case .accountant: return "Przekazanie księgowej"
         case .periods: return "Zamknięcie miesięcy"
         case .entries: return "Koszty i wypłaty"
-        case .invoices: return "Faktury"
+        case .documents: return "Wszystkie dokumenty"
+        case .invoices: return "Faktury sprzedaży"
         case .ksef: return "KSeF"
         }
     }
@@ -33,7 +34,8 @@ enum FinancePart: String, CaseIterable, Identifiable {
         case .declarations: return "DRA, PIT-4R, VAT-7, CIT-8"
         case .accountant: return "Saldeo, wyciągi, płatności zbiorcze"
         case .periods: return "Blokada miesięcy po przekazaniu"
-        case .entries: return "Wypłaty, gotówka, koszty spoza faktur"
+        case .entries: return "Wypłaty, gotówka, koszty bez dokumentu"
+        case .documents: return "KSeF, CRM i spoza KSeF w jednym miejscu"
         case .invoices: return "Rejestr sprzedaży, pro formy, szkice"
         case .ksef: return "Wystawione i otrzymane, synchronizacja"
         }
@@ -48,6 +50,7 @@ enum FinancePart: String, CaseIterable, Identifiable {
         case .accountant: return "paperplane"
         case .periods: return "lock"
         case .entries: return "creditcard"
+        case .documents: return "tray.full"
         case .invoices: return "doc.text"
         case .ksef: return "doc.badge.arrow.up"
         }
@@ -58,7 +61,7 @@ enum FinancePart: String, CaseIterable, Identifiable {
         case .center: return "Przegląd"
         case .statements, .reconciliation: return "Bank"
         case .deadlines, .declarations, .accountant, .periods: return "Podatki i terminy"
-        case .entries, .invoices, .ksef: return "Koszty i dokumenty"
+        case .documents, .entries, .invoices, .ksef: return "Koszty i dokumenty"
         }
     }
     /// Opis pod „?”: co jest w tej części i po co.
@@ -80,6 +83,8 @@ enum FinancePart: String, CaseIterable, Identifiable {
             return "Paczka miesiąca dla księgowej: do Saldeo wyłącznie dokumenty spoza KSeF (z istniejącym opisem na kopii PDF), do księgowej oryginalne wyciągi i opisy płatności zbiorczych. Najpierw plik kontrolny (plan wysyłki i dokładne załączniki), potem akceptacja i zapis paczki ZIP albo wysyłka jednym przyciskiem; braki dokumentów zostają w CRM na liście „Do dosłania”. Wysyłkę przygotowuje administrator CRM.\n\nPo co: księgowa dostaje komplet bez duplikatów faktur KSeF, a każda wysyłka jest sprawdzona i zapisana w historii."
         case .ksef:
             return "Faktury pobrane z KSeF wybranej działalności — wystawione i otrzymane — ze stanem zapłaty, terminem, wpłatami i uwagami do płatności. Synchronizacja za wybrany zakres dat pobiera nowe faktury (już pobrane pomija), a dziennik pokazuje jej przebieg i błędy. Wpłaty z wyciągów przypisuje uzgadnianie; tu dodasz wpłatę ręczną, ustawisz termin, oznaczysz fakturę jako opłaconą albo nieopłaconą i zamkniesz uwagę. Konfiguracja KSeF (certyfikat, token) — w CRM.\n\nPo co: faktury z KSeF i ich zapłata w jednym miejscu, bez szukania po zakładkach."
+        case .documents:
+            return "Wszystkie faktury i dokumenty kosztowe wybranej działalności w jednym rejestrze: faktury z KSeF (wystawione i otrzymane), faktury utworzone w CRM i dokumenty spoza KSeF — faktury zagraniczne (np. Adobe, OpenAI), paragony, polisy, noty. Przełącznik „Źródło” pokazuje wszystkie albo tylko KSeF, CRM lub spoza KSeF; do tego rodzaj (koszty / sprzedaż), stan zapłaty i wyszukiwanie. Wiersz pod filtrami pokazuje, które filtry działają. Dwuklik otwiera podgląd dokumentu. Dokument spoza KSeF dodaje się w CRM (wgranie pliku z odczytem danych).\n\nPo co: każdy dokument kosztowy i sprzedażowy znajdziesz w jednym miejscu, niezależnie od tego, czy przyszedł przez KSeF."
         case .entries:
             return "Ręczne zapisy kosztów, których nie ma w KSeF ani na fakturach: wynagrodzenia i wypłaty, podwykonawcy, zakupy, zwroty kosztów, gotówka. Zapłacone i poniesione liczą się do wyniku, planowane — nie.\n\nPo co: raporty i wynik obejmują też koszty bez faktury."
         case .declarations:

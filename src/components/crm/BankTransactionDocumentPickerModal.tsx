@@ -7,6 +7,7 @@ import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
 import { isPreviewableDocumentSource, useDocumentPreview } from '@/components/crm/invoices/useDocumentPreview';
+import FilterSummaryBar, { activeFilterClass, filterDateLabel, type FilterChip } from '@/components/crm/invoices/FilterSummaryBar';
 import { loadExternalDocumentKinds } from '@/lib/invoices/loadExternalDocumentKinds';
 import { loadPersonnelPaymentBreakdowns, salaryPaymentNeedsNetConfirmation, type PersonnelPaymentBreakdown } from '@/lib/personnel/payrollMatching';
 import {
@@ -225,6 +226,25 @@ export default function BankTransactionDocumentPickerModal({
       });
   }, [dateFrom, dateTo, documents, paymentFilter, remainingAmount, search, sourceFilter]);
 
+  // Włączone filtry — pasek stanu pod filtrami (filtry działają od razu, pasek pokazuje, że są włączone; × wyłącza jeden).
+  const filterChips: FilterChip[] = [];
+  if (search.trim()) filterChips.push({ key: 'search', label: `Szukaj: „${search.trim()}”`, onRemove: () => setSearch('') });
+  if (sourceFilter !== 'all') filterChips.push({ key: 'source', label: `Typ: ${sourceLabels[sourceFilter]}`, onRemove: () => setSourceFilter('all') });
+  if (paymentFilter !== 'all') {
+    filterChips.push({ key: 'payment', label: `Status: ${paymentFilter === 'paid' ? 'Opłacone' : 'Nieopłacone / częściowe'}`, onRemove: () => setPaymentFilter('all') });
+  }
+  if (dateFrom) filterChips.push({ key: 'from', label: `Wystawione od ${filterDateLabel(dateFrom)}`, onRemove: () => setDateFrom('') });
+  if (dateTo) filterChips.push({ key: 'to', label: `Wystawione do ${filterDateLabel(dateTo)}`, onRemove: () => setDateTo('') });
+  const clearFilters = () => {
+    setSearch('');
+    setSourceFilter('all');
+    setPaymentFilter('all');
+    setDateFrom('');
+    setDateTo('');
+  };
+  const sourceCount = (source: 'all' | DocumentSource) =>
+    source === 'all' ? documents.length : documents.filter((document) => document.document_source === source).length;
+
   const paymentMethodConflict = (document: PickerDocument) =>
     !isBankStatementMatchablePaymentMethod(document.payment_method, document.document_source);
 
@@ -344,7 +364,7 @@ export default function BankTransactionDocumentPickerModal({
 
         <div className="border-b border-white/10 p-4">
           <div className="flex items-center gap-2">
-            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-white/15 bg-[#1c1f33] px-3 py-2">
+            <label className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-2 ${activeFilterClass(Boolean(search.trim()))}`}>
               <Search className="h-4 w-4 shrink-0 text-[#d3bb73]" />
               <input
                 value={search}
@@ -352,26 +372,35 @@ export default function BankTransactionDocumentPickerModal({
                 placeholder="Szukaj po numerze, kontrahencie lub kwocie…"
                 className="min-w-0 flex-1 bg-transparent text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/30"
               />
-              <span className="text-[11px] text-[#e5e4e2]/40">{visibleDocuments.length}/{documents.length}</span>
             </label>
             <SlidersHorizontal className="h-4 w-4 shrink-0 text-[#d3bb73]" />
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as 'all' | DocumentSource)} className="rounded-lg border border-white/15 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2] outline-none">
-              <option value="all">Wszystkie typy</option>
-              <option value="ksef">KSeF</option>
-              <option value="external">Spoza KSeF</option>
-              <option value="invoice">CRM</option>
-              <option value="personnel">Kadrowe</option>
+            <select value={sourceFilter} aria-label="Typ dokumentu" onChange={(event) => setSourceFilter(event.target.value as 'all' | DocumentSource)} className={`rounded-lg border px-3 py-2 text-xs outline-none ${activeFilterClass(sourceFilter !== 'all')}`}>
+              <option value="all">Wszystkie typy ({sourceCount('all')})</option>
+              <option value="ksef">KSeF ({sourceCount('ksef')})</option>
+              <option value="external">Spoza KSeF ({sourceCount('external')})</option>
+              <option value="invoice">CRM ({sourceCount('invoice')})</option>
+              <option value="personnel">Kadrowe ({sourceCount('personnel')})</option>
             </select>
-            <select value={paymentFilter} onChange={(event) => setPaymentFilter(event.target.value as 'all' | 'paid' | 'unpaid')} className="rounded-lg border border-white/15 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2] outline-none">
+            <select value={paymentFilter} aria-label="Status zapłaty" onChange={(event) => setPaymentFilter(event.target.value as 'all' | 'paid' | 'unpaid')} className={`rounded-lg border px-3 py-2 text-xs outline-none ${activeFilterClass(paymentFilter !== 'all')}`}>
               <option value="all">Wszystkie statusy</option>
               <option value="paid">Opłacone</option>
               <option value="unpaid">Nieopłacone / częściowe</option>
             </select>
-            <input type="date" aria-label="Data wystawienia od" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} className="rounded-lg border border-white/15 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2] outline-none" />
-            <input type="date" aria-label="Data wystawienia do" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} className="rounded-lg border border-white/15 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2] outline-none" />
+            <input type="date" aria-label="Data wystawienia od" title="Wystawione od" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} className={`rounded-lg border px-3 py-2 text-xs outline-none ${activeFilterClass(Boolean(dateFrom))}`} />
+            <input type="date" aria-label="Data wystawienia do" title="Wystawione do" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} className={`rounded-lg border px-3 py-2 text-xs outline-none ${activeFilterClass(Boolean(dateTo))}`} />
           </div>
+          {!loading && (
+            <FilterSummaryBar
+              className="mt-3"
+              shown={visibleDocuments.length}
+              total={documents.length}
+              forms={['dokument', 'dokumenty', 'dokumentów']}
+              chips={filterChips}
+              onClear={clearFilters}
+            />
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
@@ -401,6 +430,11 @@ export default function BankTransactionDocumentPickerModal({
             <div className="flex h-full flex-col items-center justify-center px-6 text-center text-sm text-[#e5e4e2]/50">
               <AlertTriangle className="mb-3 h-8 w-8 text-amber-300" />
               Brak dokumentów spełniających wybrane filtry.
+              {filterChips.length > 0 && (
+                <button type="button" onClick={clearFilters} className="mt-3 rounded-lg border border-[#d3bb73]/40 px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10">
+                  Wyczyść filtry
+                </button>
+              )}
             </div>
           ) : (
             <table className="w-full min-w-[820px] table-fixed">

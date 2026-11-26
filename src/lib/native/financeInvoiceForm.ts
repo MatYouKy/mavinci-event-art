@@ -1,6 +1,7 @@
 import 'server-only';
 import type { NativeContext } from './auth';
 import { filterFinanceCompanies, loadInvoiceFinanceAccess, type InvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { getAcceptedCalculationInvoicePrefill, getAcceptedOfferInvoicePrefill } from '@/lib/invoices/acceptedOfferPrefill';
 import {
   createEmptyInvoiceRecipientDraft,
@@ -72,7 +73,8 @@ const SELLER_REQUIRED: Array<[string, string]> = [
 async function issueCompanies(ctx: NativeContext, access: InvoiceFinanceAccess): Promise<Row[]> {
   const { data, error } = await ctx.supabase.from('my_companies').select('*').eq('is_active', true).order('is_default', { ascending: false });
   if (error) fail('Nie udało się wczytać działalności dostępnych do wystawienia faktury.', 500);
-  const list = ((data || []) as Row[]).map((company) => ({ ...company, id: String(company.id) }));
+  // Fakturę wystawia działalność (firma z NIP) — marka bez NIP (np. Event Rulers) nie.
+  const list = financeEntities(((data || []) as Row[]).map((company) => ({ ...company, id: String(company.id) })));
   return filterFinanceCompanies(access, list, 'invoices_issue');
 }
 const companyOut = (company: Row) => ({

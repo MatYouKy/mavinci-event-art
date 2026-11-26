@@ -568,7 +568,8 @@ struct ChatError: LocalizedError {
         let senderName = sender.flatMap { id in conversation?.participants.first { $0.employeeID == id }?.employee ?? employeeCache[id] }?.displayName ?? "Nowa wiadomość"
         let groupTitle = conversation?.isGroup == true ? conversation?.title?.nonEmpty : nil
         let active = NSApp.isActive
-        if active { NSSound(named: NSSound.Name("Pop"))?.play() }
+        // Dźwięk odtwarza proces główny (powiadomienie albo „Pop”) — okno w osobnym procesie milczy, żeby nie było dwóch dźwięków.
+        if active && !AppInstance.isSecondary { NSSound(named: NSSound.Name("Pop"))?.play() }
         ChatNotifier.shared.post(title: groupTitle ?? senderName, body: groupTitle != nil ? "\(senderName): \(text)" : text, conversationID: conversationID, sound: !active)
     }
 
@@ -759,8 +760,9 @@ extension Workspace {
     static let shared = ChatNotifier()
     private weak var store: ChatStore?
     private var installed = false
-    /// Powiadomienia działają tylko w zbudowanej aplikacji (.app), nie przy `swift run`.
-    private var bundled: Bool { Bundle.main.bundleURL.pathExtension == "app" && Bundle.main.bundleIdentifier != nil }
+    /// Powiadomienia działają tylko w zbudowanej aplikacji (.app), nie przy `swift run`. Wysyła je proces główny — okno
+    /// w osobnym procesie (`WindowProcess.swift`) ich nie dubluje.
+    private var bundled: Bool { Bundle.main.bundleURL.pathExtension == "app" && Bundle.main.bundleIdentifier != nil && !AppInstance.isSecondary }
 
     func install(_ store: ChatStore) {
         self.store = store

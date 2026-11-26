@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Eye, FileText, Loader2, Pencil, RefreshCw, Send, ShieldCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { dispatchCrmEmail } from '@/lib/emailScheduling';
 import { loadUnifiedEmailAccounts, type UnifiedEmailAccount } from '@/components/crm/UnifiedEmailComposer';
 import { decodeTextEntities } from '@/lib/textEncoding';
@@ -18,7 +19,7 @@ import SaldeoDocumentDetailsModal, { type SaldeoDocumentDetails } from './Saldeo
 type Row = Record<string, any>;
 type Source = 'external_invoice' | 'local_invoice' | 'bank_supporting_document' | 'ksef' | 'personnel' | 'bank_transaction';
 type SaldeoType = 'FK' | 'DS' | 'P';
-type Company = { id: string; name: string; is_default: boolean | null; saldeo_document_email: string | null; accountant_email: string | null };
+type Company = { id: string; name: string; nip?: string | null; is_default: boolean | null; saldeo_document_email: string | null; accountant_email: string | null };
 export type Statement = BankStatementDeduplicationMetadata & { id: string; file_name: string; file_storage_path: string | null; processed: boolean; validation_status: string };
 export type Bank = Row & {
   id: string; statement_id: string; amount: number; allocated_amount: number; transaction_date: string; currency: string;
@@ -591,8 +592,10 @@ export default function SaldeoDeliveryPanel({ filterCompanyIds = null, period, c
   useEffect(() => {
     let active = true;
     void Promise.all([
-      pages<Company>(() => { let query = supabase.from('my_companies').select('id,name,is_default,saldeo_document_email,accountant_email').eq('is_active', true); if (filterCompanyIds?.length) query = query.in('id', filterCompanyIds); return query; }), loadUnifiedEmailAccounts(),
-    ]).then(([rows, emailAccounts]) => {
+      pages<Company>(() => { let query = supabase.from('my_companies').select('id,name,nip,is_default,saldeo_document_email,accountant_email').eq('is_active', true); if (filterCompanyIds?.length) query = query.in('id', filterCompanyIds); return query; }), loadUnifiedEmailAccounts(),
+    ]).then(([allRows, emailAccounts]) => {
+      // Działalności (firmy z NIP) — marka bez NIP (np. Event Rulers) nie ma paczki dla księgowej.
+      const rows = financeEntities(allRows);
       if (!active) return; rows.sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.name.localeCompare(b.name));
       setCompanies(rows); setAccounts(emailAccounts); setCompanyId((current) => rows.some((row) => row.id === current) ? current : rows[0]?.id || '');
       setEmailAccountId((current) => emailAccounts.some((account) => account.id === current) ? current : emailAccounts[0]?.id || '');

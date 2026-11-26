@@ -25,6 +25,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import {
   createFinalInvoice,
@@ -331,7 +332,8 @@ export default function FinalInvoiceWizardModal({
         .order('is_default', { ascending: false })
         .order('name');
 
-      const list = (data ?? []) as MyCompanyOpt[];
+      // Fakturę końcową wystawia działalność (firma z NIP) — marka bez NIP (np. Event Rulers) nie.
+      const list = financeEntities((data ?? []) as MyCompanyOpt[]);
       setMyCompanies(list);
     })();
   }, []);

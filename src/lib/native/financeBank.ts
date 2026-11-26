@@ -24,6 +24,7 @@ import {
 } from '@/lib/bankTransactionMatching';
 import { loadExternalDocumentKinds } from '@/lib/invoices/loadExternalDocumentKinds';
 import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
+import { REGISTER_STATE_LABELS, registerState, warsawToday } from '@/lib/invoices/documentRegister';
 import {
   loadPersonnelPaymentBreakdowns,
   salaryPaymentNeedsNetConfirmation,
@@ -1724,6 +1725,148 @@ export async function fileContent(ctx: NativeContext, kind: unknown, idParam: un
  * Podgląd dokumentu rozliczenia (jak `useDocumentPreview` w CRM): faktura CRM — wydruk PDF z danych faktury (dostęp jak
  * do faktury, RLS), dokument spoza KSeF — wgrany plik, faktura KSeF — dane z zapisanego XML (strony, kwoty, pozycje).
  */
+// MARK: Wszystkie dokumenty (Mac: Finanse → „Wszystkie dokumenty”; CRM: Dokumenty i rozliczenia → „Wszystkie dokumenty”)
+
+/*
+ * Jeden rejestr faktur i dokumentów kosztowych działalności za zakres dat: faktury z KSeF (wystawione i otrzymane), faktury
+ * CRM (bez tych, które są już w KSeF pod tym samym numerem — jak w CRM) i dokumenty spoza KSeF (faktury zagraniczne,
+ * paragony, polisy, noty…). Każda pozycja ma źródło, stronę (koszt / sprzedaż) i jeden stan zapłaty, więc na Macu da się je
+ * filtrować w jednym miejscu. Odczyt klientem z tokenem pracownika (RLS) po sprawdzeniu „Podglądu finansów” działalności.
+ */
+const REGISTER_LIMIT = 2000;
+const REGISTER_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+function registerRange(fromParam: unknown, toParam: unknown) {
+  const today = warsawToday();
+  const to = REGISTER_DAY.test(str(toParam)) ? str(toParam) : today;
+  let from = str(fromParam);
+  if (!REGISTER_DAY.test(from)) {
+    const start = new Date(`${to}T12:00:00Z`);
+    start.setUTCMonth(start.getUTCMonth() - 2, 1);
+    from = start.toISOString().slice(0, 10);
+  }
+  if (from > to) fail('Data „od” jest późniejsza niż „do”.');
+  const span = (new Date(`${to}T12:00:00Z`).getTime() - new Date(`${from}T12:00:00Z`).getTime()) / 86_400_000;
+  if (span > 731) fail('Wybierz zakres najwyżej dwóch lat.');
+  return { from, to, today };
+}
+
+export async function documentRegister(ctx: NativeContext, companyParam: unknown, fromParam: unknown, toParam: unknown) {
+  const companyId = uuid(companyParam, 'Nieprawidłowa działalność.');
+  const { canManage } = await companyAccess(ctx, companyId);
+  const { from, to, today } = registerRange(fromParam, toParam);
+
+  const [ksef, local, external] = await Promise.all([
+    ctx.supabase.from('ksef_invoices')
+      .select('id,invoice_number,ksef_reference_number,invoice_type,issue_date,ksef_issued_at,payment_due_date,payment_status,seller_name,seller_nip,buyer_name,buyer_nip,gross_amount,amount_to_pay_gross,currency')
+      .eq('my_company_id', companyId).eq('sync_status', 'synced')
+      .not('ksef_reference_number', 'is', null).neq('ksef_reference_number', '')
+      .gte('issue_date', from).lte('issue_date', to)
+      .order('issue_date', { ascending: false }).limit(REGISTER_LIMIT),
+    ctx.supabase.from('invoices')
+      .select('id,invoice_number,invoice_type,status,issue_date,payment_due_date,payment_status,buyer_name,buyer_nip,total_gross,ksef_status')
+      .eq('my_company_id', companyId)
+      .gte('issue_date', from).lte('issue_date', to)
+      .order('issue_date', { ascending: false }).limit(REGISTER_LIMIT),
+    ctx.supabase.from('external_invoices')
+      .select('id,document_kind,invoice_number,label,invoice_date,seller_name,seller_nip,amount_gross,currency,payment_status,file_url')
+      .eq('my_company_id', companyId)
+      .gte('invoice_date', from).lte('invoice_date', to)
+      .order('invoice_date', { ascending: false }).limit(REGISTER_LIMIT),
+  ]);
+  for (const result of [ksef, local, external]) {
+    if (result.error) rpcFail(result.error, 'Nie udało się pobrać dokumentów.');
+  }
+  const ksefRows = rows(ksef.data);
+  const localRows = rows(local.data);
+  const externalRows = rows(external.data);
+  // Faktura CRM przyjęta w KSeF jest już na liście jako faktura KSeF (ten sam numer) — bez dublowania, jak w CRM.
+  const issuedInKsef = new Set(ksefRows.filter((row) => str(row.invoice_type).toLowerCase() === 'issued')
+    .map((row) => str(row.invoice_number).trim()).filter(Boolean));
+
+  const documents = [
+    ...ksefRows.map((row) => {
+      const received = str(row.invoice_type).toLowerCase() === 'received';
+      const dueDate = day(row.payment_due_date);
+      const state = registerState(row.payment_status, dueDate, today);
+      return {
+        source: 'ksef',
+        id: str(row.id),
+        number: str(row.invoice_number) || str(row.ksef_reference_number),
+        reference: strOrNull(row.ksef_reference_number),
+        kindLabel: received ? 'Faktura zakupowa' : 'Faktura sprzedażowa',
+        side: received ? 'cost' : 'sales',
+        counterparty: bankTextOrNull(received ? row.seller_name : row.buyer_name),
+        nip: strOrNull(received ? row.seller_nip : row.buyer_nip),
+        issueDate: day(row.issue_date) || day(row.ksef_issued_at),
+        dueDate,
+        gross: num(row.amount_to_pay_gross ?? row.gross_amount),
+        currency: str(row.currency) || 'PLN',
+        state,
+        stateLabel: REGISTER_STATE_LABELS[state],
+        previewable: true,
+        href: '/crm/invoices?tab=ksef',
+      };
+    }),
+    ...localRows
+      .filter((row) => !(str(row.ksef_status) === 'accepted' && issuedInKsef.has(str(row.invoice_number).trim())))
+      .map((row) => {
+        const dueDate = day(row.payment_due_date);
+        const state = registerState(row.payment_status, dueDate, today, row.status);
+        const proforma = str(row.invoice_type).toLowerCase() === 'proforma';
+        return {
+          source: 'invoice',
+          id: str(row.id),
+          number: str(row.invoice_number) || (proforma ? 'Proforma bez numeru' : 'Faktura bez numeru'),
+          reference: null as string | null,
+          kindLabel: proforma ? 'Proforma' : 'Faktura sprzedażowa',
+          side: 'sales',
+          counterparty: strOrNull(row.buyer_name),
+          nip: strOrNull(row.buyer_nip),
+          issueDate: day(row.issue_date),
+          dueDate,
+          gross: num(row.total_gross),
+          currency: 'PLN',
+          state,
+          stateLabel: REGISTER_STATE_LABELS[state],
+          previewable: true,
+          href: `/crm/invoices/${str(row.id)}`,
+        };
+      }),
+    ...externalRows.map((row) => {
+      const state = registerState(row.payment_status, null, today);
+      return {
+        source: 'external',
+        id: str(row.id),
+        number: str(row.invoice_number) || 'bez numeru',
+        reference: strOrNull(row.label),
+        kindLabel: externalDocumentKindLabel(row.document_kind),
+        side: 'cost',
+        counterparty: strOrNull(row.seller_name),
+        nip: strOrNull(row.seller_nip),
+        issueDate: day(row.invoice_date),
+        dueDate: null as string | null,
+        gross: num(row.amount_gross),
+        currency: str(row.currency) || 'PLN',
+        state,
+        stateLabel: REGISTER_STATE_LABELS[state],
+        previewable: Boolean(strOrNull(row.file_url)),
+        href: '/crm/invoices?tab=external&section=external',
+      };
+    }),
+  ].sort((left, right) => (right.issueDate || '').localeCompare(left.issueDate || '') || left.number.localeCompare(right.number, 'pl'));
+
+  return {
+    companyId,
+    from,
+    to,
+    today,
+    canManage,
+    truncated: [ksefRows, localRows, externalRows].some((list) => list.length >= REGISTER_LIMIT),
+    documents,
+  };
+}
+
 export async function documentPreview(ctx: NativeContext, sourceParam: unknown, idParam: unknown) {
   const id = uuid(idParam, 'Nieprawidłowy dokument.');
   const source = str(sourceParam);

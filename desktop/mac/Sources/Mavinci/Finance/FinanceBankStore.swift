@@ -76,6 +76,17 @@ enum BankPreviewItem: Identifiable {
     @Published private(set) var ksefLoading = false
     @Published var ksefListError: String?
 
+    // Wszystkie dokumenty (`op=documents`) — rejestr działalności za zakres dat; filtry listy zostają przy przełączaniu części.
+    @Published private(set) var documentLists: [String: FinDocumentsReply] = [:]
+    @Published private(set) var documentsLoading = false
+    @Published var documentsError: String?
+    @Published var documentsFrom = FinanceBankStore.documentsDefaultFrom()
+    @Published var documentsTo = Date()
+    @Published var documentsSource = "all"
+    @Published var documentsSide = "all"
+    @Published var documentsState = "all"
+    @Published var documentsSearch = ""
+
     // MARK: Działalność
     /// Działalności dostępne na ekranach banku — wybrane w filtrze Finansów.
     var companies: [FinCompany] { finance?.scopeCompanies ?? [] }
@@ -139,6 +150,9 @@ enum BankPreviewItem: Identifiable {
         entries = nil; entriesLoading = false; entriesError = nil
         invoices = nil; invoicesLoading = false; invoicesError = nil; selectedInvoice = nil
         ksefCompanies = nil; ksefError = nil; ksefCompanyID = nil; ksefLists = [:]; ksefLoading = false; ksefListError = nil
+        documentLists = [:]; documentsLoading = false; documentsError = nil
+        documentsFrom = Self.documentsDefaultFrom(); documentsTo = Date()
+        documentsSource = "all"; documentsSide = "all"; documentsState = "all"; documentsSearch = ""
         let year = Calendar.current.component(.year, from: Date())
         statementsYear = year
         declarationsYear = year
@@ -575,6 +589,31 @@ enum BankPreviewItem: Identifiable {
         }
         await loadDeclarations(force: true)
         return reply
+    }
+
+    // MARK: Wszystkie dokumenty (`/bridge/native/v1/finance/bank`, op=documents)
+    /// Domyślny zakres: od początku miesiąca sprzed dwóch miesięcy do dziś (jak serwer bez dat).
+    nonisolated static func documentsDefaultFrom() -> Date {
+        let calendar = Calendar.current
+        let start = calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
+        return calendar.date(byAdding: .month, value: -2, to: start) ?? start
+    }
+    func documentsKey(_ company: String) -> String {
+        "\(company)|\(FinanceText.dayString(documentsFrom))|\(FinanceText.dayString(documentsTo))"
+    }
+    func loadDocuments(force: Bool = false) async {
+        guard let company else { return }
+        let key = documentsKey(company.id)
+        if !force, documentLists[key] != nil { return }
+        documentsLoading = true
+        defer { documentsLoading = false }
+        do {
+            let reply = try await get(["op": "documents", "company": company.id, "from": FinanceText.dayString(documentsFrom), "to": FinanceText.dayString(documentsTo)], as: FinDocumentsReply.self)
+            documentLists[key] = reply
+            documentsError = nil
+        } catch {
+            documentsError = failureText(error, "Nie udało się pobrać dokumentów.")
+        }
     }
 
     // MARK: Koszty i wypłaty (`/bridge/native/v1/finance`, op=entries | entrySave | entryDelete)

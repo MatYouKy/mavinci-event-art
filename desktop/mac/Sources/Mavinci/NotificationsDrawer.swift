@@ -206,6 +206,7 @@ import AppKit
             case "declarations":return .declarations
             case "accountant":return .accountant
             case "periods":return .periods
+            case "documents","external":return .documents
             default:return nil
             }
         default:return nil

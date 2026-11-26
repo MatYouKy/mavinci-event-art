@@ -14,6 +14,7 @@ import {
   Settings
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import KSeFConfigForm from '@/components/crm/KSeFConfigForm';
 import PermissionGuard from '@/components/crm/PermissionGuard';
@@ -71,7 +72,8 @@ export default function KSeFSettingsPage() {
       );
 
       // Tylko działalności, w których pracownik ma „Zarządzanie finansami”.
-      const companiesWithStatus = filterFinanceCompanies(financeAccess, companiesData || [], 'finance_manage').map((company) => ({
+      // KSeF ma tylko działalność z NIP — marka bez NIP (np. Event Rulers) nie.
+      const companiesWithStatus = filterFinanceCompanies(financeAccess, financeEntities(companiesData || []), 'finance_manage').map((company) => ({
         ...company,
         has_ksef: credentialMap.has(company.id),
       }));

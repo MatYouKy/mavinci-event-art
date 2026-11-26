@@ -116,7 +116,7 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
                 ProgressView("Pobieranie dokumentów…").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         } footer: {
-            Text("Kolejność: najbliższa kwota do rozliczenia, potem najnowsze. Mniejsza kwota niż do zapłaty — płatność częściowa (np. rata).")
+            Text("Filtry działają od razu — stan pod paskiem filtrów. Kolejność: najbliższa kwota do rozliczenia, potem najnowsze. Mniejsza kwota niż do zapłaty — płatność częściowa (np. rata).")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(2)
             Spacer()
             Button("Zamknij") { dismiss() }.keyboardShortcut(.cancelAction)
@@ -129,42 +129,86 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
     private func load() async {
         loadError = nil
         do {
-            data = try await store.get(["op": "picker", "transaction": tx.id, "allocated": String(tx.allocated)], as: BankPicker.self)
+            let reply = try await store.get(["op": "picker", "transaction": tx.id, "allocated": String(tx.allocated)], as: BankPicker.self)
+            // Zakres dat po włączeniu „od” / „do”: trzy miesiące przed płatnością do dnia płatności (faktura zwykle jest wcześniej).
+            if !useFrom, !useTo, let paid = FinanceText.dayDate(reply.transaction.date) {
+                to = paid
+                from = Calendar.current.date(byAdding: .month, value: -3, to: paid) ?? paid
+            }
+            data = reply
         } catch {
             loadError = store.failureText(error, "Nie udało się pobrać dokumentów.")
         }
     }
 
-    private var filters: some View {
-        HStack(spacing: 8) {
-            TextField("Szukaj po numerze, kontrahencie lub kwocie…", text: $search).textFieldStyle(.roundedBorder)
-            Picker("", selection: $source) {
-                Text("Wszystkie typy").tag("all")
-                Text("KSeF").tag("ksef")
-                Text("CRM").tag("invoice")
-                Text("Spoza KSeF").tag("external")
-                Text("Kadrowe").tag("personnel")
-            }
-            .labelsHidden().fixedSize()
-            Picker("", selection: $payment) {
-                Text("Wszystkie statusy").tag("all")
-                Text("Opłacone").tag("paid")
-                Text("Nieopłacone / częściowe").tag("unpaid")
-            }
-            .labelsHidden().fixedSize()
-            Toggle("od", isOn: $useFrom).toggleStyle(.checkbox).fixedSize()
-            if useFrom { DatePicker("", selection: $from, displayedComponents: .date).labelsHidden().fixedSize() }
-            Toggle("do", isOn: $useTo).toggleStyle(.checkbox).fixedSize()
-            if useTo { DatePicker("", selection: $to, displayedComponents: .date).labelsHidden().fixedSize() }
+    private static let sources: [(String, String)] = [("all", "Wszystkie typy"), ("ksef", "KSeF"), ("invoice", "CRM"), ("external", "Spoza KSeF"), ("personnel", "Kadrowe")]
+    private static let payments: [(String, String)] = [("all", "Wszystkie statusy"), ("paid", "Opłacone"), ("unpaid", "Nieopłacone / częściowe")]
+
+    /// Włączone filtry (wiersz stanu pod paskiem — `FinFilterSummary`); × wyłącza jeden filtr.
+    private var chips: [FinFilterChip] {
+        var result: [FinFilterChip] = []
+        let needle = search.trimmingCharacters(in: .whitespaces)
+        if !needle.isEmpty { result.append(FinFilterChip(label: "Szukaj: „\(needle)”") { search = "" }) }
+        if source != "all", let label = Self.sources.first(where: { $0.0 == source })?.1 {
+            result.append(FinFilterChip(label: "Typ: \(label)") { source = "all" })
         }
-        .controlSize(.small)
+        if payment != "all", let label = Self.payments.first(where: { $0.0 == payment })?.1 {
+            result.append(FinFilterChip(label: "Status: \(label)") { payment = "all" })
+        }
+        if useFrom { result.append(FinFilterChip(label: "Wystawione od \(FinFormat.day(FinanceText.dayString(from)))") { useFrom = false }) }
+        if useTo { result.append(FinFilterChip(label: "Wystawione do \(FinFormat.day(FinanceText.dayString(to)))") { useTo = false }) }
+        return result
+    }
+
+    private func clearFilters() {
+        search = ""; source = "all"; payment = "all"; useFrom = false; useTo = false
+    }
+
+    private var filters: some View {
+        let all = data?.documents ?? []
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                TextField("Szukaj po numerze, kontrahencie lub kwocie…", text: $search).textFieldStyle(.roundedBorder)
+                    .finFilterActive(!search.trimmingCharacters(in: .whitespaces).isEmpty)
+                Picker("", selection: $source) {
+                    // Liczba dokumentów każdego typu — widać, ile zostanie po wyborze.
+                    ForEach(Self.sources, id: \.0) { item in
+                        let count = item.0 == "all" ? all.count : all.filter { $0.source == item.0 }.count
+                        Text("\(item.1) (\(count))").tag(item.0)
+                    }
+                }
+                .labelsHidden().fixedSize().finFilterActive(source != "all")
+                Picker("", selection: $payment) {
+                    ForEach(Self.payments, id: \.0) { Text($0.1).tag($0.0) }
+                }
+                .labelsHidden().fixedSize().finFilterActive(payment != "all")
+                HStack(spacing: 4) {
+                    Toggle("od", isOn: $useFrom).toggleStyle(.checkbox).fixedSize()
+                    if useFrom { DatePicker("", selection: $from, displayedComponents: .date).labelsHidden().fixedSize() }
+                }
+                .finFilterActive(useFrom)
+                HStack(spacing: 4) {
+                    Toggle("do", isOn: $useTo).toggleStyle(.checkbox).fixedSize()
+                    if useTo { DatePicker("", selection: $to, displayedComponents: .date).labelsHidden().fixedSize() }
+                }
+                .finFilterActive(useTo)
+            }
+            .controlSize(.small)
+            FinFilterSummary(shown: visible.count, total: all.count, forms: ("dokument", "dokumenty", "dokumentów"), chips: chips) { clearFilters() }
+        }
     }
 
     private func list(_ data: BankPicker) -> some View {
         let items = visible
         return Group {
             if items.isEmpty {
-                ContentUnavailableView("Brak dokumentów dla wybranych filtrów", systemImage: "doc.text.magnifyingglass")
+                ContentUnavailableView {
+                    Label("Brak dokumentów dla wybranych filtrów", systemImage: "doc.text.magnifyingglass")
+                } description: {
+                    Text(chips.isEmpty ? "Nie ma dokumentów, które można dopasować do tej płatności." : "Włączone filtry: \(chips.map(\.label).joined(separator: ", ")).")
+                } actions: {
+                    if !chips.isEmpty { Button("Wyczyść filtry") { clearFilters() } }
+                }
             } else {
                 List(items, id: \.key) { doc in row(doc, data: data) }.listStyle(.inset)
             }

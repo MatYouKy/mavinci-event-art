@@ -4,6 +4,7 @@ import { ACCESS_SECTIONS } from '@/lib/accessSections';
 import { getAllScopes } from '@/lib/permissions';
 import { PURCHASES_PERMISSION, getPermissionDefinition } from '@/lib/permissionCatalog';
 import { FINANCE_COMPANY_LEVEL_OPTIONS, normalizeFinanceCompanyAccess } from '@/lib/financeCompanyAccess';
+import { isFinanceEntity } from '@/lib/invoices/financeEntities';
 import { isDrivingLicenseCertification } from '@/lib/CRM/employees/drivingLicenses';
 import {
   CONTACT_TABS, EVENT_TABS, LEGACY_FINANCE_PERMISSIONS, MAVINCI_LIVE_SECTION_SCOPES, ORGANIZATION_TABS, RECORD_SCOPE_MODULE_KEYS,
@@ -215,7 +216,7 @@ export async function employeePermissions(ctx: NativeContext, employeeId: string
   const [employee, companies, settings, sources, sourceSettings, teams] = await Promise.all([
     s.from('employees').select('updated_at, role, access_level, access_level_id, permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, company_access_mode, role_permissions_inherited, finance_company_access, sales_team_id, is_sales_team_manager, access_levels(name, default_permissions, event_tabs, contact_tabs, organization_tabs)')
       .eq('id', employeeId).maybeSingle(),
-    s.from('my_companies').select('id, name, is_active').order('name'),
+    s.from('my_companies').select('id, name, is_active, nip').order('name'),
     s.from('employee_notification_settings')
       .select('contact_form_enabled, webhook_notifications_enabled, fleet_compliance_enabled, inquiry_assignments_enabled, inquiry_followups_enabled, inquiry_escalations_enabled')
       .eq('employee_id', employeeId).maybeSingle(),
@@ -247,7 +248,8 @@ export async function employeePermissions(ctx: NativeContext, employeeId: string
       name: text(pack.name), permissions: strings(pack.default_permissions), eventTabs: strings(pack.event_tabs),
       contactTabs: strings(pack.contact_tabs), organizationTabs: strings(pack.organization_tabs),
     } : null,
-    companies: (companies.data || []).map((row: Row) => ({ id: String(row.id), name: text(row.name), active: row.is_active !== false })),
+    // `financeEntity` — działalność (firma z NIP); marka bez NIP (np. Event Rulers) nie ma poziomów dostępu do finansów.
+    companies: (companies.data || []).map((row: Row) => ({ id: String(row.id), name: text(row.name), active: row.is_active !== false, financeEntity: isFinanceEntity(row) })),
     notifications: {
       contactForm: n.contact_form_enabled ?? isTargetAdmin, webhook: n.webhook_notifications_enabled ?? isTargetAdmin,
       fleet: n.fleet_compliance_enabled ?? isTargetAdmin, inquiryAssignments: n.inquiry_assignments_enabled ?? true,
@@ -266,9 +268,9 @@ export async function savePermissions(ctx: NativeContext, employeeId: string, da
   const mode = data.companyAccessMode === 'selected' ? 'selected' : 'all';
   const companyIds = strings(data.myCompanyIds);
   if (mode === 'selected' && !companyIds.length) return { error: 'Wybierz przynajmniej jedną markę albo dostęp do wszystkich marek' };
-  const { data: companies, error: companiesError } = await ctx.supabase.from('my_companies').select('id, is_active');
+  const { data: companies, error: companiesError } = await ctx.supabase.from('my_companies').select('id, is_active, nip');
   if (companiesError) throw companiesError;
-  const financeCompanies = new Set((companies || []).filter((row: Row) => row.is_active !== false && (mode === 'all' || companyIds.includes(String(row.id)))).map((row: Row) => String(row.id)));
+  const financeCompanies = new Set((companies || []).filter((row: Row) => row.is_active !== false && isFinanceEntity(row) && (mode === 'all' || companyIds.includes(String(row.id)))).map((row: Row) => String(row.id)));
   const finance = normalizeFinanceCompanyAccess(data.financeCompanyAccess);
   const tabs = (value: unknown) => (strings(value).length ? strings(value) : null);
   const loadedUpdatedAt = typeof data.updatedAt === 'string' && data.updatedAt ? data.updatedAt : null;

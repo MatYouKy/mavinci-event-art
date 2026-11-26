@@ -31,7 +31,6 @@ import {
   Table2,
   ChevronUp,
   ChevronDown,
-  Receipt,
   WalletCards,
   Banknote,
   Scale,
@@ -50,7 +49,13 @@ import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { InvoiceSettingsTab } from '@/components/crm/invoices/tabs/InvoiceSettingsTab';
-import { AccountingWorkspaceTab } from '@/components/crm/invoices/tabs/AccountingWorkspaceTab';
+import {
+  AccountingWorkspaceTab,
+  WORKSPACE_SECTIONS,
+  requestedWorkspaceSection,
+  type WorkspaceSection,
+} from '@/components/crm/invoices/tabs/AccountingWorkspaceTab';
+import FinanceNavTree, { type FinanceNavGroup, type FinanceNavItem } from '@/components/crm/invoices/FinanceNavTree';
 import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
 import CommissionRegisterPanel from '@/components/crm/commissions/CommissionRegisterPanel';
 import { loadCanonicalBankPaymentDisplay, formatCanonicalBankPayment, type CanonicalBankPaymentDisplay } from '@/lib/invoices/canonicalBankPaymentDisplay';
@@ -297,12 +302,22 @@ export default function InvoicesPage() {
   const canAccessKSeF = Boolean(financeAccess && (financeAccess.isAdmin || financeAccess.invoiceViewCompanyIds.length > 0));
   const canManageInvoices = Boolean(financeAccess && (financeAccess.isAdmin || financeAccess.financeManageCompanyIds.length > 0));
 
-  const handleTabChange = useCallback(
-    (tab: typeof activeTab) => {
+  // Drzewo sekcji po lewej (`FinanceNavTree`): zakładka strony i — dla „Dokumentów i rozliczeń” — sekcja w adresie
+  // (`?tab=external&section=…`), więc stare linki i powiadomienia prowadzą w to samo miejsce.
+  const selectFinanceNav = useCallback(
+    (item: FinanceNavItem) => {
+      const tab = item.tab as typeof activeTab;
       if (isSalesView && !['dashboard', 'local', 'commissions'].includes(tab)) return;
       setActiveTab(tab);
       const params = new URLSearchParams(searchParams.toString());
       params.set('tab', tab);
+      if (item.section) params.set('section', item.section);
+      else params.delete('section');
+      // Otwarty miesiąc wyciągów dotyczy tylko „Wyciągów i płatności”.
+      if (item.section !== 'statements') {
+        params.delete('statementMonth');
+        params.delete('statementYear');
+      }
       router.push(`/crm/invoices?${params.toString()}`, { scroll: false });
     },
     [router, searchParams, isSalesView],
@@ -737,6 +752,70 @@ export default function InvoicesPage() {
     );
   }
 
+  const workspaceNavItem = (id: WorkspaceSection): FinanceNavItem => {
+    const section = WORKSPACE_SECTIONS.find((item) => item.id === id) || WORKSPACE_SECTIONS[0];
+    return { key: `external:${section.id}`, label: section.label, detail: section.detail, icon: section.icon, tab: 'external', section: section.id };
+  };
+  // Grupy jak części Finansów na Macu; widoczność jak dawne zakładki (Podgląd finansów, Podgląd faktur, Zarządzanie finansami).
+  const financeNavGroups: FinanceNavGroup[] = isSalesView
+    ? [{
+        label: 'Sprzedaż',
+        items: [
+          { key: 'dashboard', label: 'Przegląd finansowy', detail: 'Wyniki Twojej sprzedaży', icon: DollarSign, tab: 'dashboard' },
+          { key: 'local', label: 'Moje faktury', detail: 'Faktury wystawione przez Ciebie', icon: Building, tab: 'local' },
+          { key: 'commissions', label: 'Sprzedawcy i prowizje', detail: 'Sprzedawcy pod Twoją opieką', icon: Banknote, tab: 'commissions' },
+        ],
+      }]
+    : [
+        {
+          label: 'Przegląd',
+          items: [
+            ...(financeAccess.canViewCompanyFinance
+              ? [{ key: 'center', label: 'Centrum finansów', detail: 'Gotówka, należności, podatki, prognoza', icon: Scale, tab: 'center' }]
+              : []),
+            { key: 'dashboard', label: 'Przegląd finansowy', detail: 'Przychody, koszty i wynik', icon: DollarSign, tab: 'dashboard' },
+          ],
+        },
+        ...(canAccessKSeF
+          ? [
+              { label: 'Bank', items: [workspaceNavItem('statements'), workspaceNavItem('reconciliation')] },
+              {
+                label: 'Podatki i terminy',
+                items: [workspaceNavItem('deadlines'), workspaceNavItem('declarations'), workspaceNavItem('recurring'), workspaceNavItem('accountant')],
+              },
+            ]
+          : []),
+        {
+          label: 'Dokumenty',
+          items: [
+            ...(canAccessKSeF ? [workspaceNavItem('documents')] : []),
+            { key: 'local', label: 'Faktury sprzedaży', detail: 'Rejestr sprzedaży, proformy, szkice', icon: Building, tab: 'local' },
+            ...(canAccessKSeF
+              ? [
+                  { key: 'ksef', label: 'KSeF', detail: 'Wystawione i otrzymane, synchronizacja', icon: FileText, tab: 'ksef' },
+                  workspaceNavItem('external'),
+                  workspaceNavItem('contracts'),
+                ]
+              : []),
+          ],
+        },
+        {
+          label: 'Koszty i rozliczenia',
+          items: [
+            ...(financeAccess.canViewCompanyFinance
+              ? [{ key: 'expenses', label: 'Koszty i wypłaty', detail: 'Wypłaty, gotówka, koszty bez dokumentu', icon: WalletCards, tab: 'expenses' }]
+              : []),
+            { key: 'commissions', label: 'Sprzedawcy i prowizje', detail: 'Prowizje i rozliczenia sprzedawców', icon: Banknote, tab: 'commissions' },
+          ],
+        },
+        ...(canManageInvoices
+          ? [{ label: 'Ustawienia', items: [{ key: 'settings', label: 'Ustawienia faktur', detail: 'Numeracja, dane działalności, KSeF', icon: Settings, tab: 'settings' }] }]
+          : []),
+      ];
+  const activeFinanceNav = visibleTab === 'external'
+    ? `external:${requestedWorkspaceSection(searchParams.get('section'))}`
+    : visibleTab;
+
   return (
     <PermissionGuard>
       <div className="min-h-screen min-w-0 overflow-x-hidden bg-[#0a0d1a] p-3 sm:p-6">
@@ -864,45 +943,9 @@ export default function InvoicesPage() {
             </div>
           </div>
 
-          <div className="mb-6 flex snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain border-b border-[#d3bb73]/10 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {[
-              { id: 'center', label: 'Centrum finansów', icon: Scale },
-              { id: 'dashboard', label: 'Przegląd finansowy', icon: DollarSign },
-              { id: 'ksef', label: 'KSeF', icon: FileText },
-              { id: 'local', label: isSalesView ? 'Moje faktury' : 'Lokalne faktury', icon: Building },
-              { id: 'external', label: 'Dokumenty i rozliczenia', icon: Receipt },
-              { id: 'expenses', label: 'Koszty i wypłaty', icon: WalletCards },
-              { id: 'commissions', label: 'Sprzedawcy i prowizje', icon: Banknote },
-              ...(canManageInvoices && !isSalesView
-                ? [{ id: 'settings', label: 'Ustawienia faktur', icon: Settings }]
-                : []),
-            ]
-              .filter((tab) => {
-                if (isSalesView) return ['dashboard', 'local', 'commissions'].includes(tab.id);
-                if (tab.id === 'center') return financeAccess.canViewCompanyFinance;
-                if (tab.id === 'ksef' || tab.id === 'external') return canAccessKSeF;
-                if (tab.id === 'expenses') return financeAccess.canViewCompanyFinance;
-                return true;
-              })
-              .map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button data-crm-tab-active={visibleTab === tab.id}
-                    key={tab.id}
-                    onClick={() => handleTabChange(tab.id as typeof activeTab)}
-                    className={`flex shrink-0 snap-start items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                      visibleTab === tab.id
-                        ? 'border-[#d3bb73] text-[#d3bb73]'
-                        : 'border-transparent text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {tab.label}
-                  </button>
-                );
-              })}
-          </div>
-
+          <div className="min-w-0 xl:flex xl:items-start xl:gap-6">
+            <FinanceNavTree groups={financeNavGroups} active={activeFinanceNav} onSelect={selectFinanceNav} />
+            <div className="min-w-0 flex-1">
           {visibleTab === 'center' && financeAccess.canViewCompanyFinance ? (
             <FinanceCenterPanel filterCompanyIds={financeScopeIds} />
           ) : visibleTab === 'dashboard' ? (
@@ -914,7 +957,7 @@ export default function InvoicesPage() {
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
             />
           ) : visibleTab === 'external' && canAccessKSeF ? (
-            <AccountingWorkspaceTab filterCompanyIds={financeScopeIds} />
+            <AccountingWorkspaceTab filterCompanyIds={financeScopeIds} sectionNavigation={false} />
           ) : visibleTab === 'expenses' && financeAccess.canViewCompanyFinance ? (
             <FinancialEntriesTab />
           ) : visibleTab === 'commissions' ? (
@@ -1414,6 +1457,8 @@ export default function InvoicesPage() {
               )}
             </>
           )}
+            </div>
+          </div>
         </div>
       </div>
       {showFinalInvoiceWizard && (

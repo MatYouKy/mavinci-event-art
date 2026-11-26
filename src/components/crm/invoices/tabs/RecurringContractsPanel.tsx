@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
 import { canFinanceCompany, filterFinanceCompanies } from '@/lib/invoices/financeAccess';
@@ -54,7 +55,7 @@ const num = (value: string) => {
 };
 const CYCLE_MONTHS: Record<RecurringContractCycle, number> = { monthly: 1, quarterly: 3, yearly: 12 };
 
-interface Company { id: string; name: string }
+interface Company { id: string; name: string; nip?: string | null }
 
 interface Props {
   filterCompanyIds?: string[] | null;
@@ -84,12 +85,13 @@ export default function RecurringContractsPanel({ filterCompanyIds = null, onOpe
     let cancelled = false;
     if (!access) return () => { cancelled = true; };
     (async () => {
-      let query = supabase.from('my_companies').select('id,name').eq('is_active', true).order('name');
+      let query = supabase.from('my_companies').select('id,name,nip').eq('is_active', true).order('name');
       if (filterCompanyIds) query = query.in('id', filterCompanyIds.length ? filterCompanyIds : ['00000000-0000-0000-0000-000000000000']);
       const { data, error } = await query;
       if (cancelled) return;
       if (error) { showSnackbar('Nie udało się wczytać firm.', 'error'); setLoading(false); return; }
-      const list = filterFinanceCompanies(access, (data || []) as Company[], 'finance_view');
+      // Działalności (firmy z NIP) — marka bez NIP (np. Event Rulers) nie ma własnych finansów.
+      const list = filterFinanceCompanies(access, financeEntities((data || []) as Company[]), 'finance_view');
       setCompanies(list);
       setCompanyId((current) => (current && list.some((c) => c.id === current) ? current : list[0]?.id || ''));
       if (list.length === 0) setLoading(false);

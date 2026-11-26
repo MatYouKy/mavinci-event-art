@@ -62,14 +62,27 @@ enum Vault {
     private static var cache: [String: Data]?
     /// Użytkownik odmówił dostępu — do końca sesji nie pytamy ponownie.
     private static var denied = false
+    /// Pozycję zmienia też inna kopia aplikacji (okna w osobnych procesach, `WindowProcess.swift`) — zapis zaczyna się od
+    /// świeżego odczytu, żeby nie nadpisać wartości zapisanych w międzyczasie przez drugi proces (sesja, klucze kopii).
+    private static var multiProcess = false
 
+    static func shareAcrossProcesses() {
+        lock.lock(); defer { lock.unlock() }
+        multiProcess = true
+    }
     static func read(_ key: String) throws -> Data? {
         lock.lock(); defer { lock.unlock() }
         return try values()[key]
     }
+    /// Odczyt z pominięciem pamięci — inny proces aplikacji mógł zmienić pozycję (np. wylogowanie w oknie osobnego procesu).
+    static func readFresh(_ key: String) throws -> Data? {
+        lock.lock(); defer { lock.unlock() }
+        cache = nil
+        return try values()[key]
+    }
     static func write(_ key: String, _ data: Data) throws {
         lock.lock(); defer { lock.unlock() }
-        var all = try values()
+        var all = try current()
         guard all[key] != data else { return }
         all[key] = data
         try persist(all)
@@ -77,7 +90,7 @@ enum Vault {
     }
     static func delete(_ key: String) throws {
         lock.lock(); defer { lock.unlock() }
-        var all = try values()
+        var all = try current()
         guard all[key] != nil else { return }
         all.removeValue(forKey: key)
         try persist(all)
@@ -86,7 +99,7 @@ enum Vault {
     /// Usuwa naraz wszystkie wartości, których nazwa spełnia warunek (np. klucze kopii z trybu testowego) — jeden zapis pozycji.
     static func deleteKeys(where matches: (String) -> Bool) throws {
         lock.lock(); defer { lock.unlock() }
-        var all = try values()
+        var all = try current()
         let names = all.keys.filter(matches)
         guard !names.isEmpty else { return }
         for name in names { all.removeValue(forKey: name) }
@@ -95,6 +108,11 @@ enum Vault {
     }
 
     // MARK: Pozycja w pęku kluczy (wywoływane pod blokadą)
+    /// Wartości do zmiany: z pamięci, a przy kilku procesach aplikacji — świeżo z pęku kluczy.
+    private static func current() throws -> [String: Data] {
+        if multiProcess { cache = nil }
+        return try values()
+    }
     private static func base(_ name: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: name]
     }

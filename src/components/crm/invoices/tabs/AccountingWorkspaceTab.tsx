@@ -38,8 +38,20 @@ import FinancePeriodClosePanel from './FinancePeriodClosePanel';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import { decodeTextEntities } from '@/lib/textEncoding';
 import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
+import {
+  REGISTER_SIDE_FILTERS,
+  REGISTER_STATE_FILTERS,
+  REGISTER_STATE_LABELS,
+  matchesRegisterState,
+  registerState,
+  warsawToday,
+  type RegisterSide,
+  type RegisterState,
+  type RegisterStateFilter,
+} from '@/lib/invoices/documentRegister';
+import FilterSummaryBar, { activeFilterClass, type FilterChip } from '@/components/crm/invoices/FilterSummaryBar';
 
-type WorkspaceSection =
+export type WorkspaceSection =
   | 'reconciliation'
   | 'deadlines'
   | 'declarations'
@@ -69,37 +81,49 @@ interface AccountingDocument {
   amount: number | null;
   currency: string;
   status: string;
+  /** Koszt (faktura otrzymana, dokument spoza KSeF, umowa) albo sprzedaż. */
+  side: RegisterSide;
+  /** Stan zapłaty faktury i dokumentu kosztowego (`documentRegister`); umowy personelu — bez stanu (status umowy). */
+  state?: RegisterState;
   href?: string;
 }
 
 
 interface Props {
   filterCompanyIds?: string[] | null;
+  /**
+   * Pasek sekcji nad treścią. Strona Finansów (`/crm/invoices`) pokazuje sekcje w drzewie po lewej (`FinanceNavTree`) —
+   * wtedy `false`: nagłówek z nazwą i opisem bieżącej sekcji, bez drugiego rzędu zakładek.
+   */
+  sectionNavigation?: boolean;
 }
 
-const SECTIONS: Array<{
+export const WORKSPACE_SECTIONS: Array<{
   id: WorkspaceSection;
   label: string;
   shortLabel: string;
+  /** Opis pod nazwą (drzewo sekcji na stronie Finansów i nagłówek sekcji). */
+  detail: string;
   icon: typeof FileText;
 }> = [
-  { id: 'reconciliation', label: 'Uzgodnienie wyciągów', shortLabel: 'Uzgodnienie', icon: ListChecks },
-  { id: 'deadlines', label: 'Terminy i monity', shortLabel: 'Terminy', icon: BellRing },
-  { id: 'declarations', label: 'ZUS i podatki', shortLabel: 'ZUS i podatki', icon: Landmark },
-  { id: 'recurring', label: 'Umowy stałe', shortLabel: 'Umowy stałe', icon: CalendarClock },
-  { id: 'documents', label: 'Wszystkie dokumenty', shortLabel: 'Dokumenty', icon: FolderOpen },
-  { id: 'statements', label: 'Wyciągi i płatności', shortLabel: 'Wyciągi', icon: Landmark },
-  { id: 'external', label: 'Dokumenty spoza KSeF', shortLabel: 'Poza KSeF', icon: Receipt },
-  { id: 'contracts', label: 'Umowy personelu', shortLabel: 'Umowy', icon: Briefcase },
-  { id: 'accountant', label: 'Dla księgowej', shortLabel: 'Księgowość', icon: ShieldCheck },
+  { id: 'reconciliation', label: 'Uzgodnienie wyciągów', shortLabel: 'Uzgodnienie', detail: 'Operacje ↔ faktury, propozycje', icon: ListChecks },
+  { id: 'deadlines', label: 'Terminy i monity', shortLabel: 'Terminy', detail: 'ZUS, podatki, należności, biała lista', icon: BellRing },
+  { id: 'declarations', label: 'ZUS i podatki', shortLabel: 'ZUS i podatki', detail: 'DRA, PIT-4R, VAT-7, CIT-8', icon: Landmark },
+  { id: 'recurring', label: 'Umowy stałe', shortLabel: 'Umowy stałe', detail: 'Najem, abonamenty, leasing', icon: CalendarClock },
+  { id: 'documents', label: 'Wszystkie dokumenty', shortLabel: 'Dokumenty', detail: 'KSeF, CRM i spoza KSeF w jednym miejscu', icon: FolderOpen },
+  { id: 'statements', label: 'Wyciągi i płatności', shortLabel: 'Wyciągi', detail: 'PDF i MT940, miesiące, braki', icon: Landmark },
+  { id: 'external', label: 'Dokumenty spoza KSeF', shortLabel: 'Poza KSeF', detail: 'Faktury zagraniczne, paragony, polisy', icon: Receipt },
+  { id: 'contracts', label: 'Umowy personelu', shortLabel: 'Umowy', detail: 'Umowy o pracę, zlecenia, o dzieło', icon: Briefcase },
+  { id: 'accountant', label: 'Dla księgowej', shortLabel: 'Księgowość', detail: 'Saldeo, paczka miesiąca, zamknięcie', icon: ShieldCheck },
 ];
+const SECTIONS = WORKSPACE_SECTIONS;
 
 function isWorkspaceSection(value: string | null): value is WorkspaceSection {
   return SECTIONS.some((section) => section.id === value);
 }
 
 // Dawna „Kontrola przepływów” została zastąpiona uzgodnieniem wyciągów (stare linki prowadzą do nowego ekranu).
-function requestedWorkspaceSection(value: string | null): WorkspaceSection {
+export function requestedWorkspaceSection(value: string | null): WorkspaceSection {
   if (value === 'control') return 'reconciliation';
   return isWorkspaceSection(value) ? value : 'reconciliation';
 }
@@ -164,6 +188,24 @@ function statusBadge(status: string) {
 }
 
 
+const REGISTER_STATE_CLASS: Record<RegisterState, string> = {
+  paid: 'bg-green-500/15 text-green-300',
+  partial: 'bg-sky-500/15 text-sky-300',
+  overdue: 'bg-red-500/15 text-red-300',
+  unpaid: 'bg-amber-500/15 text-amber-300',
+  draft: 'bg-white/5 text-[#e5e4e2]/55',
+  cancelled: 'bg-white/5 text-[#e5e4e2]/55',
+};
+
+function documentBadge(document: AccountingDocument) {
+  if (!document.state) return statusBadge(document.status);
+  return (
+    <span className={`inline-flex rounded-full px-2 py-1 text-xs ${REGISTER_STATE_CLASS[document.state]}`}>
+      {REGISTER_STATE_LABELS[document.state]}
+    </span>
+  );
+}
+
 function DocumentsTable({
   documents,
   onOpen,
@@ -219,7 +261,7 @@ function DocumentsTable({
                   <td className="px-5 py-4 text-right text-sm font-medium text-[#e5e4e2]">
                     {formatMoney(document.amount, document.currency)}
                   </td>
-                  <td className="px-5 py-4">{statusBadge(document.status)}</td>
+                  <td className="px-5 py-4">{documentBadge(document)}</td>
                   <td className="px-5 py-4 text-right">
                     <button
                       type="button"
@@ -239,7 +281,7 @@ function DocumentsTable({
   );
 }
 
-export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
+export function AccountingWorkspaceTab({ filterCompanyIds = null, sectionNavigation = true }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
@@ -250,6 +292,8 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sourceFilter, setSourceFilter] = useState<DocumentSource | 'all'>('all');
+  const [sideFilter, setSideFilter] = useState<'all' | RegisterSide>('all');
+  const [stateFilter, setStateFilter] = useState<RegisterStateFilter>('all');
 
   const companyFilterKey =
     filterCompanyIds === null ? '*' : [...filterCompanyIds].sort().join(',');
@@ -286,7 +330,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
       let ksefQuery = supabase
         .from('ksef_invoices')
         .select(
-          'id, invoice_number, ksef_reference_number, issue_date, ksef_issued_at, seller_name, buyer_name, gross_amount, currency, invoice_type, payment_status, my_company_id',
+          'id, invoice_number, ksef_reference_number, issue_date, ksef_issued_at, payment_due_date, seller_name, buyer_name, gross_amount, currency, invoice_type, payment_status, my_company_id',
         )
         .eq('sync_status', 'synced')
         .not('ksef_reference_number', 'is', null)
@@ -296,7 +340,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
       let localQuery = supabase
         .from('invoices')
         .select(
-          'id, invoice_number, issue_date, buyer_name, total_gross, status, invoice_type, ksef_status, my_company_id',
+          'id, invoice_number, issue_date, payment_due_date, payment_status, buyer_name, total_gross, status, invoice_type, ksef_status, my_company_id',
         )
         .order('issue_date', { ascending: false })
         .limit(1000);
@@ -339,6 +383,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
       }
 
       const ksefRows = (ksefResult.data || []) as any[];
+      const today = warsawToday();
       const issuedInKsef = new Set(
         ksefRows
           .filter((row) => String(row.invoice_type).toLowerCase() === 'issued')
@@ -363,6 +408,8 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
           amount: row.gross_amount == null ? null : Number(row.gross_amount),
           currency: row.currency || 'PLN',
           status: row.payment_status || 'accepted',
+          side: (String(row.invoice_type).toLowerCase() === 'received' ? 'cost' : 'sales') as RegisterSide,
+          state: registerState(row.payment_status, row.payment_due_date, today),
         })),
         ...((localResult.data || []) as any[])
           .filter(
@@ -382,6 +429,8 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
             amount: row.total_gross == null ? null : Number(row.total_gross),
             currency: 'PLN',
             status: row.status || row.ksef_status || 'draft',
+            side: 'sales' as RegisterSide,
+            state: registerState(row.payment_status, row.payment_due_date, today, row.status),
             href: `/crm/invoices/${row.id}`,
           })),
         ...((externalResult.data || []) as any[]).map((row) => ({
@@ -394,6 +443,8 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
           amount: row.amount_gross == null ? null : Number(row.amount_gross),
           currency: row.currency || 'PLN',
           status: row.payment_status || 'unpaid',
+          side: 'cost' as RegisterSide,
+          state: registerState(row.payment_status, null, today),
         })),
         ...((personnelContractResult.data || []) as any[]).map((row) => {
           const isEmployment = row.contract_kind === 'employment';
@@ -412,6 +463,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
             amount: row.gross_value == null ? null : Number(row.gross_value),
             currency: row.currency || 'PLN',
             status: row.status || 'draft',
+            side: 'cost' as RegisterSide,
             href: row.employee_id
               ? `/crm/employees/${row.employee_id}`
               : row.subcontractor_id
@@ -443,13 +495,35 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
     const needle = search.trim().toLocaleLowerCase('pl-PL');
     return documents.filter((document) => {
       if (sourceFilter !== 'all' && document.source !== sourceFilter) return false;
+      if (sideFilter !== 'all' && document.side !== sideFilter) return false;
+      if (!matchesRegisterState(document.state, stateFilter)) return false;
       if (!needle) return true;
       return [document.number, document.title, document.counterparty]
         .join(' ')
         .toLocaleLowerCase('pl-PL')
         .includes(needle);
     });
-  }, [documents, search, sourceFilter]);
+  }, [documents, search, sourceFilter, sideFilter, stateFilter]);
+
+  // Włączone filtry „Wszystkich dokumentów” — pasek stanu pod filtrami (× wyłącza jeden, „Wyczyść filtry” — wszystkie).
+  const documentChips: FilterChip[] = [];
+  if (search.trim()) documentChips.push({ key: 'search', label: `Szukaj: „${search.trim()}”`, onRemove: () => setSearch('') });
+  if (sourceFilter !== 'all') documentChips.push({ key: 'source', label: `Źródło: ${SOURCE_META[sourceFilter].label}`, onRemove: () => setSourceFilter('all') });
+  if (sideFilter !== 'all') {
+    documentChips.push({ key: 'side', label: `Rodzaj: ${REGISTER_SIDE_FILTERS.find((item) => item.value === sideFilter)?.label}`, onRemove: () => setSideFilter('all') });
+  }
+  if (stateFilter !== 'all') {
+    documentChips.push({ key: 'state', label: `Zapłata: ${REGISTER_STATE_FILTERS.find((item) => item.value === stateFilter)?.label}`, onRemove: () => setStateFilter('all') });
+  }
+  const clearDocumentFilters = () => {
+    setSearch('');
+    setSourceFilter('all');
+    setSideFilter('all');
+    setStateFilter('all');
+  };
+  const sourceCount = (source: DocumentSource | 'all') =>
+    source === 'all' ? documents.length : documents.filter((document) => document.source === source).length;
+  const currentSection = SECTIONS.find((item) => item.id === section) || SECTIONS[0];
 
   const openDocument = (document: AccountingDocument) => {
     if (document.href) {
@@ -473,16 +547,26 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
     <div className="space-y-4">
       <div className="overflow-hidden rounded-xl border border-[#d3bb73]/15 bg-gradient-to-br from-[#1c1f33] to-[#141728]">
         <div className="flex flex-col gap-3 px-4 py-3.5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-[#d3bb73]">
-              <WalletCards className="h-3.5 w-3.5" /> Centrum dokumentów
+          {sectionNavigation ? (
+            <div>
+              <div className="mb-1 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-[#d3bb73]">
+                <WalletCards className="h-3.5 w-3.5" /> Centrum dokumentów
+              </div>
+              <h2 className="text-xl font-light text-[#e5e4e2]">Dokumenty i rozliczenia</h2>
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-[#e5e4e2]/55">
+                Faktury KSeF i spoza KSeF, dokumenty lokalne, wyciągi oraz umowy cywilnoprawne —
+                połączone z kontrolą przepływów pieniężnych.
+              </p>
             </div>
-            <h2 className="text-xl font-light text-[#e5e4e2]">Dokumenty i rozliczenia</h2>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-[#e5e4e2]/55">
-              Faktury KSeF i spoza KSeF, dokumenty lokalne, wyciągi oraz umowy cywilnoprawne —
-              połączone z kontrolą przepływów pieniężnych.
-            </p>
-          </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <currentSection.icon className="h-5 w-5 shrink-0 text-[#d3bb73]" />
+              <div>
+                <h2 className="text-lg font-light text-[#e5e4e2]">{currentSection.label}</h2>
+                <p className="text-xs leading-5 text-[#e5e4e2]/55">{currentSection.detail}</p>
+              </div>
+            </div>
+          )}
           {!isStatementMonthOpen && <button data-crm-action="secondary"
             type="button"
             onClick={() => void loadWorkspaceData()}
@@ -493,7 +577,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
           </button>}
         </div>
 
-        <div className="flex snap-x gap-0.5 overflow-x-auto border-t border-[#d3bb73]/10 px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {sectionNavigation && <div className="flex snap-x gap-0.5 overflow-x-auto border-t border-[#d3bb73]/10 px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {SECTIONS.map((item) => {
             const Icon = item.icon;
             return (
@@ -514,7 +598,7 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
               </button>
             );
           })}
-        </div>
+        </div>}
       </div>
 
       {section !== 'reconciliation' && section !== 'deadlines' && section !== 'declarations' && section !== 'recurring' && loading && documents.length === 0 ? (
@@ -558,14 +642,35 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
             </div>
             <select
               value={sourceFilter}
+              aria-label="Źródło dokumentu"
               onChange={(event) => setSourceFilter(event.target.value as DocumentSource | 'all')}
-              className="rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-4 py-2.5 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]/45"
+              className={`rounded-lg border px-4 py-2.5 text-sm outline-none focus:border-[#d3bb73]/45 ${activeFilterClass(sourceFilter !== 'all')}`}
             >
-              <option value="all">Wszystkie źródła</option>
-              {Object.entries(SOURCE_META).map(([value, meta]) => (
+              <option value="all">Wszystkie źródła ({sourceCount('all')})</option>
+              {(Object.entries(SOURCE_META) as Array<[DocumentSource, { label: string }]>).map(([value, meta]) => (
                 <option key={value} value={value}>
-                  {meta.label}
+                  {meta.label} ({sourceCount(value)})
                 </option>
+              ))}
+            </select>
+            <select
+              value={sideFilter}
+              aria-label="Rodzaj dokumentu"
+              onChange={(event) => setSideFilter(event.target.value as 'all' | RegisterSide)}
+              className={`rounded-lg border px-4 py-2.5 text-sm outline-none focus:border-[#d3bb73]/45 ${activeFilterClass(sideFilter !== 'all')}`}
+            >
+              {REGISTER_SIDE_FILTERS.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </select>
+            <select
+              value={stateFilter}
+              aria-label="Stan zapłaty"
+              onChange={(event) => setStateFilter(event.target.value as RegisterStateFilter)}
+              className={`rounded-lg border px-4 py-2.5 text-sm outline-none focus:border-[#d3bb73]/45 ${activeFilterClass(stateFilter !== 'all')}`}
+            >
+              {REGISTER_STATE_FILTERS.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
               ))}
             </select>
             <button
@@ -576,8 +681,15 @@ export function AccountingWorkspaceTab({ filterCompanyIds = null }: Props) {
               <Receipt className="h-4 w-4" /> Dodaj dokument kosztowy
             </button>
           </div>
-          <div className="flex items-center justify-between text-xs text-[#e5e4e2]/45">
-            <span>{filteredDocuments.length} dokumentów</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#e5e4e2]/45">
+            <FilterSummaryBar
+              className="min-w-0 flex-1"
+              shown={filteredDocuments.length}
+              total={documents.length}
+              forms={['dokument', 'dokumenty', 'dokumentów']}
+              chips={documentChips}
+              onClear={clearDocumentFilters}
+            />
             <span>KSeF, CRM i pozostałe rejestry w jednej kolejności</span>
           </div>
           <DocumentsTable documents={filteredDocuments} onOpen={openDocument} />

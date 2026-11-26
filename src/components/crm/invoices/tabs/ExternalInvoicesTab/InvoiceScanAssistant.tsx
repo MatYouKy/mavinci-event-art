@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Check, Loader2, Sparkles, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { externalDocumentKindLabel, isExternalDocumentKind } from '@/lib/invoices/externalDocumentKinds';
+import { financeEntityByNip } from '@/lib/invoices/financeEntities';
 
 export type InvoiceScanField =
   | 'document_kind'
@@ -26,7 +27,14 @@ type ReviewResult = {
   buyerNip: string | null;
   kind: string;
   warnings: string[];
+  /** Działalność, na którą wystawiono dokument (NIP nabywcy = NIP działalności). */
+  buyerCompany?: { id: string; name: string } | null;
 };
+type ScanCompany = { id: string; name: string; nip?: string | null; is_default?: boolean | null };
+
+/** Ostrzeżenie funkcji odczytu o NIP-ie nabywcy innym niż działalność, z którą wysłano plik — zastępuje je rozpoznanie
+ *  działalności po NIP-ie po stronie formularza (`financeEntityByNip`). */
+const BUYER_NIP_MISMATCH = 'NIP nabywcy na dokumencie różni się';
 
 const FIELD_LABELS: Record<InvoiceScanField, string> = {
   document_kind: 'Rodzaj dokumentu',
@@ -122,13 +130,22 @@ async function functionErrorMessage(error: unknown): Promise<string> {
 export function InvoiceScanAssistant({
   file,
   companyId,
+  companies = [],
+  companyLocked = false,
+  onCompanyDetected,
   currentValues,
   disabled = false,
   onApply,
   onBusyChange,
 }: {
   file: File | null;
+  /** Działalność wybrana w formularzu (może być pusta). */
   companyId: string;
+  /** Działalności (firmy z NIP): rozpoznanie działalności po NIP-ie nabywcy; bez wybranej — odczyt z domyślną. */
+  companies?: ScanCompany[];
+  /** Działalność ustalona z góry (rozliczenie miesiąca) — rozpoznanie jej nie zmienia, tylko ostrzega. */
+  companyLocked?: boolean;
+  onCompanyDetected?: (companyId: string) => void;
   currentValues: InvoiceScanValues;
   disabled?: boolean;
   onApply: (values: RecognizedValues) => void;
@@ -137,14 +154,17 @@ export function InvoiceScanAssistant({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [result, setResult] = useState<{ file: File; companyId: string; data: ReviewResult } | null>(null);
+  const [result, setResult] = useState<{ file: File; data: ReviewResult } | null>(null);
+  // Odczyt nie czeka na wybór działalności: bez wybranej idzie z domyślną (uprawnienia funkcji odczytu), a działalność
+  // ustala potem NIP nabywcy z dokumentu.
+  const requestCompanyId = companyId || companies.find((company) => company.is_default)?.id || companies[0]?.id || '';
   // Each selection remembers the value the user saw, protecting later manual edits.
   const [selected, setSelected] = useState<Partial<InvoiceScanValues>>({});
   const requestId = useRef(0);
   const mounted = useRef(true);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latest = useRef({ file, companyId, currentValues, onBusyChange });
-  latest.current = { file, companyId, currentValues, onBusyChange };
+  const latest = useRef({ file, companyId, companies, companyLocked, onCompanyDetected, currentValues, onBusyChange });
+  latest.current = { file, companyId, companies, companyLocked, onCompanyDetected, currentValues, onBusyChange };
 
   useEffect(() => {
     mounted.current = true;
@@ -164,7 +184,7 @@ export function InvoiceScanAssistant({
     setSelected({});
     setError(null);
     setMessage(null);
-  }, [file, companyId]);
+  }, [file]);
 
   useEffect(() => {
     onBusyChange?.(busy);
@@ -184,13 +204,13 @@ export function InvoiceScanAssistant({
     });
   }, [currentValues]);
 
-  const review = result?.file === file && result.companyId === companyId ? result.data : null;
+  const review = result?.file === file ? result.data : null;
   const recognizedKeys = review ? FIELD_KEYS.filter((key) => review.fields[key] !== undefined) : [];
   const selectedKeys = recognizedKeys.filter((key) => Object.prototype.hasOwnProperty.call(selected, key) && selected[key] === currentValues[key]);
   const kindNeedsApproval = Boolean(review && review.kind !== currentValues.document_kind && !selectedKeys.includes('document_kind'));
 
   const analyze = async () => {
-    if (!file || !companyId || disabled || busy) return;
+    if (!file || !requestCompanyId || disabled || busy) return;
     setError(null);
     setMessage(null);
     if (!file.size || file.size > MAX_FILE_BYTES) {
@@ -204,8 +224,8 @@ export function InvoiceScanAssistant({
 
     const activeId = ++requestId.current;
     const sourceFile = file;
-    const sourceCompany = companyId;
-    const isCurrent = () => mounted.current && requestId.current === activeId && latest.current.file === sourceFile && latest.current.companyId === sourceCompany;
+    const sourceCompany = requestCompanyId;
+    const isCurrent = () => mounted.current && requestId.current === activeId && latest.current.file === sourceFile;
     setBusy(true);
     setResult(null);
     setSelected({});
@@ -232,8 +252,19 @@ export function InvoiceScanAssistant({
           initialSelection[key] = latest.current.currentValues[key];
         }
       }
-      setResult({ file: sourceFile, companyId: sourceCompany, data: parsed });
+      // Działalność po NIP-ie nabywcy: inna niż wybrana — formularz przełącza się na nią (poza rozliczeniem miesiąca).
+      const buyer = financeEntityByNip(latest.current.companies, parsed.buyerNip);
+      const reviewed: ReviewResult = {
+        ...parsed,
+        warnings: parsed.warnings.filter((warning) => !warning.startsWith(BUYER_NIP_MISMATCH)),
+        buyerCompany: buyer ? { id: buyer.id, name: buyer.name } : null,
+      };
+      setResult({ file: sourceFile, data: reviewed });
       setSelected(initialSelection);
+      if (buyer && buyer.id !== latest.current.companyId && !latest.current.companyLocked && latest.current.onCompanyDetected) {
+        latest.current.onCompanyDetected(buyer.id);
+        setMessage(`Dokument jest wystawiony na ${buyer.name} (NIP nabywcy ${parsed.buyerNip}) — ustawiono tę działalność.`);
+      }
     } catch (cause) {
       if (isCurrent()) setError(cause instanceof Error ? cause.message : 'Nie udało się odczytać dokumentu. Spróbuj ponownie.');
     } finally {
@@ -285,9 +316,10 @@ export function InvoiceScanAssistant({
             Po kliknięciu „Odczytaj AI” ten plik zostanie przesłany do OpenAI. AI odczyta dane, a Ty wybierzesz, które przenieść do formularza. Nic nie zapisze automatycznie.
           </p>
           {!file && <p className="mt-1 text-xs text-[#e5e4e2]/50">Najpierw dodaj plik lub wykonaj skan. Obsługiwane: PDF, JPG, PNG i WebP, do 10 MB.</p>}
-          {file && !companyId && <p className="mt-1 text-xs text-[#d3bb73]">Wybierz działalność przed odczytem dokumentu.</p>}
+          {file && !requestCompanyId && <p className="mt-1 text-xs text-[#d3bb73]">Brak działalności, do której masz dostęp w finansach — odczyt niedostępny.</p>}
+          {file && requestCompanyId && !companyId && <p className="mt-1 text-xs text-[#e5e4e2]/50">Działalność ustalę po NIP-ie nabywcy z dokumentu.</p>}
         </div>
-        <button type="button" onClick={analyze} disabled={!file || !companyId || disabled || busy} className={buttonClass}>
+        <button type="button" onClick={analyze} disabled={!file || !requestCompanyId || disabled || busy} className={buttonClass}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
           {busy ? 'Odczytywanie…' : review ? 'Odczytaj ponownie' : 'Odczytaj AI'}
         </button>
@@ -345,7 +377,15 @@ export function InvoiceScanAssistant({
               {review.amountVat !== null && <p>VAT: {review.amountVat.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {review.fields.currency || ''}</p>}
               {review.buyerName && <p className="break-words">Nabywca: {review.buyerName}</p>}
               {review.buyerNip && <p className="break-words">NIP nabywcy: {review.buyerNip}</p>}
-              {(review.buyerName || review.buyerNip) && <p>Sprawdź, czy nabywca jest zgodny z wybraną działalnością.</p>}
+              {review.buyerCompany ? (
+                review.buyerCompany.id === companyId
+                  ? <p className="text-emerald-300/80">Nabywca to działalność {review.buyerCompany.name} — zgodna z wybraną.</p>
+                  : <p className="text-[#d3bb73]">Dokument jest wystawiony na {review.buyerCompany.name}{companyLocked ? ', a rozliczenie dotyczy innej działalności — sprawdź dokument.' : ' — wybierz tę działalność.'}</p>
+              ) : review.buyerNip ? (
+                <p className="text-[#d3bb73]">NIP nabywcy nie należy do żadnej działalności{companies.length ? ` (${companies.map((company) => company.name).join(', ')})` : ''} — sprawdź, czy dokument dotyczy firmy.</p>
+              ) : review.buyerName ? (
+                <p>Sprawdź, czy nabywca jest zgodny z wybraną działalnością.</p>
+              ) : null}
             </div>
           )}
           {!!recognizedKeys.length && <button type="button" onClick={applySelected} disabled={!selectedKeys.length || disabled || busy || kindNeedsApproval} className={buttonClass}><Check className="h-4 w-4" aria-hidden="true" />Uzupełnij zaznaczone pola ({selectedKeys.length})</button>}

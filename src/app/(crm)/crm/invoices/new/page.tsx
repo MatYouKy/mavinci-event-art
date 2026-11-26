@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { ArrowLeft, CalendarDays, Link2, Plus, Trash2, Save } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -843,7 +844,8 @@ export default function NewInvoicePage() {
       let finalCompaniesList: MyCompany[] = [];
 
       if (companiesRes.data) {
-        let companiesList = companiesRes.data as MyCompany[];
+        // Fakturę wystawia działalność (firma z NIP) — marka bez NIP (np. Event Rulers) nie.
+        let companiesList = financeEntities(companiesRes.data as MyCompany[]);
 
         if (!isAdmin) {
           // Wystawianie faktur: tylko działalności z poziomem ≥ „Wystawianie faktur” (get_invoice_finance_access).

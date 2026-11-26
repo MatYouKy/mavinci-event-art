@@ -165,7 +165,7 @@ import SwiftUI
             // Operacje do zrobienia w otwartym miesiącu uzgodnienia (gdy wczytany).
             guard let month = bank.month, month.companyId == bank.company?.id else { return nil }
             return month.transactions.filter(\.isOpen).count
-        case .entries, .invoices:
+        case .entries, .invoices, .documents:
             return nil
         case .ksef:
             // Faktury KSeF z uwagą do płatności we wczytanych działalnościach z filtra.
@@ -201,6 +201,8 @@ import SwiftUI
                 FinanceAccountantView(store: store.saldeo, finance: store)
             case .entries:
                 FinanceEntriesView(store: bank, finance: store)
+            case .documents:
+                FinanceDocumentsView(store: bank, finance: store)
             case .invoices:
                 FinanceInvoicesView(store: bank, finance: store)
             case .ksef:
@@ -317,4 +319,81 @@ struct FinBanner: View {
         .background(FinChip(text: "", tone: tone).color.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(FinChip(text: "", tone: tone).color.opacity(0.25)))
     }
+}
+
+// MARK: Stan filtrów list (okno „Dopasuj dokument do płatności”, „Wszystkie dokumenty”; w CRM — `FilterSummaryBar`)
+
+/// Włączony filtr: etykieta i wyłączenie samego tego filtra (× przy etykiecie).
+struct FinFilterChip: Identifiable {
+    let label: String
+    let remove: () -> Void
+    var id: String { label }
+}
+
+/// Wiersz pod filtrami: filtry działają od razu po zmianie, a ten wiersz pokazuje, że są włączone — ile pozycji widać z ilu,
+/// które filtry działają (× wyłącza jeden) i „Wyczyść filtry”. Bez filtrów — liczba wszystkich pozycji.
+struct FinFilterSummary: View {
+    let shown: Int
+    let total: Int
+    /// Odmiana rzeczownika: 1, 2–4, 5+ (np. „dokument”, „dokumenty”, „dokumentów”).
+    let forms: (String, String, String)
+    let chips: [FinFilterChip]
+    let clear: () -> Void
+    @Environment(\.crmTheme) private var theme
+
+    static func count(_ value: Int, _ forms: (String, String, String)) -> String {
+        if value == 1 { return forms.0 }
+        let tens = value % 100, ones = value % 10
+        return (2...4).contains(ones) && !(12...14).contains(tens) ? forms.1 : forms.2
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: chips.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                .foregroundStyle(chips.isEmpty ? Color.secondary : theme.accent)
+            if chips.isEmpty {
+                Text("Bez filtrów · \(total) \(Self.count(total, forms))").foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            } else {
+                Text("Pokazano \(shown) z \(total)").fontWeight(.semibold).monospacedDigit().fixedSize()
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(chips) { chip in
+                            Button(action: chip.remove) {
+                                HStack(spacing: 3) {
+                                    Text(chip.label).lineLimit(1)
+                                    Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                                }
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .foregroundStyle(theme.accent)
+                                .background(theme.accent.opacity(0.14), in: Capsule())
+                                .overlay(Capsule().stroke(theme.accent.opacity(0.4)))
+                            }
+                            .buttonStyle(.plain).help("Wyłącz ten filtr")
+                        }
+                    }
+                }
+                Button("Wyczyść filtry", action: clear).buttonStyle(.link).fixedSize()
+            }
+        }
+        .font(.caption)
+        .frame(minHeight: 20)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Filtr zmieniony względem domyślnego — tło i obwódka w kolorze akcentu (stały odstęp: bez przeskoku układu).
+struct FinFilterActive: ViewModifier {
+    let active: Bool
+    @Environment(\.crmTheme) private var theme
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, 3).padding(.vertical, 1)
+            .background(active ? theme.accent.opacity(0.16) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? theme.accent.opacity(0.75) : Color.clear, lineWidth: 1))
+    }
+}
+
+extension View {
+    func finFilterActive(_ active: Bool) -> some View { modifier(FinFilterActive(active: active)) }
 }

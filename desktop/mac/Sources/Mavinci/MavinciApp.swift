@@ -55,8 +55,9 @@ import AppKit
                 .safeAreaInset(edge: .top, spacing: 0) { TestModeBanner().environmentObject(workspace) }
         }
         .defaultSize(width: 1120, height: 940)
-        // Sygnet na pasku menu (jak dawne „Mavinci Reminders”): stan, wersja, pliki w Finderze, synchronizacja.
-        MenuBarExtra {
+        // Sygnet na pasku menu (jak dawne „Mavinci Reminders”): stan, wersja, pliki w Finderze, synchronizacja — tylko w procesie
+        // głównym (okno w osobnym procesie nie dodaje drugiego sygnetu, `WindowProcess.swift`).
+        MenuBarExtra(isInserted: .constant(!AppInstance.isSecondary)) {
             MenuBarStatusMenu(workspace: workspace)
         } label: {
             Image(nsImage: MenuBarSignet.image)
@@ -78,7 +79,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in BrandStore.applyCached() }
     }
     /// Zamknięcie okna nie kończy aplikacji — działa dalej na pasku menu (pliki w Finderze, synchronizacja); „Zakończ Mavinci” w menu.
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    /// Okno w osobnym procesie (`WindowProcess.swift`): zamknięcie okna kończy jego proces.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { AppInstance.isSecondary }
+    /// Zakończenie procesu głównego (⌘Q, „Zakończ Mavinci”) zamyka też okna w osobnych procesach.
+    func applicationWillTerminate(_ notification: Notification) {
+        if !AppInstance.isSecondary { AppInstance.post(.quit) }
+    }
 }
 
 struct RootView: View {
@@ -241,6 +247,12 @@ struct RootView: View {
                         ToolbarItem(placement: .primaryAction) { if state.syncing { ProgressView().controlSize(.small) } }
                     }
                 }
+            } else if state.processWindowOpening {
+                // Okno w osobnym procesie (`WindowProcess.swift`): sesja i kopia z dysku — bez ekranu logowania w międzyczasie.
+                VStack(spacing: 12) {
+                    ProgressView().controlSize(.large)
+                    Text("Otwieranie okna…").font(.headline)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity).background(state.theme.page)
             } else if state.testSwitching {
                 // Wyjście z trybu testowego — sesja administratora wraca z pęku kluczy (bez ekranu logowania w międzyczasie).
                 VStack(spacing: 12) {
@@ -252,8 +264,8 @@ struct RootView: View {
         // Tryb testowy „widok jako” — pasek z „Wyjdź z trybu” zawsze na górze, na środku okna (`TestMode/TestMode.swift`).
         .safeAreaInset(edge: .top, spacing: 0) { TestModeBanner() }
         .sheet(isPresented: $help) { HelpView() }
-        // Sprawdzanie nowej wersji aplikacji — raz na uruchomienie (kolejne okna niczego nie dublują).
-        .task { state.updater.start() }
+        // Sprawdzanie nowej wersji aplikacji — raz na uruchomienie (kolejne okna niczego nie dublują), w procesie głównym.
+        .task { if !AppInstance.isSecondary { state.updater.start() } }
         .onChange(of: nav.selection) { _, next in
             if next != nil { nav.nativeSet = nil; nav.webItem = nil; nav.screen = nil }
             if let route = nav.eventRoute, next != route.origin { nav.eventRoute = nil }
@@ -384,7 +396,7 @@ struct HelpView: View {
                     Text("Kalendarz i Eventy używają wspólnego zakresu uprawnień i tego samego zbioru eventów. Kolorowe obramowanie wpisu odpowiada kategorii w CRM. Eventy i oferty domyślnie pomijają przeszłe i zamknięte rekordy; zaznacz Pokaż również ukryte lub Szukaj również w ukrytych, aby je odnaleźć. Filtr nie rozszerza uprawnień do danych.")
                     Text("Przetargi domyślnie pokazują aktywne sprawy. Na liście są ocena dopasowania, zamawiający i czas do terminu. Szczegóły zawierają dane jak modal CRM oraz obserwowanie, opiekuna, utworzenie zapytania, notatki, status i ocenę manualną. Starsze i ukryte pozycje włączysz filtrem.")
                     Text("⌘R odświeża dane, ⌘1 otwiera Mój dzień, ⌘2 zapytania, ⌘3 zadania. W Moich zadaniach ⌘N tworzy prywatne zadanie, a ⌘E edytuje zaznaczone.")
-                    Text("Okna i karty: Plik → Nowe okno (⇧⌘N) albo Nowa karta (⇧⌘T) otwiera bieżącą sekcję obok — każde okno ma własną nawigację, więc w jednym możesz mieć Wiadomości, a w drugim event. Prawy przycisk na pozycji paska bocznego albo na evencie w liście: Otwórz w nowym oknie / w nowej karcie. Karty okien obsługujesz jak w Finderze (Widok → Pokaż pasek kart, Okno → Scal wszystkie okna). Ta sama sekcja w dwóch oknach pokazuje ten sam otwarty rekord, np. kartę pracownika; karty eventów są niezależne.")
+                    Text("Okna i karty: Plik → Nowe okno (⇧⌘N) albo Nowa karta (⇧⌘T) otwiera bieżącą sekcję obok — każde okno ma własną nawigację, więc w jednym możesz mieć Wiadomości, a w drugim event. Prawy przycisk na pozycji paska bocznego albo na evencie w liście: Otwórz w nowym oknie / w nowej karcie. Nowe okno (także karta przeciągnięta z paska kart poza okno) działa w osobnym procesie: ma własny stan sekcji (np. podsekcję Finansów) i nie spowalnia pozostałych okien; zamknięcie go kończy ten proces, a zakończenie Mavinci albo wylogowanie zamyka wszystkie okna. Zapis w jednym oknie widać w drugim po odświeżeniu (co minutę, po przejściu do okna, ⌘R). Karty jednego okna dzielą stan sekcji — ta sama sekcja w dwóch kartach pokazuje ten sam otwarty rekord; karty eventów są niezależne. Karty obsługujesz jak w Finderze (Widok → Pokaż pasek kart, Okno → Scal wszystkie okna).")
                     Text("Zapytania: przejmij nieprzypisaną sprawę, zapisz wykonany kontakt lub odłóż przypomnienie o godzinę. Po wykonaniu kontaktu możesz wybrać termin kolejnego działania. Ostateczne uprawnienia sprawdza baza danych.")
                     Text("Zadania: twórz prywatne zadania, zmieniaj tytuł, opis, priorytet, termin i etap. Zapis wymaga połączenia. Konflikt zmian wymaga odświeżenia; formularz zachowuje wpisany tekst.")
                     Text("Bez internetu ostatnia zapisana kopia jest dostępna tylko do odczytu przez maksymalnie 24 godziny od pełnego udanego odświeżenia. Po powrocie do aplikacji uprawnienia są sprawdzane ponownie. Wylogowanie usuwa kopię i lokalną sesję.")

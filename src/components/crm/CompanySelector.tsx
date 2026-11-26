@@ -5,6 +5,7 @@ import { Building2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
 import { canFinanceCompany } from '@/lib/invoices/financeAccess';
+import { isFinanceEntity } from '@/lib/invoices/financeEntities';
 import type { FinanceCompanyLevel } from '@/lib/financeCompanyAccess';
 
 interface MyCompany {
@@ -73,7 +74,9 @@ export default function CompanySelector({
       let filtered = rows.filter((c) => c.is_active);
 
       if (requiredLevel) {
-        filtered = filtered.filter((c) => canFinanceCompany(financeAccess, c.id, requiredLevel));
+        // Ekrany finansów: tylko działalności (firmy z NIP) — marka bez NIP (np. Event Rulers) nie ma własnych finansów.
+        // Bez poziomu (np. firma realizująca wydarzenie) marki zostają na liście.
+        filtered = filtered.filter((c) => isFinanceEntity(c) && canFinanceCompany(financeAccess, c.id, requiredLevel));
       }
 
       setCompanies(filtered);

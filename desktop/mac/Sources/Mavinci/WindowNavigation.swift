@@ -6,10 +6,12 @@ import Combine
 //
 // Każde okno Mavinci (także karta okna) ma własną nawigację: sekcję z paska bocznego, kartę wydarzenia, panel powiadomień
 // i wyróżniony rekord — w jednym oknie mogą być otwarte Wiadomości, w drugim wydarzenie, i oba działają jednocześnie.
-// Dane, sesja, kopia na dysku i synchronizacja są wspólne (`Workspace`). Czynności nawigacji wywoływane przez `Workspace`
-// (pasek boczny, menu, powiadomienia, odnośniki z kart) trafiają do okna, w którym pracuje użytkownik (ostatnio aktywnego).
-// Stan wewnątrz sekcji przechowywany w jej magazynie (np. otwarta karta pracownika, pojazdu, oferty) jest wspólny —
-// ta sama sekcja otwarta w dwóch oknach pokazuje ten sam wybrany rekord.
+// „Nowe okno” i karta wyciągnięta do osobnego okna działają w osobnym procesie (`WindowProcess.swift`): własne dane, stan
+// sekcji i wątek główny. Karty jednego okna są w jego procesie: dane, sesja, kopia na dysku i synchronizacja są w nim wspólne
+// (`Workspace`). Czynności nawigacji wywoływane przez `Workspace` (pasek boczny, menu, powiadomienia, odnośniki z kart)
+// trafiają do okna, w którym pracuje użytkownik (ostatnio aktywnego). Stan wewnątrz sekcji przechowywany w jej magazynie
+// (np. otwarta karta pracownika, pojazdu, oferty, podsekcja Finansów) jest wspólny dla kart jednego procesu — ta sama sekcja
+// otwarta w dwóch kartach pokazuje ten sam wybrany rekord.
 
 /// Nawigacja jednego okna obszaru roboczego.
 @MainActor final class WindowNavigation: ObservableObject, Identifiable {
@@ -43,6 +45,13 @@ import Combine
     /// Okno AppKit (od pojawienia się na ekranie) i okno, do którego nowe okno dołącza jako karta.
     weak var window: NSWindow?
     weak var tabHost: NSWindow?
+    /// „Nowe okno” w tym samym procesie (tryb testowy, aplikacja bez podpisu zespołu) — osobne okno, nie karta, także gdy
+    /// macOS dołącza nowe okna jako karty (pełny ekran, Ustawienia systemowe → „Preferuj karty”).
+    var separateWindow = false
+    /// Grupa kart, w której okno było ostatnio razem z innymi — wykrywanie karty wyciągniętej do osobnego okna (`trackTabs`).
+    weak var lastTabGroup: NSWindowTabGroup?
+    /// Okno przenoszone do osobnego procesu (`moveToOwnProcess`).
+    var movingToProcess = false
     /// Przejęta przez okno; po zamknięciu ostatniego okna nawigacja czeka na następne (ten sam widok po ponownym otwarciu).
     var claimed = false
     var observers: Set<AnyCancellable> = []
@@ -92,24 +101,80 @@ extension Workspace {
             .sink { [weak self, weak nav] _ in
                 guard let self, let nav else { return }
                 self.activate(nav)
+                self.trackTabs()
             }
             .store(in: &nav.observers)
+        // Karta wyciągnięta do osobnego okna (przeciągnięcie z paska kart, Okno → Przenieś kartę do nowego okna) — okno zmienia
+        // położenie i staje się główne; sprawdzenie od razu i po ułożeniu okna.
+        for name in [NSWindow.didMoveNotification, NSWindow.didBecomeMainNotification] {
+            NotificationCenter.default.publisher(for: name, object: window)
+                .sink { [weak self] _ in
+                    guard let self else { return }
+                    self.trackTabs()
+                    Task { @MainActor [weak self] in
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        self?.trackTabs()
+                    }
+                }
+                .store(in: &nav.observers)
+        }
         NotificationCenter.default.publisher(for: NSWindow.willCloseNotification, object: window)
             .sink { [weak self, weak nav] _ in
                 guard let self, let nav else { return }
                 self.detach(nav)
             }
             .store(in: &nav.observers)
+        // Okno w osobnym procesie: bez zapisu stanu okien macOS (wspólnego dla kopii aplikacji — proces główny odtwarza swoje).
+        if AppInstance.isSecondary { window.isRestorable = false }
         // „Nowa karta”: okno dołącza do grupy kart okna, z którego je otwarto (karty macOS — pasek kart, scalanie, przeciąganie).
         if let host = nav.tabHost, host !== window, host.isVisible {
             host.addTabbedWindow(window, ordered: .above)
             window.makeKeyAndOrderFront(nil)
+        } else if nav.separateWindow {
+            // „Nowe okno” w tym procesie: macOS mógł je dołączyć jako kartę — wydzielenie od razu i po pojawieniu się na ekranie.
+            keepSeparate(nav, window)
+            Task { @MainActor [weak self, weak nav, weak window] in
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                if let self, let nav, let window { self.keepSeparate(nav, window) }
+            }
+        } else if let launch = AppInstance.launch, !processWindowPrepared {
+            // Pierwsze okno procesu okna — widok, położenie i pełny ekran z okna źródłowego (`WindowProcess.swift`).
+            processWindowPrepared = true
+            prepareProcessWindow(window, launch)
         } else {
             // Pierwsze okno po uruchomieniu aplikacji — od razu na pełnym ekranie (Ustawienia → Wygląd).
             LaunchFullScreen.apply(to: window)
         }
         nav.tabHost = nil
+        nav.separateWindow = false
         if window.isKeyWindow { activate(nav) }
+        trackTabs()
+    }
+
+    /// Okno dołączone przez macOS jako karta (pełny ekran, „Preferuj karty”) — przeniesione do własnego okna (to nie jest
+    /// wyciągnięcie karty przez użytkownika — bez przenoszenia do osobnego procesu).
+    private func keepSeparate(_ nav: WindowNavigation, _ window: NSWindow) {
+        guard (window.tabbedWindows?.count ?? 1) > 1 else { return }
+        nav.movingToProcess = true
+        window.moveTabToNewWindow(nil)
+        window.makeKeyAndOrderFront(nil)
+        nav.lastTabGroup = nil
+        nav.movingToProcess = false
+    }
+
+    /// Karty okien: zapamiętanie grupy kart każdego okna; okno, które było kartą, a teraz jest samo w nowej grupie, podczas gdy
+    /// poprzednia grupa ma dalej inne karty — karta wyciągnięta do osobnego okna — przenosi się do osobnego procesu.
+    /// Zamknięcie pozostałych kart (okno zostaje samo w tej samej grupie) i scalanie okien niczego nie przenoszą.
+    func trackTabs() {
+        for nav in windowNavigations {
+            guard let window = nav.window, window.isVisible, !nav.movingToProcess else { continue }
+            let group = window.tabGroup
+            if (group?.windows.count ?? 1) > 1 { nav.lastTabGroup = group; continue }
+            let previous = nav.lastTabGroup
+            nav.lastTabGroup = nil
+            guard let previous, previous !== group, !previous.windows.isEmpty, !previous.windows.contains(where: { $0 === window }) else { continue }
+            moveToOwnProcess(nav)
+        }
     }
 
     /// Okno, w którym pracuje użytkownik — tam trafiają czynności nawigacji, komunikaty i wskaźnik zapisu.
@@ -138,9 +203,22 @@ extension Workspace {
         body()
     }
 
-    /// Nowe okno albo nowa karta okna `from` (domyślnie aktywnego) z własną nawigacją; dane i sesja są wspólne.
+    /// Nowa karta okna `from` (domyślnie aktywnego) z własną nawigacją w tym procesie albo nowe okno — osobny proces
+    /// (`WindowProcess.swift`); bez takiej możliwości (tryb testowy, przed zalogowaniem, aplikacja bez podpisu zespołu) —
+    /// osobne okno w tym procesie.
     func openInWindow(_ destination: WindowDestination, asTab: Bool = false, from origin: WindowNavigation? = nil, using openWindow: OpenWindowAction) {
         let source = origin ?? activeNavigation
+        if !asTab && WindowProcess.available(self) {
+            openInProcess(destination, from: source) { [weak self] in
+                self?.openInProcessWindow(destination, from: source, using: openWindow)
+            }
+            return
+        }
+        openInProcessWindow(destination, asTab: asTab, from: source, using: openWindow)
+    }
+
+    /// Nowe okno albo karta w tym procesie (wspólne dane i stan sekcji z pozostałymi oknami procesu).
+    func openInProcessWindow(_ destination: WindowDestination, asTab: Bool = false, from source: WindowNavigation, using openWindow: OpenWindowAction) {
         let next = WindowNavigation()
         inWindow(next) {
             switch destination {
@@ -156,7 +234,7 @@ extension Workspace {
                 showEmployee(id)
             }
         }
-        if asTab { next.tabHost = source.window }
+        if asTab { next.tabHost = source.window } else { next.separateWindow = true }
         pendingNavigations.append(next)
         openWindow(id: "main")
     }
@@ -231,7 +309,7 @@ struct WorkspaceWindowReader: NSViewRepresentable {
     }
 }
 
-/// Plik → Nowe okno / Nowa karta: ta sama sekcja co w aktywnym oknie, z własną nawigacją.
+/// Plik → Nowe okno / Nowa karta: ta sama sekcja co w aktywnym oknie, z własną nawigacją (nowe okno — osobny proces).
 struct WindowMenuItems: View {
     let workspace: Workspace
     @Environment(\.openWindow) private var openWindow
@@ -243,8 +321,8 @@ struct WindowMenuItems: View {
     }
 }
 
-/// „Otwórz w nowym oknie” i „Otwórz w nowej karcie” (menu kontekstowe pozycji paska bocznego i wydarzeń); `nav` — okno, z którego
-/// otwierane (nowa karta dołącza do niego).
+/// „Otwórz w nowym oknie” (osobny proces) i „Otwórz w nowej karcie” (menu kontekstowe pozycji paska bocznego i wydarzeń);
+/// `nav` — okno, z którego otwierane (nowa karta dołącza do niego).
 struct OpenInWindowButtons: View {
     let destination: WindowDestination
     let workspace: Workspace

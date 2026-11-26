@@ -4,6 +4,7 @@ import RecordScopeSelect from '@/components/crm/settings/RecordScopeSelect';
 import { useState, useEffect } from 'react';
 import { Shield, Save, RefreshCw, ChevronDown, ChevronRight, Bell, Webhook, Car, Building2, RotateCcw, ShoppingCart } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { isFinanceEntity } from '@/lib/invoices/financeEntities';
 import { ACCESS_SECTIONS } from '@/lib/accessSections';
 import { CONTACT_TABS, EVENT_TABS, LEGACY_FINANCE_PERMISSIONS, MAVINCI_LIVE_SECTION_SCOPES, ORGANIZATION_TABS } from '@/lib/employees/permissionTabs';
 import { getAllScopes } from '@/lib/permissions';
@@ -90,7 +91,7 @@ export default function EmployeePermissionsTab({
   const [companyAccessMode, setCompanyAccessMode] = useState<'all' | 'selected'>('all');
   const [rolePermissionsInherited, setRolePermissionsInherited] = useState(false);
   const [accessLevelPackage, setAccessLevelPackage] = useState<AccessLevelPackage | null>(null);
-  const [myCompanies, setMyCompanies] = useState<Array<{ id: string; name: string; is_active?: boolean | null }>>([]);
+  const [myCompanies, setMyCompanies] = useState<Array<{ id: string; name: string; is_active?: boolean | null; nip?: string | null }>>([]);
   const [financeCompanyAccess, setFinanceCompanyAccess] = useState<Record<string, FinanceCompanyLevel>>({});
   const [contactFormNotifications, setContactFormNotifications] = useState(false);
   const [webhookNotifications, setWebhookNotifications] = useState(false);
@@ -144,7 +145,7 @@ export default function EmployeePermissionsTab({
           )
           .eq('id', employeeId)
           .maybeSingle(),
-        supabase.from('my_companies').select('id, name, is_active').order('name'),
+        supabase.from('my_companies').select('id, name, is_active, nip').order('name'),
         supabase
           .from('employee_notification_settings')
           .select('contact_form_enabled, webhook_notifications_enabled, fleet_compliance_enabled, inquiry_assignments_enabled, inquiry_followups_enabled, inquiry_escalations_enabled')
@@ -363,8 +364,10 @@ export default function EmployeePermissionsTab({
   };
 
   // Działalności, do których pracownik ma dostęp — tylko dla nich można określić dostęp do finansów.
+  // Finanse według działalności — tylko działalności (firmy z NIP); marka bez NIP (np. Event Rulers) nie ma finansów,
+  // choć pracownik może mieć do niej dostęp w „Markach i spółkach”.
   const financeCompanies = myCompanies.filter(
-    (company) => company.is_active !== false && (companyAccessMode === 'all' || myCompanyIds.includes(company.id)),
+    (company) => company.is_active !== false && isFinanceEntity(company) && (companyAccessMode === 'all' || myCompanyIds.includes(company.id)),
   );
 
   const setFinanceCompanyLevel = (companyId: string, level: FinanceCompanyLevel) => {

@@ -4,7 +4,8 @@ import AppKit
 //
 // Pierwsze okno obszaru roboczego po starcie aplikacji przechodzi na pełny ekran (osobne biurko macOS, jak zielony przycisk
 // okna). Ustawienie „Otwieraj na pełnym ekranie” (Ustawienia → Wygląd) — domyślnie włączone. Kolejne okna i karty otwierają
-// się bez zmian; okno, które macOS odtworzył już na pełnym ekranie, zostaje na nim.
+// się bez zmian; okno, które macOS odtworzył już na pełnym ekranie, zostaje na nim. Okno w osobnym procesie przejmuje pełny
+// ekran od okna, z którego je otwarto (`WindowProcess.swift`), a nie z tego ustawienia.
 
 @MainActor
 enum LaunchFullScreen {
@@ -16,7 +17,7 @@ enum LaunchFullScreen {
 
     /// Wywoływane przy pierwszym podpięciu okna obszaru roboczego (`Workspace.attach`).
     static func apply(to window: NSWindow) {
-        guard !handled else { return }
+        guard !handled, !AppInstance.isSecondary else { return }
         handled = true
         guard enabled else { return }
         window.collectionBehavior.insert(.fullScreenPrimary)

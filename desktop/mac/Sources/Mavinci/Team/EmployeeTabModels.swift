@@ -175,6 +175,8 @@ struct CompanyAccessOption: Decodable, Identifiable, Hashable {
     var id: String
     var name: String
     var active: Bool
+    /// Działalność (firma z NIP) — ma poziomy dostępu do finansów; marka bez NIP (np. Event Rulers) — nie. `nil` — starszy serwer.
+    var financeEntity: Bool?
 }
 struct NotificationFlags: Codable, Equatable {
     var contactForm: Bool

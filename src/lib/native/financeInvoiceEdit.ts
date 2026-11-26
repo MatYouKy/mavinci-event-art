@@ -1,6 +1,7 @@
 import 'server-only';
 import type { NativeContext } from './auth';
 import { canFinanceCompany, loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
+import { isFinanceEntity } from '@/lib/invoices/financeEntities';
 import { getInvoicePaymentDueDate } from '@/lib/invoices/paymentTerm';
 
 /*
@@ -85,7 +86,9 @@ async function editCompanies(ctx: NativeContext, currentId: string) {
   const access = await loadInvoiceFinanceAccess(ctx.supabase);
   const { data, error } = await ctx.supabase.from('my_companies').select('*').eq('is_active', true).order('is_default', { ascending: false });
   if (error) fail('Nie udało się wczytać działalności.', 500);
-  return rows(data).filter((company) => String(company.id) === currentId || canFinanceCompany(access, String(company.id), 'invoices_issue'));
+  // Działalności (firmy z NIP) z poziomem „Wystawianie faktur”; firma zapisana w fakturze zostaje.
+  return rows(data).filter((company) => String(company.id) === currentId
+    || (isFinanceEntity(company) && canFinanceCompany(access, String(company.id), 'invoices_issue')));
 }
 
 const SELLER_REQUIRED: Array<[string, string]> = [

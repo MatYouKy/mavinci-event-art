@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { ArrowLeft, Plus, Trash2, Save } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import BuyerSearchInput from '../../new/components/BuyerSearchInput';
@@ -355,19 +356,21 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
       }
 
       if (companiesRes.data) {
-        setMyCompanies(companiesRes.data);
+        // Fakturę wystawia działalność (firma z NIP) — marka bez NIP (np. Event Rulers) nie; firma zapisana w fakturze zostaje.
+        const companies: MyCompany[] = financeEntities(companiesRes.data as MyCompany[], invoiceRes.data?.my_company_id ?? null);
+        setMyCompanies(companies);
         const selectedCompany =
-          companiesRes.data.find((c: MyCompany) => c.id === invoiceRes.data?.my_company_id) ||
-          companiesRes.data.find((c: MyCompany) => c.is_default) ||
-          companiesRes.data[0];
+          companies.find((c: MyCompany) => c.id === invoiceRes.data?.my_company_id) ||
+          companies.find((c: MyCompany) => c.is_default) ||
+          companies[0];
 
         if (selectedCompany && !invoiceRes.data?.website) {
           setWebsite(selectedCompany.website || '');
         }
 
-        if (!invoiceRes.data?.my_company_id && companiesRes.data.length > 0) {
-          const defaultCompany = companiesRes.data.find((c: MyCompany) => c.is_default);
-          setSelectedCompanyId(defaultCompany?.id || companiesRes.data[0].id);
+        if (!invoiceRes.data?.my_company_id && companies.length > 0) {
+          const defaultCompany = companies.find((c: MyCompany) => c.is_default);
+          setSelectedCompanyId(defaultCompany?.id || companies[0].id);
         }
       }
     } catch (err) {

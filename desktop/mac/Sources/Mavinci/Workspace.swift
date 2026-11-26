@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import Combine
 import Network
 
 @MainActor final class Workspace: ObservableObject {
@@ -101,6 +102,14 @@ import Network
     var snackWindow: UUID?
     /// Początek ostatniego odświeżenia (`refreshIfIdle` — jedno odświeżanie w tle niezależnie od liczby okien).
     var lastRefreshStarted: Date?
+    // MARK: Okna w osobnych procesach (`WindowProcess.swift`)
+    /// Okno tego procesu (okna w osobnym procesie) ustawione według okna źródłowego i widok z argumentu uruchomienia pokazany.
+    var processWindowPrepared = false
+    var windowLaunchApplied = false
+    /// Okno w osobnym procesie przed odczytem sesji i kopii z dysku — „Otwieranie okna…” zamiast ekranu logowania.
+    @Published private(set) var processWindowOpening = AppInstance.isSecondary
+    /// Sygnały od innych kopii aplikacji (okno na ekranie, zakończenie, aktualizacja, wylogowanie).
+    private var processLinks: Set<AnyCancellable> = []
     // Nawigacja aktywnego okna — czynności (`switchSection`, `showEvent`, `openHref`…); widoki okna czytają własną `WindowNavigation`.
     var selection: Module? { get { activeNavigation.selection } set { activeNavigation.selection = newValue } }
     var eventRoute: EventRoute? { get { activeNavigation.eventRoute } set { activeNavigation.eventRoute = newValue } }
@@ -203,15 +212,52 @@ import Network
             }
         }
         monitor.start(queue: DispatchQueue(label: "pl.mavinci.network"))
+        if AppInstance.isSecondary { Vault.shareAcrossProcesses() }
+        startProcessLinks()
+    }
+    /// Sygnały kopii aplikacji (`AppInstance.Signal`, `WindowProcess.swift`): okno nowego procesu na ekranie (proces źródłowy
+    /// zdejmuje postęp), zakończenie procesu głównego i instalacja aktualizacji (okna w osobnych procesach kończą pracę),
+    /// wylogowanie (okna w osobnych procesach się zamykają; proces główny wylogowuje się, gdy sesji nie ma już w pęku kluczy).
+    private func startProcessLinks() {
+        let center = DistributedNotificationCenter.default()
+        center.publisher(for: AppInstance.Signal.shown.name).receive(on: DispatchQueue.main)
+            .sink { note in
+                if let token = note.object as? String { WindowProcess.markShown(token) }
+            }
+            .store(in: &processLinks)
+        center.publisher(for: AppInstance.Signal.quit.name).receive(on: DispatchQueue.main)
+            .sink { note in
+                if AppInstance.isSecondary, AppInstance.fromSibling(note) { NSApp.terminate(nil) }
+            }
+            .store(in: &processLinks)
+        center.publisher(for: AppInstance.Signal.update.name).receive(on: DispatchQueue.main)
+            .sink { note in
+                if AppInstance.fromSibling(note) { NSApp.terminate(nil) }
+            }
+            .store(in: &processLinks)
+        center.publisher(for: AppInstance.Signal.signedOut.name).receive(on: DispatchQueue.main)
+            .sink { [weak self] note in
+                guard let self, AppInstance.fromSibling(note) else { return }
+                if AppInstance.isSecondary { NSApp.terminate(nil); return }
+                guard self.testMode == nil, self.backend != nil else { return }
+                // Sygnał wylogowania potwierdzony stanem pęku kluczy (świeży odczyt — inny proces usunął sesję).
+                do {
+                    guard try Vault.readFresh("session-\(self.connection.identity)") == nil else { return }
+                } catch { return }
+                Task { await self.logout() }
+            }
+            .store(in: &processLinks)
     }
     func rows(_ module: Module) -> [Row] {
         if module == .events {return snapshot?.collections[Module.calendar.rawValue]?.rows.filter{$0["kind"]=="event"} ?? []}
         return snapshot?.collections[module.rawValue]?.rows ?? []
     }
     func restore() async {
+        defer { if processWindowOpening { processWindowOpening = false } }
         guard !loading, snapshot == nil, testMode == nil, connection.valid else { return }
-        // Kopie z trybu testowego przerwanego zamknięciem aplikacji — usuwane przy następnym starcie.
-        TestModeStorage.purgeLeftover()
+        // Kopie z trybu testowego przerwanego zamknięciem aplikacji — usuwane przy następnym starcie (w procesie głównym — okno
+        // w osobnym procesie nie usuwa kopii trwającego trybu testowego procesu głównego).
+        if !AppInstance.isSecondary { TestModeStorage.purgeLeftover() }
         loading = true
         defer { loading = false }
         let ticket = generation
@@ -220,7 +266,8 @@ import Network
             let session = try JSONDecoder().decode(Session.self, from: data)
             let api = HTTPBackend(connection); backend = api
             await api.restore(session)
-            FinderDomain.activate(connection: connection, session: data, fresh: false)
+            // Mavinci w Finderze i widżety prowadzi proces główny (okno w osobnym procesie ich nie dubluje).
+            if !AppInstance.isSecondary { FinderDomain.activate(connection: connection, session: data, fresh: false) }
             openStores(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
             // Kopia z dysku od razu (bez czekania na sieć); zapis dopiero po potwierdzeniu profilu na serwerze.
@@ -229,7 +276,7 @@ import Network
             let stored = cache
             let saved = try await Task.detached(priority: .userInitiated) { try stored?.load() }.value
             guard ticket == generation else { return }
-            if let saved, Date().timeIntervalSince(saved.savedAt) <= 30 * 86_400 { snapshot = saved; restoreNavigation() }
+            if let saved, Date().timeIntervalSince(saved.savedAt) <= 30 * 86_400 { snapshot = saved; restoreNavigation(); applyWindowLaunch(final: false) }
             await refresh(force: true)
         } catch {
             self.error = friendlyError(error)
@@ -308,6 +355,8 @@ import Network
                 await loadNavigation()
             }
             guard ticket == generation else { return }
+            // Okno w osobnym procesie: widok z okna źródłowego (gdy kopia na dysku nie miała menu — teraz).
+            applyWindowLaunch(final: true)
             await loadSchedule()
             for module in modules where module != .day && module != .events {
                 guard ticket == generation else { return }
@@ -368,7 +417,7 @@ import Network
             if moduleErrors.isEmpty { snapshot?.savedAt = Date() }
             if !editing { refreshEventToken = UUID() }
             // Kalendarz Apple: automatyczna aktualizacja kopii po pełnym odświeżeniu kalendarza (tylko gdy wpisy się zmieniły).
-            if testMode == nil, current.canView(.calendar), moduleErrors["calendar"] == nil, snapshot?.collections["calendar"]?.lastSync != nil {
+            if testMode == nil, !AppInstance.isSecondary, current.canView(.calendar), moduleErrors["calendar"] == nil, snapshot?.collections["calendar"]?.lastSync != nil {
                 appleCalendar.refreshed(rows: rows(.calendar), employee: current.id, identity: connection.identity)
             }
             if snapshot != nil { scheduleSnapshotWrite(after: nil, reportFailure: true) }
@@ -487,6 +536,10 @@ import Network
         catch { self.error = "Nie udało się usunąć lokalnej kopii. Sprawdź dostęp aplikacji do plików i pęku kluczy." }
         cache = nil
         await old?.logout()
+        // Wylogowanie zamyka okna w osobnych procesach (`WindowProcess.swift`); w oknie osobnego procesu kończy jego proces —
+        // logowanie jest w oknie procesu głównego.
+        AppInstance.post(.signedOut)
+        if AppInstance.isSecondary { NSApp.terminate(nil) }
     }
     /// Stan obszaru roboczego w pamięci: dane, sekcje, okna (zostaje jedno). `forget` — wylogowanie i wyjście z trybu testowego:
     /// kopie kart natywnych, dashboardu i planu dnia znikają też z dysku; bez tego (wejście w tryb testowy) kopie administratora
@@ -542,6 +595,8 @@ import Network
     /// zmian. Zwraca komunikat błędu albo `nil`.
     func enterTestMode(employeeID: String) async -> String? {
         guard testMode == nil else { return "Tryb testowy jest już włączony — najpierw wyjdź z trybu." }
+        // Sesja oglądanej osoby jest tylko w pamięci procesu — tryb prowadzi proces główny (jego okna i karty).
+        guard !AppInstance.isSecondary else { return "Tryb testowy włączysz w głównym oknie Mavinci — to okno działa w osobnym procesie." }
         guard employee?.isAdmin == true, let admin = backend, let crm = connection.crm else { return "Tryb testowy jest dostępny tylko dla administratora." }
         guard !loading, !acting, pending == nil else { return "Trwa inna czynność — spróbuj ponownie za chwilę." }
         let home = connection

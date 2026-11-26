@@ -25,6 +25,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ResponsiveActionBar from './ResponsiveActionBar';
@@ -2085,7 +2086,8 @@ function KSeFSetupModal({
       .eq('is_active', true)
       .order('is_default', { ascending: false });
 
-    setMyCompanies(data || []);
+    // KSeF ma tylko działalność z NIP — marka bez NIP (np. Event Rulers) nie.
+    setMyCompanies(financeEntities(data || []));
   };
 
   const handleSave = async () => {

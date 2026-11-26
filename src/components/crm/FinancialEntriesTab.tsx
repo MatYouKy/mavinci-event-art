@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Banknote, Loader2, Plus, Trash2, UserRound, WalletCards, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 type Category = { id: string; code: string; name: string; color: string };
-type Company = { id: string; name: string };
+type Company = { id: string; name: string; nip?: string | null };
 type Employee = { id: string; name: string | null; surname: string | null };
 type Entry = {
   id: string;
@@ -71,7 +72,7 @@ export default function FinancialEntriesTab() {
         .order('recognition_date', { ascending: false })
         .limit(200),
       supabase.from('finance_categories').select('id,code,name,color').eq('is_active', true).in('kind', ['expense', 'both']).order('sort_order'),
-      supabase.from('my_companies').select('id,name').eq('is_active', true).order('name'),
+      supabase.from('my_companies').select('id,name,nip').eq('is_active', true).order('name'),
       supabase.from('employees').select('id,name,surname').eq('is_active', true).order('surname'),
     ]);
 
@@ -81,7 +82,8 @@ export default function FinancialEntriesTab() {
     }
     setEntries((entriesRes.data || []) as Entry[]);
     setCategories((categoriesRes.data || []) as Category[]);
-    setCompanies((companiesRes.data || []) as Company[]);
+    // Działalności (firmy z NIP) — marka bez NIP (np. Event Rulers) nie ma własnych kosztów i wypłat.
+    setCompanies(financeEntities((companiesRes.data || []) as Company[]));
     setEmployees((employeesRes.data || []) as Employee[]);
     setLoading(false);
   }, [showSnackbar]);

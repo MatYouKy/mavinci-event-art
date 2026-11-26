@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2, FileText, AlertCircle, CheckCircle2, Building2, Info, Calculator } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { MyCompany } from '@/app/(crm)/crm/settings/my-companies/page';
 
@@ -94,11 +95,13 @@ export default function IssueInvoiceFromEventModal({
     try {
       setLoading(true);
 
-      const { data: companies } = await supabase
+      const { data: companyRows } = await supabase
         .from('my_companies')
         .select('*')
         .eq('is_active', true)
         .order('is_default', { ascending: false });
+      // Fakturę wystawia działalność (firma z NIP) — marka bez NIP (np. Event Rulers) nie.
+      const companies = companyRows ? financeEntities(companyRows) : null;
 
       if (companies) {
         setMyCompanies(companies);

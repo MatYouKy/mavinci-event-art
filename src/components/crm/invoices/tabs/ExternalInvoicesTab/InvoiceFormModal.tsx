@@ -18,6 +18,7 @@ import SearchCombobox from '@/components/crm/SearchCombobox';
 import { fetchCompanyDataFromGUS } from '@/lib/gus';
 import { Loader2, ScanLine, Search } from 'lucide-react';
 import { InvoiceScanAssistant } from './InvoiceScanAssistant';
+import { financeEntities } from '@/lib/invoices/financeEntities';
 import type { InvoiceScanField } from './InvoiceScanAssistant';
 import { ContractTermFields, isContractDate, type ContractTerm } from '@/components/crm/invoices/ContractTermFields';
 import {
@@ -100,7 +101,10 @@ export function InvoiceFormModal({
       invoice?.payment_date ?? invoice?.invoice_date ?? prefill?.payment_date ?? prefill?.invoice_date ?? new Date().toISOString().slice(0, 10),
   });
   const [file, setFile] = useState<File | null>(null);
-  const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
+  // Działalności (firmy z NIP) — marka bez NIP (np. Event Rulers) nie ma własnych finansów (`financeEntities`).
+  const [companies, setCompanies] = useState<Array<{ id: string; name: string; nip: string | null; is_default: boolean | null }>>([]);
+  const keepCompanyId = invoice?.my_company_id ?? prefill?.my_company_id ?? null;
+  const isNewDocument = !invoice;
   const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   
 
@@ -310,17 +314,21 @@ export function InvoiceFormModal({
 
   useEffect(() => {
     Promise.all([
-      supabase.from('my_companies').select('id,name').eq('is_active', true).order('name'),
+      supabase.from('my_companies').select('id,name,nip,is_default').eq('is_active', true)
+        .order('is_default', { ascending: false }).order('name'),
       supabase.from('finance_categories').select('id,name').eq('is_active', true).in('kind', ['expense', 'both']).order('sort_order'),
     ]).then(([companiesResult, categoriesResult]) => {
-      const companyRows = (companiesResult.data || []).filter((company) => !lockedCompanyId || company.id === lockedCompanyId);
+      const companyRows = financeEntities(companiesResult.data || [], keepCompanyId)
+        .filter((company) => !lockedCompanyId || company.id === lockedCompanyId);
       setCompanies(companyRows);
       setCategories(categoriesResult.data || []);
-      if (companyRows.length === 1) {
-        setForm((current) => ({ ...current, my_company_id: current.my_company_id || companyRows[0].id }));
+      // Nowy dokument: domyślna działalność (Mavinci) — odczyt AI działa od razu, a NIP nabywcy z dokumentu może ją zmienić.
+      const preferred = companyRows.length === 1 || isNewDocument ? companyRows.find((company) => company.is_default) || companyRows[0] : undefined;
+      if (preferred) {
+        setForm((current) => ({ ...current, my_company_id: current.my_company_id || preferred.id }));
       }
     });
-  }, [lockedCompanyId]);
+  }, [lockedCompanyId, keepCompanyId, isNewDocument]);
 
   useEffect(() => {
     const loadFile = async () => {
@@ -429,6 +437,9 @@ export function InvoiceFormModal({
           <InvoiceScanAssistant
             file={file}
             companyId={form.my_company_id}
+            companies={companies}
+            companyLocked={Boolean(lockedCompanyId)}
+            onCompanyDetected={(companyId) => setForm((current) => ({ ...current, my_company_id: companyId }))}
             currentValues={form}
             disabled={saving || gusLoading || scannerOpen}
             onApply={applyScanFields}
