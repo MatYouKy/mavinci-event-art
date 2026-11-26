@@ -22,6 +22,7 @@ import {
   Trash2,
   Star,
   Search,
+  RotateCcw,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -29,6 +30,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ResponsiveActionBar from './ResponsiveActionBar';
 import InvoiceDetailsModal from './InvoiceDetailsModal';
 import BankMatchingSimple from './BankMatchingSimple';
+import KsefCorrectionSettlementModal from './invoices/KsefCorrectionSettlementModal';
 import CompanySelector from './CompanySelector';
 import { useDialog } from '@/contexts/DialogContext';
 import FullScreenLoader from '../UI/Loader/CustomModalLoader';
@@ -163,28 +165,33 @@ const getInvoiceTypeBadgeColor = (type: string): string => {
   }
 };
 
+/** Korekta „in minus” (ujemna kwota do zapłaty) — rozliczana zwrotem albo kompensatą, nie „opłacana”. */
+const isNegativeKsefInvoice = (invoice: KSeFInvoice) =>
+  Number(invoice.amount_to_pay_gross ?? invoice.gross_amount ?? 0) < 0;
+
 const getPaymentStatus = (
   invoice: KSeFInvoice,
   paidSum?: number,
 ): { status: string; label: string; color: string; icon: any } => {
+  const negative = isNegativeKsefInvoice(invoice);
   if (invoice.payment_status === 'paid') {
+    const paidOn = invoice.payment_date ? ` ${new Date(invoice.payment_date).toLocaleDateString('pl-PL')}` : '';
     return {
       status: 'paid',
-      label: invoice.payment_date
-        ? `Opłacona ${new Date(invoice.payment_date).toLocaleDateString('pl-PL')}`
-        : 'Opłacona',
+      label: `${negative ? 'Korekta rozliczona' : 'Opłacona'}${paidOn}`,
       color: 'text-green-400 bg-green-400/10',
       icon: CheckCircle,
     };
   }
 
   if (invoice.payment_status === 'partially_paid') {
-    const gross = Number(invoice.gross_amount || 0);
+    const gross = Math.abs(Number(invoice.amount_to_pay_gross ?? invoice.gross_amount ?? 0));
     const paid = Number(paidSum ?? 0);
+    const base = negative ? 'Częściowo rozliczona' : 'Częściowo opłacona';
     const label =
       paid > 0 && gross > 0
-        ? `Częściowo opłacona (${paid.toFixed(2)} / ${gross.toFixed(2)} PLN)`
-        : 'Częściowo opłacona';
+        ? `${base} (${paid.toFixed(2)} / ${gross.toFixed(2)} PLN)`
+        : base;
     return {
       status: 'partially_paid',
       label,
@@ -203,7 +210,7 @@ const getPaymentStatus = (
     if (dueDate < today || invoice.payment_status === 'overdue') {
       return {
         status: 'overdue',
-        label: 'Płatność po terminie',
+        label: negative ? 'Korekta po terminie' : 'Płatność po terminie',
         color: 'text-red-400 bg-red-400/10',
         icon: AlertCircle,
       };
@@ -212,7 +219,7 @@ const getPaymentStatus = (
 
   return {
     status: 'unpaid',
-    label: 'Nieopłacona',
+    label: negative ? 'Korekta do rozliczenia' : 'Nieopłacona',
     color: 'text-orange-400 bg-orange-400/10',
     icon: RefreshCw,
   };
@@ -312,6 +319,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
     null,
   );
   const [matchInvoice, setMatchInvoice] = useState<KSeFInvoice | null>(null);
+  const [correctionInvoice, setCorrectionInvoice] = useState<KSeFInvoice | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const tablePreferences = useStoredTablePreferences(
     'crm.ksef-invoices.table-preferences.v1',
@@ -794,13 +802,13 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
         ksef_invoice_id: invoice.id,
         amount: remaining,
         payment_date: new Date().toISOString().slice(0, 10),
-        notes: 'Ręczne oznaczenie jako opłacona',
+        notes: isNegativeKsefInvoice(invoice) ? 'Ręczne oznaczenie korekty jako rozliczonej' : 'Ręczne oznaczenie jako opłacona',
         created_by: currentEmployee?.id ?? null,
       });
 
       if (error) throw error;
 
-      showSnackbar('Faktura oznaczona jako opłacona', 'success');
+      showSnackbar(isNegativeKsefInvoice(invoice) ? 'Korekta oznaczona jako rozliczona' : 'Faktura oznaczona jako opłacona', 'success');
       await loadInvoices();
     } catch (error: any) {
       console.error('Error marking invoice as paid:', error);
@@ -1049,6 +1057,14 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
           icon: <Edit className="h-4 w-4" />,
           variant: 'default' as const,
         },
+        ...(isNegativeKsefInvoice(invoice)
+          ? [{
+            label: 'Rozlicz korektę / zwrot',
+            onClick: () => setCorrectionInvoice(invoice),
+            icon: <RotateCcw className="h-4 w-4" />,
+            variant: 'default' as const,
+          }]
+          : []),
         {
           label: 'Zobacz XML',
           onClick: () => handleViewInvoiceXml(invoice),
@@ -1072,6 +1088,14 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
           label: 'Oznacz jako nieopłaconą',
           onClick: () => handleMarkAsUnpaid(invoice),
           icon: <X className="h-4 w-4" />,
+          variant: 'default' as const,
+        });
+      } else if (isNegativeKsefInvoice(invoice)) {
+        // Korekta „in minus”: zwrot z wyciągu i kompensata — w „Rozlicz korektę / zwrot” (zwykłe „Dopasuj płatność” szuka wypłat).
+        actions.push({
+          label: 'Oznacz jako rozliczoną',
+          onClick: () => handleMarkAsPaid(invoice),
+          icon: <CheckCircle className="h-4 w-4" />,
           variant: 'default' as const,
         });
       } else {
@@ -1997,6 +2021,16 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
 
       {selectedInvoice && (
         <InvoiceDetailsModal invoice={selectedInvoice} onClose={() => setSelectedInvoice(null)} />
+      )}
+
+      {correctionInvoice && (
+        <KsefCorrectionSettlementModal
+          invoiceId={correctionInvoice.id}
+          canManage={canManageKSeF}
+          employeeId={currentEmployee?.id ?? null}
+          onClose={() => setCorrectionInvoice(null)}
+          onChanged={loadInvoices}
+        />
       )}
 
       {showMatchModal && matchModalDate && matchInvoice && (

@@ -37,6 +37,11 @@ import { finalCandidates, finalCreate, finalItems, finalNumber, finalSearch, fin
 import {
   ksefAddPayment,
   ksefCompanies,
+  ksefCorrection,
+  ksefCorrectionLink,
+  ksefCorrectionOffset,
+  ksefCorrectionOffsetUndo,
+  ksefCorrectionUnlink,
   ksefDelete,
   ksefInvoices,
   ksefMarkPaid,
@@ -79,6 +84,9 @@ export const maxDuration = 120;
  * KSeF (`src/lib/native/financeKsef.ts`): GET op=ksef | ksefInvoices&company=… | POST op=ksefPaid {id} | ksefUnpaid {id} |
  * ksefPaymentAdd {id, amount, date, notes} | ksefPaymentRemove {paymentId} | ksefPaymentSave {id, dueDate, paymentDate} |
  * ksefReviewResolve {id} | ksefDelete {id}. Synchronizacja — trasy `/bridge/ksef/auth/token` i `/bridge/ksef/invoices/*`.
+ * Rozliczenie korekty „in minus” (`src/lib/invoices/ksefCorrectionSettlement.ts`): GET op=ksefCorrection&id=… | POST
+ * op=ksefCorrectionLink {correctionId, documentId, transactionId, amount} | ksefCorrectionUnlink {correctionId, transactionId,
+ * matchId} | ksefCorrectionOffset {correctionId, originalId, amount, date} | ksefCorrectionOffsetUndo {correctionId, originalId}.
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -150,6 +158,8 @@ export async function GET(request: Request) {
         return nativeJson(await ksefCompanies(ctx));
       case 'ksefInvoices':
         return nativeJson(await ksefInvoices(ctx, url.searchParams.get('company')));
+      case 'ksefCorrection':
+        return nativeJson(await ksefCorrection(ctx, url.searchParams.get('id')));
       default:
         return failure('Nieznana operacja.');
     }
@@ -225,6 +235,14 @@ export async function POST(request: Request) {
         return nativeJson(await ksefResolveReview(ctx, body));
       case 'ksefDelete':
         return nativeJson(await ksefDelete(ctx, body));
+      case 'ksefCorrectionLink':
+        return nativeJson(await ksefCorrectionLink(ctx, body));
+      case 'ksefCorrectionUnlink':
+        return nativeJson(await ksefCorrectionUnlink(ctx, body));
+      case 'ksefCorrectionOffset':
+        return nativeJson(await ksefCorrectionOffset(ctx, body));
+      case 'ksefCorrectionOffsetUndo':
+        return nativeJson(await ksefCorrectionOffsetUndo(ctx, body));
       case 'reminderSend': {
         // Funkcja poczty tokenem pracownika, jak w przeglądarce (`send-invoice-email`).
         const token = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';

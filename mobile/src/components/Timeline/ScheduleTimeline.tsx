@@ -14,7 +14,8 @@ import {
 /*
  * Oś czasu w aplikacji — dzień (godziny), tydzień (pn–nd) i miesiąc (dni), jak osie czasu zespołu i floty w CRM. Z wierszami
  * (pracownik, auto) — stała kolumna nazw po lewej i pozycje każdego wiersza w torach; bez wierszy (spotkania, eventy) — jeden
- * wspólny tor. Każda pozycja ma najmniejszą szerokość z miejscem na początek nazwy i godzinę, tory pilnują, żeby się nie
+ * wspólny tor. Długość paska odpowiada czasowi (30 minut — połowa godziny; najkrótsze mają kilka punktów, żeby dało się je
+ * dotknąć), nazwa i godziny mieszczą się w pasku, gdy jest dość szeroki; tory pilnują, żeby pozycje w tym samym czasie się nie
  * zasłaniały. „Lupka” (− / +) powiększa kolumny (1×–4×) wokół środka widoku albo zaznaczonej pozycji. Dotknięcie pozycji
  * zaznacza ją i pod osią pokazuje szczegóły (godziny, fakty ekranu, opis) z działaniami ekranu; „‹ ›” — poprzednia / następna
  * pozycja w zakresie. Dotknięcie nagłówka dnia — widok tego dnia. Przewijanie w poziomie, linia „teraz”, dziś podświetlony.
@@ -62,6 +63,10 @@ const BAR = 42;
 const PAD = 6;
 const MIN_ROW = 60;
 const MIN_SHARED = PAD * 2 + LANE * 2;
+/** Najkrótszy pasek (px) i szerokości, od których mieści się nazwa i druga linia (godziny). */
+const MIN_BAR = 8;
+const TITLE_WIDTH = 34;
+const META_WIDTH = 84;
 
 /** Czytelny tekst na kolorze pozycji (jasne kolory — ciemny tekst). */
 function textOn(color: string): string {
@@ -109,8 +114,8 @@ export default function ScheduleTimeline<E extends TimelineEntry>({
   const columnWidth = Math.max(minColumn, available / columns) * scale;
   const totalWidth = columnWidth * columns;
   const pxPerMs = totalWidth / (endMs - startMs);
-  /** Najmniejsza szerokość paska — początek nazwy i godziny mieszczą się zawsze, także w widoku miesiąca; z lupką rośnie (więcej nazwy). */
-  const minBar = Math.round((tablet ? 172 : 140) * Math.min(2, 1 + (scale - 1) * 0.4));
+  /** Pasek w skali czasu; najkrótszy ma kilka punktów (da się go dotknąć, szczegóły pod osią). */
+  const minBar = MIN_BAR;
   const now = Date.now();
   const nowX = now >= startMs && now < endMs ? (now - startMs) * pxPerMs : null;
 
@@ -338,8 +343,10 @@ export default function ScheduleTimeline<E extends TimelineEntry>({
                           }, active && styles.barActive, selected && !active && styles.barMuted]}
                           accessibilityRole="button" accessibilityState={{ selected: active }}
                           accessibilityLabel={`${entry.title}, ${formatEntryTime(entry)}${entry.subtitle ? `, ${entry.subtitle}` : ''}`}>
-                          <Text style={[styles.barTitle, { color: foreground }, entry.dimmed && styles.dimmedText]} numberOfLines={1}>{entry.title}</Text>
-                          <Text style={[styles.barMeta, { color: foreground }]} numberOfLines={1}>{barMeta(entry, startMs)}</Text>
+                          {item.width >= TITLE_WIDTH ? (
+                            <Text style={[styles.barTitle, { color: foreground }, entry.dimmed && styles.dimmedText]} numberOfLines={1}>{entry.title}</Text>
+                          ) : null}
+                          {item.width >= META_WIDTH ? <Text style={[styles.barMeta, { color: foreground }]} numberOfLines={1}>{barMeta(entry, startMs)}</Text> : null}
                         </TouchableOpacity>
                       );
                     })}
@@ -456,7 +463,7 @@ const styles = StyleSheet.create({
   gridRow: { flexDirection: 'row' },
   gridCell: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border.default },
   track: { borderBottomWidth: 1, borderBottomColor: colors.border.default },
-  bar: { position: 'absolute', height: BAR, borderRadius: 8, borderWidth: 1, justifyContent: 'center', paddingHorizontal: 8, overflow: 'hidden' },
+  bar: { position: 'absolute', height: BAR, borderRadius: 6, borderWidth: 1, justifyContent: 'center', paddingHorizontal: 5, overflow: 'hidden' },
   barActive: { borderWidth: 2, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4, zIndex: 2 },
   barMuted: { opacity: 0.5 },
   barTitle: { fontSize: 13, fontWeight: '600' },

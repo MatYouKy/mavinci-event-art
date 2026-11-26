@@ -33,6 +33,7 @@ import {
   Workflow,
   Activity,
   ScanLine,
+  FlaskConical,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useDispatch } from 'react-redux';
@@ -44,6 +45,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { invalidateSellerSidebarBadge, useSellerSidebarBadge, type SellerSidebarScope } from '@/lib/seller/sidebarBadge';
 import { CalendarSettings } from './calendar-icam/CalendarSettings';
 import OpenAiUsagePanel from './OpenAiUsagePanel';
+import TestModePanel from '@/components/crm/settings/TestModePanel';
 import {
   DASHBOARD_WIDGETS,
   DEFAULT_DASHBOARD_RANGE,
@@ -139,7 +141,7 @@ export default function SettingsPage() {
   const { employee, loading: employeeLoading, isAdmin } = useCurrentEmployee();
 
   const [activeTab, setActiveTab] = useState<
-    'general' | 'dashboard' | 'password' | 'notifications' | 'system-email' | 'admin'
+    'general' | 'dashboard' | 'password' | 'notifications' | 'system-email' | 'admin' | 'test'
   >(
     searchParams.get('tab') === 'dashboard'
       ? 'dashboard'
@@ -147,7 +149,9 @@ export default function SettingsPage() {
         ? 'admin'
         : searchParams.get('tab') === 'notifications'
           ? 'notifications'
-          : 'general',
+          : searchParams.get('tab') === 'test'
+            ? 'test'
+            : 'general',
   );
   const sellerBadge = useSellerSidebarBadge(Boolean(employee) && activeTab === 'notifications');
   const canChooseSellerBadgeScope = sellerBadge.employeeId === employee?.id && sellerBadge.canChooseScope;
@@ -531,7 +535,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-4xl">
+    <div className="w-full">
       <div className="mb-8">
         <div className="mb-2 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#d3bb73]/10">
@@ -641,14 +645,35 @@ export default function SettingsPage() {
             )}
           </button>
         )}
+        {isAdmin && (
+          <button data-crm-tab-active={activeTab === 'test'}
+            onClick={() => setActiveTab('test')}
+            className={`relative whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'test' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <FlaskConical className="h-4 w-4" />
+              Tryb testowy
+            </div>
+            {activeTab === 'test' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+            )}
+          </button>
+        )}
       </div>
 
+      {activeTab === 'test' && isAdmin && <TestModePanel />}
+
       {activeTab === 'general' && (
-        <div className="space-y-6">
+        <div className="grid items-start gap-6 xl:grid-cols-2">
+          <div className="space-y-6">
           <CrmThemePicker employeeId={employee?.id} />
 
           <DesktopAppDownload />
+          </div>
 
+          <div className="space-y-6">
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
             <h3 className="mb-4 text-lg font-light text-[#e5e4e2]">Domyślny widok list</h3>
             <p className="mb-6 text-sm text-[#e5e4e2]/60">
@@ -724,6 +749,7 @@ export default function SettingsPage() {
               <RefreshCw className="h-4 w-4" />
               Przywróć domyślne
             </button>
+          </div>
           </div>
         </div>
       )}

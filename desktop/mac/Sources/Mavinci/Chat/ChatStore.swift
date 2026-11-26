@@ -357,6 +357,8 @@ struct ChatError: LocalizedError {
 
     /// Powiadomienie push na telefony uczestników (`send-chat-push`) — jak po wysłaniu z CRM i z telefonu.
     private func triggerPush(_ message: ChatMessage) {
+        // Tryb testowy: wiadomość nie została zapisana (zapis wycofany) — bez powiadomień na telefony.
+        guard workspace?.testMode == nil else { return }
         guard let workspace, let url = URL(string: workspace.connection.url.trimmingCharacters(in: CharacterSet(charactersIn: "/ ")) + "/functions/v1/send-chat-push") else { return }
         let record: [String: JSONValue] = [
             "id": .string(message.id), "conversation_id": .string(message.conversationID), "sender_id": .string(message.senderID),
@@ -434,6 +436,9 @@ struct ChatError: LocalizedError {
     // MARK: Realtime
 
     private func connect() {
+        // Tryb testowy „widok jako”: bez połączenia na żywo (Realtime nie przyjmie klucza zastępczego) — rozmowy odświeżają się
+        // co jakiś czas jak bez połączenia na żywo.
+        guard workspace?.testMode == nil else { return }
         guard let workspace, let me, let backend,
               let endpoint = ChatRealtime.endpoint(supabaseURL: workspace.connection.url, apiKey: workspace.connection.publicKey) else { return }
         realtime.onEvent = { [weak self] topic, event, payload in self?.handle(topic: topic, event: event, payload: payload) }

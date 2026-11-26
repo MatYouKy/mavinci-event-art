@@ -1,13 +1,17 @@
 import SwiftUI
 import AppKit
 
-// MARK: Spotkania — oś czasu jak kalendarz w Teams (dzień / tydzień roboczy / tydzień) i lista, 1:1 ze stroną `/crm/meetings`.
+// MARK: Spotkania — oś czasu jak kalendarz w Teams (dzień / tydzień roboczy / tydzień), „Pracownicy” (zajętość wybranych osób)
+// i lista, 1:1 ze stroną `/crm/meetings`.
 
 enum MeetingsMode: String, CaseIterable, Identifiable {
-    case day, workweek, week, list
+    case day, workweek, week, people, list
     var id: String { rawValue }
     var label: String {
-        switch self { case .day: return "Dzień"; case .workweek: return "Tydzień roboczy"; case .week: return "Tydzień"; case .list: return "Lista" }
+        switch self {
+        case .day: return "Dzień"; case .workweek: return "Tydzień roboczy"; case .week: return "Tydzień"
+        case .people: return "Pracownicy"; case .list: return "Lista"
+        }
     }
 }
 
@@ -21,6 +25,8 @@ struct MeetingEditorRequest: Identifiable {
     var contactId: String?
     var contactName: String?
     var title: String?
+    /// Pracownicy od razu na liście uczestników (zaznaczenie czasu w kolumnie osoby w widoku „Pracownicy”).
+    var employeeIds: [String] = []
 }
 
 /// Licznik zaproszeń czekających na odpowiedź (pasek boczny).
@@ -55,7 +61,7 @@ struct MeetingsPendingBadge: View {
     private var me: String? { store.employeeId ?? state.employee?.id }
     private var days: [Date] {
         switch mode {
-        case .day, .list: return [anchor]
+        case .day, .people, .list: return [anchor]
         case .workweek, .week:
             let monday = MeetingDates.startOfWeek(anchor)
             return (0..<(mode == .workweek ? 5 : 7)).compactMap { calendar.date(byAdding: .day, value: $0, to: monday) }
@@ -77,7 +83,7 @@ struct MeetingsPendingBadge: View {
     private var pendingCount: Int { store.meetings.filter { $0.needsResponse(from: me) && $0.endDate >= Date() }.count }
     private var rangeTitle: String {
         guard let first = days.first, let last = days.last else { return "" }
-        if mode == .day { return MeetingDates.format(first, "EEEE, d MMMM yyyy").capitalized }
+        if mode == .day || mode == .people { return MeetingDates.format(first, "EEEE, d MMMM yyyy").capitalized }
         if calendar.component(.month, from: first) == calendar.component(.month, from: last) {
             return "\(calendar.component(.day, from: first))–\(MeetingDates.format(last, "d LLLL yyyy"))"
         }
@@ -87,7 +93,7 @@ struct MeetingsPendingBadge: View {
     var body: some View {
         VStack(spacing: 0) {
             navigationBar
-            filterBar
+            if mode != .people { filterBar }
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle("Spotkania")
@@ -134,6 +140,14 @@ struct MeetingsPendingBadge: View {
         } message: {
             Text("Spotkanie „\(cancelling?.title ?? "")” zostanie oznaczone jako odwołane\(cancelling?.seriesId != nil ? " (tylko ten termin)" : ""). Uczestnicy nie dostaną już przypomnień.")
         }
+        // Po przeciągnięciu terminu, zmianie statusu i usunięciu: e-mail do osób spoza firmy (docs/team-availability.md).
+        .confirmationDialog("E-mail do osób spoza firmy", isPresented: Binding(get: { store.mailOffer != nil }, set: { if !$0 { store.mailOffer = nil } }),
+                            titleVisibility: .visible, presenting: store.mailOffer) { offer in
+            Button("Wyślij e-mail") { Task { await store.notifyContacts(offer.meetingId, before: offer.before, scope: offer.scope) } }
+            Button("Nie wysyłaj", role: .cancel) {}
+        } message: { offer in
+            Text("\(offer.question)\n\(offer.names.joined(separator: ", "))")
+        }
         .task(id: state.employee?.id) { if store.meetings.isEmpty { await store.backgroundSync() } }
         .task(id: days.first) { await store.loadHolidays(for: days) }
         .onAppear { reveal() }
@@ -159,6 +173,14 @@ struct MeetingsPendingBadge: View {
             } else {
                 ProgressView("Ładowanie spotkań…").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        } else if mode == .people {
+            TeamAvailabilityGrid(store: store, day: anchor,
+                                 openMeeting: { id in
+                                     if store.meeting(id) != nil { selectedID = id; inspectorShown = true }
+                                     else { state.notice = "Tego spotkania nie ma na Twojej liście spotkań." }
+                                 },
+                                 create: { start, end, ids in editor = MeetingEditorRequest(start: start, end: end, employeeIds: ids) })
+                .padding(.horizontal, 14).padding(.bottom, 14)
         } else if mode == .list {
             MeetingsListView(meetings: filtered, store: store, me: me, selectedID: $selectedID,
                              create: { editor = MeetingEditorRequest() }, edit: { editor = MeetingEditorRequest(meeting: $0) },
@@ -226,7 +248,7 @@ struct MeetingsPendingBadge: View {
     }
 
     private func step(_ direction: Int) {
-        anchor = calendar.date(byAdding: .day, value: direction * (mode == .day ? 1 : 7), to: anchor) ?? anchor
+        anchor = calendar.date(byAdding: .day, value: direction * (mode == .day || mode == .people ? 1 : 7), to: anchor) ?? anchor
     }
     private func setStatus(_ meeting: Meeting, _ status: MeetingStatus) {
         if status == .cancelled { cancelling = meeting } else { Task { await store.setStatus(meeting, status) } }
@@ -235,7 +257,7 @@ struct MeetingsPendingBadge: View {
     private func reveal() {
         guard let id = store.focusID, let meeting = store.meeting(id) else { return }
         store.focusID = nil
-        if mode == .list { mode = .workweek }
+        if mode == .list || mode == .people { mode = .workweek }
         anchor = calendar.startOfDay(for: meeting.startDate)
         if mode == .workweek, calendar.component(.weekday, from: anchor) == 1 || calendar.component(.weekday, from: anchor) == 7 { mode = .week }
         selectedID = meeting.id
@@ -395,7 +417,10 @@ struct MeetingsPendingBadge: View {
         }
         .padding(.trailing, 6)
         .frame(width: labelWidth, height: hour * 24, alignment: .topTrailing)
-        .allowsHitTesting(false)
+        // „Chwyć i przesuń”: kolumna godzin przewija dzień (przeciągnięcie w wolnym miejscu dnia zaznacza czas nowego spotkania).
+        .contentShape(Rectangle())
+        .grabScroll(.vertical)
+        .help("Przeciągnij, żeby przesunąć godziny")
     }
 
     private func slots(for day: Date) -> [TimelineSlot] {

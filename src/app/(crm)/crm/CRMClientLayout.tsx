@@ -10,6 +10,8 @@ import NotificationCenter from '@/components/crm/NotificationCenter';
 import UserMenu from '@/components/crm/UserMenu';
 import NavigationManager from '@/components/crm/NavigationManager';
 import ChatWidget from '@/components/crm/chat/ChatWidget';
+import ChatHeaderButton from '@/components/crm/chat/ChatHeaderButton';
+import TestModeBar from '@/components/crm/testMode/TestModeBar';
 import { IEmployee } from './employees/type';
 import { TaskAccessWrapper } from './(providers)/TaskAccessWrapper';
 import { supabase } from '@/lib/supabase/browser';
@@ -162,6 +164,7 @@ export default function CRMClientLayout({
           </div>
 
           <div className="flex items-center gap-4">
+            <ChatHeaderButton />
             <NotificationCenter
               initialNotifications={initialNotifications}
             />
@@ -246,6 +249,8 @@ export default function CRMClientLayout({
       )}
 
       <ChatWidget employee={employee} />
+      {/* Tryb testowy „widok jako” — pasek „Wyjdź z trybu” na środku u góry (docs/test-mode.md). */}
+      <TestModeBar />
     </div>
   );
 }

@@ -436,13 +436,13 @@ private struct RemoteThumbnail: View {
         return item.unitPrice ?? 0
     }
 
-    /// Usługa — karta usługi; wynajem — karta w Magazynie → Rental (jak `/crm/subcontractors/rental/<id>`).
+    /// Usługa — karta usługi; wynajem — karta w Rental → Wynajem od podwykonawców (jak `/crm/subcontractors/rental/<id>`).
     private func open(_ item: SubcontractorServicesData.Item) {
         switch item.type {
         case "services": openedService = item.id
         case "rental":
-            if state.navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/equipment/rental" }) {
-                state.openHref("/crm/equipment/rental")
+            if state.navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/rental/subcontractors" }) {
+                state.openHref("/crm/rental/subcontractors")
                 state.warehouse.openedRentalID = item.id
             } else {
                 state.openCRM("/crm/subcontractors/rental/\(item.id)")

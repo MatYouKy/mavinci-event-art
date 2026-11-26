@@ -226,3 +226,45 @@ choć faktury nie będzie. Ten sam mechanizm działa w drugą stronę: klient za
 - **safeupdate**: Supabase odrzuca w wywołaniach z API każde UPDATE / DELETE bez WHERE (także w funkcjach). Migracja kończy się
   kontrolą treści wszystkich funkcji plpgsql / sql w `public` i `private` i przerywa się, jeśli któraś ma takie polecenie
   (SQL dynamiczny w `EXECUTE '…'` nie jest sprawdzany).
+
+## 8. Faktura korygująca „in minus” — zwrot, płatność faktury korygowanej i kompensata (25.11.2026)
+
+Przykład: FV 45622/2026 (109,90 zł) opłacona kartą przy zakupie („Zapłacono” w XML), potem korekta FK 2490/2026 na −109,90 zł
+i zwrot na konto. Korekta była „Nieopłacona”, a zwykłe „Dopasuj płatność” szukało wypłat (zwrot jest wpływem).
+
+- **Stan**: dokument KSeF z ujemną kwotą do zapłaty ma w zakładce KSeF (CRM i Mac) stan „Korekta do rozliczenia” /
+  „Częściowo rozliczona” / „Korekta rozliczona” / „Korekta po terminie”, „Oznacz jako rozliczoną” zamiast „…opłaconą”.
+- **Okno „Rozlicz korektę / zwrot”** (CRM `KsefCorrectionSettlementModal`, Mac `FinKsefCorrectionSheet`, logika
+  `src/lib/invoices/ksefCorrectionSettlement.ts`, bez migracji):
+  * faktura korygowana z XML korekty (`DaneFaKorygowanej`: `NrKSeFFaKorygowanej`, a bez niego `NrFaKorygowanej` + ten sam NIP
+    kontrahenta; ta sama działalność i strona). Brak w CRM — ostrzeżenie (zsynchronizuj KSeF za miesiąc jej wystawienia);
+  * **płatność faktury korygowanej**: powiązane operacje (z „Odepnij” — `undo_bank_match`) i operacje do powiązania: operacje
+    główne działalności (bez kopii z drugiego wyciągu, przeniesień własnych i par VAT) w kierunku płatności dokumentu, w walucie
+    dokumentu, od −60 do +180 dni od wystawienia, z pozostałą kwotą. Kolejność: zgodna pozostała kwota (+5) albo kwota jak na
+    fakturze (+3), numer faktury / KSeF w opisie (+4), NIP (+2), słowo z nazwy kontrahenta bez formy prawnej (+2), data ≤ 7 dni
+    (+2) / ≤ 30 dni (+1). Domyślnie do 10 z oceną ≥ 3, „Pokaż wszystkie z okresu” (do 100), wyszukiwanie (do 50);
+  * **zwrot korekty**: to samo w kierunku przeciwnym (kosztowa — wpływ), od 14 dni przed wcześniejszą z dat faktur do +180 dni
+    od korekty; numer faktury korygowanej w opisie też się liczy;
+  * „Powiąż” = `match_bank_transaction_to_documents` z kwotą = mniejsza z pozostałej operacji i pozostałej faktury. Faktura
+    o statusie „opłacona” (także z XML, bez wpisów w rejestrze) idzie przez `reconcile_paid_ksef_invoice_with_bank_transaction`:
+    oznaczenie zamienia się na powiązanie z wyciągiem. Kierunek, działalność, waluta, limit kwot i okresy zamknięte — jak przy
+    każdym dopasowaniu (baza);
+  * **kompensata** (korekta ujemna, faktura korygowana dodatnia, ta sama waluta, faktura korygowana nie jest „opłacona”):
+    wpłata w rejestrze korekty „Kompensata z fakturą korygowaną <numer>” i faktury korygowanej „Kompensata korektą <numer>”
+    (ta sama kwota ≤ mniejszej z pozostałych, data), bez operacji bankowej; gdy druga wpłata się nie zapisze — pierwsza jest
+    usuwana. „Cofnij kompensatę” usuwa obie. Faktura korygowana „opłacona” kompensatą i inną wpłatą ręczną nie przyjmie
+    operacji z wyciągu, dopóki nie usuniesz tej wpłaty ręcznej (zamiana oznaczenia usuwa najnowsze wpłaty ręczne — mogłaby
+    zabrać wpłatę kompensaty bez drugiej strony).
+- **Para „płatność + zwrot”** (sekcja 7) pozostaje dla zwrotów bez faktury: gdy jest faktura i korekta, obie operacje
+  rozliczają faktury (para zajęłaby kwoty operacji).
+- **Uprawnienia**: odczyt — dostęp do faktur działalności; zmiany — „Zarządzanie finansami” działalności (RPC dopasowań, RLS
+  rejestru wpłat; trasa Maca sprawdza to przed zapisem).
+
+## 9. Zakupy pracowników firmową kartą (25.11.2026)
+
+Pracownik z uprawnieniem „Zakupy — własne wydatki” wprowadza paragony i faktury swoich zakupów (`docs/purchases.md`). Dokument
+zakupu to zwykły dokument spoza KSeF z `purchased_by` — kartą, gotówką albo BLIK-iem „opłacony” w dniu zakupu, więc operację
+karty z wyciągu dopasowuje się do niego jak do każdego opłaconego dokumentu (zamiana oznaczenia na powiązanie z wyciągiem).
+W „Moich wydatkach” zakup pokazuje wtedy „Powiązany z wyciągiem”. Dokumentu powiązanego z wyciągiem pracownik nie usunie ani
+nie zmieni mu kwoty, waluty, działalności i sposobu zapłaty.
+

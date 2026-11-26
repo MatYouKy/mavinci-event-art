@@ -651,7 +651,7 @@ enum BankPreviewItem: Identifiable {
     }
 
     // MARK: KSeF (`/bridge/native/v1/finance`, op=ksef | ksefInvoices | ksefPaid | ksefUnpaid | ksefPayment… | ksefReviewResolve |
-    // ksefDelete; synchronizacja — trasy CRM `/bridge/ksef/auth/token` i `/bridge/ksef/invoices/issued|received`)
+    // ksefDelete | ksefCorrection…; synchronizacja — trasy CRM `/bridge/ksef/auth/token` i `/bridge/ksef/invoices/issued|received`)
     func loadKsefCompanies(force: Bool = false) async {
         guard let api else { return }
         if !force, ksefCompanies != nil { return }
@@ -677,6 +677,12 @@ enum BankPreviewItem: Identifiable {
             let text = failureText(error, "Nie udało się pobrać faktur KSeF.")
             if ksefLists[company] == nil { ksefListError = text } else { workspace?.error = text }
         }
+    }
+
+    /// Rozliczenie korekty „in minus” (GET `ksefCorrection`): korekta, faktury korygowane, wpłaty, operacje i kompensata.
+    func ksefCorrection(_ id: String) async throws -> FinKsefCorrection {
+        guard let api else { throw AppError.configuration }
+        return try JSONDecoder().decode(FinKsefCorrection.self, from: try await api.get("/finance", query: ["op": "ksefCorrection", "id": id]))
     }
 
     /// Wpłata, termin, uwaga albo usunięcie faktury KSeF (trasa `/finance`), komunikat jak w CRM, potem świeża lista.

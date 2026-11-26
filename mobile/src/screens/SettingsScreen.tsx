@@ -18,10 +18,13 @@ import { supabase } from '../lib/supabase';
 import { APP_VERSION } from '../lib/appVersion';
 import MailboxPreferencesSection from '../components/MailboxPreferencesSection';
 import FilesAppSection from '../components/FilesAppSection';
+import TestModeSection from '../components/TestModeSection';
+import { useTestMode } from '../lib/testMode';
 import { roleLabel } from '../lib/roleLabels';
 
 export default function SettingsScreen() {
   const { employee, signOut } = useAuth();
+  const { testMode } = useTestMode();
   const [themeBusy, setThemeBusy] = useState<CrmTheme | null>(null);
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,6 +40,8 @@ export default function SettingsScreen() {
   // Motyw jak w CRM (Ustawienia → Wygląd) i na Macu: zapis w profilu, potem aplikacja uruchamia się ponownie w nowych kolorach.
   const chooseTheme = async (next: CrmTheme) => {
     if (!employee?.id || next === currentTheme || themeBusy) return;
+    // Tryb testowy: motyw dotyczy tego telefonu (administratora) — zmiana po wyjściu z trybu.
+    if (testMode) { notify('Tryb testowy: motyw zmienisz po wyjściu z trybu.', true); return; }
     setThemeBusy(next);
     const { error } = await supabase.from('employees').update({ crm_theme: next }).eq('id', employee.id);
     if (error) {
@@ -91,6 +96,9 @@ export default function SettingsScreen() {
             </View>
           )}
         </View>
+
+        {/* Tryb testowy „widok jako” — administrator (i w trakcie trybu: wyjście) */}
+        <TestModeSection onNotify={notify} />
 
         {/* Settings Options */}
         <View style={styles.section}>
@@ -158,18 +166,21 @@ export default function SettingsScreen() {
 
         <MailboxPreferencesSection />
 
-        <FilesAppSection onNotify={notify} />
+        {/* Tryb testowy: „Mavinci” w Plikach należy do sesji administratora; wyjście z trybu — sekcja „Tryb testowy” i pasek. */}
+        {testMode ? null : <FilesAppSection onNotify={notify} />}
 
         {/* Sign Out */}
-        <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.signOutButton}
-            onPress={handleSignOut}
-          >
-            <Feather name="log-out" color={colors.status.error} size={20} />
-            <Text style={styles.signOutText}>Wyloguj się</Text>
-          </TouchableOpacity>
-        </View>
+        {testMode ? null : (
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={styles.signOutButton}
+              onPress={handleSignOut}
+            >
+              <Feather name="log-out" color={colors.status.error} size={20} />
+              <Text style={styles.signOutText}>Wyloguj się</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Version */}
         <View style={styles.footer}>

@@ -168,6 +168,9 @@ import AppKit
                         .padding(16)
                         // Przewijanie w dwóch osiach centruje mniejszą treść — oś czasu zawsze od lewego górnego rogu, bez pustego pasa nad fazami.
                         .frame(minWidth: geometry.size.width, minHeight: geometry.size.height, alignment: .topLeading)
+                        // „Chwyć i przesuń”: przeciągnięcie tła przesuwa oś (fazy i przypisania — własne przeciąganie).
+                        .contentShape(Rectangle())
+                        .grabScroll([.horizontal, .vertical])
                     }
                 }
             }

@@ -112,6 +112,8 @@ struct TaskBoardAccess: Codable, Equatable {
     var canManage: Bool
     var canMove: Bool
     var autoTimer: Bool
+    /// „Zadania — zarządzanie” (usuwanie cudzych komentarzy i plików, wypisywanie innych osób); starszy serwer — brak.
+    var tasksManage: Bool? = nil
 }
 
 struct ActiveTaskTimer: Codable, Equatable {
@@ -139,6 +141,8 @@ struct TaskAttachmentInfo: Decodable, Identifiable, Hashable {
     let createdAt: String
     let name: String
     let linked: Bool
+    /// Kto dodał plik (usuwa autor pliku, administrator albo „Zadania — zarządzanie”).
+    let uploadedBy: String?
     var sizeLabel: String {
         fileSize < 1024 ? "\(fileSize) B" : fileSize < 1_048_576 ? String(format: "%.1f KB", Double(fileSize) / 1024) : String(format: "%.1f MB", Double(fileSize) / 1_048_576)
     }
@@ -146,6 +150,8 @@ struct TaskAttachmentInfo: Decodable, Identifiable, Hashable {
 
 struct TaskDetailInfo: Decodable {
     let creatorName: String
+    /// Autor zadania (może wypisywać inne osoby i usuwać komentarze).
+    let createdBy: String?
     let comments: [TaskComment]
     let attachments: [TaskAttachmentInfo]
 }

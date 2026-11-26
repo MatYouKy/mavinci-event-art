@@ -9,7 +9,8 @@ import { supabase } from './supabase';
  * Czas lokalny urządzenia; tydzień od poniedziałku.
  */
 
-export type TimelineZoom = 'day' | 'week' | 'month';
+/** `workweek` — poniedziałek–piątek (kalendarz spotkań na tablecie w poziomie, jak w CRM). */
+export type TimelineZoom = 'day' | 'workweek' | 'week' | 'month';
 export type ScreenView = 'list' | 'timeline';
 
 export const TIMELINE_ZOOMS: ReadonlyArray<{ id: TimelineZoom; label: string }> = [
@@ -74,10 +75,12 @@ export const startOfMonth = (value: Date | number) => {
 };
 export const isSameDay = (a: Date | number, b: Date | number) => startOfDay(a).getTime() === startOfDay(b).getTime();
 
-/** Zakres osi: doba, tydzień (pn–nd) albo cały miesiąc; `days` — kolumny dni (dla doby — jeden dzień). */
+/** Zakres osi: doba, tydzień roboczy (pn–pt), tydzień (pn–nd) albo cały miesiąc; `days` — kolumny dni (dla doby — jeden dzień). */
 export function timelineRange(zoom: TimelineZoom, anchor: Date): { start: Date; end: Date; days: Date[] } {
-  const start = zoom === 'day' ? startOfDay(anchor) : zoom === 'week' ? startOfWeek(anchor) : startOfMonth(anchor);
-  const end = zoom === 'day' ? addDays(start, 1) : zoom === 'week' ? addDays(start, 7) : new Date(start.getFullYear(), start.getMonth() + 1, 1);
+  const weekly = zoom === 'week' || zoom === 'workweek';
+  const start = zoom === 'day' ? startOfDay(anchor) : weekly ? startOfWeek(anchor) : startOfMonth(anchor);
+  const end = zoom === 'day' ? addDays(start, 1) : weekly ? addDays(start, zoom === 'workweek' ? 5 : 7)
+    : new Date(start.getFullYear(), start.getMonth() + 1, 1);
   const days: Date[] = [];
   for (let day = start; day < end; day = addDays(day, 1)) days.push(day);
   return { start, end, days };
@@ -86,7 +89,7 @@ export function timelineRange(zoom: TimelineZoom, anchor: Date): { start: Date; 
 /** Poprzedni / następny okres. */
 export function shiftAnchor(zoom: TimelineZoom, anchor: Date, direction: -1 | 1): Date {
   if (zoom === 'day') return addDays(anchor, direction);
-  if (zoom === 'week') return addDays(anchor, 7 * direction);
+  if (zoom === 'week' || zoom === 'workweek') return addDays(anchor, 7 * direction);
   return new Date(anchor.getFullYear(), anchor.getMonth() + direction, 1);
 }
 
@@ -168,7 +171,7 @@ export function useScreenTimeline(screen: 'meetings' | 'events' | 'employees' | 
         const saved = JSON.parse(raw) as { view?: unknown; zoom?: unknown; scale?: unknown };
         const next: ScreenTimelineState = {
           view: saved.view === 'timeline' ? 'timeline' : 'list',
-          zoom: saved.zoom === 'day' || saved.zoom === 'week' || saved.zoom === 'month' ? saved.zoom : defaultZoom,
+          zoom: saved.zoom === 'day' || saved.zoom === 'workweek' || saved.zoom === 'week' || saved.zoom === 'month' ? saved.zoom : defaultZoom,
           scale: timelineScale(saved.scale),
         };
         memory.set(key, next);

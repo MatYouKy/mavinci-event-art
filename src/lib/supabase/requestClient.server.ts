@@ -2,6 +2,8 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { bearerTestToken } from '@/lib/testMode/shared';
+import { testModeFetch } from '@/lib/testMode/session.server';
 
 /**
  * Klient Supabase pracownika dla trasy CRM: sesja przeglądarki (ciasteczka) albo — gdy żądanie ma nagłówek
@@ -12,7 +14,8 @@ export async function requestSupabaseClient(req: Request): Promise<{ client: Sup
   const bearer = /^Bearer\s+(\S+)$/i.exec(req.headers.get('authorization') || '')?.[1];
   if (bearer) {
     const client = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-      global: { headers: { Authorization: `Bearer ${bearer}` } },
+      // Klucz zastępczy trybu testowego (docs/test-mode.md) — w imieniu oglądanej osoby.
+      global: { headers: { Authorization: `Bearer ${bearer}` }, ...(bearerTestToken(`Bearer ${bearer}`) ? { fetch: testModeFetch() } : {}) },
       auth: { persistSession: false, autoRefreshToken: false },
     });
     const { data } = await client.auth.getUser(bearer);

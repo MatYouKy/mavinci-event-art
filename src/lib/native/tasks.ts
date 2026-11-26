@@ -161,13 +161,16 @@ export async function taskAccess(ctx: NativeContext, board: TaskBoard, eventId?:
     const { data } = await ctx.supabase.from('employees').select('preferences').eq('id', e.id).maybeSingle();
     autoTimer = (data?.preferences as Row | null)?.notifications?.autoStartTaskTimer !== false;
   }
+  // `tasksManage` — zarządzanie wszystkimi zadaniami (usuwanie cudzych komentarzy i plików, wypisywanie innych osób).
+  const tasksManage = has('tasks_manage');
   if (board === 'event') {
     const manage = eventId ? await canManageEventTasks(ctx, eventId) : false;
-    return { employeeId: e.id, isAdmin: e.isAdmin, canCreate: manage, canManage: manage, canMove: manage, autoTimer };
+    return { employeeId: e.id, isAdmin: e.isAdmin, tasksManage, canCreate: manage, canManage: manage, canMove: manage, autoTimer };
   }
   return {
     employeeId: e.id,
     isAdmin: e.isAdmin,
+    tasksManage,
     canCreate: board === 'mine' || has('tasks_create') || has('tasks_manage'),
     canManage: board === 'mine' || has('tasks_manage'),
     canMove: board === 'mine' || has('tasks_view') || has('tasks_manage'),

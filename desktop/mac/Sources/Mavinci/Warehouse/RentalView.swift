@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
-// MARK: Rental — 1:1 z `/crm/equipment/rental` (sprzęt wynajmu od podwykonawców) i kartą `/crm/subcontractors/rental/[id]`:
+// MARK: Rental → Wynajem od podwykonawców — 1:1 z `/crm/rental/subcontractors` (dawniej `/crm/equipment/rental`) i kartą `/crm/subcontractors/rental/[id]`:
 // wyszukiwanie (nazwa, podwykonawca, kategoria), filtr kategorii, karta z cennikiem netto/brutto, podwykonawcą, umiejętnościami,
 // notatkami i galerią (`rental-equipment-images`), edycja i usuwanie. Z kopii na dysku (`warehouse-rental`).
 
@@ -92,12 +92,14 @@ extension RentalItem {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationTitle("Sprzęt wynajmu")
-        .navigationSubtitle("Magazyn")
+        .navigationTitle("Wynajem od podwykonawców")
+        .navigationSubtitle("Rental")
         .searchable(text: $search, placement: .toolbar, prompt: "Szukaj po nazwie, podwykonawcy lub kategorii...")
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                Button { state.openHref("/crm/equipment") } label: { Label("Magazyn", systemImage: "chevron.left") }.help("Wróć do magazynu")
+                if state.navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/rental" }) {
+                    Button { state.openHref("/crm/rental") } label: { Label("Wypożyczenia klientom", systemImage: "chevron.left") }.help("Rental → Wypożyczenia klientom")
+                }
             }
         }
     }

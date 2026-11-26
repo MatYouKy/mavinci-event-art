@@ -128,15 +128,16 @@ struct CalendarDay:Identifiable { let id:Int;let date:Date? }
             toolbar
             GeometryReader { available in
               let detailWidth=min(340,max(245,available.size.width*0.33))
+              // Siatka wypełnia wysokość okna bez przewijania: wysokość tygodnia z wolnego miejsca (5 albo 6 tygodni), nie mniej
+              // niż 96 pkt — dopiero w bardzo niskim oknie pojawia się przewijanie.
+              let weeks=CGFloat(max(1,gridDays(month).count/7))
+              let rowHeight=max(96,((available.size.height-28-34-5*weeks)/weeks).rounded(.down))
               HStack(alignment:.top,spacing:0) {
                 ScrollView {
-                    VStack(alignment:.leading,spacing:18) {
-                        monthGrid(byDay)
-                        upcomingMonths(byDay)
-                    }.padding(14)
+                    monthGrid(byDay,rowHeight:rowHeight).padding(14)
                 }.frame(width:max(1,available.size.width-detailWidth-1),height:available.size.height)
                 Divider()
-                dayPanel.frame(width:detailWidth,height:available.size.height)
+                dayPanel(byDay,height:available.size.height).frame(width:detailWidth,height:available.size.height)
               }.frame(width:available.size.width,height:available.size.height,alignment:.topLeading)
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
         }.frame(maxWidth:.infinity,maxHeight:.infinity,alignment:.top).navigationTitle("Kalendarz")
@@ -167,24 +168,16 @@ struct CalendarDay:Identifiable { let id:Int;let date:Date? }
                 .help("Co chcesz dodać? — event, spotkanie albo zapytanie na wybrany dzień (⌘N)")
         }.padding(16).crmBar()
     }
-    private func monthGrid(_ byDay:[Date:[Row]]) -> some View {
+    private func monthGrid(_ byDay:[Date:[Row]],rowHeight:CGFloat) -> some View {
         LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:4),count:7),spacing:5) {
             ForEach(["Pon","Wt","Śr","Czw","Pt","Sob","Nd"],id:\.self) {Text($0).font(.caption.bold()).foregroundStyle(.secondary).frame(maxWidth:.infinity).padding(.vertical,8)}
             ForEach(gridDays(month)) { day in
-                if let date=day.date {dayCell(date,items:byDay[date] ?? [])} else {Color.clear.frame(height:104)}
+                if let date=day.date {dayCell(date,items:byDay[date] ?? [],height:rowHeight)} else {Color.clear.frame(height:rowHeight)}
             }
         }
     }
-    /// Dwa kolejne miesiące w miniaturach (wolne miejsce pod siatką): kropka — dzień z wpisami; kliknięcie przenosi do dnia,
-    /// dwuklik — „Co chcesz dodać?” na ten dzień.
-    private func upcomingMonths(_ byDay:[Date:[Row]]) -> some View {
-        HStack(alignment:.top,spacing:14) {
-            ForEach([1,2],id:\.self) { offset in
-                miniMonth(c.date(byAdding:.month,value:offset,to:monthStart) ?? monthStart,byDay:byDay)
-            }
-            Spacer(minLength:0)
-        }
-    }
+    /// Kolejne miesiące w miniaturach (pod listą dnia, ile zmieści się w oknie): kropka — dzień z wpisami; kliknięcie przenosi
+    /// do dnia, dwuklik — „Co chcesz dodać?” na ten dzień.
     private func miniMonth(_ first:Date,byDay:[Date:[Row]]) -> some View {
         VStack(alignment:.leading,spacing:8) {
             Button {month=first;selectedDate=first} label:{
@@ -219,8 +212,10 @@ struct CalendarDay:Identifiable { let id:Int;let date:Date? }
         .onTapGesture {month=date;selectedDate=date}
         .help(tip)
     }
-    private var dayPanel:some View {
-        VStack(alignment:.leading,spacing:0) {
+    private func dayPanel(_ byDay:[Date:[Row]],height:CGFloat) -> some View {
+        // Miniatury kolejnych miesięcy pod listą dnia — dwie w wysokim oknie, jedna w typowym, żadnej w bardzo niskim.
+        let upcoming:Int=height>=860 ? 2:(height>=560 ? 1:0)
+        return VStack(alignment:.leading,spacing:0) {
             HStack {
                 Text(CalendarDates.title(selectedDate,format:"EEEE, d MMMM").capitalized).font(.headline)
                 Spacer()
@@ -242,6 +237,14 @@ struct CalendarDay:Identifiable { let id:Int;let date:Date? }
                     }
                 }
             }
+            if upcoming>0 {
+                Divider()
+                VStack(alignment:.leading,spacing:10) {
+                    ForEach(Array(1...upcoming),id:\.self) { offset in
+                        miniMonth(c.date(byAdding:.month,value:offset,to:monthStart) ?? monthStart,byDay:byDay)
+                    }
+                }.padding(12)
+            }
         }
     }
     /// Wpisy dnia — dni zajmowane jak w CRM (`CalendarDates.occupies`): noc do 5:00 należy do dnia rozpoczęcia.
@@ -254,8 +257,10 @@ struct CalendarDay:Identifiable { let id:Int;let date:Date? }
     }
     /// Dzień siatki: klik — wybór dnia, dwuklik albo „+” (po najechaniu) — „Co chcesz dodać?” jak kliknięcie dnia w CRM,
     /// menu pod prawym przyciskiem — od razu wybrany rodzaj.
-    private func dayCell(_ date:Date,items:[Row]) -> some View {
+    private func dayCell(_ date:Date,items:[Row],height:CGFloat) -> some View {
         let hovered:Bool=hoveredDay == date
+        // Ile wpisów mieści dzień tej wysokości (wpis do dwóch wierszy ≈ 41 pkt z odstępem); reszta pod „+N”.
+        let fits:Int=max(1,Int((height-34)/41))
         return VStack(alignment:.leading,spacing:5){
             HStack{
                 Button{selectedDate=date}label:{Text("\(c.component(.day,from:date))").font(.callout.bold()).foregroundStyle(c.isDateInToday(date) ? Color.accentColor:Color.primary)}.buttonStyle(.plain)
@@ -264,13 +269,13 @@ struct CalendarDay:Identifiable { let id:Int;let date:Date? }
                     Button {selectedDate=date;creation = .chooser(date)} label:{Image(systemName:"plus.circle.fill")}
                         .buttonStyle(.plain).foregroundStyle(Color.accentColor).help("Dodaj na ten dzień")
                 }
-                if items.count>2{Button("+\(items.count-2)"){selectedDate=date}.font(.caption2).buttonStyle(.plain).help("Pokaż wszystkie sprawy tego dnia")}
+                if items.count>fits{Button("+\(items.count-fits)"){selectedDate=date}.font(.caption2).buttonStyle(.plain).help("Pokaż wszystkie sprawy tego dnia")}
             }
-            ForEach(Array(items.prefix(2))){row in
+            ForEach(Array(items.prefix(fits))){row in
                 Button{selectedDate=date;open(row)}label:{calendarEntry(row,compact:true)}.buttonStyle(.plain)
             }
             Spacer(minLength:0)
-        }.padding(7).frame(maxWidth:.infinity,minHeight:132,maxHeight:132,alignment:.topLeading)
+        }.padding(7).frame(maxWidth:.infinity,minHeight:height,maxHeight:height,alignment:.topLeading).clipped()
           .background{
               RoundedRectangle(cornerRadius:6).fill(c.isDate(date,inSameDayAs:selectedDate) ? Color.accentColor.opacity(0.12):Color.secondary.opacity(0.04))
                   .onTapGesture(count:2){selectedDate=date;creation = .chooser(date)}

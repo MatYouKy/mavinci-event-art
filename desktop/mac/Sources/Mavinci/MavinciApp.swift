@@ -33,21 +33,26 @@ import AppKit
                 // Ustawienia → Oprogramowanie (wersja, co nowego, instalacja) i sprawdzenie wersji.
                 CheckUpdatesCommand(updater: workspace.updater, signedIn: workspace.employee != nil)
                 Divider()
-                Button("Wyloguj") { Task { await workspace.logout() } }.disabled(workspace.loading || workspace.acting)
+                // W trybie testowym „Wyloguj” kończy tryb i przywraca sesję administratora (`Workspace.logout`).
+                Button(workspace.testMode == nil ? "Wyloguj" : "Wyjdź z trybu testowego") { Task { await workspace.logout() } }
+                    .disabled(workspace.loading || workspace.acting || workspace.testSwitching)
             }
         }
         WindowGroup("Wiadomość", id: "message", for: String.self) { $key in
             MessageWindow(key: key ?? "").environmentObject(workspace).crmThemed(workspace.theme)
+                .safeAreaInset(edge: .top, spacing: 0) { TestModeBanner().environmentObject(workspace) }
         }
         .defaultSize(width: 900, height: 780)
         // Formularze w osobnych oknach (`FormWindows.swift`): nowa wiadomość / odpowiedź / przekazanie i faktura — zwykłe okna
         // macOS (skalowanie, przesuwanie, praca obok głównego okna); każdy rodzaj pamięta swój rozmiar i położenie.
         WindowGroup("Wiadomość e-mail", id: FormWindowKind.compose.rawValue, for: UUID.self) { $id in
             FormWindowHost(id: id).environmentObject(workspace).environmentObject(workspace.native).crmThemed(workspace.theme)
+                .safeAreaInset(edge: .top, spacing: 0) { TestModeBanner().environmentObject(workspace) }
         }
         .defaultSize(width: 900, height: 880)
         WindowGroup("Faktura", id: FormWindowKind.invoice.rawValue, for: UUID.self) { $id in
             FormWindowHost(id: id).environmentObject(workspace).environmentObject(workspace.native).crmThemed(workspace.theme)
+                .safeAreaInset(edge: .top, spacing: 0) { TestModeBanner().environmentObject(workspace) }
         }
         .defaultSize(width: 1120, height: 940)
         // Sygnet na pasku menu (jak dawne „Mavinci Reminders”): stan, wersja, pliki w Finderze, synchronizacja.
@@ -120,7 +125,7 @@ struct RootView: View {
                                 SettingsLink { Label("Ustawienia", systemImage: "gearshape") }.labelStyle(.iconOnly)
                                 Button { help = true } label: { Label("Instrukcja i zakres", systemImage: "questionmark.circle") }.labelStyle(.iconOnly)
                                 Spacer()
-                                Button("Wyloguj") { Task { await state.logout() } }.disabled(state.acting)
+                                Button(state.testMode == nil ? "Wyloguj" : "Wyjdź z trybu") { Task { await state.logout() } }.disabled(state.acting || state.testSwitching)
                             }.buttonStyle(.borderless)
                         }.padding().crmBar()
                     }
@@ -146,6 +151,8 @@ struct RootView: View {
                         else if nav.screen == .kits { KitsView(store: state.warehouse) }
                         else if nav.screen == .cables { CablesView(store: state.warehouse) }
                         else if nav.screen == .rental { RentalView(store: state.warehouse) }
+                        else if nav.screen == .clientRentals { ClientRentalsView(store: state.clientRentals) }
+                        else if nav.screen == .purchases { PurchasesView(store: state.purchases) }
                         else if nav.screen == .connectors { ConnectorsView(store: state.warehouse) }
                         else if nav.screen == .warehouseCategories { WarehouseCategoriesView(store: state.warehouse) }
                         else if nav.screen == .contracts { ContractsView(store: state.contracts) }
@@ -228,14 +235,22 @@ struct RootView: View {
                             }.help("Powiadomienia: \(state.unread) nieprzeczytanych").accessibilityLabel("Powiadomienia")
                         }
                         ToolbarItem(placement: .primaryAction) {
-                            Button { Task { await state.refresh(); if nav.screen == .messages { await state.messages.refresh() }; if nav.screen == .meetings { await state.meetings.sync(force: true) }; if nav.selection == .inquiries { await state.inquiries.sync(force: true) }; if nav.selection == .tasks || nav.screen == .myTasks { await state.myTasks.sync(force: true) }; if nav.screen == .companyTasks { await state.companyTasks.sync(force: true) }; if nav.screen == .sellers { await state.sellers.load() }; if nav.screen == .fleet { await state.fleet.load(); if let id = state.fleet.openedID { await state.fleet.loadDetail(id) } }; if nav.screen == .timeTracking { await state.timeTracking.reloadVisible() }; if nav.screen == .databases { await state.databases.load(); if let id = state.databases.openedID { await state.databases.loadDetail(id) } }; if nav.screen == .locations { await state.locations.load(); if let id = state.locations.openedID { await state.locations.loadDetail(id) } }; if nav.screen == .website { await state.website.refreshVisible() }; if nav.screen == .campaigns { await state.mailCampaigns.load(); if let id = state.mailCampaigns.selectedID { await state.mailCampaigns.loadRecipients(id) } }; if nav.screen == .socialMedia { await state.social.load(); if let id = state.social.openedPostID { await state.social.loadDetail(id) }; if state.social.tab == .library { await state.social.loadLibrary() }; if state.social.tab == .comments { await state.social.loadComments(postID: nil) }; if state.social.tab == .stats { await state.social.loadStats() } }; if nav.screen == .portfolio { await state.portfolio.load(); if let id = state.portfolio.openedID { await state.portfolio.loadDetail(id) } }; if nav.screen == .presentations { await state.showcase.load(); if let id = state.showcase.openedID { await state.showcase.loadDetail(id) } }; if nav.screen == .materials { await state.drive.refresh(quiet: false); if state.drive.section == .materials { await state.materials.refresh(quiet: false) } }; if nav.screen == .finance { await state.finance.sync(force: true) }; if nav.selection == .contacts { await state.contacts.sync(force: true) }; if nav.selection == .events { await state.events.sync(force: true) }; if nav.screen == .team { await state.team.sync(force: true); if let id = state.team.openedID { await state.team.loadDetail(id) } }; if nav.screen?.isWarehouse == true { await state.warehouse.sync(force: true); if nav.screen == .warehouse, let id = state.warehouse.openedID { await state.warehouse.loadDetail(id) } } } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
+                            Button { Task { await state.refresh(); if nav.screen == .messages { await state.messages.refresh() }; if nav.screen == .meetings { await state.meetings.sync(force: true) }; if nav.selection == .inquiries { await state.inquiries.sync(force: true) }; if nav.selection == .tasks || nav.screen == .myTasks { await state.myTasks.sync(force: true) }; if nav.screen == .companyTasks { await state.companyTasks.sync(force: true) }; if nav.screen == .sellers { await state.sellers.load() }; if nav.screen == .fleet { await state.fleet.load(); if let id = state.fleet.openedID { await state.fleet.loadDetail(id) } }; if nav.screen == .clientRentals { await state.clientRentals.load(); if let id = state.clientRentals.openedID { await state.clientRentals.loadDetail(id) } }; if nav.screen == .purchases { await state.purchases.load() }; if nav.screen == .timeTracking { await state.timeTracking.reloadVisible() }; if nav.screen == .databases { await state.databases.load(); if let id = state.databases.openedID { await state.databases.loadDetail(id) } }; if nav.screen == .locations { await state.locations.load(); if let id = state.locations.openedID { await state.locations.loadDetail(id) } }; if nav.screen == .website { await state.website.refreshVisible() }; if nav.screen == .campaigns { await state.mailCampaigns.load(); if let id = state.mailCampaigns.selectedID { await state.mailCampaigns.loadRecipients(id) } }; if nav.screen == .socialMedia { await state.social.load(); if let id = state.social.openedPostID { await state.social.loadDetail(id) }; if state.social.tab == .library { await state.social.loadLibrary() }; if state.social.tab == .comments { await state.social.loadComments(postID: nil) }; if state.social.tab == .stats { await state.social.loadStats() } }; if nav.screen == .portfolio { await state.portfolio.load(); if let id = state.portfolio.openedID { await state.portfolio.loadDetail(id) } }; if nav.screen == .presentations { await state.showcase.load(); if let id = state.showcase.openedID { await state.showcase.loadDetail(id) } }; if nav.screen == .materials { await state.drive.refresh(quiet: false); if state.drive.section == .materials { await state.materials.refresh(quiet: false) } }; if nav.screen == .finance { await state.finance.sync(force: true) }; if nav.selection == .contacts { await state.contacts.sync(force: true) }; if nav.selection == .events { await state.events.sync(force: true) }; if nav.screen == .team { await state.team.sync(force: true); if let id = state.team.openedID { await state.team.loadDetail(id) } }; if nav.screen?.isWarehouse == true { await state.warehouse.sync(force: true); if nav.screen == .warehouse, let id = state.warehouse.openedID { await state.warehouse.loadDetail(id) } } } } label: { Label("Odśwież", systemImage: "arrow.clockwise") }
                                 .disabled(state.syncing || state.acting || state.editing)
                         }
                         ToolbarItem(placement: .primaryAction) { if state.syncing { ProgressView().controlSize(.small) } }
                     }
                 }
+            } else if state.testSwitching {
+                // Wyjście z trybu testowego — sesja administratora wraca z pęku kluczy (bez ekranu logowania w międzyczasie).
+                VStack(spacing: 12) {
+                    ProgressView().controlSize(.large)
+                    Text("Powrót do Twojego widoku…").font(.headline)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity).background(state.theme.page)
             } else { LoginView() }
         }
+        // Tryb testowy „widok jako” — pasek z „Wyjdź z trybu” zawsze na górze, na środku okna (`TestMode/TestMode.swift`).
+        .safeAreaInset(edge: .top, spacing: 0) { TestModeBanner() }
         .sheet(isPresented: $help) { HelpView() }
         // Sprawdzanie nowej wersji aplikacji — raz na uruchomienie (kolejne okna niczego nie dublują).
         .task { state.updater.start() }

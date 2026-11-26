@@ -1841,3 +1841,115 @@ Panel „Przegląd” w karcie wydarzenia otwiera się domyślnie. Na stałe (na
 - **CRM**: bez zmian — `ContactQuickActions` („Szybkie akcje” w karcie kontaktu i organizacji).
 - **Mac**: `ContactQuickActionsMenu` w nagłówku karty: „Dodaj zapytanie”, „Wyślij broszurę…”, „Wyślij ofertę…” (wybór oferty odbiorcy → `OfferEmailSheet`), „Utwórz event…” (`EventCreateSheet` z organizacją i osobą kontaktową, wybór organizacji osoby), „Broszury klienta…”, „Historia wysyłek broszur…” — uprawnienia jak w CRM; serwer `offersToSend` w `src/lib/native/contactCustomer360.ts`.
 - **Mobile**: karta kontaktu w aplikacji nie ma tych czynności (broszury i wysyłka ofert są w CRM / na Macu) — bez zmian w tym etapie.
+
+### Kalendarz na Macu: miesiąc bez przewijania (25.11.2026)
+- **Mac**: siatka miesiąca dopasowana do wysokości okna (wysokość dnia z wolnego miejsca, min. 96 pkt, wpisy ponad miejsce pod „+N”); miniatury kolejnych miesięcy pod listą dnia zamiast pod siatką (`NativeCalendarView`).
+- **CRM / Mobile**: bez zmian (inny układ widoku miesiąca).
+
+### Rental — baza wypożyczeń klientom (25.11.2026)
+- **Baza** (`20261130170000_client_rentals.sql`): wypożyczenia, pozycje, przejazdy, protokoły WZ / PZ, pliki, naliczenia, faktury, historia; dostęp sprzedaż / magazyn (`rental_access`); wypożyczenia zajmują sprzęt w dostępności eventów i ofert, przejazdy — pojazd (`is_vehicle_available`). Opis: `docs/rental.md`.
+- **CRM / Mac / Mobile**: ekrany w kolejnych paczkach (CRM, potem Mac i telefon — te same funkcje bazy).
+
+### Rental w CRM — wypożyczenia klientom (25.11.2026)
+- **CRM**: menu **Rental** — „Wypożyczenia klientom” (`/crm/rental`: lista w toku / szkice / do rozliczenia / archiwum, nowe wypożyczenie; karta `/crm/rental/[id]`: pozycje z dostępnością, rezerwacja, protokoły wydania i odbioru z PDF do podpisu i skanem, rozbieżności, dostawa i odbiór pojazdem, uwagi magazynu, pliki, historia, rozliczenie — naliczenia, kaucja, faktury) i „Wynajem od podwykonawców” (`/crm/rental/subcontractors`, dawniej Magazyn → Rental; stary adres przekierowuje). PDF protokołu: `/bridge/rental/[id]/protocols/[protocolId]`.
+- **Mac**: „Wynajem od podwykonawców” → dotychczasowy ekran natywny; „Wypożyczenia klientom” — ekran natywny w kolejnej paczce.
+- **Mobile**: w kolejnej paczce (magazyn: wydanie i odbiór na telefonie). Wspólny kod: `src/lib/CRM/rental/rental.ts` (bez importów aplikacji — do skopiowania do telefonu).
+
+### Rental na Macu — wypożyczenia klientom (25.11.2026)
+- **Mac**: Rental → „Wypożyczenia klientom” natywnie (`desktop/mac/Sources/Mavinci/ClientRentals/`): lista z zakładkami i „Tylko moje”, karta z pozycjami, rozbieżnościami, protokołami wydania i odbioru (zdjęcia, skan, PDF do podpisu drukowany na Macu), dostawą i odbiorem (pojazd, kierowca, zajętość), uwagami magazynu, plikami, historią i rozliczeniem (naliczenia, kaucja, faktury — „Wystaw fakturę” dołącza wystawioną). Okna: dane, pozycje z dostępnością, protokoły, rozstrzygnięcie rozbieżności, dostawa i odbiór, powód anulowania. Powiadomienia `/crm/rental/<id>` otwierają kartę. „Wynajem od podwykonawców” — tytuł i powrót zgodne z nowym menu.
+- **Serwer**: `/bridge/native/v1/rental` (`src/lib/native/rental.ts`) — lista, karta, dostępność, egzemplarze, konflikty pojazdu, słowniki (klienci, katalog, firmy, pracownicy, pojazdy, faktury), zapisy i pliki (multipart) przez funkcje `rental_*`.
+- **Mobile**: w kolejnej paczce (magazyn: wydanie i odbiór na telefonie).
+
+### Rental w telefonie — wypożyczenia klientom (25.11.2026)
+- **Mobile**: menu „Rental” (`mobile/src/screens/RentalScreen.tsx`, `mobile/src/components/Rental/`) — lista jak w CRM i na Macu (zakładki z licznikami, szukanie, „Tylko moje”, nowe wypożyczenie) i karta: pozycje, rozbieżności z rozstrzyganiem (egzemplarze), protokoły wydania i odbioru ze zdjęciami z aparatu do linii, PDF do podpisu i zdjęcie podpisanego protokołu jako skan, dostawa i odbiór (pojazd, kierowca, zajętość), uwagi magazynu, pliki, historia; sprzedaż — dane, pozycje z dostępnością, rezerwacja, anulowanie z powodem, rozliczenie (naliczenia „Z rozbieżności”, kaucja, faktury — dołącz / odłącz; faktura i nowa faktura w CRM). Te same uprawnienia co CRM (`rental_access`). Powiadomienia `/crm/rental/<id>` otwierają kartę. Wspólny kod: `mobile/src/lib/rental.ts` = `src/lib/CRM/rental/rental.ts` (para w `check-shared-copies`).
+- **Serwer**: `/bridge/native/v1/rental?op=protocolPdf` — PDF protokołu dla telefonu (podpisany adres na 10 minut).
+- **Mac**: nowa usługa w pozycjach dostaje jednostkę „usł.” jak w CRM.
+
+### Zadania — panel zadania na Macu: osoby, pliki, edycja (25.11.2026)
+- **Mac**: panel szczegółów zadania jak karta zadania w CRM — „Przypisz się” / „Wypisz się”, „Dodaj osobę”, usunięcie osoby (siebie zawsze; inne osoby — autor zadania, administrator, „Zadania — zarządzanie”, zarządzający zadaniami wydarzenia), „Dodaj plik…”, usunięcie / odlinkowanie pliku (autor pliku i zarządzający), usuwanie komentarzy jak w CRM (autor komentarza, autor zadania, zarządzający), edycja także dla właściciela zadania.
+- **Serwer**: `/bridge/native/v1/tasks` — `assign`, `unassign`, `deleteAttachment`; zapis z formularza: właściciel zadania może edytować, wypisanie innych osób działa dla zarządzających (dotąd RLS po cichu je pomijał); powiadomienie o przypisaniu nie idzie do osoby, która przypisała samą siebie.
+- **Mobile**: karta zadania — „Przypisz się” / „Wypisz się” (dodawanie i usuwanie osób, pliki i komentarze były już w edycji i na karcie).
+
+### Komunikator: przycisk w rogu (zminimalizuj, ukryj) i kopiowanie kwoty VAT z faktury (25.11.2026)
+- **CRM**: przycisk komunikatora w rogu ma po najechaniu „–” (wąska karta przy krawędzi) i „×” (ukryty); ikona komunikatora z licznikiem obok dzwonka (`ChatHeaderButton`) otwiera panel zawsze; pinezka w panelu przywraca przycisk; wybór zapamiętany w przeglądarce. Faktura (`InvoiceDetailsModal`): ikona kopiowania kwoty VAT (split payment).
+- **Mac**: to samo w oknie (`Chat/ChatViews.swift`; ikona obok dzwonka i ⌥⌘K już były), podgląd faktury KSeF — „Kwota VAT” z kopiowaniem.
+- **Mobile**: bez zmian (komunikator to zakładka, bez przycisku w rogu; faktur KSeF w aplikacji nie ma).
+
+### KSeF: korekta „in minus” — rozliczenie zwrotu z fakturą korygowaną (25.11.2026)
+- **CRM**: zakładka KSeF — dokument z ujemną kwotą ma stan „Korekta do rozliczenia” / „Częściowo rozliczona” / „Korekta rozliczona” zamiast „Nieopłacona”, akcje „Rozlicz korektę / zwrot” i „Oznacz jako rozliczoną” (zwykłe „Dopasuj płatność” szukało wypłat). Okno `KsefCorrectionSettlementModal`: faktura korygowana z XML korekty, jej płatność z wyciągu i zwrot korekty z wyciągu (powiąż / odepnij, propozycje wg kwoty, numeru, NIP, kontrahenta i daty, wyszukiwanie, „Szczegóły płatności”) albo kompensata z nieopłaconą fakturą korygowaną (wpłata w rejestrze obu faktur, cofnięcie). Logika `src/lib/invoices/ksefCorrectionSettlement.ts`, bez migracji (`match_bank_transaction_to_documents`, `undo_bank_match`).
+- **Mac**: to samo — stan na liście, menu i przycisk „Rozlicz korektę…”, okno `Finance/FinanceKsefCorrectionSheet.swift` (z przejściem do operacji w uzgodnieniu). Serwer `/bridge/native/v1/finance`: GET `ksefCorrection`, POST `ksefCorrectionLink|ksefCorrectionUnlink|ksefCorrectionOffset|ksefCorrectionOffsetUndo`.
+- **Mobile**: bez zmian (faktur KSeF i uzgodnienia wyciągów w aplikacji nie ma).
+
+### Zakupy — „Moje wydatki” i rozliczenia pracowników: baza, serwer i CRM (25.11.2026)
+- **Baza**: migracja `20261130180000_employee_purchases.sql` — uprawnienie „Zakupy — własne wydatki” (`finances_purchases`), dokument zakupu = `external_invoices.purchased_by`, koszt eventu z zakupu = `event_costs.from_purchase`, rozliczenie miesiąca = `purchase_settlements` (wysłane / zatwierdzone / do poprawy), funkcje `purchase_*` z kontrolą dostępu, powiadomienia o wysłaniu i decyzji. Szczegóły: `docs/purchases.md`.
+- **Serwer**: `src/lib/purchases/*` — pliki (kilka zdjęć → PDF), odczyt AI dokumentu na serwerze Next, trasy `/bridge/purchases` (CRM) i `/bridge/native/v1/purchases` (Mac, telefon).
+- **CRM**: menu „Zakupy” (`/crm/purchases`): „Moje wydatki” (miesiąc, dodaj / popraw / usuń zakup z plikiem i odczytem AI, koszt eventu z listą wszystkich kosztów eventu, „Wyślij rozliczenie”, nierozliczone miesiące) i „Rozliczenia pracowników” dla „Finanse — zarządzanie” (zatwierdź, zwróć do poprawy, cofnij zatwierdzenie).
+- **Mac / Mobile**: ten sam ekran w kolejnych paczkach (u216 — Mac, u217 — telefon: zdjęcie paragonu aparatem).
+
+### Zakupy — ekran natywny na Macu (25.11.2026)
+- **Mac**: menu „Zakupy” (`desktop/mac/Sources/Mavinci/Purchases/`) — 1:1 z `/crm/purchases`: „Moje wydatki” (miesiąc, nierozliczone miesiące, dokumenty działalności, dodaj / popraw / usuń zakup, „Wyślij rozliczenie”), okno zakupu z plikiem (okno wyboru albo przeciągnięcie z Findera; HEIC / TIFF / WebP → JPEG, za duże zdjęcie pomniejszone), odczytem AI, ostrzeżeniami i kosztem eventu z listą wszystkich kosztów eventu; „Rozliczenia pracowników” (tabela, okno rozliczenia: zatwierdź, zwróć do poprawy, cofnij zatwierdzenie). Powiadomienia `/crm/purchases?…` otwierają ekran albo rozliczenie pracownika.
+- **CRM**: strzałka „Następny miesiąc” kończy się na bieżącym miesiącu; „PDF z N zdjęć” po dodaniu kilku stron; daty wysłania i decyzji w strefie Polski (`purchaseDay`).
+- **Mobile**: ten sam ekran w kolejnej paczce (u217 — zdjęcie paragonu aparatem).
+
+### Zakupy — telefon: zdjęcie paragonu aparatem i rozliczenia (25.11.2026)
+- **Mobile**: menu „Zakupy” (uprawnienie „Zakupy — własne wydatki” albo „Finanse — zarządzanie” w działalności) — „Moje wydatki”: miesiąc ze strzałkami i „Bieżący miesiąc”, nierozliczone miesiące, rozliczenie każdej działalności (stan, sumy, uwagi, „Wyślij rozliczenie” z uwagą dla finansów) i dokumenty (dotknięcie: plik, „Popraw”, „Usuń”); „Dodaj zakup — zdjęcie paragonu”: aparat (kolejne strony — „Dodaj stronę”, serwer składa PDF), galeria albo PDF z „Plików”, odczyt AI z ostrzeżeniami, wszystkie pola jak w CRM, koszt eventu z wyszukiwaniem eventów i listą wszystkich kosztów eventu. „Rozliczenia pracowników” dla zatwierdzających: lista, okno rozliczenia z plikami, „Zatwierdź”, „Zwróć do poprawy”, „Cofnij zatwierdzenie”. Powiadomienia `/crm/purchases?…` otwierają ekran albo rozliczenie pracownika.
+- **Wspólny kod**: `mobile/src/lib/purchaseShared.ts` = `src/lib/purchases/purchaseShared.ts` (para w `scripts/ci/check-shared-copies.mjs`).
+- **CRM / Mac**: bez zmian w tej paczce (ten sam serwer `/bridge/native/v1/purchases`).
+
+### Spotkania w aplikacji — kalendarz w pionie jak w Teams; osie czasu w skali czasu (25.11.2026)
+- **Mobile — Spotkania → Timeline** (`mobile/src/components/Timeline/CalendarTimeline.tsx`): godziny w pionie (przewijanie w górę i w dół, start półtorej godziny przed „teraz” albo od 7:00), dni w kolumnach, nakładające się spotkania obok siebie, linia „teraz”, godziny pracy jaśniejsze, wiersz „Cały dzień”. Wysokość spotkania odpowiada czasowi; „lupka” powiększa godzinę. Telefon: Dzień, Tydzień (7 kolumn), Miesiąc (siatka z dniami, dotknięcie dnia — widok dnia); tablet w poziomie jak CRM na komputerze: Dzień, Tydzień roboczy, Tydzień, Miesiąc i szczegóły w panelu z prawej. Przesunięcie palcem w bok — poprzedni / następny okres. Dotknięcie spotkania — szczegóły (telefon: okno od dołu, cały ekran dla osi). Przytrzymanie pustej godziny (tablet w poziomie — także dotknięcie) — nowe spotkanie na tę godzinę; przytrzymanie własnego spotkania i przeciągnięcie — nowy termin (co 15 minut, w tygodniu także inny dzień; tylko ten termin cyklu, jak w CRM).
+- **Mobile — Eventy, Flota, Pracownicy** (`ScheduleTimeline`): długość paska odpowiada czasowi (bez sztucznej najmniejszej szerokości z miejscem na nazwę); nazwa i godziny w pasku, gdy jest dość szeroki, pełne dane — po dotknięciu.
+- **Poprawka**: zapis spotkania w aplikacji nie usuwa już uczestników spoza firmy (kontakty dodane w CRM / na Macu).
+- **CRM / Mac**: bez zmian (kalendarz spotkań w pionie już był).
+
+### Mac — osie czasu: „chwyć i przesuń” (25.11.2026)
+- **Mac** (`desktop/mac/Sources/Mavinci/GrabPan.swift`): na osiach czasu czas przesuwa się chwytem myszy (kursor dłoni nad wolnym miejscem osi). Spotkania → Timeline — chwyt za kolumnę godzin przewija godziny; Pracownicy → Timeline — przeciągnięcie w bok płynnie przesuwa zakres czasu (oś staje na pełnych 15 min / godzinach / 6 godzinach, „Dziś” i zmiana powiększenia wracają do pełnego okresu); plan pracownika — przewijanie godzin; Flota → Oś czasu — dni w bok; Wydarzenie → Harmonogram — oś w bok i w pionie. Pozycje zachowują kliknięcie i własne przeciąganie.
+- **Mobile**: odpowiednik dotykowy już jest — przewijanie palcem w osiach (`CalendarTimeline`, `ScheduleTimeline`) i przesunięcie w bok — poprzedni / następny okres (u218).
+- **CRM**: bez zmian (dotyczy aplikacji na Macu).
+
+### Spotkania — działy i przełożeni, dostępność pracowników, e-maile do osób spoza firmy: baza, serwer i CRM (25.11.2026)
+- **Baza** (`20261201090000_team_departments_availability.sql`): `employees.department` (Zarząd, Sprzedaż, Biuro, Magazyn — domyślnie z roli firmowej) i `employees.supervisor_id` (piramida, bez pętli; zmienia administrator albo „Zarządzanie pracownikami” — `set_employee_structure`). Zakres planu: Zarząd — wszyscy; Sprzedaż i Biuro — Sprzedaż, Biuro, Magazyn; Magazyn — swój dział; każdy — siebie i podwładnych. `get_schedule_people`, `get_team_availability` (spotkania, eventy, fazy, nieobecności; prywatne innych — „Zajęty”; osoby spoza zakresu — sama zajętość), `meeting_mail_context`.
+- **Serwer** (`/bridge/native/v1/meetings`): `people`, `availability`, `notify` — e-mail do kontaktów (zaproszenie, zmiana, odwołanie, „nieaktualne”) z plikiem .ics, ze skrzynki osoby zapisującej (`src/lib/native/meetingMail.ts`); `/bridge/native/v1/employees` — `structure`, dział i przełożony w liście zespołu.
+- **CRM**: Spotkania → widok „Pracownicy” (kolumny wybranych osób, zaznaczenie czasu — spotkanie z tą osobą), ostrzeżenia o zajętości w formularzu nowego spotkania i edycji, pole „Wyślij zaproszenie e-mailem osobom spoza firmy”, pytanie o e-mail po przeciągnięciu terminu, zmianie statusu i usunięciu; karta pracownika → „Dział i przełożony”. Opis: `docs/team-availability.md`.
+- **Wspólny kod**: `src/lib/CRM/meetings/teamAvailability.ts` ↔ `mobile/src/lib/teamAvailability.ts` (para w `check-shared-copies`).
+- **Mac / mobile**: w kolejnych paczkach (u221 — Mac, u222 — telefon).
+
+### Mac — Spotkania „Pracownicy”, zajętość uczestników, e-maile do osób spoza firmy, dział i przełożony (25.11.2026)
+- **Mac**: Spotkania → widok „Pracownicy” (`Meetings/TeamAvailabilityView.swift` — kolumny wybranych osób z zakresu planu, wybór działami, zaznaczenie czasu — spotkanie z tą osobą, kliknięcie — spotkanie / event); formularz spotkania — ostrzeżenie o zajętości (`MeetingConflictsRow`) i przełącznik e-maila do osób spoza firmy (zaproszenie / zmiana z .ics); po przeciągnięciu terminu, zmianie statusu i usunięciu — pytanie o e-mail; Zespół → pracownik → „Dział i przełożony” (`EmployeeStructureSheet`). Dane: `/bridge/native/v1/meetings` (`people`, `availability`, `notify`), `/bridge/native/v1/employees` (`structure`).
+- **CRM**: bez zmian (u220). **Mobile**: u222.
+
+### Mobile — Spotkania „Pracownicy”, zajętość uczestników, e-maile do osób spoza firmy, dział i przełożony (25.11.2026)
+- **Mobile — Spotkania**: trzeci widok „Pracownicy” (`components/Timeline/TeamAvailabilityTimeline.tsx`) — dzień w pionie, kolumna dla każdej wybranej osoby z zakresu planu (przewijanie w bok przy wielu osobach; wybór „Osoby” z „Cały dział” i „Tylko ja”), spotkania, eventy, fazy i nieobecności, prywatne innych — „Zajęty”; dotknięcie — szczegóły w oknie („Otwórz” spotkanie / event), przytrzymanie wolnej godziny — nowe spotkanie z tą osobą. Formularz spotkania — ostrzeżenie o zajętości (`components/Meetings/MeetingConflictsNotice.tsx`) i przy edycji spotkania z kontaktami — „Powiadom e-mailem osoby spoza firmy”; po przeciągnięciu terminu i usunięciu — pytanie o e-mail (`lib/teamAvailabilityApi.ts`, `op=notify`). Nazwy osób spoza firmy w szczegółach spotkania.
+- **Mobile — Pracownicy**: dział i przełożony na karcie pracownika; „Dział i przełożony” dla administratora i „Zarządzanie pracownikami” (`components/Employees/EmployeeStructureSheet.tsx`, `set_employee_structure`).
+- **CRM / Mac**: bez zmian (u220, u221).
+
+### Karta eventu — „Edytuj” zmienia tylko nazwę (26.11.2026)
+- **CRM** (`/crm/events/[id]`): „Edytuj” otwiera okno „Zmień nazwę eventu” (`components/Modals/EventRenameModal.tsx`) i zapisuje wyłącznie nazwę — wcześniejsze okno (`EditEventModalNew`) zapisywało wszystkie pola naraz i nadpisywało te, których nie ruszano. Termin, lokalizacja z salami, klient, firma realizująca, kategoria i status — „Edytuj” przy polach w Szczegółach.
+- **Mac**: „Edytuj” w menu karty eventu — to samo okno nazwy (`EventEditSheet`, czynność serwera `renameEvent`; `editEvent` zostaje dla starszych wersji aplikacji).
+- **Mobile**: ołówek w nagłówku karty eventu (osoba zarządzająca eventem) — „Zmień nazwę eventu” (`components/Events/EventRenameSheet.tsx`).
+
+### Rental — katalog magazynu z dostępnością w terminie, zajęcie sprzętu od wyjazdu do powrotu (26.11.2026)
+- **Baza** (`20261202090000_rental_catalog_window.sql`): okno zajęcia magazynu — od wcześniejszego z: termin wydania, faktyczne wydanie, wyjazd dostawy; do późniejszego z: planowany zwrot, koniec odbioru od klienta (eventy i oferty widzą wypożyczenie w tym oknie). Dostępność = stan sprawny − szczyt jednoczesnej zajętości (eventy i inne wypożyczenia). Nowe `rental_catalog(od, do, wypożyczenie)` — kategorie, sprzęt i zestawy z wolnymi sztukami; zmiana godzin dostawy i odbioru w zarezerwowanym wypożyczeniu sprawdza dostępność.
+- **CRM** (`/crm/rental/[id]`, `RentalItemsModal`): „Pozycje wypożyczenia” z zakładkami „Katalog magazynu” (kategorie, wyszukiwanie, „Dostępne X z Y”, −/+ dla wielu pozycji naraz — nie więcej niż wolne, zestawy w kompletach) i „Wybrane pozycje” (ceny, doby, rabaty, usługi, konflikty). Po utworzeniu wypożyczenia katalog otwiera się od razu.
+- **Serwer**: `/bridge/native/v1/rental?op=stock` (katalog dla Maca); wspólny `rental.ts` (`rentalCatalog`, `rentalLinesDemand`, `rentalCatalogFree`, `rentalKitFree`, kategorie) — telefon i Mac w paczkach u225–u226.
+
+### Rental na Macu — katalog magazynu w pozycjach wypożyczenia (26.11.2026)
+- **Mac** (`ClientRentals/ClientRentalSheets.swift`, `ClientRentalItemsSheet`): zakładki „Katalog magazynu” (sprzęt i zestawy z miniaturami, kategorie, wyszukiwanie, „Dostępne X z Y” w oknie od wyjazdu do powrotu sprzętu, −/+ albo wpisana ilość wielu pozycji naraz — nie więcej niż wolne) i „Wybrane pozycje” (jak dotąd: ceny, doby, rabaty, usługi, konflikty). Dane: `/bridge/native/v1/rental?op=stock` (`rental_catalog`). Po utworzeniu wypożyczenia karta otwiera od razu katalog (`ClientRentalsStore.openItemsFor`) — jak `?pozycje=1` w CRM.
+- **Mobile**: ten sam katalog w telefonie — paczka u226.
+
+### Rental w telefonie — katalog magazynu w pozycjach wypożyczenia (26.11.2026)
+- **Mobile** (`components/Rental/RentalSheets.tsx`, `RentalItemsSheet`): zakładki „Katalog magazynu” (sprzęt i zestawy z miniaturami, kategoria, wyszukiwanie, „Ukryj zajęte”, „Dostępne X z Y” w oknie od wyjazdu do powrotu sprzętu, −/ilość/+ dla wielu pozycji naraz — nie więcej niż wolne, po 60 wierszy z „Pokaż więcej”) i „Wybrane” (jak dotąd). Katalog wprost z bazy (`rentalCatalog` we wspólnym `rental.ts`); wyszukiwanie po nazwie przez serwer (`searchRentalCatalog`) usunięte. Po utworzeniu wypożyczenia karta otwiera od razu katalog (`RentalScreen` → `RentalDetailView openCatalog`).
+- **CRM / Mac**: ten sam katalog — paczki u224 i u225.
+
+### Tryb testowy „widok jako” dla administratora — tylko CRM w przeglądarce (26.11.2026)
+- **CRM**: Ustawienia na całą szerokość, nowa zakładka „Tryb testowy” (administrator): lista pracowników (wg działów, z poziomem dostępu) i sprzedawców zewnętrznych → „Wejdź jako”; dziennik wejść. W trybie: pasek na środku u góry „Tryb testowy · widok: … · Wyjdź z trybu” (CRM i portal sprzedawcy). Odczyt jak u tej osoby, zapis do bazy wykonany i wycofany (`tx=rollback`), pliki / funkcje Edge / zmiany konta / operacje serwera z efektami zewnętrznymi zablokowane. Opis: `docs/test-mode.md`; baza: `20261202100000_crm_test_mode.sql`; serwer: `src/lib/testMode/*`, `/bridge/test-mode/*`, `src/middleware.ts`.
+- **Mobile**: nie dotyczy — narzędzie testowe administratora w przeglądarce; aplikacja na telefon (i Mac) bez zmian.
+
+### Tryb testowy „widok jako” na Macu (26.11.2026)
+- **Mac**: Ustawienia (⌘,) → nowa zakładka „Tryb testowy” (administrator): pracownicy wg działów z wyszukiwarką, poziomem dostępu i liczbą uprawnień → „Wejdź jako”; dziennik wejść; sprzedawcy zewnętrzni — „Otwórz w przeglądarce”. Aplikacja przełącza się na widok tej osoby (dane, menu, sekcje, przyciski) — zapytania do bazy przez serwer CRM (`/bridge/test-mode/sb`), zapis sprawdzany i wycofywany, pliki / e-mail / operacje zapisujące natywnego API — „Tryb testowy: ta operacja jest wyłączona”. Na górze każdego okna, na środku: pasek „Tryb testowy · widok: … · zmiany nie są zapisywane” z „Wyjdź z trybu” (także „Wyloguj”). Sesja administratora zostaje w pęku kluczy, kopie danych oglądanej osoby są usuwane z dysku po wyjściu. Kod: `TestMode/TestMode.swift`, `Workspace.enterTestMode` / `exitTestMode`.
+- **CRM (serwer)**: `/bridge/test-mode/start` i `/exit` przyjmują też klucz w nagłówku (aplikacje natywne, tylko pracownicy), `/bridge/test-mode/sb` — klucz zastępczy z nagłówka i z odświeżenia sesji; `src/middleware.ts` w trybie z aplikacji przepuszcza GET i odczyty POST natywnego API z listy (`testModeNativeReadAllowed`), resztę zwraca jako 423. Przeglądarka bez zmian w działaniu. Opis: `docs/test-mode.md`.
+- **Mobile**: tryb testowy w telefonie — kolejny pakiet (serwer jest już gotowy na klucz w nagłówku).
+
+### Tryb testowy „widok jako” w telefonie (26.11.2026)
+- **Mobile**: Ustawienia → „Tryb testowy” (administrator): „Wybierz pracownika” — działy, wyszukiwarka, poziom dostępu i liczba uprawnień → „Wejdź jako”; dziennik wejść; sprzedawcy zewnętrzni — „Otwórz w przeglądarce”. Aplikacja przełącza się na widok tej osoby (klient Supabase przez serwer CRM `/bridge/test-mode/sb`, natywne API kluczem zastępczym): zapis sprawdzany i wycofywany, pliki / e-mail / operacje zapisujące serwera wyłączone. Pasek „Tryb testowy · … · Wyjdź z trybu” zawsze na górze, na środku ekranu; „Wyloguj” i wygaśnięcie sesji też kończą tryb. Telefon administratora bez zmian (push, przypomnienia, kontakty, motyw, „Mavinci” w Plikach, widżety). Tryb przetrwa ponowne uruchomienie aplikacji. Kod: `mobile/src/lib/testMode.ts`, `testModeApi.ts`, `components/TestModeBanner.tsx`, `components/TestModeSection.tsx`.
+- **CRM / Mac**: bez zmian (serwer dla aplikacji natywnych — pakiet „Tryb testowy „widok jako” na Macu”). Opis: `docs/test-mode.md`.

@@ -26,9 +26,11 @@ export type NavKey =
   | 'contacts'
   | 'contracts'
   | 'equipment'
+  | 'rental'
   | 'fleet'
   | 'page'
   | 'invoices'
+  | 'purchases'
   | 'locations'
   | 'time-tracking'
   | 'databases'
@@ -45,6 +47,8 @@ export type NavigationItemDTO = {
   anyPermissions?: string[];
   /** Pozycja widoczna przy dostępie do finansów co najmniej „Własna sprzedaż” w którejś działalności. */
   financeCompanyAccess?: boolean;
+  /** Zakupy: uprawnienie „Zakupy — własne wydatki” albo „Finanse — zarządzanie” w którejś działalności (zatwierdzanie). */
+  purchasesAccess?: boolean;
   children?: NavigationItemDTO[]; // submenu
 };
 
@@ -331,14 +335,6 @@ export const allNavigation: NavigationItemDTO[] = [
       },
       {
         key: 'equipment',
-        name: 'Rental',
-        href: '/crm/equipment/rental',
-        iconKey: 'packageOpen',
-        module: 'equipment',
-        permissions: ['equipment_view'],
-      },
-      {
-        key: 'equipment',
         name: 'Wtyki',
         href: '/crm/equipment/connectors',
         iconKey: 'plug',
@@ -350,6 +346,33 @@ export const allNavigation: NavigationItemDTO[] = [
         name: 'Kategorie',
         href: '/crm/equipment/categories',
         iconKey: 'folderTree',
+        module: 'equipment',
+        permissions: ['equipment_view'],
+      },
+    ],
+  },
+  {
+    // Rental (`docs/rental.md`): wypożyczenia klientom — sprzedaż (oferty) i magazyn; wynajem od podwykonawców (dawniej Magazyn → Rental).
+    key: 'rental',
+    name: 'Rental',
+    href: '/crm/rental',
+    iconKey: 'packageOpen',
+    module: 'rental',
+    anyPermissions: ['offers_view', 'offers_create', 'offers_manage', 'equipment_view', 'equipment_manage'],
+    children: [
+      {
+        key: 'rental',
+        name: 'Wypożyczenia klientom',
+        href: '/crm/rental',
+        iconKey: 'packageOpen',
+        module: 'rental',
+        anyPermissions: ['offers_view', 'offers_create', 'offers_manage', 'equipment_view', 'equipment_manage'],
+      },
+      {
+        key: 'rental',
+        name: 'Wynajem od podwykonawców',
+        href: '/crm/rental/subcontractors',
+        iconKey: 'box',
         module: 'equipment',
         permissions: ['equipment_view'],
       },
@@ -378,6 +401,16 @@ export const allNavigation: NavigationItemDTO[] = [
     iconKey: 'invoices',
     module: 'invoices',
     financeCompanyAccess: true,
+  },
+  {
+    // Zakupy (`docs/purchases.md`): „Moje wydatki” pracownika z uprawnieniem „Zakupy — własne wydatki” i rozliczenia
+    // pracowników (zatwierdza „Finanse — zarządzanie” w działalności).
+    key: 'purchases',
+    name: 'Zakupy',
+    href: '/crm/purchases',
+    iconKey: 'shoppingCart',
+    module: 'purchases',
+    purchasesAccess: true,
   },
   {
     key: 'locations',

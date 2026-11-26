@@ -38,6 +38,7 @@ import {
   Award,
   Presentation,
   Tags,
+  ShoppingCart,
 } from 'lucide-react';
 
 /**
@@ -71,6 +72,7 @@ export const NavigationIcons = {
   fleet: Truck,
   page: Globe,
   invoices: Receipt,
+  shoppingCart: ShoppingCart,
   locations: MapPin,
   time: Clock,
   databases: Database,

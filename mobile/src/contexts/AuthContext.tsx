@@ -4,6 +4,8 @@ import { Session } from '@supabase/supabase-js';
 import { removeSyncedCrmContactsFromDevice } from '../services/crmContactSync';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
 import { disableFilesProvider, ensureFilesProvider, reloadWidgets, signalFilesProvider } from '../lib/filesProvider';
+import { currentTestMode, testModeSwitching } from '../lib/testMode';
+import { exitTestMode } from '../lib/testModeApi';
 
 interface AuthContextType {
   session: Session | null;
@@ -34,10 +36,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let disposed = false;
     let authChanged = false;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (disposed) return;
       authChanged = true;
       if (signingOutRef.current) return;
+      // Tryb testowy („widok jako”, `src/lib/testMode.ts`): sesja oglądanej osoby wygasła albo została zakończona — wraca
+      // sesja administratora; w trakcie podmiany sesji bez chwilowego „wylogowania”.
+      if (event === 'SIGNED_OUT' && currentTestMode() && !testModeSwitching()) { void exitTestMode(); return; }
+      if (!nextSession && testModeSwitching()) return;
       setSession(nextSession);
       setSessionReady(true);
     });
@@ -103,7 +109,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // powrocie na pierwszy plan i co 5 minut, dopóki aplikacja jest otwarta (rozszerzenie samo sprawdza je przy przeglądaniu).
   // Po wyjściu z aplikacji widżety Mavinci (ta sama sesja) pobierają dane od razu — z tym, co zmieniło się w aplikacji.
   useForegroundEffect((signal) => {
-    if (!employee?.id || !userId) return;
+    // Tryb testowy: „Mavinci” w Plikach i widżety zostają przy sesji administratora.
+    if (!employee?.id || !userId || currentTestMode()) return;
     const owner = userId;
     void supabase.auth.getSession().then(({ data }) => {
       if (signal.aborted || signingOutRef.current || data.session?.user.id !== owner) return;
@@ -118,7 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Bez sesji (wylogowanie, także wymuszone) — sesja rozszerzenia unieważniona, lokalizacja usunięta.
   useEffect(() => {
-    if (sessionReady && !userId && !signingOut) void disableFilesProvider();
+    if (sessionReady && !userId && !signingOut && !currentTestMode() && !testModeSwitching()) void disableFilesProvider();
   }, [sessionReady, userId, signingOut]);
 
   useForegroundEffect((signal) => {
@@ -235,6 +242,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    // Tryb testowy: „Wyloguj” kończy tryb i przywraca sesję administratora (jak w CRM i na Macu).
+    if (currentTestMode()) { await exitTestMode(); return; }
     if (signingOutRef.current) return;
     signingOutRef.current = true;
     setSigningOut(true);

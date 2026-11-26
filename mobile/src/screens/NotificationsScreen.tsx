@@ -1,7 +1,7 @@
 import { readNotificationFeed } from '../lib/notificationFeed';
 import { getEventNotificationTab } from '../lib/eventNotificationTarget';
 import { getSellerChatTarget } from '../lib/sellerChatTarget';
-import { navigateToEventsList, navigateToSellerChat, routeSalesUrl } from '../navigation/navigationRef';
+import { navigateToEventsList, navigateToSellerChat, routeRentalUrl, routeSalesUrl } from '../navigation/navigationRef';
 import { respondToAssignment } from '../services/assignmentResponse';
 import React, { useState, useRef } from 'react';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
@@ -296,6 +296,8 @@ export default function NotificationsScreen() {
 
     const sellerId = getSellerChatTarget(notification);
     if (sellerId) { navigateToSellerChat(sellerId); return; }
+    // Rental: karta wypożyczenia (`/crm/rental/<id>`) — także z related_entity_id.
+    if (routeRentalUrl(notification.action_url)) return;
     // Powiadomienia sprzedażowe (przetargi, oferty, zapytania) — ten sam router co powiadomienia push.
     if (!notification.related_entity_id && routeSalesUrl(notification.action_url)) return;
     const entityType = notification.related_entity_type;

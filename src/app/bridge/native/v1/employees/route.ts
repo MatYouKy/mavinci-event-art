@@ -8,7 +8,8 @@ export const maxDuration = 60;
 
 /*
  * Zespół dla aplikacji na Maca — lista jak `/crm/employees`, karta jak `/crm/employees/[id]` (zapis profilu, nieobecności,
- * zmiana hasła, trwałe usuwanie, dodanie pracownika przez funkcję `create-employee`). Tokenem pracownika — RLS jak w CRM.
+ * zmiana hasła, trwałe usuwanie, dodanie pracownika przez funkcję `create-employee`, dział i przełożony —
+ * `set_employee_structure`). Tokenem pracownika — RLS jak w CRM.
  */
 
 const uuid = /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i;
@@ -117,6 +118,20 @@ export async function POST(request: Request) {
         const { data: saved, error } = await ctx.supabase.from('employees').update(update).eq('id', id).eq('is_active', true).select('id');
         if (error) return failure(errorText(error, 'Błąd podczas zapisywania zmian'));
         if (!saved?.length) return failure('Nie masz uprawnień do zmiany tego profilu.', 403);
+        invalidateTeam();
+        return nativeJson({ ok: true });
+      }
+
+      case 'structure': {
+        // Dział i przełożony (docs/team-availability.md) — funkcja bazy sprawdza prawa i pętle w piramidzie.
+        if (!uuid.test(id)) return failure('Nieprawidłowy pracownik.');
+        if (!access.canManageStructure) return failure('Dział i przełożonego zmienia administrator albo osoba z uprawnieniem „Zarządzanie pracownikami”.', 403);
+        const supervisor = body.supervisorId ? String(body.supervisorId) : null;
+        if (supervisor && !uuid.test(supervisor)) return failure('Wybierz przełożonego z listy.');
+        const { error } = await ctx.supabase.rpc('set_employee_structure', {
+          p_employee_id: id, p_department: String(body.department || ''), p_supervisor_id: supervisor,
+        });
+        if (error) return failure(errorText(error, 'Nie udało się zapisać działu.'), error.code === '42501' ? 403 : 400);
         invalidateTeam();
         return nativeJson({ ok: true });
       }

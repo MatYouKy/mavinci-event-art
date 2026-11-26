@@ -383,7 +383,8 @@ extension Workspace {
     private var linked:EKCalendar? {apple.calendar(apple.linkedCalendar)}
     private var moving:Bool {apple.hasCopy && !apple.selectedCalendar.isEmpty && apple.selectedCalendar != apple.linkedCalendar}
     private var dataReady:Bool {
-        workspace.canWrite && workspace.moduleErrors["calendar"] == nil && workspace.snapshot?.collections["calendar"]?.lastSync != nil
+        // Tryb testowy „widok jako”: wpisy oglądanej osoby nie trafiają do Kalendarza Apple administratora.
+        workspace.testMode == nil && workspace.canWrite && workspace.moduleErrors["calendar"] == nil && workspace.snapshot?.collections["calendar"]?.lastSync != nil
     }
     /// Kopia trafi (albo już trafia) na inne urządzenia — iCloud lub inne konto.
     private var synced:Bool {(selected ?? linked).map {!AppleCalendarLink.isLocal($0)} ?? false}
@@ -394,10 +395,14 @@ extension Workspace {
             Text("Kalendarz Apple").font(.title2.bold())
             Text("Aplikacja kopiuje nazwy, terminy i miejsca eventów oraz Twoich spotkań z CRM do wybranego kalendarza. Kopia jest tylko do odczytu — zmiany w Kalendarzu Apple nie trafiają do CRM, a prywatne wpisy z Maca nie są przesyłane.")
                 .font(.callout).fixedSize(horizontal:false,vertical:true)
+            if workspace.testMode != nil {
+                Text("Tryb testowy: kopiowanie do Kalendarza Apple jest wyłączone — wpisy oglądanej osoby nie trafią do Twojego kalendarza.")
+                    .font(.callout).foregroundStyle(.orange).fixedSize(horizontal:false,vertical:true)
+            }
             if !apple.authorized || apple.calendars.isEmpty {
                 Button("Zezwól na połączenie z Kalendarzem") {
                     Task {await apple.prepare(employee:employeeID,identity:workspace.connection.identity)}
-                }.disabled(apple.busy || employeeID.isEmpty)
+                }.disabled(apple.busy || employeeID.isEmpty || workspace.testMode != nil)
             } else {
                 target
                 duplicates

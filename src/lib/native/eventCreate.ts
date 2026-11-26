@@ -414,4 +414,19 @@ async function editEvent(ctx: NativeContext, eventId: string, body: Row) {
   return { ok: true };
 }
 
-registerEventActions('details', { editEvent });
+/**
+ * „Edytuj” na karcie eventu (Mac, jak w CRM): tylko nazwa — termin, lokalizacja, klient, firma, kategoria i status zmienia się
+ * przy polach w „Szczegółach”, więc zapis nie nadpisuje niczego innego. `editEvent` zostaje dla starszych wersji aplikacji.
+ */
+async function renameEvent(ctx: NativeContext, eventId: string, body: Row) {
+  await editableEvent(ctx, eventId);
+  const raw = String(body.name ?? '').trim();
+  if (!raw) fail('Nazwa eventu jest wymagana', { name: 'Nazwa eventu jest wymagana' });
+  if (raw.length > 500) fail('Nazwa eventu może mieć najwyżej 500 znaków', { name: 'Nazwa eventu może mieć najwyżej 500 znaków' });
+  const { data, error } = await ctx.supabase.from('events').update({ name: raw }).eq('id', eventId).select('id');
+  if (error) fail(error.message || 'Nie udało się zmienić nazwy eventu');
+  if (!data?.length) fail('Nie masz uprawnień do zmiany nazwy tego eventu.');
+  return { ok: true, name: raw };
+}
+
+registerEventActions('details', { editEvent, renameEvent });

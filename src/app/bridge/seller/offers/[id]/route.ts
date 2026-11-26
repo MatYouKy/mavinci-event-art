@@ -7,6 +7,7 @@ import { loadReviewHistory } from '@/lib/seller/reviewThread.server';
 import { canConfirmEquipment } from '@/lib/seller/equipmentReview';
 import { createClient } from '@supabase/supabase-js';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
+import { testModeAuthClient, testModeGlobalFor } from '@/lib/testMode/session.server';
 import { renderSellerOfferPdf } from '@/lib/seller/renderOfferPdf.server';
 import { deliveryTimestamp, sellerReviewIdentity, type SellerOfferSummaryData } from '@/lib/seller/delivery';
 import { validSellerDay } from '@/lib/seller/eventSchedule';
@@ -35,10 +36,11 @@ async function authorize(request: NextRequest,id: string){
   const token=request.headers.get('authorization')?.replace(/^Bearer\s+/i,'');
   if(!token) throw Object.assign(new Error('Zaloguj się ponownie'),{status:401});
   const admin=createSupabaseAdminClient();
-  const {data,error}=await admin.auth.getUser(token);
+  // Tryb testowy „widok jako” (docs/test-mode.md): klucz zastępczy — w imieniu oglądanej osoby.
+  const {data,error}=await (testModeAuthClient(token) ?? admin).auth.getUser(token);
   if(error || !data.user) throw Object.assign(new Error('Sesja wygasła'),{status:401});
   const user=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
-    global:{headers:{Authorization:`Bearer ${token}`}},auth:{persistSession:false,autoRefreshToken:false},
+    global:{headers:{Authorization:`Bearer ${token}`},...testModeGlobalFor(token)},auth:{persistSession:false,autoRefreshToken:false},
   });
   const state=await user.rpc('seller_offer_workflow_state',{p_offer_id:id});
   check(state.error);

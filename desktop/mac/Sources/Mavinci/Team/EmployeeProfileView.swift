@@ -46,6 +46,7 @@ import AppKit
     @State private var addingAbsence = false
     @State private var reviewing: EmployeeAbsence?
     @State private var removingAbsence: EmployeeAbsence?
+    @State private var editingStructure = false
     @FocusState private var focused: String?
 
     private var member: TeamMember? { store.member(employeeID) }
@@ -107,6 +108,12 @@ import AppKit
         .sheet(isPresented: $addingAbsence) {
             AddAbsenceSheet(store: store, employeeID: employeeID)
                 .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+        }
+        .sheet(isPresented: $editingStructure) {
+            if let member {
+                EmployeeStructureSheet(store: store, member: member)
+                    .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+            }
         }
         .sheet(item: $reviewing) { absence in
             AbsenceReviewSheet(store: store, employeeID: employeeID, absence: absence, canApprove: access?.canApproveAbsences ?? false)
@@ -308,11 +315,43 @@ import AppKit
         return LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
             basicCard(m)
             addressCard(m)
+            structureCard(m)
             if !m.skills.isEmpty { skillsCard(m) }
             if isAdmin { websiteCard(m) }
             if !m.notes.isEmpty || editing { notesCard(m) }
             if let accounts = detail?.emailAccounts, !accounts.isEmpty { emailCard(accounts) }
             compensationCard(m)
+        }
+    }
+
+    /// „Dział i przełożony” — zakres planu w Spotkaniach → „Pracownicy” (docs/team-availability.md); zmienia administrator
+    /// albo „Zarządzanie pracownikami”.
+    private func structureCard(_ m: TeamMember) -> some View {
+        let department = EmployeeDepartment(raw: m.department)
+        let supervisor = store.member(m.supervisorId)
+        let subordinates = store.members.filter { $0.supervisorId == m.id }
+        return card("Dział i przełożony", symbol: "person.3.sequence") {
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Dział").font(.caption).foregroundStyle(.secondary)
+                    Text(department.label)
+                    Text(department.hint).font(.caption).foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Przełożony").font(.caption).foregroundStyle(.secondary)
+                    Text(supervisor?.listName ?? "Brak")
+                }
+                if !subordinates.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Podwładni").font(.caption).foregroundStyle(.secondary)
+                        Text(subordinates.map(\.listName).joined(separator: ", "))
+                    }
+                }
+                if access?.canManageStructure == true {
+                    Button { editingStructure = true } label: { Label("Zmień dział i przełożonego…", systemImage: "pencil") }
+                        .buttonStyle(.link)
+                }
+            }
         }
     }
 

@@ -46,6 +46,12 @@ import {
 } from '@/lib/CRM/meetings/meetingStatus';
 import NewMeetingModal from '@/components/crm/NewMeetingModal';
 import MeetingsTimeline, { isoDay, type TimelineMeeting } from '@/components/crm/meetings/MeetingsTimeline';
+import TeamAvailabilityView from '@/components/crm/meetings/TeamAvailabilityView';
+import {
+  meetingMailNotice,
+  notifyMeetingContacts,
+  type MeetingMailBefore,
+} from '@/components/crm/meetings/teamAvailabilityApi';
 
 interface MeetingParticipant {
   id: string;
@@ -85,7 +91,7 @@ interface Meeting {
   participants?: MeetingParticipant[];
 }
 
-type View = 'day' | 'workweek' | 'week' | 'list';
+type View = 'day' | 'workweek' | 'week' | 'people' | 'list';
 type ScopeFilter = 'mine' | 'all';
 type KindFilter = 'all' | MeetingKind;
 
@@ -93,6 +99,7 @@ const VIEWS: Array<{ value: View; label: string }> = [
   { value: 'day', label: 'Dzień' },
   { value: 'workweek', label: 'Tydzień roboczy' },
   { value: 'week', label: 'Tydzień' },
+  { value: 'people', label: 'Pracownicy' },
   { value: 'list', label: 'Lista' },
 ];
 
@@ -140,7 +147,7 @@ function participantName(p: MeetingParticipant): string {
 
 function rangeLabel(view: View, days: Date[]): string {
   if (days.length === 0) return '';
-  if (view === 'day') {
+  if (view === 'day' || view === 'people') {
     return new Intl.DateTimeFormat('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(days[0]);
   }
   const first = days[0];
@@ -194,7 +201,9 @@ function MeetingsContent() {
   const [prefsReady, setPrefsReady] = useState(false);
   const [holidays, setHolidays] = useState<Map<string, string>>(() => new Map());
   const [savingIds, setSavingIds] = useState<Set<string>>(() => new Set());
-  const [newMeeting, setNewMeeting] = useState<{ start?: Date; end?: Date } | null>(null);
+  const [newMeeting, setNewMeeting] = useState<{ start?: Date; end?: Date; employeeIds?: string[] } | null>(null);
+  // Widok „Pracownicy”: odświeżenie zajętości po zapisie spotkania.
+  const [peopleRefresh, setPeopleRefresh] = useState(0);
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -257,7 +266,7 @@ function MeetingsContent() {
   }, [fetchMeetings]);
 
   const days = useMemo(() => {
-    if (view === 'day' || view === 'list') return [anchor];
+    if (view === 'day' || view === 'people' || view === 'list') return [anchor];
     const monday = startOfWeek(anchor);
     return Array.from({ length: view === 'workweek' ? 5 : 7 }, (_, index) => addDays(monday, index));
   }, [anchor, view]);
@@ -359,7 +368,7 @@ function MeetingsContent() {
   }, [filtered]);
 
   const step = (direction: -1 | 1) => {
-    setAnchor((current) => addDays(current, direction * (view === 'day' ? 1 : 7)));
+    setAnchor((current) => addDays(current, direction * (view === 'day' || view === 'people' ? 1 : 7)));
   };
 
   // Skróty jak w kalendarzu: ← → zmienia zakres, T wraca do dziś.
@@ -384,6 +393,35 @@ function MeetingsContent() {
       return next;
     });
 
+  // ── E-mail do uczestników spoza firmy (docs/team-availability.md) ─────────────────────
+  const contactParticipants = (meeting: Meeting) => (meeting.participants ?? []).filter((p) => p.contact_id);
+  const mailBefore = (meeting: Meeting): MeetingMailBefore => ({
+    start: meeting.datetime_start,
+    end: meeting.datetime_end,
+    allDay: !!meeting.is_all_day,
+    location: meeting.location?.name || meeting.location_text || '',
+    status: meetingStatus(meeting.status),
+    contactIds: contactParticipants(meeting).map((p) => p.contact_id as string),
+  });
+  /** Po zmianie — pytanie, czy wysłać e-mail osobom spoza firmy (zmiana terminu, odwołanie, przywrócenie). */
+  const offerContactMail = async (meeting: Meeting, before: MeetingMailBefore, question: string) => {
+    const contacts = contactParticipants(meeting);
+    if (!contacts.length) return;
+    const send = await showConfirm({
+      title: 'E-mail do osób spoza firmy',
+      message: `${question} (${contacts.map(participantName).join(', ')})`,
+      confirmText: 'Wyślij e-mail',
+      cancelText: 'Nie wysyłaj',
+    });
+    if (!send) return;
+    try {
+      const notice = meetingMailNotice(await notifyMeetingContacts(meeting.id, before, 'single'));
+      if (notice) showSnackbar(notice.text, notice.type);
+    } catch (error) {
+      showSnackbar(errorText(error, 'Nie udało się wysłać e-maila do osób spoza firmy'), 'error');
+    }
+  };
+
   /** Zmiana jednego terminu przez save_meeting (z pełną listą uczestników, żeby nikogo nie usunąć). */
   const saveMeetingPatch = async (meeting: Meeting, patch: Record<string, unknown>) => {
     const { error } = await supabase.rpc('save_meeting', {
@@ -402,6 +440,7 @@ function MeetingsContent() {
     const meeting = meetings.find((m) => m.id === item.id);
     if (!meeting) return;
     const before = { datetime_start: meeting.datetime_start, datetime_end: meeting.datetime_end };
+    const mail = mailBefore(meeting);
     const others = (meeting.participants ?? []).some((p) => p.employee_id && p.employee_id !== meeting.created_by);
     setMeetings((current) =>
       current.map((m) =>
@@ -418,6 +457,8 @@ function MeetingsContent() {
         'success',
       );
       void fetchMeetings(true);
+      setPeopleRefresh((value) => value + 1);
+      void offerContactMail(meeting, mail, 'Wysłać osobom spoza firmy e-mail o nowym terminie?');
     } catch (error) {
       setMeetings((current) => current.map((m) => (m.id === meeting.id ? { ...m, ...before } : m)));
       showSnackbar(errorText(error, 'Nie udało się zmienić terminu spotkania'), 'error');
@@ -464,10 +505,16 @@ function MeetingsContent() {
     }
     setBusy(`status:${status}`);
     setSaving(meeting.id, true);
+    const mail = mailBefore(meeting);
     try {
       await saveMeetingPatch(meeting, { status });
       setMeetings((current) => current.map((m) => (m.id === meeting.id ? { ...m, status } : m)));
       showSnackbar(`Status spotkania: ${meetingStatusOption(status).label}`, 'success');
+      setPeopleRefresh((value) => value + 1);
+      // E-mail: odwołanie, przywrócenie odwołanego albo potwierdzenie wstępnego terminu.
+      if (status === 'cancelled') void offerContactMail(meeting, mail, 'Wysłać osobom spoza firmy e-mail o odwołaniu spotkania?');
+      else if (mail.status === 'cancelled') void offerContactMail(meeting, mail, 'Wysłać osobom spoza firmy e-mail, że spotkanie się odbędzie?');
+      else if (mail.status === 'tentative' && status === 'confirmed') void offerContactMail(meeting, mail, 'Wysłać osobom spoza firmy e-mail o potwierdzeniu terminu?');
     } catch (error) {
       showSnackbar(errorText(error, 'Nie udało się zmienić statusu'), 'error');
     } finally {
@@ -486,6 +533,7 @@ function MeetingsContent() {
     if (!confirmed) return;
 
     setDeleting(true);
+    const mail = mailBefore(meeting);
     const { error } = await supabase.rpc('delete_meeting_occurrences', { p_id: meeting.id, p_scope: 'single' });
     setDeleting(false);
 
@@ -497,6 +545,8 @@ function MeetingsContent() {
     showSnackbar('Spotkanie zostało usunięte', 'success');
     closeMeeting();
     void fetchMeetings(true);
+    setPeopleRefresh((value) => value + 1);
+    void offerContactMail(meeting, mail, 'Wysłać osobom spoza firmy e-mail o odwołaniu spotkania?');
   };
 
   const toggleStatus = (status: MeetingStatus) =>
@@ -722,6 +772,19 @@ function MeetingsContent() {
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-[#d3bb73]" />
         </div>
+      ) : view === 'people' ? (
+        <div className="h-[calc(100dvh-17rem)] min-h-[480px]">
+          <TeamAvailabilityView
+            day={anchor}
+            refreshKey={peopleRefresh}
+            onOpenMeeting={(id) => {
+              if (meetings.some((m) => m.id === id)) openMeeting(id);
+              else showSnackbar('Tego spotkania nie ma na Twojej liście spotkań.', 'info');
+            }}
+            onOpenEvent={(id) => router.push(`/crm/events/${id}`)}
+            onCreate={(start, end, employeeIds) => setNewMeeting({ start, end, employeeIds })}
+          />
+        </div>
       ) : view !== 'list' ? (
         <div className="h-[calc(100dvh-17rem)] min-h-[480px]">
           <MeetingsTimeline
@@ -790,10 +853,12 @@ function MeetingsContent() {
         isOpen={!!newMeeting}
         initialDate={newMeeting?.start}
         initialEndDate={newMeeting?.end}
+        initialEmployeeIds={newMeeting?.employeeIds}
         onClose={() => setNewMeeting(null)}
         onSuccess={() => {
           setNewMeeting(null);
           void fetchMeetings(true);
+          setPeopleRefresh((value) => value + 1);
         }}
       />
     </div>

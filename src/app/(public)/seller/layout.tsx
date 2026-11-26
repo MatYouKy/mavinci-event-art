@@ -28,6 +28,7 @@ import { sellerInboxCounts, useSellerInbox } from '@/lib/seller/inbox';
 import { SellerCountBadge } from '@/components/seller/SellerInboxPanel';
 import { HelpButton, HelpDrawerHost } from '@/components/help/HelpDrawer';
 import { SELLER_HELP } from '@/lib/help/sellerHelp';
+import TestModeBar from '@/components/crm/testMode/TestModeBar';
 
 const navigation = [
   { name: 'Pulpit', href: '/seller', icon: LayoutDashboard },
@@ -162,6 +163,8 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
 
   return (
     <div className="min-h-screen bg-[#0f1119]">
+      {/* Tryb testowy „widok jako” — administrator ogląda portal sprzedawcy (docs/test-mode.md). */}
+      <TestModeBar />
       <div className="flex h-screen overflow-hidden">
         <aside className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-50 w-64 border-r border-[#d3bb73]/10 bg-[#1c1f33] transition-transform duration-300 lg:static lg:translate-x-0`}>
           <div className="flex h-full flex-col">

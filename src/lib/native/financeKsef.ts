@@ -2,6 +2,14 @@ import 'server-only';
 import type { NativeContext } from './auth';
 import { canFinanceCompany, loadInvoiceFinanceAccess } from '@/lib/invoices/financeAccess';
 import { decodeTextEntities } from '@/lib/textEncoding';
+import {
+  ksefInvoiceCompany,
+  linkKsefCorrectionTransaction,
+  loadKsefCorrectionSettlement,
+  offsetKsefCorrection,
+  undoKsefCorrectionOffset,
+  unlinkKsefCorrectionTransaction,
+} from '@/lib/invoices/ksefCorrectionSettlement';
 
 /*
  * KSeF dla Maca (jak zakładka CRM „KSeF”, `KSeFIntegrationPanel`): działalności z aktywną konfiguracją KSeF (bez sekretów),
@@ -10,7 +18,8 @@ import { decodeTextEntities } from '@/lib/textEncoding';
  * (wpłata pozostałej kwoty), „Oznacz jako nieopłaconą” (usunięcie ręcznych wpłat, dopasowania z wyciągów zostają), wpłaty
  * częściowe, termin i data pełnej zapłaty, zamknięcie uwagi, usunięcie z lokalnej bazy (administrator). Synchronizacja
  * z KSeF — trasy CRM `/bridge/ksef/auth/token` i `/bridge/ksef/invoices/issued|received` (token pracownika). Konfiguracja
- * KSeF (certyfikat, token) — w CRM.
+ * KSeF (certyfikat, token) — w CRM. Rozliczenie korekty „in minus” (zwrot) — jak okno CRM „Rozlicz korektę / zwrot”
+ * (`src/lib/invoices/ksefCorrectionSettlement.ts`): faktura korygowana, płatność i zwrot z wyciągu, kompensata.
  */
 
 type Row = Record<string, any>;
@@ -184,16 +193,18 @@ async function paidSoFar(ctx: NativeContext, id: string) {
   return ((data || []) as Row[]).reduce((sum, payment) => sum + num(payment.amount), 0);
 }
 
-/** „Oznacz jako opłaconą” — wpłata pozostałej kwoty z dzisiejszą datą (jak w CRM). */
+/** „Oznacz jako opłaconą” (korekta „in minus” — „rozliczoną”) — wpłata pozostałej kwoty z dzisiejszą datą (jak w CRM). */
 export async function ksefMarkPaid(ctx: NativeContext, body: Row) {
   const { id, invoice } = await manageableInvoice(ctx, body.id);
+  const negative = num(invoice.amount_to_pay_gross ?? invoice.gross_amount) < 0;
   const remaining = Math.max(Math.abs(num(invoice.amount_to_pay_gross ?? invoice.gross_amount)) - await paidSoFar(ctx, id), 0);
   if (remaining <= 0.009) return { ok: true, message: 'Faktura jest już rozliczona w rejestrze wpłat' };
   const { error } = await ctx.supabase.from('ksef_invoice_payments').insert({
-    ksef_invoice_id: id, amount: Math.round(remaining * 100) / 100, payment_date: warsawToday(), notes: 'Ręczne oznaczenie jako opłacona', created_by: ctx.employee.id,
+    ksef_invoice_id: id, amount: Math.round(remaining * 100) / 100, payment_date: warsawToday(),
+    notes: negative ? 'Ręczne oznaczenie korekty jako rozliczonej' : 'Ręczne oznaczenie jako opłacona', created_by: ctx.employee.id,
   });
   if (error) fail(error.message || 'Błąd podczas oznaczania faktury');
-  return { ok: true, message: 'Faktura oznaczona jako opłacona' };
+  return { ok: true, message: negative ? 'Korekta oznaczona jako rozliczona' : 'Faktura oznaczona jako opłacona' };
 }
 
 /** „Oznacz jako nieopłaconą” — usunięcie ręcznych wpłat (dopasowania z wyciągów zostają) i zamknięcie uwagi o statusie. */
@@ -275,4 +286,52 @@ export async function ksefDelete(ctx: NativeContext, body: Row) {
   if (error) fail(error.message || 'Błąd podczas usuwania faktury');
   if (!data?.length) fail('Nie usunięto faktury. Rekord nie istnieje albo brak uprawnień RLS do usuwania.');
   return { ok: true, message: 'Faktura została usunięta z lokalnej bazy' };
+}
+
+// MARK: Rozliczenie korekty „in minus” (jak `KsefCorrectionSettlementModal` w CRM)
+
+/** Korekta, faktury korygowane z XML, wpłaty, powiązane operacje, operacje do powiązania i kompensata. */
+export async function ksefCorrection(ctx: NativeContext, idParam: unknown) {
+  const id = str(idParam).trim();
+  if (!UUID.test(id)) fail('Nieprawidłowa faktura.');
+  const access = await loadInvoiceFinanceAccess(ctx.supabase);
+  const companyId = await ksefInvoiceCompany(ctx.supabase, id);
+  if (!canFinanceCompany(access, companyId, 'invoices')) fail('Brak dostępu do faktur tej działalności.', 403);
+  const settlement = await loadKsefCorrectionSettlement(ctx.supabase, id);
+  return { ...settlement, canManage: canFinanceCompany(access, companyId, 'finance_manage') };
+}
+
+const amountOf = (value: unknown) => num(str(value).replace(/\s/g, '').replace(',', '.'));
+
+/** „Powiąż” — operacja z wyciągu jako płatność faktury korygowanej albo zwrot korekty. */
+export async function ksefCorrectionLink(ctx: NativeContext, body: Row) {
+  const { id } = await manageableInvoice(ctx, body.correctionId);
+  const result = await linkKsefCorrectionTransaction(ctx.supabase, {
+    correctionId: id, documentId: str(body.documentId), transactionId: str(body.transactionId), amount: amountOf(body.amount),
+  });
+  return { ok: true, message: `Operacja z wyciągu powiązana z fakturą ${result.number}.` };
+}
+
+/** „Odepnij” — cofnięcie powiązania operacji z fakturą korekty albo faktury korygowanej. */
+export async function ksefCorrectionUnlink(ctx: NativeContext, body: Row) {
+  const { id } = await manageableInvoice(ctx, body.correctionId);
+  await unlinkKsefCorrectionTransaction(ctx.supabase, { correctionId: id, transactionId: str(body.transactionId), matchId: str(body.matchId) });
+  return { ok: true, message: 'Powiązanie cofnięte. Ta operacja nie zostanie ponownie przypisana automatycznie do tej faktury.' };
+}
+
+/** Kompensata korekty z nieopłaconą fakturą korygowaną (wpłata w rejestrze obu faktur). */
+export async function ksefCorrectionOffset(ctx: NativeContext, body: Row) {
+  const { id } = await manageableInvoice(ctx, body.correctionId);
+  await manageableInvoice(ctx, body.originalId);
+  const result = await offsetKsefCorrection(ctx.supabase, {
+    correctionId: id, originalId: str(body.originalId), amount: amountOf(body.amount), date: str(body.date), employeeId: ctx.employee.id,
+  });
+  return { ok: true, message: `Korekta ${result.correction} rozliczona kompensatą z fakturą ${result.original}.` };
+}
+
+export async function ksefCorrectionOffsetUndo(ctx: NativeContext, body: Row) {
+  const { id } = await manageableInvoice(ctx, body.correctionId);
+  await manageableInvoice(ctx, body.originalId);
+  await undoKsefCorrectionOffset(ctx.supabase, { correctionId: id, originalId: str(body.originalId) });
+  return { ok: true, message: 'Kompensata cofnięta — wpłaty usunięte z rejestru obu faktur.' };
 }

@@ -28,6 +28,10 @@ struct MeetingIndex: Codable {
     @Published private(set) var holidays: [String: String] = [:]
     /// Spotkanie do pokazania po otwarciu ekranu (powiadomienie, „Mój plan”).
     @Published var focusID: String?
+    /// Osoby z zakresu planu (widok „Pracownicy”, nazwy w ostrzeżeniach o zajętości) — `get_schedule_people`.
+    @Published var people: [SchedulePerson] = []
+    /// Pytanie po zmianie: wysłać osobom spoza firmy e-mail? (przeciągnięcie terminu, zmiana statusu).
+    @Published var mailOffer: MeetingMailOffer?
     private var holidayYears: Set<Int> = []
 
     private var namespace: String?
@@ -71,7 +75,7 @@ struct MeetingIndex: Codable {
         if clearDisk, let file { try? file.clear() }
         file = nil; namespace = nil; index = MeetingIndex(); recentLocal = [:]
         meetings = []; employeeId = nil; canManage = false; syncing = false; lastSync = nil; loadError = nil; saving = []; employees = []
-        holidays = [:]; holidayYears = []; focusID = nil
+        holidays = [:]; holidayYears = []; focusID = nil; people = []; mailOffer = nil
     }
     private func scheduleSave() {
         saveTask?.cancel()
@@ -184,6 +188,7 @@ struct MeetingIndex: Codable {
     /// Przeciągnięcie albo zmiana długości na osi czasu — tylko ten termin (także w cyklu).
     func move(_ meeting: Meeting, start: Date, end: Date) async {
         let before = (meeting.start, meeting.end)
+        let mail = MeetingMailBefore(meeting)
         let others = meeting.participants.contains { $0.employeeId != nil && $0.employeeId != meeting.createdBy }
         mutate(meeting.id) { $0.start = MeetingDates.iso(start); $0.end = MeetingDates.iso(end) }
         saving.insert(meeting.id)
@@ -200,6 +205,7 @@ struct MeetingIndex: Codable {
             }
             workspace?.succeed("Nowy termin: \(MeetingDates.format(start, "EEE d MMM")), \(MeetingDates.time(start))–\(MeetingDates.time(end))"
                 + (meeting.seriesId != nil ? " (tylko ten termin cyklu)" : "") + (others ? ". Uczestnicy potwierdzą go ponownie." : ""))
+            offerMail(meeting, mail, "Wysłać osobom spoza firmy e-mail o nowym terminie?")
             Task { await sync(force: true) }
         } catch {
             mutate(meeting.id) { $0.start = before.0; $0.end = before.1 }
@@ -224,28 +230,90 @@ struct MeetingIndex: Codable {
         }
     }
 
+    /// Zmiana statusu; odwołanie, przywrócenie odwołanego i potwierdzenie wstępnego — pytanie o e-mail do osób spoza firmy
+    /// (`mailOffer`, jak w CRM).
     func setStatus(_ meeting: Meeting, _ status: MeetingStatus) async {
+        let mail = MeetingMailBefore(meeting)
+        var saved = false
         await workspace?.withPending(status == .cancelled ? "Odwoływanie spotkania…" : "Zmiana statusu…") {
             do {
                 try await save(meeting, patch: ["status": .string(status.rawValue)])
                 mutate(meeting.id) { $0.status = status.rawValue }
                 workspace?.succeed("Status spotkania: \(status.label)")
                 WidgetBridge.reload()
+                saved = true
             } catch { report(error, "Nie udało się zmienić statusu spotkania.") }
+        }
+        guard saved else { return }
+        if status == .cancelled {
+            offerMail(meeting, mail, "Wysłać osobom spoza firmy e-mail o odwołaniu spotkania?")
+        } else if mail.status == MeetingStatus.cancelled.rawValue {
+            offerMail(meeting, mail, "Wysłać osobom spoza firmy e-mail, że spotkanie się odbędzie?")
+        } else if mail.status == MeetingStatus.tentative.rawValue && status == .confirmed {
+            offerMail(meeting, mail, "Wysłać osobom spoza firmy e-mail o potwierdzeniu terminu?")
         }
     }
 
+    /// Usunięcie; potem pytanie o odwołanie e-mailem dla osób spoza firmy (serwer czyta usunięte spotkanie jeszcze 2 godziny).
     func delete(_ meeting: Meeting, scope: String = "single") async {
         guard let api else { return }
+        let mail = MeetingMailBefore(meeting)
+        var removed = false
         await workspace?.withPending("Usuwanie spotkania…") {
             do {
                 _ = try await api.post("/meetings", ["op": .string("delete"), "id": .string(meeting.id), "scope": .string(scope)])
                 index.items.removeAll { $0.id == meeting.id || (scope == "future" && $0.seriesId != nil && $0.seriesId == meeting.seriesId && $0.start >= meeting.start) }
                 publish(); scheduleSave()
                 workspace?.succeed(scope == "future" ? "Usunięto to i kolejne spotkania cyklu" : "Spotkanie zostało usunięte")
+                removed = true
                 Task { await sync(force: true) }
             } catch { report(error, "Nie udało się usunąć spotkania.") }
         }
+        if removed { offerMail(meeting, mail, "Wysłać osobom spoza firmy e-mail o odwołaniu spotkania?", scope: scope) }
+    }
+
+    // MARK: Osoby spoza firmy, pracownicy i zajętość (docs/team-availability.md)
+    private func offerMail(_ meeting: Meeting, _ before: MeetingMailBefore, _ question: String, scope: String = "single") {
+        let names = meeting.participants.filter { $0.contactId != nil }.map(\.name)
+        guard !names.isEmpty else { return }
+        mailOffer = MeetingMailOffer(meetingId: meeting.id, question: question, names: names, before: before, scope: scope)
+    }
+
+    /// E-mail do osób spoza firmy po zapisie / usunięciu (`op=notify`: zaproszenie, zmiana, odwołanie, „nieaktualne”, plik .ics).
+    func notifyContacts(_ meetingId: String, before: MeetingMailBefore?, scope: String = "single") async {
+        guard let api else { return }
+        await workspace?.withPending("Wysyłanie e-maila do osób spoza firmy…") {
+            do {
+                let body: [String: JSONValue] = [
+                    "op": .string("notify"), "id": .string(meetingId), "scope": .string(scope), "before": before?.json ?? .null,
+                ]
+                let result = try JSONDecoder().decode(MeetingMailResult.self, from: try await api.post("/meetings", body))
+                guard let message = result.message, !message.isEmpty else { return }
+                if result.sent > 0 && result.failedCount == 0 && result.skipped.isEmpty { workspace?.succeed(message) } else { workspace?.notice = message }
+            } catch { report(error, "Nie udało się wysłać e-maila do osób spoza firmy.") }
+        }
+    }
+
+    func loadPeople(force: Bool = false) async {
+        guard force || people.isEmpty, let api else { return }
+        struct Reply: Decodable { let people: [SchedulePerson] }
+        do {
+            people = try JSONDecoder().decode(Reply.self, from: try await api.get("/meetings", query: ["op": "people"])).people
+        } catch {
+            if people.isEmpty { report(error, "Nie udało się wczytać pracowników.") }
+        }
+    }
+
+    /// Zajętość wybranych osób (najwyżej 60) w przedziale; `exclude` — edytowane spotkanie się nie liczy.
+    func availability(_ ids: [String], from: Date, to: Date, exclude: String? = nil) async throws -> [AvailabilityBlock] {
+        var seen = Set<String>()
+        let list = ids.filter { !$0.isEmpty && seen.insert($0).inserted }.prefix(60)
+        guard !list.isEmpty else { return [] }
+        guard let api else { throw AppError.configuration }
+        struct Reply: Decodable { let blocks: [AvailabilityBlock] }
+        var query = ["op": "availability", "ids": list.joined(separator: ","), "from": MeetingDates.iso(from), "to": MeetingDates.iso(to)]
+        if let exclude { query["exclude"] = exclude }
+        return try JSONDecoder().decode(Reply.self, from: try await api.get("/meetings", query: query)).blocks
     }
 
     /// Nowe spotkanie albo edycja (formularz) — `save_meeting` z pełną listą uczestników.

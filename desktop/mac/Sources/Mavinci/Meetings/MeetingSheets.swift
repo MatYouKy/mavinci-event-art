@@ -2,7 +2,8 @@ import SwiftUI
 import AppKit
 
 /// Nowe spotkanie i edycja — pola jak w CRM (`NewMeetingModal`, `/crm/calendar/meeting/[id]`): rodzaj (firmowe / prywatne),
-/// status, termin, cykl, miejsce, kolor, uczestnicy (pracownicy i kontakty), trzy przypomnienia i notatki.
+/// status, termin, cykl, miejsce, kolor, uczestnicy (pracownicy i kontakty) z ostrzeżeniem o zajętości, e-mail do osób spoza
+/// firmy (zaproszenie / zmiana z plikiem .ics — docs/team-availability.md), trzy przypomnienia i notatki.
 /// Treść arkusza nie czyta wpisywanego tekstu (tytuł, lokalizacja, wyszukiwanie kontaktu, notatki) — czytają go pola
 /// (`MeetingPlaceField`, `MeetingContactSearch`, `MeetingSaveButton`), więc litera nie przelicza całego formularza.
 @MainActor struct MeetingEditorSheet: View {
@@ -41,6 +42,8 @@ import AppKit
     @State private var ready = false
     /// Nazwa wybranej lokalizacji z bazy — zmiana tekstu odpina wybór.
     @State private var pickedPlace = ""
+    /// E-mail do osób spoza firmy po zapisie (zaproszenie, zmiana terminu / miejsca / statusu).
+    @State private var mailContacts = true
 
     private var editing: Meeting? { request.meeting }
     private var calendar: Calendar { MeetingDates.calendar }
@@ -133,6 +136,18 @@ import AppKit
                     if editing != nil && !guests.isEmpty {
                         Text("Zmiana terminu poprosi uczestników o ponowną odpowiedź.").font(.caption).foregroundStyle(.secondary)
                     }
+                    if !conflictIDs.isEmpty {
+                        MeetingConflictsRow(store: store, ids: conflictIDs, from: range.from, to: range.to, exclude: editing?.id, names: conflictNames)
+                    }
+                    if hasContacts {
+                        Toggle(isOn: $mailContacts) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(editing == nil ? "Wyślij zaproszenie e-mailem osobom spoza firmy" : "Powiadom e-mailem osoby spoza firmy o zmianach")
+                                Text("Z Twojej skrzynki, z plikiem .ics do kalendarza: \(guests.filter { $0.contactId != nil }.map(\.name).joined(separator: ", "))")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
 
                 Section("Przypomnienia") {
@@ -174,6 +189,31 @@ import AppKit
 
     private var ownerId: String? { editing?.createdBy ?? store.employeeId }
 
+    /// Termin jak przy zapisie (całodniowe — od początku pierwszego do końca ostatniego dnia).
+    private var range: (from: Date, to: Date) {
+        if allDay {
+            let from = calendar.startOfDay(for: start)
+            let last = calendar.startOfDay(for: max(end, start))
+            return (from, calendar.date(byAdding: .second, value: 86_399, to: last) ?? last)
+        }
+        return (start, max(end, start))
+    }
+    /// Uczestnicy z firmy do ostrzeżenia o zajętości: ja (organizator) i dodani pracownicy.
+    private var conflictIDs: [String] {
+        var seen = Set<String>()
+        return ([store.employeeId].compactMap { $0 } + guests.compactMap(\.employeeId)).filter { seen.insert($0).inserted }
+    }
+    private var conflictNames: [String: String] {
+        var names: [String: String] = [:]
+        for guest in guests { if let id = guest.employeeId { names[id] = guest.name } }
+        if let me = store.employeeId { names[me] = "Ty" }
+        return names
+    }
+    /// Kontakty na liście albo usunięte z niej (wiadomość „zaproszenie nieaktualne”).
+    private var hasContacts: Bool {
+        guests.contains { $0.contactId != nil } || editing?.participants.contains { $0.contactId != nil } == true
+    }
+
     private func alertRow(_ label: String, detail: String, index: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Toggle(isOn: $alerts[index].on) {
@@ -206,6 +246,11 @@ import AppKit
             end = request.end.flatMap { $0 > base ? $0 : nil } ?? base.addingTimeInterval(3600)
             if let title = request.title { self.title = title }
             if let contact = request.contactId { guests.append(Guest(employeeId: nil, contactId: contact, name: request.contactName ?? "")) }
+            // Zaznaczenie czasu w kolumnie osoby (widok „Pracownicy”) — ta osoba od razu na liście uczestników.
+            for id in request.employeeIds where !guests.contains(where: { $0.employeeId == id }) {
+                let name = store.people.first { $0.id == id }?.displayName ?? store.employees.first { $0.id == id }?.label ?? "Pracownik"
+                guests.append(Guest(employeeId: id, contactId: nil, name: name))
+            }
         }
     }
     /// Domyślny termin nowego spotkania: najbliższa pełna godzina.
@@ -257,14 +302,19 @@ import AppKit
             return nil
         }
         let days = editing?.seriesId != nil && scope == "single" ? (editing?.recurrenceDays ?? 0) : recurrence
+        let before = editing.map { MeetingMailBefore($0) }
+        let notify = mailContacts && hasContacts
+        let changeScope = editing == nil ? "single" : scope
         saving = true
         defer { saving = false }
         do {
             let id = try await store.save(id: editing?.id, data: data, participants: participants, recurrenceDays: days,
-                                          scope: editing == nil ? "single" : scope)
+                                          scope: changeScope)
             state.succeed(editing == nil ? "Spotkanie zostało utworzone" : "Spotkanie zostało zaktualizowane")
             if let id { store.focusID = id }
             dismiss()
+            // Osoby spoza firmy: zaproszenie, zmiana albo „nieaktualne” (serwer porównuje stan sprzed zmiany).
+            if notify, let id { await store.notifyContacts(id, before: before, scope: changeScope) }
         } catch let failure as NativeFailure {
             problem = failure.message
         } catch {

@@ -1,5 +1,7 @@
 import 'server-only';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { bearerTestToken, jsonBodyOp, testModeNativeReadAllowed } from '@/lib/testMode/shared';
+import { testModeFetch } from '@/lib/testMode/session.server';
 
 /*
  * Pracownik natywnego API: token Supabase z aplikacji (Bearer) → klient Supabase z tym tokenem (RLS jak w CRM) i profil pracownika.
@@ -25,7 +27,8 @@ export async function nativeContext(request: Request): Promise<NativeContext | n
   const token = /^Bearer\s+(\S+)$/i.exec(authorization)?.[1];
   if (!token) return null;
   const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
+    // Klucz zastępczy trybu testowego (docs/test-mode.md) — w imieniu oglądanej osoby.
+    global: { headers: { Authorization: `Bearer ${token}` }, ...(bearerTestToken(authorization) ? { fetch: testModeFetch() } : {}) },
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data: auth, error } = await supabase.auth.getUser(token);
@@ -65,5 +68,11 @@ export const nativeUnauthorized = () => nativeJson({ error: 'Sesja wygasła. Zal
 export async function readJson(request: Request, limit: number): Promise<any> {
   const text = await request.text();
   if (text.length > limit) throw new Error('too_large');
+  // Tryb testowy z aplikacji natywnej (docs/test-mode.md): tylko odczyty wysyłane metodą POST — drugie zabezpieczenie po
+  // `src/middleware.ts` (zapis odrzucony, zanim trasa cokolwiek wykona).
+  if (bearerTestToken(request.headers.get('authorization'))) {
+    const url = new URL(request.url);
+    if (!testModeNativeReadAllowed(url.pathname, [url.searchParams.get('op'), jsonBodyOp(text)])) throw new Error('test_mode');
+  }
   return text ? JSON.parse(text) : {};
 }

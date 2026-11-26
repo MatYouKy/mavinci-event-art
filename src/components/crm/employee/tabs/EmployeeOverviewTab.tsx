@@ -7,6 +7,7 @@ import EmployeeSkillsCardComponent from '../components/EmployeeSkillsCardCompone
 import EmployeeNotesCardComponent from '../components/EmployeeNotesCardComponent';
 import EmployeeEmailAccountsCardComponent from '../components/EmployeeEmailAccountsCardComponent';
 import EmployeeWebsiteVisibilityCardComponent from '../components/EmployeeWebsiteVisibilityCardComponent';
+import EmployeeStructureCard from '../components/EmployeeStructureCard';
 import EmployeeCompensationCard from '@/components/crm/personnel/EmployeeCompensationCard';
 import { supabase } from '@/lib/supabase/browser';
 import CommissionAccountCard from '@/components/crm/commissions/CommissionAccountCard';
@@ -69,6 +70,9 @@ export const EmployeeOverviewTab: React.FC<EmployeeOverviewTabProps> = ({
         setEditedData={setEditedData}
         isEditing={isEditing}
       />
+
+      {/* Dział i przełożony — zakres planu w Spotkaniach → „Pracownicy” (docs/team-availability.md). */}
+      <EmployeeStructureCard key={`structure:${employee.id}`} employeeId={employee.id} />
 
       {!!employee.skills?.length && <EmployeeSkillsCardComponent skills={employee.skills} />}
 

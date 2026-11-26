@@ -1,6 +1,6 @@
 import { Employee } from '../lib/supabase';
 
-type PermissionEmployee = Pick<Employee, 'access_level' | 'role' | 'permissions' | 'has_realizations'> | null | undefined;
+type PermissionEmployee = Pick<Employee, 'access_level' | 'role' | 'permissions' | 'has_realizations' | 'finance_company_access'> | null | undefined;
 
 // Jak w CRM (src/lib/permissions.ts): administrator to rola/poziom „admin” albo uprawnienie „admin”.
 export const isAdmin = (employee: PermissionEmployee): boolean => {
@@ -90,6 +90,8 @@ export interface MenuItem {
   module?: ModuleName;
   /** Pozycja widoczna dla administratora albo przy dowolnym z uprawnień (jak `anyPermissions` w nawigacji CRM). */
   anyPermissions?: string[];
+  /** Własna reguła widoczności (np. Zakupy — uprawnienie albo poziom finansów w działalności). */
+  visibleFor?: (employee: PermissionEmployee) => boolean;
 }
 
 /** Social media (Marketing) — te same klucze co w CRM; zakres marek i akcji sprawdza serwer. */
@@ -98,6 +100,15 @@ export const SOCIAL_MEDIA_PERMISSIONS = ['marketing_social_view', 'marketing_soc
 export const PORTFOLIO_PERMISSIONS = ['website_edit', 'page_manage'];
 /** Strefa sprzedawcy → Prezentacje — jak w CRM: podgląd z dostępem do ofert albo „Prezentacje — podgląd”, przygotowanie — „Prezentacje — przygotowanie”. */
 export const PRESENTATIONS_PERMISSIONS = ['presentations_view', 'presentations_manage', 'offers_view', 'offers_create', 'offers_manage'];
+/** Rental → Wypożyczenia klientom — jak w CRM: sprzedaż (oferty) albo magazyn; co kto widzi i robi — baza (`rental_access`). */
+export const RENTAL_PERMISSIONS = ['offers_view', 'offers_create', 'offers_manage', 'equipment_view', 'equipment_manage'];
+/**
+ * Zakupy → „Moje wydatki” i rozliczenia pracowników — jak pozycja „Zakupy” w menu CRM: „Zakupy — własne wydatki”
+ * (`finances_purchases`) albo „Finanse — zarządzanie” w którejś działalności (zatwierdzanie). Zakres sprawdzają funkcje bazy.
+ */
+export const canOpenPurchases = (employee: PermissionEmployee): boolean =>
+  hasPermission(employee, 'finances_purchases')
+  || Object.values(employee?.finance_company_access || {}).some((level) => level === 'finance_manage');
 /** Materiały (baza plików firmy) — jak w CRM: „Materiały — podgląd” albo „Materiały — zarządzanie”; zakres marek sprawdza serwer. */
 export const MATERIALS_PERMISSIONS = ['materials_view', 'materials_manage'];
 /**
@@ -128,6 +139,8 @@ export const MENU_ITEMS: MenuItem[] = [
   { icon: 'users', label: 'Pracownicy', screen: 'Employees', module: 'employees' },
   { icon: 'truck', label: 'Flota', screen: 'Fleet', module: 'fleet' },
   { icon: 'package', label: 'Sprzęt', screen: 'Equipment', module: 'equipment' },
+  { icon: 'repeat', label: 'Rental', screen: 'Rental', anyPermissions: RENTAL_PERMISSIONS },
+  { icon: 'shopping-cart', label: 'Zakupy', screen: 'Purchases', visibleFor: (employee) => canOpenPurchases(employee) },
   { icon: 'image', label: 'Social media', screen: 'SocialMedia', anyPermissions: SOCIAL_MEDIA_PERMISSIONS },
   { icon: 'award', label: 'Realizacje', screen: 'Portfolio', anyPermissions: PORTFOLIO_PERMISSIONS },
   { icon: 'user', label: 'Profil', screen: 'Profile' },
@@ -136,6 +149,7 @@ export const MENU_ITEMS: MenuItem[] = [
 
 export const getVisibleMenuItems = (employee: PermissionEmployee): MenuItem[] => {
   return MENU_ITEMS.filter((item) => {
+    if (item.visibleFor) return item.visibleFor(employee);
     if (item.anyPermissions) return item.anyPermissions.some((scope) => hasPermission(employee, scope));
     if (!item.module) return true;
     return canView(employee, item.module);

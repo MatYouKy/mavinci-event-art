@@ -14,14 +14,18 @@ protocol WorkspaceBackend: Actor {
 
 actor HTTPBackend: WorkspaceBackend {
     let connection: Connection
+    /// Sesja tylko w pamięci (tryb testowy „widok jako”, `TestMode/TestMode.swift`): bez zapisu w pęku kluczy i bez przekazania
+    /// rozszerzeniu Findera — sesja administratora zostaje tam, gdzie była.
+    let ephemeral: Bool
     private var session: Session?
     private var invalidated = false
     private var refreshJob: Task<Session, Error>?
     /// Motyw CRM z ostatniego odczytu profilu (`employees.crm_theme`) — osobno od `Employee`, żeby zmiana motywu nie unieważniała kopii danych.
     private(set) var crmTheme: String?
     private let http: URLSession
-    init(_ connection: Connection) {
+    init(_ connection: Connection, ephemeral: Bool = false) {
         self.connection = connection
+        self.ephemeral = ephemeral
         let c = URLSessionConfiguration.ephemeral
         c.timeoutIntervalForRequest = 25
         c.timeoutIntervalForResource = 60
@@ -33,6 +37,7 @@ actor HTTPBackend: WorkspaceBackend {
     func restore(_ session: Session) { self.session = session }
     private func persist(_ s: Session) throws {
         guard !invalidated else { throw AppError.unauthorized }
+        if ephemeral { session = s; return }
         let data = try JSONEncoder().encode(s)
         try Vault.write(sessionKey, data); session = s
         // Ta sama sesja dla rozszerzenia Findera (kontener grupy aplikacji) — `FinderShared`.
@@ -40,7 +45,7 @@ actor HTTPBackend: WorkspaceBackend {
     }
     /// Sesja odświeżona w międzyczasie przez rozszerzenie Findera (np. przy zamkniętej aplikacji) — nowsza od naszej.
     private func sharedSession(newerThan s: Session) -> Session? {
-        guard FinderShared.bundledWithExtension, let data = FinderShared.sessionData(),
+        guard !ephemeral, FinderShared.bundledWithExtension, let data = FinderShared.sessionData(),
               let shared = try? JSONDecoder().decode(Session.self, from: data),
               shared.user.id == s.user.id, shared.refresh_token != s.refresh_token, shared.expiresAt > s.expiresAt else { return nil }
         return shared
@@ -66,7 +71,7 @@ actor HTTPBackend: WorkspaceBackend {
         let job = Task<Session, Error> {
             // Odświeżenie unieważnia poprzedni token odświeżania, więc aplikacja i rozszerzenie Findera robią to po kolei
             // (blokada pliku w kontenerze grupy), a po uzyskaniu blokady sprawdzamy, czy drugi proces już nie odświeżył.
-            let lock = FinderShared.bundledWithExtension ? FinderShared.RefreshLock() : nil
+            let lock = FinderShared.bundledWithExtension && !self.ephemeral ? FinderShared.RefreshLock() : nil
             await lock?.acquire()
             defer { lock?.release() }
             if lock != nil, let shared = self.sharedSession(newerThan: current), shared.expiresAt > Date().timeIntervalSince1970 + 90 {
@@ -84,6 +89,8 @@ actor HTTPBackend: WorkspaceBackend {
         try persist(renewed)
         return renewed.access_token
     }
+    /// Bieżący klucz bez odświeżania (tryb testowy: wyjście z trybu wskazuje sesję testową kluczem zastępczym).
+    func currentAccessToken() -> String? { session?.access_token }
     func request(_ path: String, method: String? = nil, query: [URLQueryItem] = [], body: [String: JSONValue]? = nil, auth: Bool = true, range: Int? = nil, rawBody: Data? = nil, contentType: String? = nil) async throws -> Data {
         guard connection.valid, var u = URLComponents(string: connection.url.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path) else { throw AppError.configuration }
         u.queryItems = query.isEmpty ? nil : query
@@ -112,6 +119,8 @@ actor HTTPBackend: WorkspaceBackend {
             if response.statusCode == 401 { throw AppError.unauthorized }
             if response.statusCode == 403 { throw AppError.forbidden }
             if response.statusCode == 409 { throw AppError.conflict }
+            // Tryb testowy „widok jako”: operacja wyłączona (pliki, funkcje serwera, zmiany konta) — nic nie zostało zmienione.
+            if response.statusCode == 423 { throw AppError.testMode }
             #if DEBUG
             let code = failure?["code"] as? String ?? "nieznany"
             print("[Mavinci] HTTP \(response.statusCode) • \(req.httpMethod ?? "GET") \(path) • kod: \(code)")
@@ -214,6 +223,8 @@ actor HTTPBackend: WorkspaceBackend {
         let old = session
         invalidated = true; session = nil
         refreshJob?.cancel(); refreshJob = nil
+        // Sesja zastępcza trybu testowego nie jest nigdzie zapisana; kończy ją `/bridge/test-mode/exit` (`Workspace.exitTestMode`).
+        if ephemeral { return }
         try? Vault.delete(sessionKey)
         // Revoke with the captured token; never refresh or persist credentials during sign-out.
         guard let old, let url = URL(string: connection.url.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + (native ? "/api/native/v1/logout" : "/auth/v1/logout?scope=local")) else { return }

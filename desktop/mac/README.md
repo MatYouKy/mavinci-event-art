@@ -502,6 +502,147 @@ osobą kontaktową; bez aktualnego PDF tylko „Otwórz ofertę”; dalej `Offer
 organizacji albo klient indywidualny), „Broszury klienta…” i „Historia wysyłek broszur…”. Wcześniej osobny przycisk
 „Dodaj zapytanie”. Oferty: `offersToSend` (`src/lib/native/contactCustomer360.ts`, `/bridge/native/v1/contacts`).
 
+## Kalendarz: miesiąc bez przewijania
+
+Siatka miesiąca wypełnia wysokość okna (5 albo 6 tygodni) — wysokość dnia liczona z wolnego miejsca, nie mniej niż 96 pkt;
+przewijanie pojawia się dopiero w bardzo niskim oknie. W wyższym dniu mieści się więcej wpisów (reszta pod „+N”). Miniatury
+kolejnych miesięcy są teraz pod listą wybranego dnia (dwie w wysokim oknie, jedna w typowym) — wcześniej pod siatką wydłużały
+stronę i wymuszały przewijanie (`NativeCalendarView`).
+
+## Rental w menu (wynajem od podwykonawców)
+
+Menu CRM ma nową grupę **Rental**: „Wypożyczenia klientom” (`/crm/rental`, `docs/rental.md`) i „Wynajem od podwykonawców”
+(`/crm/rental/subcontractors` — dawniej Magazyn → Rental). Na Macu „Wynajem od podwykonawców” otwiera dotychczasowy ekran
+natywny (`RentalView`, także stary adres `/crm/equipment/rental`; tytuł „Wynajem od podwykonawców”, podtytuł „Rental”, przycisk
+wstecz — do „Wypożyczeń klientom”), a karta podwykonawcy otwiera wynajem pod nowym adresem. „Wypożyczenia klientom” — ekran
+natywny (sekcja niżej).
+
+## Rental → Wypożyczenia klientom (ekran natywny)
+
+`ClientRentals/` — 1:1 z `/crm/rental` i kartą `/crm/rental/[id]` (`docs/rental.md`), dane i zapisy przez
+`/bridge/native/v1/rental` (`src/lib/native/rental.ts` — te same funkcje bazy `rental_*` co CRM, uprawnienia z `rental_access`).
+- **Lista** (`ClientRentalsView`): zakładki W toku / Szkice / Do rozliczenia / Archiwum / Wszystkie (z licznikami), wyszukiwanie
+  (numer, nazwa, klient), „Tylko moje” (sprzedaż), „Nowe wypożyczenie” (⌘N), wiersze z terminem, statusem, „Po terminie”,
+  rozbieżnościami, sprzętem u klienta i kwotą brutto (tylko sprzedaż). Odświeżanie co minutę i przyciskiem.
+- **Karta** (`ClientRentalDetailView`): pozycje (ceny tylko dla sprzedaży), rozbieżności po zwrocie, protokoły wydania i odbioru
+  (linie, zdjęcia, skan podpisanego protokołu, „PDF do podpisu” — druk przez `/bridge/rental/[id]/protocols/[protocolId]`, na Macu
+  w Chrome albo z serwera, otwierany w Podglądzie), rozliczenie, klient i termin, dostawa i odbiór, uwagi magazynu, pliki, historia.
+  Pasek: „Protokół wydania” / „Dowydanie”, „Protokół odbioru” (magazyn), menu „Sprzedaż” (Zarezerwuj, Cofnij rezerwację, Rozlicz,
+  Edytuj dane, Anuluj — z rezerwacji z powodem), „Cofnij rozliczenie” (administrator), „Otwórz w CRM”.
+- **Okna** (`ClientRentalSheets.swift`): dane wypożyczenia (klient z bazy albo spoza niej, termin, odbierający, odbiór własny
+  lub dostawa z adresem, firma, opiekun, kaucja, rabat, VAT, uwagi), pozycje — zakładki „Katalog magazynu” (cały sprzęt i zestawy
+  z miniaturami, kategorie, wyszukiwanie, „Dostępne X z Y” w oknie zajęcia: od wyjazdu sprzętu — wydanie lub dostawa — do powrotu
+  — zwrot lub odbiór; −/+ albo wpisana ilość wielu pozycji naraz, nie więcej niż wolne; `op=stock` → `rental_catalog`) i „Wybrane
+  pozycje” (usługi, cena za dobę albo ryczałt, doby, rabat, wartość odtworzeniowa, dostępność z konfliktami — zarezerwowane
+  z brakiem nie zapisze się); po utworzeniu wypożyczenia karta otwiera od razu katalog,
+  protokół wydania / odbioru (sprawne, uszkodzone, brak, opis, zdjęcia), rozstrzygnięcie rozbieżności (wraca na stan, serwis,
+  spisanie — z wyborem egzemplarzy), dostawa i odbiór (pojazd z Floty, kierowca, godziny, zajętość pojazdu), powód anulowania.
+- **Rozliczenie** (`ClientRentalSettlementSection`): netto / rabat / naliczenia / VAT / brutto, naliczenia („Z rozbieżności” —
+  sztuki × wartość odtworzeniowa), kaucja (wpłata, zwrot, rozliczenie), faktury (dołącz po numerze, odłącz, karta w Finansach;
+  „Wystaw fakturę” otwiera okno faktury, a wystawiona dołącza się do wypożyczenia jako wybrany rodzaj).
+- Powiadomienia `/crm/rental/<id>` otwierają kartę; `/crm/rental` — listę (bez dostępu do ekranu — CRM w przeglądarce).
+
+## Zadania: panel zadania — osoby, pliki, edycja
+
+Panel szczegółów zadania (tablice „Zadania firmowe”, „Moje zadania” i zadania wydarzenia, `TaskInspector` w `Tasks/TasksBoardView.swift`)
+działa jak karta zadania w CRM (`TaskDetailClient`):
+- **Osoby**: lista przypisanych, „Przypisz się” / „Wypisz się”, „Dodaj osobę” (wyszukiwanie wśród pracowników, zapis od razu —
+  powiadomienie dostaje tylko dodana osoba), usunięcie osoby — siebie zawsze, inne osoby: autor zadania, administrator,
+  „Zadania — zarządzanie” (na tablicy wydarzenia — zarządzający zadaniami). Zadania prywatne mają tylko właściciela.
+- **Pliki**: „Dodaj plik…” (kilka naraz, do 50 MB), usunięcie pliku (autor pliku i zarządzający), plik wydarzenia — „Odlinkuj”.
+- **Komentarze**: usuwa autor komentarza, autor zadania i zarządzający.
+- **Edycja**: zarządzający tablicą albo właściciel zadania (resztę sprawdza baza).
+Serwer: `/bridge/native/v1/tasks` — `assign`, `unassign`, `deleteAttachment`; wypisanie innej osoby po sprawdzeniu uprawnień
+(RLS pozwala usunąć tylko własne przypisanie). Telefon: „Przypisz się” / „Wypisz się” na karcie zadania.
+
+## Komunikator: przycisk w rogu — zminimalizuj, ukryj
+
+Okrągły przycisk komunikatora w prawym dolnym rogu okna (`Chat/ChatViews.swift`, jak `ChatWidget` w CRM) ma po najechaniu
+„–” (mała ikona w rogu; kliknięcie ją przywraca, kropka — nieprzeczytane) i „×” (przycisk ukryty — komunikator otwiera ikona
+obok dzwonka na pasku narzędzi albo ⌥⌘K). Pinezka w nagłówku panelu przywraca przycisk w rogu. Wybór jest wspólny dla okien
+i zapamiętany (`chat.launcher`). W CRM tak samo, a ikona komunikatora z licznikiem stoi obok dzwonka (`ChatHeaderButton`).
+
+## Faktura KSeF: kopiowanie kwoty VAT
+
+Podgląd faktury z XML KSeF (`FinanceReconciliationSheets.swift`) ma wiersz „Kwota VAT” z ikoną kopiowania — do przelewu
+podzielonego (split payment: kwota brutto i kwota VAT). W CRM ikona kopiowania przy VAT w wierszu „RAZEM” (`InvoiceDetailsModal`).
+
+## KSeF: korekta „in minus” — rozliczenie zwrotu z fakturą korygowaną
+
+Faktura korygująca z ujemną kwotą (zwrot, np. FK do FV kosztowej) nie jest już „Nieopłacona”: na liście KSeF ma stan
+„Korekta do rozliczenia” / „Częściowo rozliczona” / „Korekta rozliczona” (`FinKsefText.payment`), a w menu i pod listą —
+„Rozlicz korektę / zwrot…” (`Finance/FinanceKsefCorrectionSheet.swift`, jak okno CRM `KsefCorrectionSettlementModal`):
+- **Faktura korygowana** z XML korekty (`NrKSeFFaKorygowanej`, a bez niego numer faktury i NIP kontrahenta) — stan, kwota,
+  operacje z wyciągu, które ją opłaciły, i operacje do powiązania (kierunek płatności, ±60/180 dni od wystawienia, pozostała
+  kwota; najpierw zgodna kwota, numer faktury lub NIP w opisie, kontrahent, bliska data; wyszukiwanie i „Pokaż wszystkie
+  z okresu”). Faktura oznaczona jako opłacona bez operacji (np. kartą przy zakupie — „Zapłacono” w XML) też dostaje operację:
+  oznaczenie zamienia się na powiązanie z wyciągiem.
+- **Zwrot** — operacja przeciwnego kierunku (dla faktury kosztowej: wpływ) powiązana z korektą. Płatność i zwrot rozliczają
+  obie faktury i obie operacje (bez pary „płatność + zwrot”, która dotyczy zwrotów bez faktury).
+- **Kompensata** — gdy faktura korygowana nie była jeszcze opłacona: korekta pomniejsza kwotę do zapłaty, wpłata „Kompensata …”
+  w rejestrze obu faktur (kwota i data do zmiany), „Cofnij kompensatę” usuwa obie.
+- „Odepnij” cofa powiązanie (automat nie przypisze ponownie), strzałka przy operacji otwiera ją w uzgodnieniu wyciągu.
+Serwer: `GET /bridge/native/v1/finance?op=ksefCorrection&id=…`, `POST op=ksefCorrectionLink|ksefCorrectionUnlink|
+ksefCorrectionOffset|ksefCorrectionOffsetUndo` (`src/lib/native/financeKsef.ts`), logika wspólna z CRM:
+`src/lib/invoices/ksefCorrectionSettlement.ts` (dopasowania — `match_bank_transaction_to_documents`, `undo_bank_match`).
+
+## Zakupy — „Moje wydatki” i rozliczenia pracowników (ekran natywny)
+
+`Purchases/` — 1:1 z `/crm/purchases` (`docs/purchases.md`), dane i zapisy przez `/bridge/native/v1/purchases`
+(`src/lib/purchases/purchaseRoute.server.ts` — te same funkcje bazy `purchase_*` co CRM). Menu „Zakupy” (ikona koszyka) widzi
+pracownik z uprawnieniem „Zakupy — własne wydatki” (`finances_purchases`) i osoba z „Finanse — zarządzanie” w działalności.
+- **Moje wydatki** (`PurchasesView`): miesiąc (strzałki, menu miesięcy i lat, „Bieżący miesiąc”; dalej niż bieżący miesiąc się
+  nie da — zakup nie ma daty z przyszłości), „Razem”, „Nierozliczone miesiące” (inne miesiące z dokumentami, niewysłane albo do
+  poprawy — kliknięcie przechodzi do miesiąca), dla każdej działalności: stan rozliczenia (Otwarte / Wysłane do zatwierdzenia /
+  Zatwierdzone / Do poprawy), liczba dokumentów i suma, uwagi, „Wyślij rozliczenie” / „Wyślij ponownie” (każdy dokument z plikiem)
+  i dokumenty: data, rodzaj i numer, co kupiono, kategoria, sprzedawca z NIP, event (kwota, kategoria, stan kosztu), zapłata
+  (karta firmowa, gotówka, BLIK, przelew) i „Powiązany z wyciągiem” / „Czeka na wyciąg”, brutto; plik, „Popraw”, „Usuń” (także
+  w menu prawym przyciskiem; po wysłaniu miesiąca i dla dokumentów powiązanych z wyciągiem — bez zmian).
+- **Dodaj zakup / Popraw zakup** (`PurchaseFormSheet`, ⌘N): plik — zdjęcie paragonu, kilka zdjęć stron (do 10, serwer składa
+  PDF) albo PDF, z okna wyboru albo przeciągnięty z Findera; zdjęcia HEIC / TIFF / WebP (np. z iPhone'a) idą jako JPEG, za duże
+  zdjęcie jest pomniejszane. Serwer zapisuje plik i odczytuje go AI — pola uzupełniają się same (przy poprawce: „Wstaw odczytane
+  dane”), ostrzeżenia (np. brak NIP-u firmy na paragonie) są w oknie. Pola jak w CRM, kategoria kosztów firmy; **Koszt eventu**:
+  wyszukiwanie eventów działalności, które pracownik widzi (najbliższe dziś), kwota dla eventu (puste — cały dokument), kategoria
+  kosztu (podpowiedź z kategorii kosztów) i wszystkie koszty tego eventu z sumą (własne — w kolorze akcentu). Plik wysłany bez
+  zapisu zakupu znika z serwera po zamknięciu okna.
+- **Rozliczenia pracowników** (zatwierdzający; zakładka z liczbą wysłanych): tabela pracownik / miesiąc / działalność / stan /
+  dokumenty / suma przy wysłaniu; dwuklik (albo menu) otwiera okno rozliczenia pracownika z dokumentami i plikami, „Zatwierdź”,
+  „Zwróć do poprawy” (uwaga wymagana) i „Cofnij zatwierdzenie”. Ktoś bez własnych zakupów widzi tylko tę zakładkę.
+- **Powiadomienia**: `/crm/purchases?employee=…&year=…&month=…` otwiera rozliczenie pracownika, `?year=…&month=…` — własny miesiąc
+  (`Workspace.showPurchases`); bez ekranu Zakupów w menu — strona CRM.
+
+## Spotkania: „Pracownicy”, zajętość uczestników i e-maile do osób spoza firmy
+
+Jak w CRM (`docs/team-availability.md`), dane z `/bridge/native/v1/meetings` (`people`, `availability`, `notify`):
+- **Spotkania → „Pracownicy”** (`Meetings/TeamAvailabilityView.swift`): wybrany dzień, kolumna dla każdej wybranej osoby
+  z zakresu planu — spotkania, eventy, fazy i nieobecności; spotkania prywatne innych osób i osoby spoza zakresu — „Zajęty”.
+  „Osoby (n)”: wybór pogrupowany działami, „Cały dział”, „Tylko ja” (najwyżej 20 osób, zapamiętane na Macu; na początek —
+  ja i mój dział). Kliknięcie spotkania otwiera szczegóły, eventu — kartę eventu; zaznaczenie wolnego czasu w kolumnie osoby
+  zakłada spotkanie z nią; chwyt kolumny godzin przewija dzień.
+- **Formularz spotkania** (`MeetingEditorSheet`): pod uczestnikami — kto z firmy (także Ty) ma już coś w planie w tym terminie
+  (`MeetingConflictsRow`, nie blokuje zapisu) i przełącznik „Wyślij zaproszenie e-mailem osobom spoza firmy” / „Powiadom
+  e-mailem osoby spoza firmy o zmianach” (domyślnie włączony, gdy są kontakty) — zaproszenie, zmiana albo „zaproszenie
+  nieaktualne” z plikiem .ics, z Twojej skrzynki.
+- **Przeciągnięcie terminu, zmiana statusu (odwołanie, przywrócenie, potwierdzenie) i usunięcie** spotkania z kontaktami —
+  pytanie „E-mail do osób spoza firmy” (`MeetingsStore.mailOffer`).
+- **Zespół → pracownik → „Dział i przełożony”**: dział (Zarząd, Sprzedaż, Biuro, Magazyn) i przełożony; zmienia administrator
+  albo „Zarządzanie pracownikami” (`EmployeeStructureSheet`, `op=structure`).
+
+## Osie czasu: „chwyć i przesuń”
+
+Na osiach czasu czas przesuwa się chwytem myszy: nad wolnym miejscem osi kursor otwartej dłoni, przeciągnięcie przesuwa czas
+(dłoń zaciśnięta). Pozycje osi zachowują swoje działanie — kliknięcie otwiera, przeciąganie faz, spotkań i przypisań działa jak
+dotąd. Wspólny kod: `GrabPan.swift` (`grabScroll` przewija najbliższy `NSScrollView`, `grabCursor` — kursor dłoni).
+- **Spotkania → Timeline** (dzień / tydzień): chwyt za kolumnę godzin przewija godziny w górę i w dół (przeciągnięcie w wolnym
+  miejscu dnia nadal zaznacza czas nowego spotkania, jak w CRM).
+- **Pracownicy → Timeline** (oś zespołu): przeciągnięcie w bok w dowolnym miejscu przesuwa zakres czasu płynnie, także poza
+  dzień / tydzień / miesiąc (np. 18:00–18:00) — tytuł pokazuje widoczny zakres, oś staje na pełnych 15 minutach (dzień),
+  godzinach (tydzień) albo 6 godzinach (miesiąc), plan dociąga się z zapasem pół okresu z każdej strony. „Dziś” i zmiana
+  powiększenia wracają do pełnego okresu. Koniec przeciągania nie otwiera pozycji, nad którą puszczono przycisk.
+- **Plan pracownika** (siatka godzin): chwyt tła przewija godziny.
+- **Flota → Oś czasu**: chwyt tła przesuwa dni w bok.
+- **Wydarzenie → Harmonogram**: chwyt tła przesuwa oś w bok i w pionie (fazy i przypisania — własne przeciąganie i krawędzie).
+
 ## Dysk → Materiały: link do pobrania („Udostępnij link”)
 
 Folder (z podfolderami — „na żywo”, pliki dodane później też są do pobrania), album albo zaznaczone pliki można udostępnić
@@ -550,6 +691,26 @@ sprawdzenia — cennik oferty inny niż cennik sezonu jej terminu (event przenie
 terminu ma już cennik. Kliknięcie otwiera ofertę na ekranie Ofert, gdzie „Przelicz według cennika…” pokazuje różnice przed zmianą —
 ceny nie zmieniają się same. Lista odświeża się z listą cenników (nowy, skopiowany, aktywowany cennik). Starszy serwer albo baza
 bez migracji — sekcji nie ma.
+
+## Tryb testowy „widok jako” (Ustawienia → „Tryb testowy”)
+
+Administrator sprawdza, co widzi wybrany pracownik i jakie ma funkcje (`docs/test-mode.md`). Ustawienia (⌘,) → zakładka
+**„Tryb testowy”** (tylko administrator): pracownicy wg działów (Zarząd, Sprzedaż, Biuro, Magazyn) z wyszukiwarką, poziomem
+dostępu i liczbą uprawnień, „Wejdź jako”, dziennik wejść; sprzedawców zewnętrznych (portal) — „Otwórz w przeglądarce”.
+- Wejście (`Workspace.enterTestMode`, `TestMode/TestMode.swift`): `POST /bridge/test-mode/start` kluczem administratora →
+  sesja zastępcza; aplikacja łączy się z bazą przez serwer CRM (`/bridge/test-mode/sb`) jako ta osoba — dane, menu, sekcje
+  i przyciski jak u niej. Profil osoby jest sprawdzany przed przełączeniem (przy błędzie widok administratora zostaje).
+- Zapis do bazy jest sprawdzany i wycofywany („Tryb testowy: zapis sprawdzony i wycofany”); pliki, funkcje serwera (e-mail),
+  zmiany konta i operacje zapisujące natywnego API — „Tryb testowy: ta operacja jest wyłączona” (423, `AppError.testMode`).
+  Odczyty natywnego API wysyłane metodą POST (synchronizacja, `op=items` itd.) działają. Komunikator bez połączenia na żywo
+  i bez powiadomień push; Kalendarz Apple — kopiowanie wyłączone.
+- Na górze każdego okna, na środku: pasek „Tryb testowy · widok: … · zmiany nie są zapisywane” z **„Wyjdź z trybu”**
+  (`TestModeBanner`); „Wyloguj” w trybie testowym też kończy tryb.
+- Sesja administratora zostaje w pęku kluczy (sesja testowa tylko w pamięci — `HTTPBackend(ephemeral:)`), jego kopie danych
+  na dysku i Finder bez zmian. Wyjście (`Workspace.exitTestMode`): sesja zakończona na serwerze (`/bridge/test-mode/exit`),
+  kopie danych oglądanej osoby usunięte z dysku i z pęku kluczy (`TestModeStorage.purge`), powrót administratora.
+- Jedna sesja testowa administratora naraz — wejście na Macu kończy tryb testowy w przeglądarce i odwrotnie. Strony CRM bez
+  ekranu natywnego otwierają się w przeglądarce w widoku administratora (tam — tryb testowy przeglądarki).
 
 ## Weryfikacja pierwszej wersji
 
@@ -1357,7 +1518,7 @@ Od 0.18 na Macu natywnie działają także umowa wydarzenia, nowe wydarzenie i j
 
 **Zapytania** — karta zapytania jak `/crm/inquiries/[id]`: treść bez stopek i cytatów, ustalenia, klient, prowadzenie sprzedaży, korespondencja (dołączanie wiadomości i wątków), e-mail ze skrzynki firmy, AI, zespół, utworzenie wydarzenia.
 
-**Wydarzenia** — „Nowy event” (kreator: szczegóły z walidacją jak w CRM, nowa osoba kontaktowa i lokalizacja, nietypowe dni, oferta w kreatorze oferty Maca z budżetem z oferty, przejście do sprzętu) i „Edytuj event” (nazwa, kategoria, firma, termin, lokalizacja z salami, budżet, status). Zakładka „Oferta”: wysyłka i rezerwacja sprzętu; „Kalkulacje”: wysyłka e-mailem z PDF i plikami wydarzenia.
+**Wydarzenia** — „Nowy event” (kreator: szczegóły z walidacją jak w CRM, nowa osoba kontaktowa i lokalizacja, nietypowe dni, oferta w kreatorze oferty Maca z budżetem z oferty, przejście do sprzętu) i „Edytuj” — zmiana nazwy eventu (jak w CRM: zapisuje tylko nazwę, termin, lokalizację, klienta, firmę, kategorię i status zmienia się przy polach w Szczegółach). Zakładka „Oferta”: wysyłka i rezerwacja sprzętu; „Kalkulacje”: wysyłka e-mailem z PDF i plikami wydarzenia.
 
 **Umowa wydarzenia** — umowę składa ten sam kod co CRM (silnik dokumentów w Chrome na Macu): podgląd stron i PDF na Macu, pola i warunki (także z formatowaniem), depozyt, uwagi przed wystawieniem i wystawienie, klauzule tej umowy (wyłączanie, zmiana treści, „Przywróć oryginał”, ustalenia dla wydarzenia, rozbieżne wersje), zmiana szablonu, wysyłka e-mailem, edycja treści (edytor w WebKit: formatowanie, listy, wcięcia, nowy paragraf, wklejanie jako tekst), audyt AI umowy i klauzul z przeglądem zmian, anulowanie hasłem administratora (hasło tylko do weryfikacji na serwerze, nie jest zapisywane). **Szablony umów** — przekształcanie starszego formatu i scalanie szablonów.
 

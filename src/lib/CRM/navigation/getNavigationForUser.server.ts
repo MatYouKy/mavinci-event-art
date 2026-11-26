@@ -75,6 +75,9 @@ export async function navigationForUser(supabase: SupabaseClient, userId: string
     if (item.financeCompanyAccess) {
       return isAdmin || hasAnyFinanceCompanyLevel(employee.finance_company_access, 'sales') ? item : null;
     }
+    if (item.purchasesAccess) {
+      return isAdmin || perms.includes('finances_purchases') || hasAnyFinanceCompanyLevel(employee.finance_company_access, 'finance_manage') ? item : null;
+    }
     return isAdmin || (hasAll(perms, item.permissions) && hasAny(perms, item.anyPermissions)) || (hasRealizations && ['/crm/events','/crm/calendar'].includes(item.href || '')) ? item : null;
   };
   let allowed = allNavigation.map(filterItem).filter((item): item is NavigationItemDTO => item !== null);

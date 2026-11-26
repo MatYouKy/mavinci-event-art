@@ -50,7 +50,7 @@ import AppKit
     @AppStorage("eventCard.inspectorPage") private var inspectorPage = "overview"
     /// Szuflada „Wydruki” pod przyciskiem drukarki.
     @State private var printsShown = false
-    /// „Edytuj event” (`EditEventModalNew`).
+    /// „Edytuj” — zmiana nazwy eventu (`EventEditSheet`, jak `EventRenameModal` w CRM).
     @State private var editingEvent = false
     /// Pasek zakładek: ramki zakładek względem widocznej części paska, jego szerokość i szerokość całej karty.
     @State private var tabFrames: [String: CGRect] = [:]
@@ -374,7 +374,7 @@ import AppKit
                 if let flags {
                     if flags.canEventManage {
                         Button("Edytuj", systemImage: "square.and.pencil") { editingEvent = true }
-                            .help("Nazwa, klient, kategoria, firma realizująca, termin, lokalizacja, budżet i status")
+                            .help("Zmień nazwę eventu (pozostałe pola — „Edytuj” przy polach w Szczegółach)")
                         Button("Duplikuj", systemImage: "plus.square.on.square") { duplicating = true }
                     }
                     if flags.showDetailsAction && flags.canEventManage && flags.tabs.contains(where: { $0.id == "details" }) {

@@ -1,6 +1,7 @@
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { testModeFetch } from './testMode';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -14,6 +15,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     detectSessionInUrl: false,
   },
+  // Tryb testowy „widok jako” (`src/lib/testMode.ts`): zapytania przez serwer CRM w imieniu oglądanej osoby.
+  global: { fetch: testModeFetch },
 });
 
 // Types shared with web application
@@ -34,6 +37,8 @@ export interface Employee {
   show_on_website?: boolean;
   /** Motyw CRM (Burgund, Granat, Ciemny, Jasny) — ten sam w przeglądarce, na Macu i w telefonie. */
   crm_theme?: string | null;
+  /** Dostęp do finansów według działalności (`{ <działalność>: poziom }`, np. „finance_manage”) — jak w CRM. */
+  finance_company_access?: Record<string, string> | null;
   created_at?: string;
   updated_at?: string;
 }

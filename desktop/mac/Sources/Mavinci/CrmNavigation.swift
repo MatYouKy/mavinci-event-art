@@ -48,6 +48,7 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "time": return "clock"
         case "databases": return "cylinder.split.1x2"
         case "tenders": return "briefcase"
+        case "shoppingCart": return "cart"
         default: return "circle"
         }
     }
@@ -75,7 +76,13 @@ struct NavItem: Codable, Identifiable, Hashable {
         case "/crm/equipment": return .warehouse
         case "/crm/equipment/kits": return .kits
         case "/crm/equipment/cables": return .cables
-        case "/crm/equipment/rental": return .rental
+        // Rental → Wypożyczenia klientom: lista, karta, protokoły wydania i odbioru, rozliczenie (`ClientRentals/`).
+        case "/crm/rental": return .clientRentals
+        // Rental → Wynajem od podwykonawców (dawniej Magazyn → Rental, stary adres przekierowuje).
+        case "/crm/rental/subcontractors", "/crm/equipment/rental": return .rental
+        // Zakupy: „Moje wydatki” (paragony z NIP, faktury spoza KSeF, koszty eventów, rozliczenie miesiąca) i rozliczenia
+        // pracowników do zatwierdzenia (`Purchases/`).
+        case "/crm/purchases": return .purchases
         case "/crm/equipment/connectors": return .connectors
         case "/crm/equipment/categories": return .warehouseCategories
         case "/crm/contracts": return .contracts
@@ -123,6 +130,10 @@ enum CrmScreen: String {
     /// Cenniki sezonowe ofert (`/crm/offers?tab=pricelists`).
     case priceLists
     case presentations, materials
+    /// Rental → Wypożyczenia klientom (`/crm/rental`, `ClientRentalsStore`); `rental` — wynajem od podwykonawców.
+    case clientRentals
+    /// Zakupy (`/crm/purchases`, `PurchasesStore`) — własne wydatki pracownika i rozliczenia do zatwierdzenia.
+    case purchases
     /// Ekrany Magazynu (wspólna kopia danych `WarehouseStore`).
     var isWarehouse: Bool { [.warehouse, .kits, .cables, .rental, .connectors, .warehouseCategories].contains(self) }
 }

@@ -375,3 +375,79 @@ struct RevealablePasswordField: View {
         }
     }
 }
+
+/// Dział i przełożony pracownika (jak karta „Dział i przełożony” w CRM): przełożonym nie może być ta osoba ani nikt z jej
+/// podwładnych (pętla w piramidzie — pilnuje też baza).
+@MainActor struct EmployeeStructureSheet: View {
+    @ObservedObject var store: TeamStore
+    let member: TeamMember
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.crmTheme) private var theme
+    @State private var department: EmployeeDepartment = .office
+    @State private var supervisorId = ""
+    @State private var problem: String?
+    @State private var saving = false
+    @State private var prepared = false
+
+    /// Ta osoba i cała jej gałąź podwładnych — nie mogą być przełożonym.
+    private var blocked: Set<String> {
+        var result: Set<String> = [member.id]
+        var added = true
+        while added {
+            added = false
+            for row in store.members where !result.contains(row.id) {
+                if let boss = row.supervisorId, result.contains(boss) { result.insert(row.id); added = true }
+            }
+        }
+        return result
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack { Text("Dział i przełożony").font(.title2.bold()); Spacer() }.padding([.horizontal, .top], 20).padding(.bottom, 6)
+            Form {
+                Section {
+                    Picker("Dział", selection: $department) { ForEach(EmployeeDepartment.allCases) { Text($0.label).tag($0) } }
+                        .pickerStyle(.segmented)
+                    Text(department.hint).font(.caption).foregroundStyle(.secondary)
+                }
+                Section {
+                    Picker("Przełożony", selection: $supervisorId) {
+                        Text("Brak przełożonego").tag("")
+                        ForEach(store.members.filter { !blocked.contains($0.id) }) { row in
+                            Text("\(row.listName) · \(EmployeeDepartment(raw: row.department).label)").tag(row.id)
+                        }
+                    }
+                    Text("Przełożony widzi plan (z tytułami spotkań) swoich podwładnych.").font(.caption).foregroundStyle(.secondary)
+                }
+                if let problem { Section { Text(problem).foregroundStyle(.red).textSelection(.enabled) } }
+            }
+            .formStyle(.grouped)
+            HStack {
+                Spacer()
+                Button("Anuluj") { dismiss() }.keyboardShortcut(.cancelAction).disabled(saving)
+                Button(saving ? "Zapisywanie…" : "Zapisz") { Task { await save() } }
+                    .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent).disabled(saving)
+            }.padding(16)
+        }
+        .frame(width: 520, height: 400)
+        .background(theme.page)
+        .onAppear {
+            guard !prepared else { return }
+            prepared = true
+            department = EmployeeDepartment(raw: member.department)
+            supervisorId = member.supervisorId ?? ""
+        }
+    }
+
+    private func save() async {
+        saving = true
+        defer { saving = false }
+        do {
+            try await store.setStructure(member, department: department, supervisorId: supervisorId.isEmpty ? nil : supervisorId)
+            dismiss()
+        } catch {
+            problem = store.failureText(error, "Nie udało się zapisać działu.")
+        }
+    }
+}

@@ -40,6 +40,9 @@ const PAIRS = [
   ['src/lib/CRM/tasks/taskDue.ts', 'mobile/src/lib/taskDue.ts'],
   ['src/lib/CRM/messages/recipientSuggestions.ts', 'mobile/src/lib/recipientSuggestions.ts'],
   ['src/lib/tenders/tenderFilterConfig.ts', 'mobile/src/lib/tenderFilterConfig.ts'],
+  ['src/lib/CRM/rental/rental.ts', 'mobile/src/lib/rental.ts'],
+  ['src/lib/purchases/purchaseShared.ts', 'mobile/src/lib/purchaseShared.ts'],
+  ['src/lib/CRM/meetings/teamAvailability.ts', 'mobile/src/lib/teamAvailability.ts'],
 ];
 
 let failed = false;

@@ -240,6 +240,9 @@ struct ScheduleDayBlock: Identifiable {
             ForEach(days, id: \.self) { day in dayColumn(day, items: timed, now: now) }
         }
         .frame(height: hourHeight * 24)
+        // „Chwyć i przesuń”: przeciągnięcie tła przesuwa godziny.
+        .contentShape(Rectangle())
+        .grabScroll(.vertical)
     }
 
     private func dayColumn(_ day: Date, items: [ScheduleItem], now: Date) -> some View {
@@ -318,11 +321,18 @@ struct TeamTimelineEntry: Identifiable {
     @State private var entries: [TeamScheduleEntry] = []
     @State private var loading = false
     @State private var error: String?
+    /// „Chwyć i przesuń”: przesunięcie osi względem okresu (sekundy) — zatwierdzone i w trakcie przeciągania.
+    @State private var offset: TimeInterval = 0
+    @State private var dragOffset: TimeInterval = 0
+    @State private var grabbing = false
+    /// Koniec przeciągania — chwilę po nim kliknięcie paska nie otwiera pozycji (puszczenie myszy nad paskiem).
+    @State private var grabEnded = Date.distantPast
 
     private let labelWidth: CGFloat = 210
     private let laneHeight: CGFloat = 28
     private var calendar: Calendar { MeetingDates.calendar }
-    private var range: (start: Date, end: Date) {
+    /// Okres (dzień, tydzień od poniedziałku, miesiąc) — bez przesunięcia chwytem.
+    private var period: (start: Date, end: Date) {
         switch zoom {
         case .day: return (anchor, calendar.date(byAdding: .day, value: 1, to: anchor) ?? anchor)
         case .week:
@@ -333,8 +343,28 @@ struct TeamTimelineEntry: Identifiable {
             return (first, calendar.date(byAdding: .month, value: 1, to: first) ?? first)
         }
     }
-    private var loadKey: String { "\(zoom.rawValue)|\(range.start.timeIntervalSince1970)|\(members.map(\.id).joined(separator: ","))" }
+    /// Widoczny zakres: okres przesunięty chwytem.
+    private var range: (start: Date, end: Date) {
+        let shift = offset + dragOffset
+        return (period.start.addingTimeInterval(shift), period.end.addingTimeInterval(shift))
+    }
+    private var shifted: Bool { offset + dragOffset != 0 }
+    /// Pobierany zakres: widoczny z zapasem pół okresu z każdej strony, do pełnych dni (przeciąganie nie wczytuje planu co chwilę).
+    private var fetchRange: (start: Date, end: Date) {
+        let span = period.end.timeIntervalSince(period.start)
+        let start = calendar.startOfDay(for: range.start.addingTimeInterval(-span / 2))
+        let lastDay = calendar.startOfDay(for: range.end.addingTimeInterval(span / 2))
+        return (start, calendar.date(byAdding: .day, value: 1, to: lastDay) ?? lastDay)
+    }
+    private var loadKey: String {
+        "\(zoom.rawValue)|\(fetchRange.start.timeIntervalSince1970)|\(fetchRange.end.timeIntervalSince1970)|\(members.map(\.id).joined(separator: ","))"
+    }
     private var title: String {
+        if shifted {
+            let last = range.end.addingTimeInterval(-1)
+            if zoom == .day { return "\(MeetingDates.format(range.start, "EEE d MMM, HH:mm")) – \(MeetingDates.format(range.end, "EEE d MMM, HH:mm"))" }
+            return "\(MeetingDates.format(range.start, "d MMM")) – \(MeetingDates.format(last, "d MMM yyyy"))"
+        }
         switch zoom {
         case .day: return MeetingDates.format(range.start, "EEEE, d MMMM yyyy").capitalized
         case .week:
@@ -362,21 +392,46 @@ struct TeamTimelineEntry: Identifiable {
                         .padding(.horizontal, 14).padding(.bottom, 10)
                     }
                 }
+                // „Chwyć i przesuń”: przeciągnięcie w bok przesuwa czas (pozycje się nie przesuwają, kliknięcie je otwiera).
+                .simultaneousGesture(panGesture(width: trackWidth))
+                .grabCursor(grabbing: grabbing)
             }
         }
         .task(id: loadKey) { await load() }
+        .onChange(of: zoom) { _, _ in offset = 0; dragOffset = 0 }
     }
+
+    private func panGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .global)
+            .onChanged { value in
+                let span = period.end.timeIntervalSince(period.start)
+                dragOffset = -Double(value.translation.width / max(1, width)) * span
+                if !grabbing { grabbing = true }
+            }
+            .onEnded { _ in
+                // Po puszczeniu oś staje na pełnych 15 minutach (dzień), godzinach (tydzień) albo 6 godzinach (miesiąc).
+                let unit: TimeInterval = zoom == .day ? 900 : zoom == .week ? 3600 : 6 * 3600
+                offset = ((offset + dragOffset) / unit).rounded() * unit
+                dragOffset = 0
+                grabbing = false
+                grabEnded = Date()
+            }
+    }
+
+    /// Kliknięcie (nie koniec przeciągania osi).
+    private var clickAllowed: Bool { !grabbing && Date().timeIntervalSince(grabEnded) > 0.3 }
 
     private var controls: some View {
         HStack(spacing: 8) {
             Picker("Powiększenie", selection: $zoom) { ForEach(TeamZoom.allCases) { Text($0.label).tag($0) } }
                 .pickerStyle(.segmented).labelsHidden().fixedSize()
             Button { shift(-1) } label: { Image(systemName: "chevron.left") }
-            Button("Dziś") { anchor = calendar.startOfDay(for: Date()) }
+            Button("Dziś") { anchor = calendar.startOfDay(for: Date()); offset = 0 }
             Button { shift(1) } label: { Image(systemName: "chevron.right") }
-            Text(title).font(.callout.weight(.semibold))
+            Text(title).font(.callout.weight(.semibold)).monospacedDigit()
             if loading { ProgressView().controlSize(.small) }
             Spacer(minLength: 8)
+            Text("Przeciągnij oś, żeby przesunąć czas").font(.caption2).foregroundStyle(.tertiary).lineLimit(1).layoutPriority(-1)
             ScheduleGroupFilter(groups: $groups)
         }
         .controlSize(.small)
@@ -398,7 +453,8 @@ struct TeamTimelineEntry: Identifiable {
         guard !Task.isCancelled else { return }
         loading = true
         do {
-            let next = try await store.schedule(ids, from: range.start, to: range.end)
+            let window = fetchRange
+            let next = try await store.schedule(ids, from: window.start, to: window.end)
             guard !Task.isCancelled else { return }
             entries = next; error = nil
         } catch {
@@ -414,19 +470,26 @@ struct TeamTimelineEntry: Identifiable {
     }
     private var ticks: [(date: Date, label: String, strong: Bool)] {
         var result: [(date: Date, label: String, strong: Bool)] = []
+        // Podziałka na pełnych godzinach / dniach widocznego zakresu (także po przesunięciu chwytem).
+        let firstDay = calendar.startOfDay(for: range.start)
         switch zoom {
         case .day:
-            for hour in 0..<24 {
-                guard let date = calendar.date(byAdding: .hour, value: hour, to: range.start) else { continue }
-                result.append((date, hour % 2 == 0 ? String(format: "%02d", hour) : "", hour % 6 == 0))
+            var date = calendar.dateInterval(of: .hour, for: range.start)?.start ?? range.start
+            if date < range.start { date = calendar.date(byAdding: .hour, value: 1, to: date) ?? range.end }
+            while date < range.end {
+                let hour = calendar.component(.hour, from: date)
+                let label = hour == 0 ? MeetingDates.format(date, "EEE d.MM").capitalized : hour % 2 == 0 ? String(format: "%02d", hour) : ""
+                result.append((date, label, hour % 6 == 0))
+                date = calendar.date(byAdding: .hour, value: 1, to: date) ?? range.end
             }
         case .week:
-            for offset in 0..<7 {
-                guard let date = calendar.date(byAdding: .day, value: offset, to: range.start) else { continue }
+            var date = firstDay < range.start ? (calendar.date(byAdding: .day, value: 1, to: firstDay) ?? range.end) : firstDay
+            while date < range.end {
                 result.append((date, MeetingDates.format(date, "EEE d.MM").capitalized, true))
+                date = calendar.date(byAdding: .day, value: 1, to: date) ?? range.end
             }
         case .month:
-            var date = range.start
+            var date = firstDay < range.start ? (calendar.date(byAdding: .day, value: 1, to: firstDay) ?? range.end) : firstDay
             while date < range.end {
                 result.append((date, MeetingDates.format(date, "d"), calendar.component(.weekday, from: date) == 2))
                 date = calendar.date(byAdding: .day, value: 1, to: date) ?? range.end
@@ -452,7 +515,9 @@ struct TeamTimelineEntry: Identifiable {
 
     // MARK: Wiersze pracowników
     private func timelineEntries(for member: TeamMember) -> [TeamTimelineEntry] {
+        // Plan pobrany z zapasem — na osi tylko pozycje w widocznym zakresie.
         let items = ScheduleFormat.visible(entries.filter { $0.employeeId == member.id }.map(\.item), groups)
+            .filter { $0.end > range.start && $0.start < range.end }
         var list: [TeamTimelineEntry] = []
         if zoom == .month {
             var byDay: [Date: [ScheduleItem]] = [:]
@@ -491,7 +556,8 @@ struct TeamTimelineEntry: Identifiable {
         let caption = placed.isEmpty ? member.subtitle : "\(count) poz."
         return HStack(spacing: 0) {
             Button {
-                store.openedTab = .timeline; store.openedDate = zoom == .day ? range.start : nil; store.openedID = member.id
+                guard clickAllowed else { return }
+                store.openedTab = .timeline; store.openedDate = zoom == .day ? calendar.startOfDay(for: range.start) : nil; store.openedID = member.id
             } label: {
                 HStack(spacing: 8) {
                     TeamAvatar(member: member, size: 30)
@@ -533,6 +599,7 @@ struct TeamTimelineEntry: Identifiable {
         let label = entry.items.count > 1 ? "\(entry.items.count) poz." : first.title
         let color = entry.items.count > 1 ? Color.secondary : first.color
         return Button {
+            guard clickAllowed else { return }
             if let day = entry.day, entry.items.count > 1 { zoom = .day; anchor = day } else { state.openScheduleItem(first) }
         } label: {
             HStack(spacing: 3) {

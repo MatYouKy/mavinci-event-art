@@ -29,6 +29,8 @@ import PresentationScreen from '../screens/PresentationScreen';
 import ShowcaseOfferScreen, { type ShowcaseOfferRouteParams } from '../screens/ShowcaseOfferScreen';
 import MaterialsScreen from '../screens/MaterialsScreen';
 import DriveScreen from '../screens/DriveScreen';
+import RentalScreen from '../screens/RentalScreen';
+import PurchasesScreen from '../screens/PurchasesScreen';
 import FinanceScanScreen from '../screens/FinanceScanScreen';
 import TimeEmployeeScreen from '../screens/TimeEmployeeScreen';
 import type { TimePeriodKind } from '../lib/timeTrackingApi';
@@ -70,6 +72,13 @@ export type RootStackParamList = {
   Materials: { company?: string; folder?: string } | undefined;
   /** Dysk — chmura firmy jak w CRM, na Macu i w Finderze (Eventy, Materiały, Oferty, Kalkulacje, Umowy, Magazyn); `section`, `node` — folder na start. */
   Drive: { section?: DriveSection; node?: string } | undefined;
+  /** Rental → Wypożyczenia klientom (lista i karta; `rentalId` — karta z powiadomienia, `requestId` — ponowne otwarcie listy). */
+  Rental: { rentalId?: string; requestId?: number } | undefined;
+  /**
+   * Zakupy → „Moje wydatki” i rozliczenia pracowników; z powiadomienia: `employee` + `year` + `month` — rozliczenie pracownika,
+   * `year` + `month` — własny miesiąc (`requestId` — ponowne otwarcie).
+   */
+  Purchases: { employee?: string; year?: number; month?: number; requestId?: number } | undefined;
   /** Dysk → „Skanuj dokument”: zdjęcia stron → PDF w wybranym folderze Finansów (Koszty, Dokumenty spółki, umowa stała). */
   FinanceScan: undefined;
   /** Czas pracy → pracownik (administrator): wpisy, czas według zadań, historia zmian; `kind`, `offset` — okres z raportu zespołu. */
@@ -322,6 +331,26 @@ export default function RootNavigator() {
                   options={{
                     headerShown: true,
                     title: 'Dysk'.toLocaleUpperCase('pl-PL'),
+                    headerStyle: { backgroundColor: colors.background.secondary },
+                    headerTintColor: colors.text.primary,
+                  }}
+                />
+                <Stack.Screen
+                  name="Rental"
+                  component={RentalScreen}
+                  options={{
+                    headerShown: true,
+                    title: 'Rental'.toLocaleUpperCase('pl-PL'),
+                    headerStyle: { backgroundColor: colors.background.secondary },
+                    headerTintColor: colors.text.primary,
+                  }}
+                />
+                <Stack.Screen
+                  name="Purchases"
+                  component={PurchasesScreen}
+                  options={{
+                    headerShown: true,
+                    title: 'Zakupy'.toLocaleUpperCase('pl-PL'),
                     headerStyle: { backgroundColor: colors.background.secondary },
                     headerTintColor: colors.text.primary,
                   }}

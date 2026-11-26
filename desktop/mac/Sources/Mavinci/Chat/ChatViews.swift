@@ -3,7 +3,11 @@ import AppKit
 
 // MARK: Widżet komunikatora (jak `ChatWidget` w CRM): okrągły przycisk z licznikiem w prawym dolnym rogu okna i panel
 // „Komunikator” (lista rozmów, rozmowa, nowa rozmowa) ze zwijaniem i zamykaniem. Każde okno ma własny panel
-// (`WindowNavigation.chatOpen`, `chatRoute`); dane i połączenie są wspólne (`ChatStore`).
+// (`WindowNavigation.chatOpen`, `chatRoute`); dane i połączenie są wspólne (`ChatStore`). Przycisk w rogu ma „–”
+// (mała ikona) i „×” (ukryty — komunikator otwiera ikona obok dzwonka albo ⌥⌘K); pinezka w panelu przywraca przycisk.
+
+/// Przycisk komunikatora w rogu okna: widoczny, zminimalizowany albo ukryty (wspólne dla okien, zapamiętane).
+enum ChatLauncherMode: String { case shown, minimized, hidden }
 
 /// Przycisk i panel komunikatora w oknie.
 @MainActor struct ChatWidgetHost: View {
@@ -11,6 +15,8 @@ import AppKit
     @EnvironmentObject private var state: Workspace
     @EnvironmentObject private var nav: WindowNavigation
     @Environment(\.crmTheme) private var theme
+    @AppStorage("chat.launcher") private var mode = ChatLauncherMode.shown.rawValue
+    @State private var hovering = false
 
     var body: some View {
         Group {
@@ -18,13 +24,67 @@ import AppKit
                 ChatPanel(store: store)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             } else if store.available {
-                launcher
+                switch ChatLauncherMode(rawValue: mode) ?? .shown {
+                case .shown: corner
+                case .minimized: minimizedLauncher
+                case .hidden: EmptyView()
+                }
             }
         }
         .padding(20)
         .animation(.easeOut(duration: 0.18), value: nav.chatOpen)
         .onAppear { handleRequest() }
         .onChange(of: store.openRequest) { _, _ in handleRequest() }
+    }
+
+    /// Przycisk z „–” i „×” (po najechaniu).
+    private var corner: some View {
+        ZStack(alignment: .topLeading) {
+            launcher
+            if hovering {
+                HStack(spacing: 4) {
+                    cornerControl("minus", help: "Zminimalizuj") { mode = ChatLauncherMode.minimized.rawValue }
+                    cornerControl("xmark", help: "Ukryj — komunikator otworzysz ikoną obok dzwonka (⌥⌘K)") { mode = ChatLauncherMode.hidden.rawValue }
+                }
+                .offset(x: -10, y: -10)
+                .transition(.opacity)
+            }
+        }
+        .onHover { inside in withAnimation(.easeOut(duration: 0.12)) { hovering = inside } }
+    }
+
+    private func cornerControl(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+                .background(theme.card, in: Circle())
+                .overlay(Circle().strokeBorder(theme.accent.opacity(0.3)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+    }
+
+    /// Mała ikona w rogu (kropka — nieprzeczytane); kliknięcie przywraca przycisk.
+    private var minimizedLauncher: some View {
+        Button { mode = ChatLauncherMode.shown.rawValue } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "message.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme == .light ? Color.white : CrmTheme.rgb(0x0f1119))
+                    .frame(width: 30, height: 30)
+                    .background(theme.accent, in: Circle())
+                    .shadow(color: theme.accent.opacity(0.25), radius: 6, y: 2)
+                if store.unreadTotal > 0 { Circle().fill(Color.red).frame(width: 9, height: 9).offset(x: 1, y: -1) }
+            }
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(store.unreadTotal > 0 ? "Przywróć przycisk komunikatora — nieprzeczytane: \(store.unreadTotal)" : "Przywróć przycisk komunikatora")
+        .accessibilityLabel("Przywróć przycisk komunikatora")
     }
 
     private var launcher: some View {
@@ -107,6 +167,7 @@ struct ChatCountBadge: View {
     @EnvironmentObject private var state: Workspace
     @EnvironmentObject private var nav: WindowNavigation
     @Environment(\.crmTheme) private var theme
+    @AppStorage("chat.launcher") private var mode = ChatLauncherMode.shown.rawValue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -135,6 +196,10 @@ struct ChatCountBadge: View {
                     .help("Brak połączenia na żywo — wiadomości odświeżają się co kilka sekund.")
             }
             Spacer()
+            if mode != ChatLauncherMode.shown.rawValue {
+                Button { mode = ChatLauncherMode.shown.rawValue } label: { Image(systemName: "pin") }
+                    .buttonStyle(.borderless).help("Pokaż przycisk komunikatora w rogu okna")
+            }
             Button { nav.chatMinimized.toggle() } label: { Image(systemName: nav.chatMinimized ? "chevron.up" : "minus") }
                 .buttonStyle(.borderless).help(nav.chatMinimized ? "Rozwiń" : "Zwiń")
             Button { nav.chatOpen = false; nav.chatMinimized = false } label: { Image(systemName: "xmark") }

@@ -167,7 +167,7 @@ struct Snapshot: Codable {
 }
 
 enum AppError: Error, LocalizedError, Equatable {
-    case configuration, unauthorized, forbidden, conflict, invalidResponse, server, missingSync, noEmployee, unsupported
+    case configuration, unauthorized, forbidden, conflict, invalidResponse, server, missingSync, noEmployee, unsupported, testMode
     var errorDescription: String? {
         switch self {
         case .configuration: return "Uzupełnij poprawny adres HTTPS i publiczny klucz połączenia."
@@ -179,6 +179,7 @@ enum AppError: Error, LocalizedError, Equatable {
         case .noEmployee: return "Konto nie ma jednego aktywnego profilu pracownika. Skontaktuj się z administratorem."
         case .unsupported: return "Ta funkcja wymaga obsługi przez skonfigurowany serwer."
         case .server: return "Serwer nie wykonał operacji. Odśwież dane i spróbuj ponownie."
+        case .testMode: return "Tryb testowy: ta operacja jest wyłączona — nic nie zostało zmienione."
         }
     }
 }

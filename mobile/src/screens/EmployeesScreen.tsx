@@ -14,7 +14,9 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import { supabase, Employee } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { isAdmin, canManage } from '../lib/permissions';
+import { isAdmin, canManage, hasPermission } from '../lib/permissions';
+import { departmentLabel } from '../lib/teamAvailability';
+import EmployeeStructureSheet from '../components/Employees/EmployeeStructureSheet';
 import PermissionGate from '../components/PermissionGate';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import ScheduleTimeline, { type TimelineDetails } from '../components/Timeline/ScheduleTimeline';
@@ -41,6 +43,9 @@ interface EmployeeListItem extends Employee {
   is_active?: boolean;
   occupation?: string | null;
   region?: string | null;
+  /** Dział (Zarząd, Sprzedaż, Biuro, Magazyn) i przełożony — zakres planu w Spotkaniach → „Pracownicy”. */
+  department?: string | null;
+  supervisor_id?: string | null;
 }
 
 function EmployeesContent() {
@@ -59,12 +64,15 @@ function EmployeesContent() {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const scheduleVersion = useRef(0);
+  // Dział i przełożony (docs/team-availability.md) — zmienia administrator albo „Zarządzanie pracownikami”.
+  const canManageStructure = hasPermission(currentEmployee, 'employees_manage');
+  const [structureTarget, setStructureTarget] = useState<EmployeeListItem | null>(null);
 
   const fetchEmployees = useCallback(async () => {
     const { data, error } = await supabase
       .from('employees')
       // Tylko pola potrzebne liście (jak katalog w CRM) — bez danych prywatnych, adresu, NIP i notatek.
-      .select('id,name,surname,nickname,email,phone:phone_number,occupation,role,access_level,permissions,is_active,avatar_url,avatar_metadata')
+      .select('id,name,surname,nickname,email,phone:phone_number,occupation,role,access_level,permissions,is_active,avatar_url,avatar_metadata,department,supervisor_id')
       .eq('is_active', true)
       .order('name', { ascending: true });
 
@@ -215,6 +223,10 @@ function EmployeesContent() {
             <Text style={styles.employeeRole} numberOfLines={1}>
               {item.occupation || item.role || 'Brak stanowiska'}
             </Text>
+            <Text style={styles.structureText} numberOfLines={1}>
+              {departmentLabel(item.department)}
+              {item.supervisor_id ? ` · przełożony: ${supervisorName(item.supervisor_id)}` : ''}
+            </Text>
             <View style={styles.badgeRow}>
               <View style={[styles.accessBadge, { borderColor: badge.color + '60' }]}>
                 <Text style={[styles.accessBadgeText, { color: badge.color }]}>
@@ -258,6 +270,13 @@ function EmployeesContent() {
           )}
         </View>
 
+        {canManageStructure ? (
+          <TouchableOpacity style={styles.structureButton} onPress={() => setStructureTarget(item)} accessibilityRole="button">
+            <Feather name="git-merge" size={13} color={colors.primary.gold} />
+            <Text style={styles.structureButtonText}>Dział i przełożony</Text>
+          </TouchableOpacity>
+        ) : null}
+
         {/* Permissions summary (visible only to admins/managers) */}
         {canManage(currentEmployee, 'employees') && item.permissions && item.permissions.length > 0 && (
           <View style={styles.permissionsRow}>
@@ -270,6 +289,11 @@ function EmployeesContent() {
       </View>
     );
   };
+
+  function supervisorName(id: string) {
+    const boss = employees.find((person) => person.id === id);
+    return boss ? boss.nickname || [boss.name, boss.surname].filter(Boolean).join(' ') : '—';
+  }
 
   const filters: { key: typeof selectedFilter; label: string }[] = [
     { key: 'all', label: 'Wszyscy' },
@@ -377,6 +401,16 @@ function EmployeesContent() {
         }
       />
       )}
+
+      <EmployeeStructureSheet
+        target={structureTarget}
+        people={employees}
+        onClose={() => setStructureTarget(null)}
+        onSaved={() => {
+          setStructureTarget(null);
+          void fetchEmployees();
+        }}
+      />
     </View>
   );
 }
@@ -520,6 +554,25 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.text.secondary,
     marginTop: 2,
+  },
+  structureText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.text.tertiary,
+    marginTop: 1,
+  },
+  structureButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.default,
+  },
+  structureButtonText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.primary.gold,
+    fontWeight: typography.fontWeights.semibold as any,
   },
   badgeRow: {
     flexDirection: 'row',

@@ -5,6 +5,7 @@ import { useOperationalStages } from '../hooks/useOperationalStages';
 import { OPERATIONAL_LABELS, usesOperationalStages } from '../lib/operationalStages';
 import RealizationWorkspace from '../components/Events/RealizationWorkspace';
 import EventCardButton from '../components/Events/EventCardButton';
+import EventRenameSheet from '../components/Events/EventRenameSheet';
 import { respondToAssignment } from '../services/assignmentResponse';
 import WarehouseHandoffPanel from '../components/Events/WarehouseHandoffPanel';
 import EventStepsPanel, { type EventStepRowLink } from '../components/Events/EventStepsPanel';
@@ -164,6 +165,8 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
   const [checklistPdfPath, setChecklistPdfPath] = useState<string | null>(null);
   const [myAssignment, setMyAssignment] = useState<MyAssignment | null>(null);
   const [cardScope, setCardScope] = useState<CardScope | null>(null);
+  /** „Zmień nazwę eventu” (jak „Edytuj” na karcie eventu w CRM i na Macu — tylko nazwa). */
+  const [renaming, setRenaming] = useState(false);
   // Wszystkie auta eventu (do „Kto czym jedzie”); `fleetAssignments` — auta w zakresie osoby.
   const [fleetTotal, setFleetTotal] = useState(0);
   const [respondingInvitation, setRespondingInvitation] = useState(false);
@@ -1204,6 +1207,12 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
             )}
           </View>
         </View>
+        {scope?.canManageEvent ? (
+          <TouchableOpacity onPress={() => setRenaming(true)} style={styles.headerEditBtn} accessibilityRole="button"
+            accessibilityLabel="Zmień nazwę eventu">
+            <Feather name="edit-2" size={17} color={colors.primary.gold} />
+          </TouchableOpacity>
+        ) : null}
         <View
           style={[
             styles.headerStatus,
@@ -1217,6 +1226,17 @@ function StandardEventDetailScreen({ eventId, onBack, initialTab, canPrintCard }
           </Text>
         </View>
       </View>
+
+      <EventRenameSheet
+        visible={renaming}
+        eventId={eventId}
+        name={event.name || ''}
+        onClose={() => setRenaming(false)}
+        onRenamed={(name) => {
+          setRenaming(false);
+          setEvent((current) => (current ? { ...current, name } : current));
+        }}
+      />
 
       {/* Invitation Banner */}
       {event && showEventInvitation(event.created_by, employee?.id, session?.user.id, myAssignment?.status) && (
@@ -1460,6 +1480,14 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   headerContent: { flex: 1 },
+  headerEditBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
   headerTitle: {
     fontFamily: 'MBFAtom',
     textTransform: 'uppercase',

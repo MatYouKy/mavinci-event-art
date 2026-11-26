@@ -114,7 +114,7 @@ export default function RentalEquipmentDetailPage() {
     try {
       await deleteEquipmentMutation(equipmentId).unwrap();
       showSnackbar('Sprzęt został usunięty', 'success');
-      router.push('/crm/equipment/rental');
+      router.push('/crm/rental/subcontractors');
     } catch (err: any) {
       showSnackbar(err?.message || 'Błąd podczas usuwania', 'error');
     }

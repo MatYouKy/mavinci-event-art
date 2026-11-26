@@ -17,7 +17,7 @@ import {
   type EventTabId,
 } from '@/lib/events/access/eventAccess';
 import { legacyEventAccess } from '@/lib/CRM/events/eventAccessFallback';
-import { eventMoney, fetchEventFinancials, type EventFinancialField, type EventFinancials } from '@/lib/CRM/events/eventFinancials';
+import { eventMoney, type EventFinancialField, type EventFinancials } from '@/lib/CRM/events/eventFinancials';
 import {
   useState,
   useEffect,
@@ -89,8 +89,9 @@ import { EventPhasesTimeline } from '@/app/(crm)/crm/events/[id]/components/tabs
 
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
 
-import EditEventModalNew from '@/components/crm/EditEventModalNew';
+import EventRenameModal from './components/Modals/EventRenameModal';
 import SendOfferEmailModal from '@/components/crm/SendOfferEmailModal';
 import EventTabOffer from './components/tabs/EventTabOffer';
 import { EventsDetailsTab } from './components/tabs/EventsDetailsTab/EventsDetailsTab';
@@ -342,6 +343,7 @@ export default function EventDetailPageClient({
   const searchParams = useSearchParams();
   const eventId = params.id as string;
   const { showSnackbar } = useSnackbar();
+  const { showLoader, hideLoader } = useGlobalLoader();
   const { showConfirm } = useDialog();
 
   const { equipment } = useEventEquipment(eventId);
@@ -389,17 +391,11 @@ export default function EventDetailPageClient({
   const [deletingEvent, setDeletingEvent] = useState(false);
 
   // Kwoty z event_financials (tylko z obszarem „kwoty”). Kolumny kwot w `events` są po migracji puste.
-  const [financials, setFinancials] = useState<EventFinancials | null>(initialData.financials ?? null);
+  const [financials] = useState<EventFinancials | null>(initialData.financials ?? null);
   const money = useCallback(
     (field: EventFinancialField) => eventMoney(event, financials, field),
     [event, financials],
   );
-  const reloadFinancials = useCallback(async () => {
-    if (!canViewValues) return;
-    const next = await fetchEventFinancials(supabase, eventId);
-    if (next) setFinancials(next);
-  }, [canViewValues, eventId]);
-
   useEffect(() => {
     if (!eventData || eventData.id !== eventId) return;
     // Nagłówek i zakładki mają ten sam stan po aktualizacji statusu przez bazę.
@@ -839,6 +835,33 @@ export default function EventDetailPageClient({
       console.error('Error updating event status:', err);
     }
   }, [eventId, updateEventMutation, showSnackbar]);
+
+  /** „Edytuj” → zmiana nazwy: zapisuje wyłącznie `name` (nic innego nie nadpisuje). */
+  const handleRenameEvent = useCallback(async (name: string) => {
+    showLoader('Zapisuję nazwę eventu', 'Proszę chwilę poczekać...');
+    try {
+      const { data, error } = await supabase.from('events').update({ name }).eq('id', eventId).select('id');
+      if (error) throw error;
+      if (!data?.length) {
+        showSnackbar('Nie masz uprawnień do zmiany nazwy tego eventu', 'error');
+        return false;
+      }
+      setEvent((prev) => ({ ...prev, name }));
+      dispatch(
+        eventsApi.util.updateQueryData('getEventById', eventId, (draft: any) => {
+          draft.name = name;
+        }) as any,
+      );
+      showSnackbar('Nazwa eventu zmieniona', 'success');
+      return true;
+    } catch (err) {
+      console.error('Error renaming event:', err);
+      showSnackbar('Nie udało się zmienić nazwy eventu', 'error');
+      return false;
+    } finally {
+      hideLoader();
+    }
+  }, [eventId, dispatch, showSnackbar, showLoader, hideLoader]);
 
   const actions = useMemo<Action[]>(() => {
     return [
@@ -1794,55 +1817,13 @@ export default function EventDetailPageClient({
         />
       )}
 
-      {showEditEventModal && event && (
-        <EditEventModalNew
-          contact={contact}
-          location={location}
+      {/* „Edytuj” — tylko nazwa eventu; pozostałe pola zmienia się przy polach w „Szczegółach” (bez nadpisywania). */}
+      {event && (
+        <EventRenameModal
           isOpen={showEditEventModal}
+          name={event.name || ''}
           onClose={() => setShowEditEventModal(false)}
-          // Budżet z event_financials; pole budżetu tylko z obszarem „kwoty”.
-          event={{ ...event, budget: money('budget') ?? undefined }}
-          canEditBudget={canViewValues}
-          onSave={async (updatedData) => {
-            try {
-              const { error } = await supabase.from('events').update(updatedData).eq('id', eventId);
-
-              if (error) {
-                console.error('Error updating event:', error);
-                showSnackbar('Błąd podczas aktualizacji eventu', 'error');
-                return;
-              }
-
-              setEvent((prev) => ({
-                ...prev,
-                ...updatedData,
-              }));
-              if ('budget' in updatedData) void reloadFinancials();
-
-              if (updatedData.location_id !== event.location_id) {
-                const newLocation = await getById(updatedData.location_id);
-                setLocation(newLocation as ISimpleLocation);
-              }
-
-              // 1) instant UI (cache update)
-              dispatch(
-                eventsApi.util.updateQueryData('getEventById', eventId, (draft: any) => {
-                  Object.assign(draft, updatedData);
-                }) as any,
-              );
-
-              // 2) pewniak – wymuś prawdziwy refetch
-              await dispatch(
-                eventsApi.endpoints.getEventById.initiate(eventId, { forceRefetch: true }) as any,
-              );
-
-              setShowEditEventModal(false);
-              showSnackbar('Event zaktualizowany', 'success');
-            } catch (err) {
-              console.error('Error:', err);
-              showSnackbar('Wystąpił błąd', 'error');
-            }
-          }}
+          onSave={handleRenameEvent}
         />
       )}
 

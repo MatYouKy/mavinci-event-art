@@ -10,6 +10,9 @@ import { useCreateMeetingMutation } from '@/store/api/calendarApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
 import { MEETING_STATUSES, type MeetingStatus } from '@/lib/CRM/meetings/meetingStatus';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import MeetingConflictsNotice from './meetings/MeetingConflictsNotice';
+import { meetingMailNotice, notifyMeetingContacts } from './meetings/teamAvailabilityApi';
 
 interface NewMeetingModalProps {
   isOpen: boolean;
@@ -19,6 +22,8 @@ interface NewMeetingModalProps {
   /** Koniec zaznaczenia na osi czasu (godzina zakończenia). */
   initialEndDate?: Date;
   initialContactId?: string;
+  /** Uczestnicy z firmy dodani od razu (np. zaznaczenie czasu w kolumnie osoby w widoku „Pracownicy”). */
+  initialEmployeeIds?: string[];
 }
 
 interface MeetingParticipant {
@@ -77,6 +82,7 @@ export default function NewMeetingModal({
   initialDate,
   initialEndDate,
   initialContactId,
+  initialEmployeeIds,
 }: NewMeetingModalProps) {
   const [title, setTitle] = useState('');
   const [locationId, setLocationId] = useState<string | null>(null);
@@ -96,6 +102,9 @@ export default function NewMeetingModal({
   const [status, setStatus] = useState<MeetingStatus>('confirmed');
   const [participants, setParticipants] = useState<MeetingParticipant[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  // Zaproszenie e-mailem (z plikiem .ics) dla uczestników spoza firmy — docs/team-availability.md.
+  const [mailContacts, setMailContacts] = useState(true);
+  const { employee: currentEmployee } = useCurrentEmployee();
 
   const [alert1Enabled, setAlert1Enabled] = useState(DEFAULT_ALERTS.alert1Enabled);
   const [alert1Minutes, setAlert1Minutes] = useState(DEFAULT_ALERTS.alert1Minutes);
@@ -222,6 +231,15 @@ export default function NewMeetingModal({
   };
 
   useEffect(() => {
+    if (!isOpen || !initialEmployeeIds?.length || employees.length === 0) return;
+    initialEmployeeIds.forEach((id) => {
+      const initialEmployee = employees.find((employee) => employee.id === id);
+      if (initialEmployee) handleAddEmployee(initialEmployee);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees, initialEmployeeIds, isOpen]);
+
+  useEffect(() => {
     if (!isOpen || !initialContactId || contacts.length === 0) return;
     const initialContact = contacts.find((contact) => contact.id === initialContactId);
     if (initialContact) handleAddContact(initialContact);
@@ -252,6 +270,7 @@ export default function NewMeetingModal({
     setParticipantSearch('');
     setShowEmployeeList(false);
     setShowContactList(false);
+    setMailContacts(true);
 
     setAlert1Enabled(DEFAULT_ALERTS.alert1Enabled);
     setAlert1Minutes(DEFAULT_ALERTS.alert1Minutes);
@@ -302,7 +321,8 @@ export default function NewMeetingModal({
         contact_id: participant.type === 'contact' ? participant.id : undefined,
       }));
 
-      await createMeeting({
+      const hasContacts = participants.some((participant) => participant.type === 'contact');
+      const saved = await createMeeting({
         title: title.trim(),
         location_id: locationId,
         location_text: locationText.trim() || null,
@@ -323,6 +343,19 @@ export default function NewMeetingModal({
       }).unwrap();
 
       showSnackbar('Spotkanie zostało utworzone pomyślnie', 'success');
+
+      // Zaproszenie e-mailem dla osób spoza firmy (spotkanie już zapisane — błąd wysyłki tylko w komunikacie).
+      const savedId = saved && typeof saved === 'object' && typeof (saved as { id?: unknown }).id === 'string'
+        ? (saved as { id: string }).id
+        : null;
+      if (mailContacts && hasContacts && savedId) {
+        try {
+          const notice = meetingMailNotice(await notifyMeetingContacts(savedId, null));
+          if (notice) showSnackbar(notice.text, notice.type);
+        } catch (mailError) {
+          showSnackbar(mailError instanceof Error ? mailError.message : 'Nie udało się wysłać zaproszenia e-mailem', 'error');
+        }
+      }
 
       handleClose();
 
@@ -350,6 +383,25 @@ export default function NewMeetingModal({
   if (!isOpen) return null;
 
   const normalizedSearch = participantSearch.trim().toLowerCase();
+
+  // Termin do ostrzeżeń o zajętości (jak przy zapisie: całodniowe — od 00:00 do 23:59:59, bez końca — godzina).
+  const conflictStart = dateStart
+    ? localDatetimeStringToUTC(isAllDay ? `${dateStart}T00:00:00` : `${dateStart}T${timeStart}`)
+    : null;
+  const conflictEnd = (isAllDay
+    ? localDatetimeStringToUTC(`${dateEnd || dateStart}T23:59:59`)
+    : dateEnd
+      ? localDatetimeStringToUTC(`${dateEnd}T${timeEnd}`)
+      : null) ?? (conflictStart ? new Date(Date.parse(conflictStart) + 60 * 60 * 1000).toISOString() : null);
+  const conflictIds = [
+    ...(currentEmployee?.id ? [currentEmployee.id] : []),
+    ...participants.filter((participant) => participant.type === 'employee').map((participant) => participant.id),
+  ];
+  const conflictNames: Record<string, string> = Object.fromEntries([
+    ...participants.filter((participant) => participant.type === 'employee').map((participant) => [participant.id, participant.name]),
+    ...(currentEmployee?.id ? [[currentEmployee.id, 'Ty']] : []),
+  ]);
+  const contactNames = participants.filter((participant) => participant.type === 'contact').map((participant) => participant.name);
 
   const filteredEmployees = employees.filter((employee) =>
     `${employee.name} ${employee.surname}`.toLowerCase().includes(normalizedSearch),
@@ -695,6 +747,23 @@ export default function NewMeetingModal({
                   + Dodaj kontakt
                 </button>
               </div>
+
+              <MeetingConflictsNotice employeeIds={conflictIds} start={conflictStart} end={conflictEnd} names={conflictNames} />
+
+              {contactNames.length > 0 && (
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-sm text-[#e5e4e2]">
+                  <input
+                    type="checkbox"
+                    checked={mailContacts}
+                    onChange={(event) => setMailContacts(event.target.checked)}
+                    className="mt-0.5 h-4 w-4"
+                  />
+                  <span>
+                    Wyślij zaproszenie e-mailem osobom spoza firmy ({contactNames.join(', ')}) — z Twojej skrzynki, z plikiem .ics do
+                    kalendarza.
+                  </span>
+                </label>
+              )}
 
               {(showEmployeeList || showContactList) && (
                 <div className="relative">

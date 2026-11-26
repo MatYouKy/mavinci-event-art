@@ -83,6 +83,16 @@ enum Vault {
         try persist(all)
         cache = all
     }
+    /// Usuwa naraz wszystkie wartości, których nazwa spełnia warunek (np. klucze kopii z trybu testowego) — jeden zapis pozycji.
+    static func deleteKeys(where matches: (String) -> Bool) throws {
+        lock.lock(); defer { lock.unlock() }
+        var all = try values()
+        let names = all.keys.filter(matches)
+        guard !names.isEmpty else { return }
+        for name in names { all.removeValue(forKey: name) }
+        try persist(all)
+        cache = all
+    }
 
     // MARK: Pozycja w pęku kluczy (wywoływane pod blokadą)
     private static func base(_ name: String) -> [String: Any] {

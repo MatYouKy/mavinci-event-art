@@ -13,8 +13,10 @@ struct Snack: Equatable, Identifiable {
 }
 
 extension Workspace {
-    /// Potwierdzenie udanej czynności (zielony snackbar).
-    func succeed(_ text: String) { snack = Snack(kind: .success, text: text) }
+    /// Potwierdzenie udanej czynności (zielony snackbar). W trybie testowym „widok jako” zapis do bazy jest sprawdzany i wycofywany.
+    func succeed(_ text: String) {
+        snack = Snack(kind: .success, text: testMode == nil ? text : "Tryb testowy: zapis sprawdzony i wycofany — nic nie zostało zmienione.")
+    }
     /// Czynność z modalnym wskaźnikiem postępu — okno jest zablokowane, dopóki serwer nie odpowie.
     func withPending<T>(_ text: String, _ work: () async throws -> T) async rethrows -> T {
         pending = text

@@ -39,6 +39,12 @@ import {
   type MeetingResponse,
   type MeetingStatus,
 } from '@/lib/CRM/meetings/meetingStatus';
+import MeetingConflictsNotice from '@/components/crm/meetings/MeetingConflictsNotice';
+import {
+  meetingMailNotice,
+  notifyMeetingContacts,
+  type MeetingMailBefore,
+} from '@/components/crm/meetings/teamAvailabilityApi';
 
 interface Meeting {
   event_id: any;
@@ -164,6 +170,11 @@ export default function MeetingDetailPage() {
 
   const [participantSearch, setParticipantSearch] = useState('');
   const [isParticipantDropdownOpen, setIsParticipantDropdownOpen] = useState(false);
+  // E-mail do uczestników spoza firmy po zapisie zmian (docs/team-availability.md).
+  const [mailContacts, setMailContacts] = useState(true);
+  const contactNames = (meeting?.participants || [])
+    .filter((p) => p.contact_id)
+    .map((p) => (p.contact ? `${p.contact.first_name ?? ''} ${p.contact.last_name ?? ''}`.trim() : '') || 'Kontakt');
 
   useEffect(() => {
     fetchMeeting();
@@ -249,6 +260,25 @@ export default function MeetingDetailPage() {
     }
   };
 
+  /** Stan spotkania sprzed zmiany — serwer wybiera rodzaj wiadomości (zmiana, odwołanie, przywrócenie). */
+  const mailBefore = (source: Meeting): MeetingMailBefore => ({
+    start: source.datetime_start,
+    end: source.datetime_end,
+    allDay: !!source.is_all_day,
+    location: source.location?.name || source.location_text || '',
+    status: meetingStatus(source.status),
+    contactIds: (source.participants || []).filter((p) => p.contact_id).map((p) => p.contact_id as string),
+  });
+
+  const sendContactMail = async (before: MeetingMailBefore | null, scope: 'single' | 'future') => {
+    try {
+      const notice = meetingMailNotice(await notifyMeetingContacts(meetingId, before, scope));
+      if (notice) showSnackbar(notice.text, notice.type);
+    } catch (error) {
+      showSnackbar(error instanceof Error ? error.message : 'Nie udało się wysłać e-maila do osób spoza firmy', 'error');
+    }
+  };
+
   const handleSave = async () => {
     if (!formData.title.trim()) {
       showSnackbar('Podaj tytuł spotkania', 'error');
@@ -280,6 +310,8 @@ export default function MeetingDetailPage() {
       showSnackbar('Data zakończenia nie może być wcześniejsza niż rozpoczęcie', 'error');
       return;
     }
+
+    const before = meeting ? mailBefore(meeting) : null;
 
     try {
       setSaving(true);
@@ -316,6 +348,7 @@ export default function MeetingDetailPage() {
 
       showSnackbar('Spotkanie zostało zaktualizowane', 'success');
       setIsEditing(false);
+      if (mailContacts && before && before.contactIds.length > 0) await sendContactMail(before, editScope);
       await fetchMeeting();
     } catch (error: any) {
       console.error('Error updating meeting:', error);
@@ -355,6 +388,7 @@ export default function MeetingDetailPage() {
 
   const handleDelete = async (scope: 'single' | 'future' = 'single') => {
     if (!(await showConfirm(scope === 'future' ? 'Usunąć to i kolejne niezakończone spotkania w cyklu?' : 'Czy na pewno chcesz usunąć tylko to spotkanie?'))) return;
+    const before = meeting ? mailBefore(meeting) : null;
   
     try {
       const { error } = await supabase.rpc('delete_meeting_occurrences', { p_id: meetingId, p_scope: scope });
@@ -362,6 +396,16 @@ export default function MeetingDetailPage() {
       if (error) throw error;
   
       showSnackbar('Spotkanie zostało usunięte', 'success');
+      // Osoby spoza firmy: odwołanie e-mailem (po usunięciu — serwer czyta spotkanie jeszcze przez 2 godziny).
+      if (before && before.contactIds.length > 0) {
+        const send = await showConfirm({
+          title: 'E-mail do osób spoza firmy',
+          message: `Wysłać osobom spoza firmy (${contactNames.join(', ')}) e-mail o odwołaniu spotkania?`,
+          confirmText: 'Wyślij e-mail',
+          cancelText: 'Nie wysyłaj',
+        });
+        if (send) await sendContactMail(before, scope);
+      }
       router.replace(backHref);
       router.refresh();
     } catch (error: any) {
@@ -417,6 +461,22 @@ export default function MeetingDetailPage() {
       </div>
     );
   }
+
+  // Termin z formularza do ostrzeżeń o zajętości (jak przy zapisie: całodniowe — od 00:00 do 23:59:59).
+  const conflictStart = formData.datetime_start
+    ? localDatetimeStringToUTC(formData.is_all_day ? `${formData.datetime_start.slice(0, 10)}T00:00:00` : formData.datetime_start)
+    : null;
+  const conflictEndInput = formData.is_all_day
+    ? `${(formData.datetime_end || formData.datetime_start).slice(0, 10)}T23:59:59`
+    : formData.datetime_end;
+  const conflictEnd = (conflictEndInput ? localDatetimeStringToUTC(conflictEndInput) : null)
+    ?? (conflictStart ? new Date(Date.parse(conflictStart) + 60 * 60 * 1000).toISOString() : null);
+  const participantNames: Record<string, string> = Object.fromEntries(
+    employees.map((employee) => [
+      employee.id,
+      employee.id === currentEmployee?.id ? 'Ty' : employee.nickname || `${employee.name} ${employee.surname}`,
+    ]),
+  );
 
   const formatDateTime = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -483,7 +543,7 @@ export default function MeetingDetailPage() {
                   : [
                       {
                         label: 'Edytuj',
-                        onClick: () => { setEditScope('single'); setIsEditing(true); },
+                        onClick: () => { setEditScope('single'); setMailContacts(true); setIsEditing(true); },
                         icon: <Pencil className="h-4 w-4" />,
                       },
                       {
@@ -994,6 +1054,29 @@ export default function MeetingDetailPage() {
                   </div>
                 ) : (
                   <p className="text-sm text-[#e5e4e2]/45">Nie dodano żadnego pracownika.</p>
+                )}
+
+                <MeetingConflictsNotice
+                  employeeIds={selectedParticipants}
+                  start={conflictStart}
+                  end={conflictEnd}
+                  excludeMeetingId={meeting.id}
+                  names={participantNames}
+                />
+
+                {contactNames.length > 0 && (
+                  <label className="flex cursor-pointer items-start gap-2 rounded-lg bg-[#13161f] px-3 py-2 text-sm text-[#e5e4e2]">
+                    <input
+                      type="checkbox"
+                      checked={mailContacts}
+                      onChange={(event) => setMailContacts(event.target.checked)}
+                      className="mt-0.5 h-4 w-4"
+                    />
+                    <span>
+                      Powiadom e-mailem osoby spoza firmy ({contactNames.join(', ')}) o zmianie terminu, miejsca lub statusu — z plikiem
+                      .ics do kalendarza.
+                    </span>
+                  </label>
                 )}
               </div>
             ) : (

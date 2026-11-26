@@ -1,9 +1,11 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 // MARK: Tablice zadań — 1:1 z CRM: „Zadania firmowe” (`/crm/tasks`) i „Moja tablica zadań” (`/crm/tasks/mine`).
 // Kolumny Do zrobienia → Zakończone, karty jak `TaskCard`, przeciąganie z automatycznym licznikiem czasu, wyszukiwanie po tytule,
-// formularz zadania, szczegóły z komentarzami i załącznikami w panelu bocznym.
+// formularz zadania, szczegóły w panelu bocznym jak karta zadania w CRM: osoby (przypisz się, wypisz się, dodaj i usuń osobę),
+// pliki (dodaj, usuń / odlinkuj), komentarze, edycja.
 
 struct TaskEditRequest: Identifiable {
     let id = UUID()
@@ -402,7 +404,10 @@ struct TaskEditRequest: Identifiable {
     }
 }
 
-// MARK: Szczegóły zadania (inspektor) — opis, osoby, załączniki, komentarze
+// MARK: Szczegóły zadania (inspektor) — opis, osoby, załączniki, komentarze. Uprawnienia jak w CRM (`TaskDetailClient`):
+// przypisać się i dodać osobę może każdy, kto widzi zadanie; wypisać inną osobę — autor zadania, administrator,
+// „Zadania — zarządzanie” (na tablicy wydarzenia — zarządzający zadaniami); usunąć komentarz — autor komentarza lub zadania
+// i zarządzający; usunąć plik — autor pliku i zarządzający. Edycja — zarządzający albo właściciel zadania.
 
 @MainActor struct TaskInspector: View {
     let task: BoardTask?
@@ -416,11 +421,51 @@ struct TaskEditRequest: Identifiable {
     @Environment(\.crmTheme) private var theme
     @State private var comment = ""
     @State private var sending = false
+    @State private var importing = false
+    @State private var unassigning: TaskPerson?
+    @State private var removingFile: TaskAttachmentInfo?
+
+    private var me: String? { store.access?.employeeId ?? state.employee?.id }
+    private var manageAll: Bool { (store.access?.isAdmin ?? false) || (store.access?.tasksManage ?? false) }
+    private func isCreator(_ task: BoardTask) -> Bool {
+        guard let me = me else { return false }
+        return task.createdBy == me || store.details[task.id]?.createdBy == me
+    }
+    /// Wypisanie innej osoby: autor zadania i zarządzający (jak przycisk usuwania osoby w CRM).
+    private func removesOthers(_ task: BoardTask) -> Bool { manageAll || isCreator(task) || (store.board == .event && canManage) }
+    private var unassignMessage: String {
+        guard let person = unassigning else { return "" }
+        return person.id == me ? "Nie będziesz już przypisany(-a) do tego zadania." : "„\(person.name)” zostanie usunięty(-a) z zadania."
+    }
+    private var removeFileMessage: String {
+        guard let file = removingFile else { return "" }
+        return file.linked ? "„\(file.fileName)” zostanie odłączony od zadania (zostaje w plikach wydarzenia)." : "„\(file.fileName)” zostanie trwale usunięty."
+    }
+    /// Edycja: zarządzający tablicą albo właściciel zadania (na tablicy wydarzenia — zarządzający).
+    private func edits(_ task: BoardTask) -> Bool { canManage || (store.board != .event && me != nil && task.ownerId == me) }
 
     var body: some View {
         if let task {
             ScrollView { details(task).padding(18).frame(maxWidth: .infinity, alignment: .leading) }
                 .task(id: task.id) { await store.loadDetail(task.id) }
+                .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+                    guard case .success(let urls) = result else { return }
+                    Task { await store.attach(urls, to: task) }
+                }
+                .confirmationDialog(unassigning?.id == me ? "Wypisać się z zadania?" : "Usunąć osobę z zadania?",
+                                    isPresented: Binding(get: { unassigning != nil }, set: { if !$0 { unassigning = nil } }), titleVisibility: .visible) {
+                    if let person = unassigning {
+                        Button(person.id == me ? "Wypisz się" : "Usuń z zadania", role: .destructive) { Task { await store.unassign(task, employee: person.id) } }
+                        Button("Anuluj", role: .cancel) {}
+                    }
+                } message: { Text(unassignMessage) }
+                .confirmationDialog(removingFile?.linked == true ? "Odlinkować plik?" : "Usunąć plik?",
+                                    isPresented: Binding(get: { removingFile != nil }, set: { if !$0 { removingFile = nil } }), titleVisibility: .visible) {
+                    if let file = removingFile {
+                        Button(file.linked ? "Odlinkuj" : "Usuń", role: .destructive) { Task { await store.deleteAttachment(file, task: task) } }
+                        Button("Anuluj", role: .cancel) {}
+                    }
+                } message: { Text(removeFileMessage) }
         } else {
             ContentUnavailableView("Wybierz zadanie", systemImage: "checklist", description: Text("Kliknij kartę na tablicy."))
         }
@@ -458,21 +503,9 @@ struct TaskEditRequest: Identifiable {
                     if let due = TaskDates.label(task, long: true) { row("Termin wykonania", due) }
                     if !task.workingName.isEmpty { row("Pracuje teraz", task.workingName) }
                     if let detail, !detail.creatorName.isEmpty { row("Utworzył(a)", detail.creatorName) }
-                    if !task.assignees.isEmpty {
-                        HStack(alignment: .top) {
-                            Text("Przypisani").font(.caption).foregroundStyle(.secondary).frame(width: 120, alignment: .leading)
-                            VStack(alignment: .leading, spacing: 5) {
-                                ForEach(task.assignees) { person in
-                                    HStack(spacing: 7) {
-                                        EmployeeAvatarView(name: person.name, url: person.avatarUrl, crop: person.avatar, size: 24)
-                                        Text(person.name)
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
+            if !task.isPrivate { people(task) }
             if task.inquiryId != nil || task.eventId != nil {
                 VStack(alignment: .leading, spacing: 4) {
                     if let inquiry = task.inquiryId, state.employee?.canView(.inquiries) == true {
@@ -487,21 +520,28 @@ struct TaskEditRequest: Identifiable {
                 if let detail {
                     if detail.attachments.isEmpty { Text("Brak załączników").font(.caption).foregroundStyle(.secondary) }
                     ForEach(detail.attachments) { file in
-                        Button {
-                            if let raw = file.fileUrl, let url = URL(string: raw) { NSWorkspace.shared.open(url) }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: file.fileType.hasPrefix("image/") ? "photo" : "doc").foregroundStyle(theme.accent)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(file.fileName).lineLimit(1)
-                                    Text("\(file.sizeLabel)\(file.name.isEmpty ? "" : " · \(file.name)")").font(.caption2).foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            Button {
+                                if let raw = file.fileUrl, let url = URL(string: raw) { NSWorkspace.shared.open(url) }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: file.fileType.hasPrefix("image/") ? "photo" : "doc").foregroundStyle(theme.accent)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(file.fileName).lineLimit(1)
+                                        Text("\(file.sizeLabel)\(file.name.isEmpty ? "" : " · \(file.name)")").font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "arrow.up.forward.square").foregroundStyle(.secondary)
                                 }
-                                Spacer()
-                                Image(systemName: "arrow.up.forward.square").foregroundStyle(.secondary)
+                                .padding(8).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8)).contentShape(Rectangle())
+                            }.buttonStyle(.plain).disabled(file.fileUrl == nil).help("Otwórz plik")
+                            if manageAll || (me != nil && file.uploadedBy == me) {
+                                Button { removingFile = file } label: { Image(systemName: file.linked ? "minus.circle" : "trash") }
+                                    .buttonStyle(.borderless).foregroundStyle(.secondary).help(file.linked ? "Odlinkuj plik" : "Usuń plik")
                             }
-                            .padding(8).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8)).contentShape(Rectangle())
-                        }.buttonStyle(.plain).disabled(file.fileUrl == nil).help("Otwórz plik")
+                        }
                     }
+                    Button { importing = true } label: { Label("Dodaj plik…", systemImage: "paperclip") }.controlSize(.small)
                 } else { ProgressView().controlSize(.small) }
             }
             section(detail.map { "Komentarze (\($0.comments.count))" } ?? "Komentarze") {
@@ -512,7 +552,7 @@ struct TaskEditRequest: Identifiable {
                                 Text(item.name.isEmpty ? "Pracownik" : item.name).font(.caption.weight(.semibold))
                                 Text(MeetingDates.parse(item.createdAt).map { MeetingDates.format($0, "d MMM, HH:mm") } ?? "").font(.caption2).foregroundStyle(.secondary)
                                 Spacer()
-                                if item.employeeId == store.access?.employeeId {
+                                if item.employeeId == me || manageAll || isCreator(task) {
                                     Button { Task { await store.deleteComment(item, task: task) } } label: { Image(systemName: "trash") }
                                         .buttonStyle(.borderless).foregroundStyle(.secondary).help("Usuń komentarz")
                                 }
@@ -539,12 +579,44 @@ struct TaskEditRequest: Identifiable {
                 Button("Pełne szczegóły w CRM", systemImage: "safari") { state.openCRM("/crm/tasks/\(task.id)") }.buttonStyle(.link).linkCursor()
                 Spacer()
             }
-            if canManage {
+            if canManage || edits(task) {
                 HStack {
-                    Button(role: .destructive) { remove(task) } label: { Label("Usuń…", systemImage: "trash") }
+                    if canManage { Button(role: .destructive) { remove(task) } label: { Label("Usuń…", systemImage: "trash") } }
                     Spacer()
-                    Button { edit(task) } label: { Label("Edytuj", systemImage: "pencil") }.buttonStyle(.borderedProminent).keyboardShortcut("e")
+                    if edits(task) { Button { edit(task) } label: { Label("Edytuj", systemImage: "pencil") }.buttonStyle(.borderedProminent).keyboardShortcut("e") }
                 }
+            }
+        }
+    }
+
+    /// Osoby: lista z wypisaniem, „Przypisz się” / „Wypisz się” i dodawanie osoby (wyszukiwanie wśród pracowników).
+    private func people(_ task: BoardTask) -> some View {
+        let assigned = me.map { me in task.assignees.contains { $0.id == me } } ?? false
+        return section("Osoby (\(task.assignees.count))") {
+            VStack(alignment: .leading, spacing: 6) {
+                if task.assignees.isEmpty { Text("Brak przypisanych osób").font(.caption).foregroundStyle(.secondary) }
+                ForEach(task.assignees) { person in
+                    HStack(spacing: 7) {
+                        EmployeeAvatarView(name: person.name, url: person.avatarUrl, crop: person.avatar, size: 24)
+                        Text(person.id == me ? "\(person.name) (Ty)" : person.name)
+                        Spacer()
+                        if person.id == me || removesOthers(task) {
+                            Button { unassigning = person } label: { Image(systemName: "xmark.circle") }
+                                .buttonStyle(.borderless).foregroundStyle(.secondary).help(person.id == me ? "Wypisz się" : "Usuń z zadania")
+                        }
+                    }
+                }
+                if let me = me {
+                    if assigned {
+                        Button { unassigning = task.assignees.first { $0.id == me } } label: { Label("Wypisz się", systemImage: "person.badge.minus") }.controlSize(.small)
+                    } else {
+                        Button { Task { await store.assign(task, employee: me, name: state.employee?.displayName ?? "Ty") } } label: {
+                            Label("Przypisz się", systemImage: "person.badge.plus")
+                        }
+                        .controlSize(.small).buttonStyle(.borderedProminent)
+                    }
+                }
+                TaskPeopleAdder(store: store, task: task)
             }
         }
     }
@@ -564,5 +636,41 @@ struct TaskEditRequest: Identifiable {
             Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
             content()
         }
+    }
+}
+
+/// „Dodaj osobę” w panelu zadania: wyszukiwanie wśród pracowników (bez już przypisanych, do 5 wyników) i od razu zapis.
+@MainActor struct TaskPeopleAdder: View {
+    @ObservedObject var store: TasksStore
+    let task: BoardTask
+    @State private var query = ""
+
+    private var matches: [MeetingPerson] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return [] }
+        let assigned = Set(task.assignees.map(\.id))
+        return Array(store.employees.filter { !assigned.contains($0.id) && ($0.name.lowercased().contains(q) || ($0.nickname ?? "").lowercased().contains(q)) }.prefix(5))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField("Dodaj osobę", text: $query, prompt: Text("Dodaj osobę — imię, nazwisko lub email…")).textFieldStyle(.roundedBorder)
+            ForEach(matches) { person in
+                Button {
+                    query = ""
+                    Task { await store.assign(task, employee: person.id, name: person.name) }
+                } label: {
+                    HStack {
+                        Image(systemName: "person.badge.plus")
+                        Text(person.name)
+                        Spacer()
+                        Text(person.nickname ?? "").font(.caption).foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).padding(.vertical, 2)
+            }
+        }
+        .task { await store.loadEmployees() }
     }
 }

@@ -1093,6 +1093,10 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
                                 copyable(FinFormat.money(amountDue, invoice.currency), copy: BankFormat.plain(amountDue), name: "Kwota do zapłaty")
                             }
                         }
+                        // Kwota VAT do przelewu podzielonego (split payment): brutto + VAT.
+                        if let vat = invoice.vat {
+                            GridRow { label("Kwota VAT"); copyable(FinFormat.money(vat, invoice.currency), copy: BankFormat.plain(vat), name: "Kwota VAT") }
+                        }
                     }
                     .font(.callout)
                     if !invoice.items.isEmpty {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
+import { testModeAuthClient, testModeGlobalFor } from '@/lib/testMode/session.server';
 import { sellerConfigurationCatalog, applySellerSelection } from '@/lib/seller/productConfiguration.server';
 import { configurationPrice, validateConfiguration } from '@/lib/CRM/Offers/offerAddons';
 import { calculateModular, modularScope, modularTitle } from '@/lib/CRM/Offers/modularProduct';
@@ -19,9 +20,10 @@ async function authorize(request: NextRequest, product: string) {
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
   if (!token || !uuid(product) || !uuid(company) || (requestedPartner && !uuid(requestedPartner))) throw new Error('Zaloguj się ponownie i wybierz produkt oraz markę.');
   const admin = createSupabaseAdminClient();
-  const auth = await admin.auth.getUser(token);
+  // Tryb testowy „widok jako” (docs/test-mode.md): klucz zastępczy — w imieniu oglądanej osoby.
+  const auth = await (testModeAuthClient(token) ?? admin).auth.getUser(token);
   if (auth.error || !auth.data.user) throw new Error('Sesja wygasła. Zaloguj się ponownie.');
-  const user = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { global: { headers: { Authorization: 'Bearer ' + token } }, auth: { persistSession: false, autoRefreshToken: false } });
+  const user = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { global: { headers: { Authorization: 'Bearer ' + token }, ...testModeGlobalFor(token) }, auth: { persistSession: false, autoRefreshToken: false } });
   let partner: string;
   let basePrice = 0;
   if (requestedPartner) {

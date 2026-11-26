@@ -170,6 +170,8 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
  */
 export function routeSalesUrl(url: string | null | undefined): boolean {
   if (!url) return false;
+  if (routeRentalUrl(url)) return true;
+  if (routePurchasesUrl(url)) return true;
   if (url === '/crm/events/actions') { openInCrmWeb(url); return true; }
   const inquiry = url.match(new RegExp(`/crm/inquiries/(${UUID})`, 'i'));
   if (inquiry) { navigateToInquiry(inquiry[1]); return true; }
@@ -202,6 +204,38 @@ export function routeSalesUrl(url: string | null | undefined): boolean {
     return true;
   }
   return false;
+}
+
+/** Rental → Wypożyczenia klientom: karta wypożyczenia albo lista. */
+export function navigateToRental(rentalId?: string) {
+  if (navigationRef.isReady()) {
+    navigationRef.navigate('Rental', rentalId ? { rentalId, requestId: Date.now() } : { requestId: Date.now() });
+  }
+}
+
+/** Adres Rentalu z powiadomienia (`/crm/rental/<id>`, `/crm/rental`); wynajem od podwykonawców — w CRM. Zwraca true, gdy obsłużony. */
+export function routeRentalUrl(url: string | null | undefined): boolean {
+  if (!url || !/^\/crm\/rental(\/|\?|$)/i.test(url)) return false;
+  if (/^\/crm\/rental\/subcontractors/i.test(url)) { openInCrmWeb(url); return true; }
+  navigateToRental(url.match(new RegExp(`^/crm/rental/(${UUID})`, 'i'))?.[1]);
+  return true;
+}
+
+/** Zakupy: rozliczenie pracownika (`employee`), własny miesiąc albo sam ekran. */
+export function navigateToPurchases(params: { employee?: string; year?: number; month?: number } = {}) {
+  if (navigationRef.isReady()) {
+    navigationRef.navigate('Purchases', { ...params, requestId: Date.now() });
+  }
+}
+
+/** Adres Zakupów z powiadomienia (`/crm/purchases?employee=…&year=…&month=…`, `?year=…&month=…`). Zwraca true, gdy obsłużony. */
+export function routePurchasesUrl(url: string | null | undefined): boolean {
+  if (!url || !/^\/crm\/purchases(\/|\?|$)/i.test(url)) return false;
+  const employee = url.match(new RegExp(`[?&]employee=(${UUID})`, 'i'))?.[1];
+  const year = Number(url.match(/[?&]year=(\d{4})(&|$)/)?.[1]);
+  const month = Number(url.match(/[?&]month=(\d{1,2})(&|$)/)?.[1]);
+  navigateToPurchases(year && month ? { employee, year, month } : {});
+  return true;
 }
 
 export function navigateToSocialMedia(comments = false) {
@@ -406,6 +440,11 @@ export async function routeNotification(
     navigateToEmailMessage(emailUrlMatch[1]);
     return { meetingId: null };
   }
+
+  // Rental: karta wypożyczenia (powiadomienia `rental` mają related_entity_id i adres `/crm/rental/<id>`).
+  if (routeRentalUrl(url)) return { meetingId: null };
+  // Zakupy: rozliczenie pracownika albo własny miesiąc (`/crm/purchases?…`).
+  if (routePurchasesUrl(url)) return { meetingId: null };
 
   // Przetargi, oferty, zapytania i wydarzenia wskazane tylko w adresie (bez related_entity_id).
   if (!target.entity_id && !target.inquiry_id && !target.task_id && routeSalesUrl(url)) {

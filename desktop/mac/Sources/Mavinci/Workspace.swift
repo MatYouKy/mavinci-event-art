@@ -54,6 +54,11 @@ import Network
     /// Kopia wydarzeń i spotkań w Kalendarzu Apple (`AppleCalendarSync.swift`) — aktualizowana po odświeżeniu, jeśli włączono.
     let appleCalendar = AppleCalendarLink()
     let fleet = FleetStore()
+    /// Rental → Wypożyczenia klientom (`/crm/rental`) — lista, karta, protokoły wydania i odbioru, rozliczenie.
+    let clientRentals = ClientRentalsStore()
+    /// Zakupy (`/crm/purchases`) — „Moje wydatki” pracownika (paragony z NIP, faktury spoza KSeF, koszty eventów, rozliczenie
+    /// miesiąca) i rozliczenia pracowników do zatwierdzenia.
+    let purchases = PurchasesStore()
     /// Czas pracy (`/crm/time-tracking`) — licznik, wpisy, raport zespołu, rozliczenia.
     let timeTracking = TimeTrackingStore()
     /// Bazy danych (`/crm/databases`) — własne arkusze i udostępnianie.
@@ -119,6 +124,12 @@ import Network
     @Published var dashboardLoading = false
     private var dashboardLoadedAt: Date?
     private var backend: HTTPBackend?
+    /// Tryb testowy „widok jako” (`TestMode/TestMode.swift`, `docs/test-mode.md`): kogo oglądamy; `nil` — zwykła praca.
+    @Published private(set) var testMode: TestModeInfo?
+    /// Powrót z trybu testowego w toku — zamiast ekranu logowania widać „Powrót do Twojego widoku…”.
+    @Published private(set) var testSwitching = false
+    /// Połączenie administratora (wraca po wyjściu z trybu testowego; w trybie `connection` wskazuje serwer CRM).
+    private var testHome: Connection?
     private var cache: LocalCache?
     /// Zapis i usuwanie kopii zbiorów w tle (`LocalCacheWriter`) oraz zaplanowany zapis (kilka zmian w krótkim czasie — jeden zapis).
     private let cacheWriter = LocalCacheWriter()
@@ -168,6 +179,8 @@ import Network
         sellers.workspace = self
         chat.workspace = self
         fleet.workspace = self
+        clientRentals.workspace = self
+        purchases.workspace = self
         timeTracking.workspace = self
         databases.workspace = self
         locations.workspace = self
@@ -196,7 +209,9 @@ import Network
         return snapshot?.collections[module.rawValue]?.rows ?? []
     }
     func restore() async {
-        guard !loading, snapshot == nil, connection.valid else { return }
+        guard !loading, snapshot == nil, testMode == nil, connection.valid else { return }
+        // Kopie z trybu testowego przerwanego zamknięciem aplikacji — usuwane przy następnym starcie.
+        TestModeStorage.purgeLeftover()
         loading = true
         defer { loading = false }
         let ticket = generation
@@ -206,28 +221,7 @@ import Network
             let api = HTTPBackend(connection); backend = api
             await api.restore(session)
             FinderDomain.activate(connection: connection, session: data, fresh: false)
-            cache = LocalCache(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            native.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            messages.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            meetings.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            inquiries.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            companyTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            contacts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            team.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            contracts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            products.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            offers.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            social.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            portfolio.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            showcase.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            materials.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            drive.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            finance.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            openLocalViews(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            openStores(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
             // Kopia z dysku od razu (bez czekania na sieć); zapis dopiero po potwierdzeniu profilu na serwerze.
             // Bez połączenia kopia starsza niż 24 h jest ukrywana (`refresh` — ochrona przed odebranymi uprawnieniami).
@@ -254,28 +248,7 @@ import Network
             guard ticket == generation else { return }
             backend = api
             if let data = try? JSONEncoder().encode(session) { FinderDomain.activate(connection: connection, session: data, fresh: true) }
-            cache = LocalCache(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            native.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            messages.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            meetings.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            inquiries.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            companyTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            contacts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            team.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            warehouse.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            contracts.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            products.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            offers.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            social.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            portfolio.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            showcase.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            materials.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            drive.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            events.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            eventCards.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            myTasks.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            finance.open(namespace: digest("\(connection.identity)|\(session.user.id)"))
-            openLocalViews(namespace: digest("\(connection.identity)|\(session.user.id)"))
+            openStores(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
             let stored = cache
             let saved = await Task.detached(priority: .userInitiated) { try? stored?.load() }.value
@@ -313,7 +286,8 @@ import Network
             let current = try await backend.profile()
             guard ticket == generation else { return }
             guard current.is_active else { throw AppError.noEmployee }
-            if let raw = await backend.crmTheme, let next = CrmTheme(rawValue: raw), next != theme { theme = next; next.remember() }
+            // Tryb testowy: motyw oglądanej osoby nie zmienia motywu zapamiętanego na tym Macu.
+            if testMode == nil, let raw = await backend.crmTheme, let next = CrmTheme(rawValue: raw), next != theme { theme = next; next.remember() }
             if snapshot?.employee != current {
                 // Dane poprzedniego profilu znikają od razu; kopia na dysku — po zakończeniu trwającego zapisu (w tle).
                 snapshot = Snapshot(employee: current)
@@ -394,7 +368,7 @@ import Network
             if moduleErrors.isEmpty { snapshot?.savedAt = Date() }
             if !editing { refreshEventToken = UUID() }
             // Kalendarz Apple: automatyczna aktualizacja kopii po pełnym odświeżeniu kalendarza (tylko gdy wpisy się zmieniły).
-            if current.canView(.calendar), moduleErrors["calendar"] == nil, snapshot?.collections["calendar"]?.lastSync != nil {
+            if testMode == nil, current.canView(.calendar), moduleErrors["calendar"] == nil, snapshot?.collections["calendar"]?.lastSync != nil {
                 appleCalendar.refreshed(rows: rows(.calendar), employee: current.id, identity: connection.identity)
             }
             if snapshot != nil { scheduleSnapshotWrite(after: nil, reportFailure: true) }
@@ -500,24 +474,13 @@ import Network
         offline = false
     }
     func logout() async {
+        // Tryb testowy: „Wyloguj” (także wygaśnięcie sesji oglądanej osoby) kończy tryb i przywraca sesję administratora.
+        if testMode != nil { await exitTestMode(); return }
         let old = backend
-        generation = UUID()
         // „Mavinci” znika z Findera razem z pobranymi kopiami plików.
         FinderDomain.deactivate()
-        AvatarCache.shared.clear()
         // Local sign-out is immediate; server revocation cannot keep data visible.
-        backend = nil
-        snapshot = nil
-        for nav in allNavigations { nav.reset() }
-        // Po wylogowaniu zostaje jedno okno (logowanie) — pozostałe okna i karty są zamykane.
-        for nav in windowNavigations where nav !== activeNavigation { nav.window?.close() }
-        verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false; refreshQueued = false
-        moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
-        native.clear(); messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); chat.reset(); appleCalendar.reset(); fleet.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); social.reset(); portfolio.reset(); showcase.reset(); materials.reset(); drive.reset(); finance.reset()
-        navigation = []; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
-        scheduleRows = nil; scheduleFailed = false
-        if let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }
-        cacheNamespace = nil
+        resetState(forget: true)
         do { try Vault.delete("session-\(connection.identity)") }
         catch { self.error = "Nie udało się usunąć danych logowania z pęku kluczy. Zamknij aplikację i sprawdź dostęp do pęku kluczy." }
         do { try await clearCache() }
@@ -525,6 +488,136 @@ import Network
         cache = nil
         await old?.logout()
     }
+    /// Stan obszaru roboczego w pamięci: dane, sekcje, okna (zostaje jedno). `forget` — wylogowanie i wyjście z trybu testowego:
+    /// kopie kart natywnych, dashboardu i planu dnia znikają też z dysku; bez tego (wejście w tryb testowy) kopie administratora
+    /// zostają na dysku na powrót.
+    private func resetState(forget: Bool) {
+        generation = UUID()
+        AvatarCache.shared.clear()
+        backend = nil
+        snapshot = nil
+        for nav in allNavigations { nav.reset() }
+        // Po wylogowaniu zostaje jedno okno (logowanie) — pozostałe okna i karty są zamykane.
+        for nav in windowNavigations where nav !== activeNavigation { nav.window?.close() }
+        verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false; refreshQueued = false
+        moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
+        if forget { native.clear() } else { native.close() }
+        messages.reset(); meetings.reset(); inquiries.reset(); companyTasks.reset(); myTasks.reset(); contacts.reset(); team.reset(); warehouse.reset(); contracts.reset(); products.reset(); offers.reset(); events.reset(); eventCards.reset(); sellers.reset(); chat.reset(); appleCalendar.reset(); fleet.reset(); clientRentals.reset(); purchases.reset(); timeTracking.reset(); databases.reset(); locations.reset(); website.reset(); mailCampaigns.reset(); social.reset(); portfolio.reset(); showcase.reset(); materials.reset(); drive.reset(); finance.reset()
+        navigation = []; dashboard = nil; dashboardLoadedAt = nil; dashboardError = nil
+        scheduleRows = nil; scheduleFailed = false
+        if forget, let cacheNamespace { for name in ["dashboard", "schedule"] { try? SealedFile<Data>(namespace: "\(name)-\(cacheNamespace)").clear() } }
+        cacheNamespace = nil
+    }
+    /// Kopie danych konta na dysku (przestrzeń nazw: połączenie + konto) — po zalogowaniu, przy starcie i w trybie testowym.
+    private func openStores(namespace: String) {
+        cache = LocalCache(namespace: namespace)
+        native.open(namespace: namespace)
+        messages.open(namespace: namespace)
+        meetings.open(namespace: namespace)
+        inquiries.open(namespace: namespace)
+        companyTasks.open(namespace: namespace)
+        contacts.open(namespace: namespace)
+        team.open(namespace: namespace)
+        warehouse.open(namespace: namespace)
+        contracts.open(namespace: namespace)
+        products.open(namespace: namespace)
+        offers.open(namespace: namespace)
+        social.open(namespace: namespace)
+        portfolio.open(namespace: namespace)
+        showcase.open(namespace: namespace)
+        materials.open(namespace: namespace)
+        drive.open(namespace: namespace)
+        events.open(namespace: namespace)
+        eventCards.open(namespace: namespace)
+        myTasks.open(namespace: namespace)
+        finance.open(namespace: namespace)
+        openLocalViews(namespace: namespace)
+    }
+
+    // MARK: Tryb testowy „widok jako” (`TestMode/TestMode.swift`, `docs/test-mode.md`)
+
+    /// Wejście w widok pracownika (Ustawienia → „Tryb testowy”, tylko administrator): serwer CRM otwiera sesję testową, aplikacja
+    /// łączy się z bazą przez serwer CRM jako ta osoba (dane, menu, uprawnienia; zapis do bazy sprawdzany i wycofywany, pliki
+    /// i operacje serwera wyłączone). Sesja administratora zostaje w pęku kluczy, jego kopie danych na dysku i Finder — bez
+    /// zmian. Zwraca komunikat błędu albo `nil`.
+    func enterTestMode(employeeID: String) async -> String? {
+        guard testMode == nil else { return "Tryb testowy jest już włączony — najpierw wyjdź z trybu." }
+        guard employee?.isAdmin == true, let admin = backend, let crm = connection.crm else { return "Tryb testowy jest dostępny tylko dla administratora." }
+        guard !loading, !acting, pending == nil else { return "Trwa inna czynność — spróbuj ponownie za chwilę." }
+        let home = connection
+        let ticket = generation
+        pending = "Otwieranie widoku pracownika…"
+        let reply: TestModeStartReply
+        do {
+            let adminToken = try await admin.token()
+            reply = try await TestModeAPI.start(crm: crm, adminToken: adminToken, employeeID: employeeID)
+        } catch {
+            pending = nil
+            return TestModeAPI.message(for: error)
+        }
+        let test = Connection(provider: .supabase, url: crm + reply.proxy, publicKey: home.publicKey, crmURL: home.crmURL)
+        let api = HTTPBackend(test, ephemeral: true)
+        let target: Employee
+        do {
+            guard test.valid, test.identity != home.identity else { throw AppError.configuration }
+            await api.restore(reply.session)
+            // Profil oglądanej osoby przed przełączeniem — przy błędzie widok administratora zostaje bez zmian.
+            target = try await api.profile()
+            guard target.is_active else { throw AppError.noEmployee }
+        } catch {
+            pending = nil
+            await TestModeAPI.exit(crm: crm, token: reply.session.access_token)
+            return "Nie udało się otworzyć widoku tej osoby: \(TestModeAPI.message(for: error))"
+        }
+        guard ticket == generation, testMode == nil else {
+            pending = nil
+            await TestModeAPI.exit(crm: crm, token: reply.session.access_token)
+            return "Sesja zmieniła się w trakcie — spróbuj ponownie."
+        }
+        // Przełączenie bez wylogowania: kopia administratora nie jest zapisywana ani usuwana (zostaje na powrót).
+        persistTask?.cancel(); persistTask = nil
+        cacheWriter.invalidate()
+        cache = nil
+        resetState(forget: false)
+        testHome = home
+        testMode = TestModeInfo(id: reply.id, label: reply.label, expiresAt: Date(timeIntervalSince1970: reply.expires_at))
+        connection = test
+        backend = api
+        let namespace = digest("\(test.identity)|\(reply.session.user.id)")
+        TestModeStorage.remember(namespace: namespace)
+        openStores(namespace: namespace)
+        snapshot = Snapshot(employee: target)
+        verifiedConnection = true; offline = false
+        notice = "Tryb testowy: widok \(reply.label). Zmiany nie są zapisywane."
+        await refresh(force: true)
+        return nil
+    }
+
+    /// Wyjście z trybu testowego (pasek „Wyjdź z trybu”, Ustawienia, „Wyloguj”, wygaśnięcie sesji osoby): sesja testowa zakończona
+    /// na serwerze, kopie danych oglądanej osoby usunięte z dysku, wraca administrator (sesja z pęku kluczy).
+    /// `reason` — komunikat zamiast potwierdzenia.
+    func exitTestMode(reason: String? = nil) async {
+        guard testMode != nil, let home = testHome else { return }
+        testSwitching = true
+        defer { testSwitching = false }
+        let token = await backend?.currentAccessToken()
+        let test = connection
+        let namespace = cacheNamespace
+        resetState(forget: true)
+        do { try await clearCache() } catch {}
+        cache = nil
+        if let namespace { TestModeStorage.purge(namespace: namespace) }
+        TestModeStorage.purgeLeftover()
+        try? Vault.delete("session-\(test.identity)")
+        connection = home
+        testMode = nil
+        testHome = nil
+        if let token, let crm = home.crm { await TestModeAPI.exit(crm: crm, token: token) }
+        await restore()
+        if let reason { error = reason }
+        else if employee != nil { notice = "Zakończono tryb testowy — wróciłeś do swojego widoku." }
+    }
+
     func configure(_ next: Connection) async {
         guard canConfigure, next.valid else { error = AppError.configuration.localizedDescription; return }
         do {
@@ -715,7 +808,7 @@ extension Workspace {
         guard let data = try? await api.get("/navigation"), let reply = try? JSONDecoder().decode(Reply.self, from: data) else { return }
         let visible = Self.visibleNavigation(reply.navigation)
         if visible != navigation { navigation = visible }
-        if let encoded = try? JSONEncoder().encode(reply.navigation) { UserDefaults.standard.set(encoded, forKey: navigationKey) }
+        if testMode == nil, let encoded = try? JSONEncoder().encode(reply.navigation) { UserDefaults.standard.set(encoded, forKey: navigationKey) }
     }
     /// Dashboard i plan dnia z dysku (zaszyfrowane jak pozostałe dane) — widoczne od razu po uruchomieniu.
     func openLocalViews(namespace: String) {
@@ -782,6 +875,8 @@ extension Workspace {
                 case .kits: warehouse.openedKitID = nil
                 case .cables: warehouse.openedCableID = nil; warehouse.cableCategoriesShown = false
                 case .rental: warehouse.openedRentalID = nil
+                case .clientRentals: clientRentals.openedID = nil
+                case .purchases: purchases.reviewing = nil
                 case .products: products.openedID = nil
                 case .fleet: fleet.openedID = nil; fleet.creating = false; fleet.editRequested = false
                 case .timeTracking: timeTracking.openedEmployeeID = nil

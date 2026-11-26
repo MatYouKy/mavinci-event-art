@@ -49,6 +49,7 @@ interface Task {
   /** Kolumna tablicy (status w bazie nie ma „Do sprawdzenia” — wtedy `in_progress`). */
   board_column?: string | null;
   is_inquiry?: boolean | null;
+  is_private?: boolean | null;
   due_date: string | null;
   event_id: string | null;
   created_at: string;
@@ -469,6 +470,30 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     }
   };
 
+  /** „Przypisz się” / „Wypisz się” jak w CRM i na Macu (bez powiadomienia — to własna czynność); zespół zapytania — w zapytaniu. */
+  const toggleSelf = (assigned: boolean) => {
+    if (!task || !employee?.id) return;
+    const apply = async () => {
+      const done = await notice.run(assigned ? 'Wypisywanie…' : 'Przypisywanie…', async () => {
+        if (assigned) {
+          const { data, error } = await supabase.from('task_assignees').delete().eq('task_id', task.id).eq('employee_id', employee.id).select('employee_id');
+          if (error) throw error;
+          if (!data?.length) throw new Error('Nie udało się wypisać z zadania.');
+        } else {
+          const { error } = await supabase.from('task_assignees').insert({ task_id: task.id, employee_id: employee.id, assigned_by: employee.id });
+          if (error && error.code !== '23505') throw error;
+        }
+        return true;
+      }, assigned ? 'Wypisano z zadania' : 'Przypisano Cię do zadania');
+      if (done) await fetchAssignees();
+    };
+    if (!assigned) { void apply(); return; }
+    Alert.alert('Wypisz się', 'Czy na pewno chcesz wypisać się z tego zadania?', [
+      { text: 'Anuluj', style: 'cancel' },
+      { text: 'Wypisz się', style: 'destructive', onPress: () => void apply() },
+    ]);
+  };
+
   const selectableEmployees = availableEmployees.filter((emp) => !editAssigneeIds.has(emp.id));
 
   const selectedEmployees = availableEmployees.filter((emp) => editAssigneeIds.has(emp.id));
@@ -713,6 +738,15 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                     )}
                   </View>
                 )}
+                {!task.is_inquiry && !task.is_private && employee?.id ? (() => {
+                  const assigned = assignees.some((assignee) => assignee.employee_id === employee.id);
+                  return (
+                    <TouchableOpacity onPress={() => toggleSelf(assigned)} style={styles.selfAssign} accessibilityRole="button">
+                      <Feather name={assigned ? 'user-minus' : 'user-plus'} size={15} color={assigned ? colors.text.secondary : colors.primary.gold} />
+                      <Text style={[styles.selfAssignText, assigned && { color: colors.text.secondary }]}>{assigned ? 'Wypisz się' : 'Przypisz się'}</Text>
+                    </TouchableOpacity>
+                  );
+                })() : null}
               </View>
             </View>
 
@@ -1316,6 +1350,22 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border.default,
   },
 
+  selfAssign: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    minHeight: 38,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.border.hover,
+  },
+  selfAssignText: {
+    color: colors.primary.gold,
+    fontSize: typography.fontSizes.sm,
+  },
   assigneesHeader: {
     flexDirection: 'row',
     alignItems: 'center',

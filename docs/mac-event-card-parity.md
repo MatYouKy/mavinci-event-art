@@ -18,7 +18,7 @@ Zakładki w CRM (`EVENT_TAB_GROUPS`, kolejność paska): **Wydarzenie** — Prze
 ## Nagłówek i akcje
 - [x] Nazwa, status (odznaka), kategoria, termin, miejsce, klient
 - [x] Karta imprezy PDF (`/bridge/events/[id]/card`) — **PDF lokalnie** (Chrome na Macu, `?render=local`), bez Chrome — z serwera
-- [ ] Edytuj wydarzenie (`EditEventModalNew` / `EditEventModa`: nazwa, daty, kategoria, klient, kontakt — także nowy kontakt) — na Macu „Edytuj” otwiera CRM; termin, lokalizacja, opis, notatki i kategoria — natywnie w Szczegółach
+- [x] Edytuj wydarzenie — „Edytuj” na karcie eventu zmienia tylko nazwę (CRM `EventRenameModal`, Mac `EventEditSheet`, telefon `EventRenameSheet`; 26.11.2026 — wcześniej okno zapisywało wszystkie pola i nadpisywało nietknięte); termin, lokalizacja, klient, firma, kategoria i status — przy polach w Szczegółach
 - [x] Duplikuj wydarzenie (`handleDuplicateEvent`: dane podstawowe, status „draft”, kwoty tylko z obszarem „kwoty”) — tylko z zarządzaniem wydarzeniem
 - [x] Usuń wydarzenie (`delete-event-safe`) — tylko administrator, jak w CRM
 - [x] Zmiana statusu (`EventStatusSelectModal`); w Szczegółach → Akcje z ograniczeniem statusów magazynu, „Rozliczony” → faktury zapłacone

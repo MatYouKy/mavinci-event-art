@@ -2231,8 +2231,8 @@ function jpegOrientation(bytes: Uint8Array): number {
   return 1;
 }
 
-/** PDF ze zdjęć stron (A4, strona w orientacji zdjęcia, zdjęcie wpasowane bez kadrowania). */
-async function scanPdf(images: Uint8Array[]): Promise<Uint8Array> {
+/** PDF ze zdjęć stron (A4, strona w orientacji zdjęcia, zdjęcie wpasowane bez kadrowania); także zdjęcia zakupów (`purchases.server.ts`). */
+export async function scanPdf(images: Uint8Array[]): Promise<Uint8Array> {
   const { PDFDocument, degrees } = await import('pdf-lib');
   const pdf = await PDFDocument.create();
   for (const bytes of images) {

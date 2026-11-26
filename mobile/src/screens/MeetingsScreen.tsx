@@ -32,9 +32,14 @@ import {
 } from '../lib/meetingStatus';
 import { cancelObsoleteMeetingAlerts } from '../services/meetingReminders';
 import SwipeableRow from '../components/SwipeableRow';
-import ScheduleTimeline, { type TimelineDetails, type TimelineIcon } from '../components/Timeline/ScheduleTimeline';
-import { Segmented } from '../components/Inquiries/InquiryKit';
-import { HOUR, SCREEN_VIEWS, addDays, startOfDay, useScreenTimeline, type TimelineEntry } from '../lib/scheduleTimeline';
+import { type TimelineDetails, type TimelineIcon } from '../components/Timeline/ScheduleTimeline';
+import CalendarTimeline, { type CalendarEntry } from '../components/Timeline/CalendarTimeline';
+import TeamAvailabilityTimeline from '../components/Timeline/TeamAvailabilityTimeline';
+import MeetingConflictsNotice from '../components/Meetings/MeetingConflictsNotice';
+import { Segmented, afterModal } from '../components/Inquiries/InquiryKit';
+import { HOUR, SCREEN_VIEWS, addDays, formatEntryTime, startOfDay, useScreenTimeline, type ScreenView } from '../lib/scheduleTimeline';
+import { notifyMeetingContacts, type MeetingMailBefore } from '../lib/teamAvailabilityApi';
+import { navigateToEvent } from '../navigation/navigationRef';
 
 import * as Notifications from 'expo-notifications';
 
@@ -78,7 +83,15 @@ interface Meeting {
   alert_critical_minutes: number | null;
   is_private?: boolean | null;
   status?: string | null;
-  participants?: { employee_id: string; response?: string | null }[];
+  /** Pracownicy (`employee_id`) i osoby spoza firmy (`contact_id`) — zapis spotkania przekazuje obie listy, żeby nikogo nie usunąć. */
+  participants?: {
+    employee_id: string | null;
+    contact_id?: string | null;
+    response?: string | null;
+    contact?: { full_name: string | null; first_name: string | null; last_name: string | null } | null;
+  }[];
+  /** Lokalizacja z bazy — jej nazwę widzą osoby spoza firmy w e-mailu (porównanie „zmiana miejsca”). */
+  location?: { name: string | null } | null;
 }
 
 interface NewMeetingForm {
@@ -100,6 +113,31 @@ interface NewMeetingForm {
 }
 
 // --- Helpers ---
+
+/** Uczestnik w zapisie spotkania (`save_meeting`): pracownik albo osoba spoza firmy. */
+type ParticipantRef = { employee_id?: string; contact_id?: string };
+
+/** Widoki ekranu: lista, kalendarz i „Pracownicy” (zajętość wybranych osób — docs/team-availability.md). */
+type MeetingsView = ScreenView | 'people';
+const MEETING_VIEWS: ReadonlyArray<{ id: MeetingsView; label: string }> = [...SCREEN_VIEWS, { id: 'people', label: 'Pracownicy' }];
+
+/** Nazwa osoby spoza firmy (kontakt) w spotkaniu. */
+function contactName(participant: NonNullable<Meeting['participants']>[number]): string {
+  const contact = participant.contact;
+  return contact?.full_name?.trim() || `${contact?.first_name ?? ''} ${contact?.last_name ?? ''}`.trim() || 'Osoba spoza firmy';
+}
+
+/** Stan spotkania sprzed zmiany — serwer wybiera wiadomość dla osób spoza firmy (zmiana, odwołanie, „nieaktualne”). */
+function mailBefore(meeting: Meeting): MeetingMailBefore {
+  return {
+    start: meeting.datetime_start || '',
+    end: meeting.datetime_end,
+    allDay: meeting.is_all_day === true,
+    location: meeting.location?.name || meeting.location_text || '',
+    status: meetingStatus(meeting.status),
+    contactIds: (meeting.participants || []).map((p) => p.contact_id).filter((id): id is string => Boolean(id)),
+  };
+}
 
 const DEFAULT_MEETING_COLOR = '#d3bb73';
 
@@ -232,6 +270,10 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [editScope, setEditScope] = useState<'single' | 'future'>('single');
+  // „Pracownicy”: widok zajętości i odświeżenie po zmianach spotkań; e-mail do osób spoza firmy po edycji.
+  const [peopleView, setPeopleView] = useState(false);
+  const [availabilityRefresh, setAvailabilityRefresh] = useState(0);
+  const [mailContacts, setMailContacts] = useState(true);
 
   const createInitialForm = (): NewMeetingForm => {
     const start = new Date();
@@ -338,7 +380,8 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
           .select(
             `
           *,
-          meeting_participants(employee_id, response)
+          location:locations(name),
+          meeting_participants(employee_id, contact_id, response, contact:contacts(full_name, first_name, last_name))
         `,
           )
           .is('deleted_at', null)
@@ -361,6 +404,7 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
           );
 
           setMeetings(myMeetings);
+          setAvailabilityRefresh((value) => value + 1);
 
           await cancelObsoleteMeetingAlerts().catch((error) => console.warn('[Meetings] Alert cleanup:', error));
           for (const meeting of myMeetings) {
@@ -437,13 +481,14 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
     });
 
     setEditScope('single');
+    setMailContacts(true);
     setEditingMeeting(meeting);
     setSelectedMeeting(null);
     setShowNewMeeting(true);
     setActiveMeetingPicker(null);
 
     // Load participants for this meeting
-    const participantIds = (meeting.participants || []).map((p) => p.employee_id);
+    const participantIds = (meeting.participants || []).map((p) => p.employee_id).filter((id): id is string => Boolean(id));
     const matched = employees.filter((e) => participantIds.includes(e.id));
     setSelectedParticipants(matched);
     setParticipantSearch('');
@@ -478,6 +523,11 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
 
     savingMeetingRef.current = true;
     setIsSavingMeeting(true);
+    // E-mail do osób spoza firmy po zapisie zmian (kontakty dodaje się w CRM i na Macu; telefon je zachowuje).
+    const mail = editingMeeting ? mailBefore(editingMeeting) : null;
+    const mailMeetingId = editingMeeting?.id ?? null;
+    const mailScope: 'single' | 'future' = editingMeeting?.series_id ? editScope : 'single';
+    const notify = Boolean(mailContacts && mail && mail.contactIds.length > 0);
 
     const payload = {
       title: form.title.trim(),
@@ -495,10 +545,15 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
 
     try {
       const participantIds = [...new Set([...selectedParticipants.map((p) => p.id), employee.id])];
+      // Osoby spoza firmy (dodane w CRM albo na Macu) zostają — formularz w aplikacji wybiera tylko pracowników.
+      const contactIds = [...new Set((editingMeeting?.participants || []).map((p) => p.contact_id).filter((id): id is string => Boolean(id)))];
       const { error } = await supabase.rpc('save_meeting', {
         p_id: editingMeeting?.id || null,
         p_data: payload,
-        p_participants: participantIds.map((employee_id) => ({ employee_id })),
+        p_participants: [
+          ...participantIds.map((employee_id): ParticipantRef => ({ employee_id })),
+          ...contactIds.map((contact_id): ParticipantRef => ({ contact_id })),
+        ],
         p_recurrence_days: form.recurrence_days,
         p_scope: editingMeeting?.series_id ? editScope : 'single',
       });
@@ -510,6 +565,7 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
       setEditingMeeting(null);
       resetForm();
       await fetchMeetings();
+      if (notify && mailMeetingId) void sendContactMail(mailMeetingId, mail, mailScope);
     } catch (err: any) {
       Alert.alert(
         'Błąd',
@@ -522,14 +578,38 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
     }
   };
 
+  /** Wiadomość do osób spoza firmy (serwer CRM — zaproszenie, zmiana, odwołanie z plikiem .ics); wynik w komunikacie. */
+  const sendContactMail = async (meetingId: string, before: MeetingMailBefore | null, scope: 'single' | 'future') => {
+    try {
+      const result = await notifyMeetingContacts(meetingId, before, scope);
+      if (result.message) setToast(result.message);
+    } catch (error) {
+      Alert.alert('E-mail do osób spoza firmy', error instanceof Error ? error.message : 'Nie udało się wysłać wiadomości.');
+    }
+  };
+
+  /** Po przeniesieniu terminu albo usunięciu: pytanie o e-mail do osób spoza firmy (jak w CRM i na Macu). */
+  const askContactMail = (meeting: Meeting, before: MeetingMailBefore, question: string, scope: 'single' | 'future' = 'single') => {
+    const names = (meeting.participants || []).filter((p) => p.contact_id).map(contactName);
+    if (!names.length) return;
+    afterModal(() => {
+      Alert.alert('E-mail do osób spoza firmy', `${question}\n${names.join(', ')}`, [
+        { text: 'Nie wysyłaj', style: 'cancel' },
+        { text: 'Wyślij e-mail', onPress: () => { void sendContactMail(meeting.id, before, scope); } },
+      ]);
+    });
+  };
+
   const handleDeleteMeeting = async (meetingId: string) => {
     const meeting = meetings.find((item) => item.id === meetingId);
     const remove = async (scope: 'single' | 'future') => {
+      const before = meeting ? mailBefore(meeting) : null;
       try {
         const { error } = await supabase.rpc('delete_meeting_occurrences', { p_id: meetingId, p_scope: scope });
         if (error) throw error;
         setSelectedMeeting(null);
         await fetchMeetings();
+        if (meeting && before) askContactMail(meeting, before, 'Wysłać osobom spoza firmy e-mail o odwołaniu spotkania?', scope);
       } catch (error: any) {
         Alert.alert('Błąd', error.message || 'Nie udało się usunąć spotkania');
       }
@@ -580,7 +660,7 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
 
   // Lista albo oś czasu (dzień / tydzień / miesiąc) — te same spotkania (moje i z moim udziałem); wybór zapamiętany na urządzeniu.
   const timeline = useScreenTimeline('meetings', 'week');
-  const timelineEntries = useMemo<(TimelineEntry & { meeting: Meeting })[]>(() => meetings.flatMap((meeting) => {
+  const timelineEntries = useMemo<(CalendarEntry & { meeting: Meeting })[]>(() => meetings.flatMap((meeting) => {
     const begin = Date.parse(meeting.datetime_start || '');
     if (!Number.isFinite(begin)) return [];
     const finish = Date.parse(meeting.datetime_end || '');
@@ -599,9 +679,69 @@ export default function MeetingsScreen({ initialMeetingId: initialId, route, onB
       subtitle: meeting.location_text,
       color: meeting.color || DEFAULT_MEETING_COLOR,
       dimmed,
+      locked: meeting.is_private === true,
+      pending: meetingNeedsMyResponse(meeting, employee?.id) && meeting.created_by !== employee?.id,
+      repeat: Boolean(meeting.series_id),
       meeting,
     }];
   }), [meetings, employee?.id]);
+
+  /** Spotkania w trakcie zmiany terminu (przeciągnięcie w kalendarzu). */
+  const [movingIds, setMovingIds] = useState<ReadonlySet<string>>(() => new Set());
+  /** Komunikat po czynności (na dole ekranu, kilka sekund). */
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  /** Nowy termin z kalendarza (jak w CRM): tylko ten termin cyklu, uczestnicy — pracownicy i osoby spoza firmy — bez zmian. */
+  const moveMeeting = async (meeting: Meeting, start: Date, end: Date) => {
+    const before = { datetime_start: meeting.datetime_start, datetime_end: meeting.datetime_end };
+    const mail = mailBefore(meeting);
+    const others = (meeting.participants || []).some((p) => p.employee_id && p.employee_id !== meeting.created_by);
+    setMeetings((current) => current.map((m) => (m.id === meeting.id ? { ...m, datetime_start: start.toISOString(), datetime_end: end.toISOString() } : m)));
+    setMovingIds((current) => new Set(current).add(meeting.id));
+    try {
+      const { error } = await supabase.rpc('save_meeting', {
+        p_id: meeting.id,
+        p_data: { datetime_start: start.toISOString(), datetime_end: end.toISOString() },
+        p_participants: (meeting.participants || []).flatMap((p): ParticipantRef[] => (
+          p.employee_id ? [{ employee_id: p.employee_id }] : p.contact_id ? [{ contact_id: p.contact_id }] : [])),
+        p_recurrence_days: meeting.series_id ? meeting.recurrence_days ?? 0 : 0,
+        p_scope: 'single',
+      });
+      if (error) throw error;
+      void cancelObsoleteMeetingAlerts().catch((cause: unknown) => console.warn('[Meetings] Alert cleanup:', cause));
+      setToast(`Nowy termin: ${formatEntryTime({ start: start.getTime(), end: end.getTime() })}`
+        + (meeting.series_id ? ' (tylko ten termin cyklu)' : '') + (others ? '. Uczestnicy potwierdzą go ponownie.' : '.'));
+      await fetchMeetings(true);
+      askContactMail(meeting, mail, 'Wysłać osobom spoza firmy e-mail o nowym terminie?');
+    } catch (err: any) {
+      setMeetings((current) => current.map((m) => (m.id === meeting.id ? { ...m, ...before } : m)));
+      Alert.alert('Błąd', err?.message || 'Nie udało się zmienić terminu spotkania');
+    } finally {
+      setMovingIds((current) => {
+        const next = new Set(current);
+        next.delete(meeting.id);
+        return next;
+      });
+    }
+  };
+
+  /** Nowe spotkanie z kalendarza na wybraną godzinę. */
+  const createMeetingAt = (start: Date, end: Date) => {
+    setEditingMeeting(null);
+    resetForm();
+    setForm((current) => ({ ...current, datetime_start: start, datetime_end: end }));
+    setShowNewMeeting(true);
+  };
+
+  /** Widok „Pracownicy”: przytrzymanie wolnej godziny w kolumnie osoby — nowe spotkanie z tą osobą. */
+  const createMeetingWith = (start: Date, end: Date, employeeIds: string[]) => {
+    createMeetingAt(start, end);
+    setSelectedParticipants(employees.filter((item) => employeeIds.includes(item.id)));
+  };
 
   /** Szczegóły spotkania pod osią: status, miejsce, uczestnicy, notatki; odpowiedź, szczegóły, edycja, nawigacja. */
   const meetingDetails = (meeting: Meeting): TimelineDetails => {
@@ -882,11 +1022,35 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
       </View>
 
       <View style={styles.viewSwitch}>
-        <Segmented value={timeline.view} options={SCREEN_VIEWS} onChange={timeline.setView} />
+        <Segmented<MeetingsView>
+          value={peopleView ? 'people' : timeline.view}
+          options={MEETING_VIEWS}
+          onChange={(value) => {
+            if (value === 'people') {
+              setPeopleView(true);
+            } else {
+              setPeopleView(false);
+              timeline.setView(value);
+            }
+          }}
+        />
       </View>
 
-      {timeline.view === 'timeline' ? (
-        <ScheduleTimeline
+      {peopleView ? (
+        <TeamAvailabilityTimeline
+          day={timeline.anchor}
+          onDayChange={timeline.setAnchor}
+          refreshKey={availabilityRefresh}
+          onOpenMeeting={(id) => {
+            const meeting = meetings.find((item) => item.id === id);
+            if (meeting) setSelectedMeeting(meeting);
+            else Alert.alert('Spotkanie', 'Tego spotkania nie ma na Twojej liście spotkań.');
+          }}
+          onOpenEvent={(id) => navigateToEvent(id)}
+          onCreate={createMeetingWith}
+        />
+      ) : timeline.view === 'timeline' ? (
+        <CalendarTimeline
           zoom={timeline.zoom}
           onZoomChange={timeline.setZoom}
           anchor={timeline.anchor}
@@ -898,6 +1062,10 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
           refreshing={refreshing}
           onRefresh={() => fetchMeetings(true)}
           emptyText="Brak spotkań w tym okresie."
+          canMove={(entry) => Boolean(employee?.id && entry.meeting.created_by === employee.id) && !entry.allDay}
+          onMove={(entry, start, end) => { void moveMeeting(entry.meeting, start, end); }}
+          onCreate={createMeetingAt}
+          savingIds={movingIds}
         />
       ) : (
       <FlatList
@@ -1306,6 +1474,35 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               </View>
             )}
 
+            {/* Zajętość uczestników z firmy (także Twoja) w tym terminie — docs/team-availability.md. */}
+            <MeetingConflictsNotice
+              employeeIds={[...(employee?.id ? [employee.id] : []), ...selectedParticipants.map((p) => p.id)]}
+              start={form.datetime_start}
+              end={form.datetime_end}
+              excludeMeetingId={editingMeeting?.id ?? null}
+              names={Object.fromEntries([
+                ...selectedParticipants.map((p): [string, string] => [p.id, `${p.name || ''} ${p.surname || ''}`.trim() || 'Pracownik']),
+                ...(employee?.id ? [[employee.id, 'Ty'] as [string, string]] : []),
+              ])}
+            />
+
+            {editingMeeting && (editingMeeting.participants || []).some((p) => p.contact_id) ? (
+              <View style={styles.mailRow}>
+                <View style={styles.mailTextBox}>
+                  <Text style={styles.mailTitle}>Powiadom e-mailem osoby spoza firmy</Text>
+                  <Text style={styles.mailHint}>
+                    Zmiana terminu, miejsca lub statusu — z Twojej skrzynki, z plikiem .ics do kalendarza
+                    ({(editingMeeting.participants || []).filter((p) => p.contact_id).map(contactName).join(', ')}).
+                  </Text>
+                </View>
+                <Switch
+                  value={mailContacts}
+                  onValueChange={setMailContacts}
+                  trackColor={{ false: colors.border.default, true: colors.primary.gold }}
+                />
+              </View>
+            ) : null}
+
             <Text style={styles.fieldLabel}>Notatki</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
@@ -1588,10 +1785,11 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
                     Uczestnicy{meetingResponseSummaryText(selectedMeeting) ? ` · ${meetingResponseSummaryText(selectedMeeting)}` : ''}
                   </Text>
                   <View style={styles.participantChips}>
-                    {selectedMeeting.participants.map((p) => {
-                      const emp = employees.find((e) => e.id === p.employee_id);
+                    {selectedMeeting.participants.map((p, index) => {
+                      const emp = p.employee_id ? employees.find((e) => e.id === p.employee_id) : null;
+                      const label = emp ? `${emp.name || ''} ${emp.surname || ''}`.trim() : p.contact_id ? contactName(p) : 'Pracownik';
                       return (
-                        <View key={p.employee_id} style={styles.participantChip}>
+                        <View key={p.employee_id || p.contact_id || String(index)} style={styles.participantChip}>
                           <View
                             style={[
                               styles.statusDot,
@@ -1599,7 +1797,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
                             ]}
                           />
                           <Text style={styles.participantChipText} numberOfLines={1}>
-                            {emp ? `${emp.name || ''} ${emp.surname || ''}`.trim() : 'Pracownik'}
+                            {label}
                           </Text>
                         </View>
                       );
@@ -1644,6 +1842,12 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
           </View>
         )}
       </Modal>
+      {toast ? (
+        <View pointerEvents="none" style={styles.toast} accessibilityLiveRegion="polite">
+          <Feather name="check-circle" size={18} color={colors.status.success} />
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1651,6 +1855,18 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
 // --- Styles ---
 
 const styles = StyleSheet.create({
+  toast: {
+    position: 'absolute', left: spacing.md, right: spacing.md, bottom: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    padding: spacing.md, borderRadius: 14, backgroundColor: colors.background.elevated, borderWidth: 1, borderColor: colors.primary.gold + '50',
+  },
+  toastText: { flex: 1, color: colors.text.primary, fontSize: typography.fontSizes.sm },
+  mailRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm, padding: spacing.sm, borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border.default, backgroundColor: colors.background.secondary,
+  },
+  mailTextBox: { flex: 1, gap: 2 },
+  mailTitle: { color: colors.text.primary, fontSize: 14, fontWeight: '600' },
+  mailHint: { color: colors.text.tertiary, fontSize: 12 },
   container: {
     flex: 1,
     backgroundColor: colors.background.primary,

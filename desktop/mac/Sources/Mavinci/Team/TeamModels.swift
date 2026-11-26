@@ -35,6 +35,10 @@ struct TeamMember: Codable, Hashable, Identifiable {
     var instagram: String
     var facebook: String
     var orderIndex: Int
+    /// Dział (Zarząd, Sprzedaż, Biuro, Magazyn) i przełożony — zakres planu w Spotkaniach → „Pracownicy”
+    /// (docs/team-availability.md). Opcjonalne: kopia na dysku sprzed tej wersji ich nie ma.
+    var department: String?
+    var supervisorId: String?
 
     var fullName: String { "\(name) \(surname)".trimmingCharacters(in: .whitespaces) }
     /// Kafelek: pseudonim albo imię (pełne imię i nazwisko pod spodem, gdy jest pseudonim).
@@ -72,6 +76,8 @@ struct TeamAccess: Codable, Equatable {
     var canCreate: Bool
     var canApproveAbsences: Bool
     var canViewPersonnel: Bool
+    /// Dział i przełożony (`set_employee_structure`): administrator albo „Zarządzanie pracownikami”.
+    var canManageStructure: Bool?
 }
 
 struct EmployeeEventAssignment: Codable, Hashable, Identifiable {

@@ -303,6 +303,72 @@ struct TaskBoardIndex: Codable {
             workspace?.succeed("Komentarz usunięty")
         } catch { report(error, "Nie udało się usunąć komentarza.") }
     }
+    // MARK: Osoby i pliki w panelu zadania (jak `TaskDetailClient` w CRM)
+
+    /// Przypisz się albo dodaj osobę (powiadomienie dostaje tylko dodana osoba).
+    @discardableResult func assign(_ task: BoardTask, employee: String, name: String) async -> Bool {
+        let me = employee == access?.employeeId
+        var ok = false
+        await workspace?.withPending(me ? "Przypisywanie…" : "Dodawanie osoby…") {
+            do {
+                try await post(["op": .string("assign"), "id": .string(task.id), "employeeId": .string(employee)])
+                mutate(task.id) { t in
+                    if !t.assignees.contains(where: { $0.id == employee }) { t.assignees.append(TaskPerson(id: employee, name: name, avatarUrl: nil, avatar: nil)) }
+                }
+                workspace?.succeed(me ? "Przypisano Cię do zadania" : "Dodano osobę do zadania")
+                ok = true
+                refreshBoth()
+            } catch { report(error, "Nie udało się przypisać osoby.") }
+        }
+        return ok
+    }
+
+    /// Wypisz się albo usuń osobę z zadania (inne osoby — autor zadania i zarządzający).
+    func unassign(_ task: BoardTask, employee: String) async {
+        let me = employee == access?.employeeId
+        await workspace?.withPending(me ? "Wypisywanie…" : "Usuwanie osoby…") {
+            do {
+                try await post(["op": .string("unassign"), "id": .string(task.id), "employeeId": .string(employee)])
+                mutate(task.id) { $0.assignees.removeAll { $0.id == employee } }
+                workspace?.succeed(me ? "Wypisano z zadania" : "Usunięto osobę z zadania")
+                refreshBoth()
+            } catch { report(error, "Nie udało się usunąć osoby z zadania.") }
+        }
+    }
+
+    /// Pliki dodane w panelu zadania (każdy osobno; błąd jednego nie cofa poprzednich).
+    func attach(_ files: [URL], to task: BoardTask) async {
+        guard !files.isEmpty else { return }
+        var added = 0
+        await workspace?.withPending(files.count == 1 ? "Przesyłanie pliku…" : "Przesyłanie plików (\(files.count))…") {
+            do {
+                for file in files {
+                    try await upload(file, to: task.id)
+                    added += 1
+                }
+                workspace?.succeed(added == 1 ? "Dodano plik" : "Dodano pliki (\(added))")
+            } catch { report(error, "Nie udało się przesłać pliku.") }
+        }
+        if added > 0 {
+            mutate(task.id) { $0.attachments += added }
+            await loadDetail(task.id)
+            refreshBoth()
+        }
+    }
+
+    /// Usunięcie pliku zadania (plik wydarzenia — tylko odlinkowanie).
+    func deleteAttachment(_ file: TaskAttachmentInfo, task: BoardTask) async {
+        await workspace?.withPending(file.linked ? "Odlinkowywanie pliku…" : "Usuwanie pliku…") {
+            do {
+                try await post(["op": .string("deleteAttachment"), "attachmentId": .string(file.id)])
+                mutate(task.id) { $0.attachments = max(0, $0.attachments - 1) }
+                await loadDetail(task.id)
+                workspace?.succeed(file.linked ? "Plik został odlinkowany" : "Plik został usunięty")
+                refreshBoth()
+            } catch { report(error, "Nie udało się usunąć pliku.") }
+        }
+    }
+
     func loadEmployees() async {
         guard employees.isEmpty, let api else { return }
         struct Reply: Decodable { let employees: [MeetingPerson] }

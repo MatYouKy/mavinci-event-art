@@ -3,6 +3,8 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { bearerTestToken } from '@/lib/testMode/shared';
+import { testModeFetch } from '@/lib/testMode/session.server';
 
 export type SessionEmployee = {
   id: string;
@@ -32,7 +34,8 @@ function sessionClient(request?: Request): { client: SupabaseClient; token: stri
   const authorization = request?.headers.get('authorization');
   if (authorization?.toLowerCase().startsWith('bearer ')) {
     const client = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-      global: { headers: { Authorization: authorization } },
+      // Klucz zastępczy trybu testowego (docs/test-mode.md) — w imieniu oglądanej osoby.
+      global: { headers: { Authorization: authorization }, ...(bearerTestToken(authorization) ? { fetch: testModeFetch() } : {}) },
       auth: { persistSession: false, autoRefreshToken: false },
     });
     return { client, token: authorization.slice(7).trim() };

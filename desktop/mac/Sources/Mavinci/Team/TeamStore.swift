@@ -216,6 +216,17 @@ struct TeamIndex: Codable {
         return ok
     }
 
+    /// Dział i przełożony (baza pilnuje praw i pętli w piramidzie).
+    func setStructure(_ member: TeamMember, department: EmployeeDepartment, supervisorId: String?) async throws {
+        try await post("structure", [
+            "id": .string(member.id), "department": .string(department.rawValue),
+            "supervisorId": supervisorId.map { JSONValue.string($0) } ?? .null,
+        ])
+        mutate(member.id) { $0.department = department.rawValue; $0.supervisorId = supervisorId }
+        workspace?.succeed("Zapisano dział i przełożonego")
+        Task { await sync(force: true) }
+    }
+
     func resetPassword(_ member: TeamMember, password: String) async throws {
         try await post("resetPassword", ["id": .string(member.id), "password": .string(password)])
         workspace?.succeed("Hasło dla \(member.name) zostało zmienione pomyślnie")

@@ -3,8 +3,9 @@ import SwiftUI
 // MARK: KSeF (jak zakładka CRM „KSeF”, `KSeFIntegrationPanel`) — faktury pobrane z KSeF wybranej działalności (wystawione
 // i otrzymane), stan konfiguracji i automatycznej synchronizacji, synchronizacja za zakres dat, rejestr wpłat (pełna
 // zapłata, wpłaty częściowe, termin), uwagi do płatności, dziennik synchronizacji i podgląd faktury z XML. Konfiguracja
-// KSeF (certyfikat, token) — w CRM. Serwer: `/bridge/native/v1/finance` (`ksef`, `ksefInvoices`, `ksef…`) i trasy CRM
-// `/bridge/ksef/auth/token`, `/bridge/ksef/invoices/issued|received` z tokenem pracownika.
+// KSeF (certyfikat, token) — w CRM. Korekta „in minus” (zwrot): „Rozlicz korektę / zwrot…” (`FinKsefCorrectionSheet`).
+// Serwer: `/bridge/native/v1/finance` (`ksef`, `ksefInvoices`, `ksef…`) i trasy CRM `/bridge/ksef/auth/token`,
+// `/bridge/ksef/invoices/issued|received` z tokenem pracownika.
 
 struct FinKsefCompany: Decodable, Identifiable {
     var companyId: String
@@ -54,6 +55,8 @@ struct FinKsefInvoice: Decodable, Identifiable {
     var manualReviewNote: String?
 
     var due: Double { abs(toPay ?? gross) }
+    /// Korekta „in minus” (ujemna kwota do zapłaty) — rozliczana zwrotem albo kompensatą.
+    var negative: Bool { (toPay ?? gross) < 0 }
     var remaining: Double { max(due - paid, 0) }
     var party: String { (side == "issued" ? buyerName : sellerName) ?? "—" }
     var needsReview: Bool { statusWithoutLedger || manualReviewNote != nil }
@@ -93,20 +96,24 @@ enum FinKsefText {
     }
     struct PaymentState { let paid: Bool; let label: String; let color: Color }
     /// Stan zapłaty jak `getPaymentStatus` w zakładce KSeF CRM; wpłaty z rejestru mają pierwszeństwo przed zapisanym statusem.
+    /// Korekta „in minus” — „rozliczona” / „do rozliczenia” zamiast „opłacona” / „nieopłacona”.
     static func payment(_ invoice: FinKsefInvoice, today: String) -> PaymentState {
         let green = CrmTheme.rgb(0x4ade80)
+        let negative = invoice.negative
         if invoice.paymentStatus == "paid" || (invoice.paid > 0 && invoice.remaining <= 0.009) {
             let date = invoice.paymentDate ?? invoice.payments.compactMap(\.date).max()
-            return PaymentState(paid: true, label: date.map { "Opłacona \(FinFormat.day($0))" } ?? "Opłacona", color: green)
+            let base = negative ? "Korekta rozliczona" : "Opłacona"
+            return PaymentState(paid: true, label: date.map { "\(base) \(FinFormat.day($0))" } ?? base, color: green)
         }
         if invoice.paymentStatus == "partially_paid" || invoice.paid > 0.009 {
-            let label = "Częściowo opłacona (\(FinFormat.money(invoice.paid, invoice.currency)) / \(FinFormat.money(invoice.due, invoice.currency)))"
+            let base = negative ? "Częściowo rozliczona" : "Częściowo opłacona"
+            let label = "\(base) (\(FinFormat.money(invoice.paid, invoice.currency)) / \(FinFormat.money(invoice.due, invoice.currency)))"
             return PaymentState(paid: false, label: label, color: CrmTheme.rgb(0xfacc15))
         }
         if let due = invoice.dueDate, due < today || invoice.paymentStatus == "overdue" {
-            return PaymentState(paid: false, label: "Płatność po terminie", color: CrmTheme.rgb(0xf87171))
+            return PaymentState(paid: false, label: negative ? "Korekta po terminie" : "Płatność po terminie", color: CrmTheme.rgb(0xf87171))
         }
-        return PaymentState(paid: false, label: "Nieopłacona", color: CrmTheme.rgb(0xfb923c))
+        return PaymentState(paid: false, label: negative ? "Korekta do rozliczenia" : "Nieopłacona", color: CrmTheme.rgb(0xfb923c))
     }
 }
 
@@ -125,6 +132,7 @@ enum FinKsefText {
     @State private var preview: BankPreviewItem?
     @State private var editing: FinKsefInvoice?
     @State private var removing: FinKsefInvoice?
+    @State private var correction: FinKsefInvoice?
 
     private var companies: [FinKsefCompany] {
         let scope = Set(finance.scopeCompanies.map(\.id))
@@ -176,6 +184,9 @@ enum FinKsefText {
         .sheet(item: $preview) { item in BankPreviewSheet(item: item, store: store) }
         .sheet(item: $editing) { invoice in
             if let company { FinKsefPaymentSheet(store: store, companyID: company.companyId, invoice: invoice) }
+        }
+        .sheet(item: $correction) { invoice in
+            if let company { FinKsefCorrectionSheet(store: store, companyID: company.companyId, invoiceID: invoice.id) }
         }
         .confirmationDialog("Usunąć fakturę z lokalnej bazy?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
             Button("Usuń z lokalnej bazy", role: .destructive) {
@@ -361,10 +372,13 @@ enum FinKsefText {
     @ViewBuilder private func menu(_ invoice: FinKsefInvoice, reply: FinKsefInvoicesReply, company: FinKsefCompany) -> some View {
         Button("Podgląd faktury") { Task { preview = await store.preview(source: "ksef", id: invoice.id) } }
         if let local = invoice.localInvoiceId { Button("Faktura w rejestrze sprzedaży") { store.selectedInvoice = local; finance.part = .invoices } }
+        if invoice.negative { Button("Rozlicz korektę / zwrot…") { correction = invoice } }
         if reply.canManage {
             Divider()
             if invoice.remaining > 0.009 {
-                Button("Oznacz jako opłaconą") { Task { await store.ksefAction("Zapisywanie wpłaty…", "ksefPaid", ["id": .string(invoice.id)], company: company.companyId) } }
+                Button(invoice.negative ? "Oznacz jako rozliczoną" : "Oznacz jako opłaconą") {
+                    Task { await store.ksefAction("Zapisywanie wpłaty…", "ksefPaid", ["id": .string(invoice.id)], company: company.companyId) }
+                }
             }
             if invoice.payments.contains(where: { !$0.fromBank }) {
                 Button("Oznacz jako nieopłaconą") { Task { await store.ksefAction("Usuwanie ręcznych wpłat…", "ksefUnpaid", ["id": .string(invoice.id)], company: company.companyId) } }
@@ -398,6 +412,10 @@ enum FinKsefText {
             }
             Spacer()
             Button { Task { preview = await store.preview(source: "ksef", id: invoice.id) } } label: { Label("Podgląd", systemImage: "doc.richtext") }
+            if invoice.negative {
+                Button { correction = invoice } label: { Label("Rozlicz korektę…", systemImage: "arrow.uturn.backward.circle") }
+                    .help("Zwrot z wyciągu, płatność faktury korygowanej albo kompensata")
+            }
             if reply.canManage { Button { editing = invoice } label: { Label("Płatność…", systemImage: "creditcard") } }
         }
         .controlSize(.small)

@@ -2,6 +2,8 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { bearerTestToken } from '@/lib/testMode/shared';
+import { testModeFetch } from '@/lib/testMode/session.server';
 
 /*
  * Klient Supabase pracownika dla tras `/bridge/*`: aplikacje natywne (Mac) wysyłają swój token (Bearer), przeglądarka — ciasteczka
@@ -15,7 +17,8 @@ export function bridgeUserClient(request: Request): { client: SupabaseClient; to
     return {
       token,
       client: createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-        global: { headers: { Authorization: `Bearer ${token}` } },
+        // Klucz zastępczy trybu testowego (docs/test-mode.md) — w imieniu oglądanej osoby.
+        global: { headers: { Authorization: `Bearer ${token}` }, ...(bearerTestToken(authorization) ? { fetch: testModeFetch() } : {}) },
         auth: { persistSession: false, autoRefreshToken: false },
       }),
     };

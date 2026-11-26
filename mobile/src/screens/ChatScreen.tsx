@@ -29,6 +29,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography, tone } from '../theme';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
+import { currentTestMode } from '../lib/testMode';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import ChatVideoPreview from '../components/ChatVideoPreview';
@@ -708,6 +709,8 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     messageId: string,
     messageType: string,
   ) => {
+    // Tryb testowy „widok jako”: wiadomość nie została zapisana (zapis wycofany) — bez powiadomień na telefony.
+    if (currentTestMode()) return;
     try {
       await fetch(`${supabaseUrl}/functions/v1/send-chat-push`, {
         method: 'POST',

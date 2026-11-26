@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageCircle, X, Minus } from 'lucide-react';
+import { MessageCircle, X, Minus, Pin } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useAuth } from '@/contexts/AuthContext';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
@@ -54,11 +54,18 @@ export interface ChatMessage {
 }
 
 type WidgetView = 'list' | 'conversation' | 'new';
+/**
+ * Przycisk komunikatora w prawym dolnym rogu: widoczny, zminimalizowany (wąska karta przy krawędzi) albo ukryty — wtedy
+ * komunikator otwiera ikona obok dzwonka (`ChatHeaderButton`). Wybór zapamiętany w przeglądarce.
+ */
+type LauncherMode = 'shown' | 'minimized' | 'hidden';
+const LAUNCHER_KEY = 'crm-chat-launcher';
 
 export default function ChatWidget({ employee }: { employee: IEmployee }) {
   const { isOnline, employeeId } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [launcher, setLauncherMode] = useState<LauncherMode>('shown');
   const [initialEmployeeId, setInitialEmployeeId] = useState<string | undefined>();
   const [view, setView] = useState<WidgetView>('list');
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
@@ -75,6 +82,30 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
 
   // Never silently use another session's identity while CRM displays this employee.
   const currentEmployeeId = employeeId === employee.id ? employeeId : null;
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LAUNCHER_KEY);
+      if (saved === 'minimized' || saved === 'hidden') setLauncherMode(saved);
+    } catch {}
+  }, []);
+
+  const setLauncher = (mode: LauncherMode) => {
+    setLauncherMode(mode);
+    try {
+      localStorage.setItem(LAUNCHER_KEY, mode);
+    } catch {}
+  };
+
+  // Ikona obok dzwonka: otwiera / zamyka komunikator; dostaje licznik nieprzeczytanych i stan panelu.
+  useEffect(() => {
+    const toggle = () => {
+      setIsOpen((open) => !open);
+      setIsMinimized(false);
+    };
+    window.addEventListener('crm-chat-toggle', toggle);
+    return () => window.removeEventListener('crm-chat-toggle', toggle);
+  }, []);
 
   useEffect(() => {
     const openEmployee = (event: Event) => {
@@ -198,6 +229,15 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
     if (!currentEmployeeId) return;
     fetchConversations();
   }, [currentEmployeeId, fetchConversations]);
+
+  useEffect(() => {
+    const publish = () => window.dispatchEvent(new CustomEvent('crm-chat-state', {
+      detail: { active: Boolean(currentEmployeeId), count: totalUnread, open: isOpen },
+    }));
+    publish();
+    window.addEventListener('crm-chat-sync', publish);
+    return () => window.removeEventListener('crm-chat-sync', publish);
+  }, [currentEmployeeId, totalUnread, isOpen]);
 
   const activeConversationRef = useRef<string | null>(null);
   activeConversationRef.current = isOpen && !isMinimized && view === 'conversation' ? activeConversation?.id ?? null : null;
@@ -401,15 +441,55 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
 
   return (
     <>
-      {/* Floating button */}
-      {!isOpen && (
+      {/* Floating button: „_” — wąska karta przy krawędzi, „×” — ukryty (komunikator otwiera ikona obok dzwonka) */}
+      {!isOpen && launcher === 'shown' && (
+        <div className="group fixed bottom-6 right-6 z-[9999]">
+          <button
+            type="button"
+            onClick={() => { setIsOpen(true); setIsMinimized(false); }}
+            aria-label="Komunikator"
+            className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#d3bb73] to-[#b8a050] shadow-lg shadow-[#d3bb73]/20 transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-[#d3bb73]/30"
+          >
+            <MessageCircle className="h-6 w-6 text-[#0f1119]" />
+            {totalUnread > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                {totalUnread > 99 ? '99+' : totalUnread}
+              </span>
+            )}
+          </button>
+          <div className="absolute -left-3 -top-3 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={() => setLauncher('minimized')}
+              aria-label="Zminimalizuj przycisk komunikatora"
+              title="Zminimalizuj"
+              className="flex h-6 w-6 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#161829] text-[#e5e4e2]/70 shadow transition-colors hover:text-[#d3bb73]"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setLauncher('hidden')}
+              aria-label="Ukryj przycisk komunikatora"
+              title="Ukryj — komunikator otworzysz ikoną obok dzwonka"
+              className="flex h-6 w-6 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#161829] text-[#e5e4e2]/70 shadow transition-colors hover:text-[#d3bb73]"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+      {!isOpen && launcher === 'minimized' && (
         <button
-          onClick={() => { setIsOpen(true); setIsMinimized(false); }}
-          className="fixed bottom-6 right-6 z-[9999] flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#d3bb73] to-[#b8a050] shadow-lg shadow-[#d3bb73]/20 transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-[#d3bb73]/30"
+          type="button"
+          onClick={() => setLauncher('shown')}
+          aria-label="Przywróć przycisk komunikatora"
+          title="Przywróć przycisk komunikatora"
+          className="fixed bottom-6 right-0 z-[9999] flex h-10 items-center gap-1.5 rounded-l-full bg-gradient-to-br from-[#d3bb73] to-[#b8a050] pl-3 pr-2 shadow-lg shadow-[#d3bb73]/20 transition-all hover:pr-3"
         >
-          <MessageCircle className="h-6 w-6 text-[#0f1119]" />
+          <MessageCircle className="h-4 w-4 text-[#0f1119]" />
           {totalUnread > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+            <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
               {totalUnread > 99 ? '99+' : totalUnread}
             </span>
           )}
@@ -435,6 +515,17 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
               )}
             </div>
             <div className="flex items-center gap-1">
+              {launcher !== 'shown' && (
+                <button
+                  type="button"
+                  onClick={() => setLauncher('shown')}
+                  title="Pokaż przycisk komunikatora w rogu"
+                  aria-label="Pokaż przycisk komunikatora w rogu"
+                  className="rounded-lg p-1.5 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+                >
+                  <Pin className="h-4 w-4" />
+                </button>
+              )}
               <button
                 onClick={() => setIsMinimized(!isMinimized)}
                 className="rounded-lg p-1.5 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"

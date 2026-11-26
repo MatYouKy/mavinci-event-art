@@ -118,6 +118,8 @@ struct SealedFile<Value: Codable> {
         if let saved = try? next.load() { sets = saved.sets; lastSync = saved.lastSync; for name in sets.keys { decode(name) } }
     }
     func clear() { try? file?.clear(); file = nil; reset() }
+    /// Zamknięcie bez usuwania kopii z dysku (wejście w tryb testowy — kopia administratora zostaje na powrót).
+    func close() { file = nil; reset() }
     private func reset() { sets = [:]; sections = []; records = [:]; error = nil; lastSync = nil; syncing = false }
 
     func meta(_ set: String) -> DocSectionMeta? { sections.first { $0.id == set } }

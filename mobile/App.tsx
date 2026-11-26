@@ -23,6 +23,8 @@ import { useChatNotifications, setupChatNotificationFilter } from './src/service
 import { NotificationTargetData } from './src/navigation/navigationRef';
 import { removeSyncedCrmContactsIfEnabled, syncCrmContactsIfEnabled } from './src/services/crmContactSync';
 import { useOtaUpdates } from './src/services/appUpdates';
+import { currentTestMode, useTestMode } from './src/lib/testMode';
+import TestModeBanner from './src/components/TestModeBanner';
 import { canView } from './src/lib/permissions';
 import { colors } from './src/theme';
 
@@ -58,19 +60,23 @@ function AppContent() {
   const { employee } = useAuth();
   const employeeId = employee?.id;
   const RootNavigator = loadRootNavigator();
+  // Tryb testowy „widok jako” (`src/lib/testMode.ts`): bez zmian na telefonie administratora — motyw, powiadomienia push,
+  // przypomnienia o spotkaniach i kontakty w telefonie zostają jego.
+  const { testMode } = useTestMode();
+  const deviceEmployeeId = testMode ? undefined : employeeId;
 
   // Motyw jak w CRM i na Macu (`employees.crm_theme`): inny niż na urządzeniu — zapis i ponowne uruchomienie.
   useEffect(() => {
-    if (employee) void syncAppTheme(employee.crm_theme);
-  }, [employee]);
+    if (employee && !currentTestMode()) void syncAppTheme(employee.crm_theme);
+  }, [employee, testMode]);
 
   useOtaUpdates();
-  useRealtimePushNotifications(employeeId);
-  useMeetingReminderCleanup(employeeId);
+  useRealtimePushNotifications(deviceEmployeeId);
+  useMeetingReminderCleanup(deviceEmployeeId);
   useChatNotifications(employeeId);
 
   useEffect(() => {
-    if (!employeeId) {
+    if (!employeeId || currentTestMode()) {
       return;
     }
 
@@ -130,7 +136,7 @@ function AppContent() {
       notificationSubscription.remove();
       responseSubscription.remove();
     };
-  }, [employee, employeeId]);
+  }, [employee, employeeId, testMode]);
 
   return <RootNavigator />;
 }
@@ -166,7 +172,11 @@ export default function App() {
     <Provider store={store}>
       <AuthProvider>
         <StatusBar style={statusBar} />
-        <AppContent />
+        <View style={{ flex: 1 }}>
+          <AppContent />
+          {/* Tryb testowy „widok jako” — pasek z „Wyjdź z trybu” zawsze na górze, na środku ekranu. */}
+          <TestModeBanner />
+        </View>
       </AuthProvider>
     </Provider>
   );

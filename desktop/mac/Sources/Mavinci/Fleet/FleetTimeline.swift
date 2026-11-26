@@ -156,6 +156,9 @@ import SwiftUI
                         }
                     }
                     .frame(width: total)
+                    // „Chwyć i przesuń”: przeciągnięcie tła przesuwa dni.
+                    .contentShape(Rectangle())
+                    .grabScroll(.horizontal)
                 }
             }
         }

@@ -110,6 +110,17 @@ import AppKit
                     if UUID(uuidString:next) != nil{return await showMessage(next,type:q["type"] ?? "received")}
                     return showScreen(.messages,fallback:raw)
                 }
+                // Rental: /crm/rental/<id> — karta wypożyczenia klientowi; /crm/rental/subcontractors — wynajem od podwykonawców.
+                if section=="rental"{
+                    if UUID(uuidString:next) != nil{showClientRental(next);return true}
+                    return showScreen(next=="subcontractors" ? .rental : .clientRentals,fallback:raw)
+                }
+                // Zakupy: /crm/purchases?employee=<id>&year=&month= — rozliczenie pracownika (zatwierdzający), ?year=&month= — własny miesiąc.
+                if section=="purchases"{
+                    let person=q["employee"].flatMap{UUID(uuidString:$0) != nil ? $0:nil}
+                    showPurchases(employee:person,year:Int(q["year"] ?? ""),month:Int(q["month"] ?? ""))
+                    return true
+                }
                 // Flota: /crm/fleet/<pojazd> — karta pojazdu; przypomnienie o przeglądzie — „Serwis i naprawy”, o polisie — „Ubezpieczenia”.
                 if section=="fleet"{
                     guard UUID(uuidString:next) != nil else{return showScreen(.fleet,fallback:raw)}

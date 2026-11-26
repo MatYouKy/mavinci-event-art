@@ -30,7 +30,7 @@ export const imageCrop = (metadata: Row | null | undefined) => {
   };
 };
 
-const FIELDS = 'id,name,surname,nickname,email,personal_email,notification_email_preference,phone_number,phone_private,avatar_url,avatar_metadata,background_image_url,background_metadata,role,access_level,access_level_id,occupation,region,address_street,address_city,address_postal_code,skills,is_active,notes,created_at,last_active_at,show_on_website,website_bio,linkedin_url,instagram_url,facebook_url,order_index';
+const FIELDS = 'id,name,surname,nickname,email,personal_email,notification_email_preference,phone_number,phone_private,avatar_url,avatar_metadata,background_image_url,background_metadata,role,access_level,access_level_id,occupation,region,address_street,address_city,address_postal_code,skills,is_active,notes,created_at,last_active_at,show_on_website,website_bio,linkedin_url,instagram_url,facebook_url,order_index,department,supervisor_id';
 
 export function teamAccess(ctx: NativeContext) {
   const e = ctx.employee;
@@ -43,6 +43,8 @@ export function teamAccess(ctx: NativeContext) {
     /** Zatwierdzanie nieobecności jak w zakładce „Oś czasu” (admin lub employees_manage). */
     canApproveAbsences: can(e, 'employees_manage'),
     canViewPersonnel: can(e, 'personnel_view') || can(e, 'personnel_manage'),
+    /** Dział i przełożony (`set_employee_structure`): administrator albo „Zarządzanie pracownikami”. */
+    canManageStructure: can(e, 'employees_manage'),
   };
 }
 
@@ -62,6 +64,9 @@ export const employeeItem = (row: Row, isAdmin: boolean) => ({
   showOnWebsite: row.show_on_website === true, websiteBio: text(row.website_bio),
   linkedin: text(row.linkedin_url), instagram: text(row.instagram_url), facebook: text(row.facebook_url),
   orderIndex: typeof row.order_index === 'number' ? row.order_index : 999,
+  // Dział (pusty — Biuro) i przełożony — docs/team-availability.md.
+  department: ['management', 'sales', 'office', 'warehouse'].includes(text(row.department)) ? text(row.department) : 'office',
+  supervisorId: row.supervisor_id || null,
 });
 
 async function loadTeam(ctx: NativeContext): Promise<Item[]> {

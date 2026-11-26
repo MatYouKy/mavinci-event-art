@@ -972,7 +972,11 @@ export default function InvoiceDetailsModal({ invoice, onClose, overlayClassName
                         {netAmount != null ? Number(netAmount).toFixed(2) : '—'}
                       </td>
                       <td className="px-3 py-2 text-right text-gray-900">
-                        {vatAmount != null ? Number(vatAmount).toFixed(2) : '—'}
+                        {/* Kwota VAT do przelewu podzielonego (split payment): brutto + VAT. */}
+                        <span className="inline-flex items-center justify-end gap-1">
+                          {vatAmount != null && <CopyValueButton label="Kwota VAT" value={Number(vatAmount).toFixed(2).replace('.', ',')} />}
+                          {vatAmount != null ? Number(vatAmount).toFixed(2) : '—'}
+                        </span>
                       </td>
                       <td className="px-3 py-2 text-right text-gray-900">
                         <span className="inline-flex items-center justify-end gap-1">
