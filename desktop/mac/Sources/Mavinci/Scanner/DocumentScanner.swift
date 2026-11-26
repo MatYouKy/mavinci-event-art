@@ -373,13 +373,13 @@ struct ScanFailure: LocalizedError {
         return NSImage(cgImage: image, size: .zero)
     }
 
-    static func pagesLabel(_ count: Int) -> String {
+    nonisolated static func pagesLabel(_ count: Int) -> String {
         if count == 1 { return "1 strona" }
         let tens = count % 100
         return (2...4).contains(count % 10) && !(12...14).contains(tens) ? "\(count) strony" : "\(count) stron"
     }
 
-    static func size(_ bytes: Int) -> String {
+    nonisolated static func size(_ bytes: Int) -> String {
         bytes >= 1024 * 1024
             ? String(format: "%.1f MB", Double(bytes) / 1_048_576).replacingOccurrences(of: ".", with: ",")
             : "\(max(1, bytes / 1024)) kB"

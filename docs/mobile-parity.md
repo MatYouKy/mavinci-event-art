@@ -2029,3 +2029,13 @@ Panel „Przegląd” w karcie wydarzenia otwiera się domyślnie. Na stałe (na
 - **Mac:** nowa część Finansów „Umowy stałe” (`FinanceContractsView.swift`) jak `RecurringContractsPanel` w CRM — rejestr z okresami, przelewami (odpięcie) i plikami, dodawanie, edycja, usuwanie/zakończenie; formularz wspólny z „Nowa umowa z tej płatności”; „Skanuj umowę” / „Skanuj” i „Dodaj plik”. Skaner natywny (ImageCaptureCore, `Scanner/DocumentScanner.swift`): wiele stron → jeden PDF; także Mavinci → „Skanuj dokument do PDF…”. Serwer: `op=recurring`, `saveContract` (edycja), `contractDelete`, `contractFile`, `contractFileRemove`, `file&kind=contract`.
 - **CRM:** bez zmian (rejestr i skan wielostronicowy — u242).
 - **Mobile:** n/d — rejestru umów stałych nie ma w aplikacji mobilnej.
+
+### 2026-11-26 — CRM: drzewo sekcji Finansów schludniej (u245)
+- **CRM:** `FinanceNavTree` — mniejsze nazwy i opisy (opis zwykłym krojem, bez wersalików), cienkie linie między pozycjami i grupami, wybrana pozycja jako „karta w pionie”: zaokrąglona z lewej, wysunięta w stronę treści, ze złotym pionowym paskiem; bez globalnego stylu zakładki (`data-crm-tab-active`), stan w `aria-current`.
+- **Mac:** n/d — lista części Finansów jest natywna (`FinanceView`).
+- **Mobile:** n/d.
+
+### 2026-11-26 — CRM: drzewo Finansów — złota wysunięta karta, równe wysokości (u246)
+- **CRM:** `FinanceNavTree` — wybrana pozycja wysunięta w stronę treści, a wysunięta część jest złota i zaokrąglona z prawej (zamiast zaokrąglenia z lewej i paska); wszystkie pozycje mają jedną wysokość (`h-11`, nazwa i opis przycięte do jednej linii, pełny tekst w podpowiedzi); pasek nieco szerszy (`w-60`).
+- **Mac:** n/d — lista części Finansów jest natywna (`FinanceView`).
+- **Mobile:** n/d.

@@ -8,6 +8,12 @@ import type { LucideIcon } from 'lucide-react';
  * Zastępuje dawne zakładki strony i drugi rząd zakładek „Dokumentów i rozliczeń” (zakładki w zakładkach). Pozycja to
  * zakładka strony (`?tab=`) i — dla sekcji „Dokumentów i rozliczeń” — sekcja (`&section=`), więc stare adresy działają.
  * Poniżej szerokości `xl` (laptop z paskiem bocznym CRM) — lista wyboru z grupami, żeby tabele miały całą szerokość.
+ *
+ * Wygląd: pozycje o jednej wysokości (nazwa i opis — każde w jednej, przyciętej linii), rozdzielone cienkimi liniami; wybrana pozycja to
+ * „karta w pionie” — wysunięta w stronę treści, a wysunięta część jest złota i zaokrąglona z prawej (zamiast zakładki
+ * z poziomym podkreśleniem).
+ * Bez `data-crm-tab-active` — globalny styl zakładek CRM (zaokrąglenie u góry, pasek u dołu) tu nie pasuje; stan niesie
+ * `aria-current`. Opis pod nazwą — zwykłym krojem (nawigacja CRM ma wersaliki kroju nagłówków tylko dla nazwy).
  */
 
 export type FinanceNavItem = {
@@ -59,13 +65,13 @@ export default function FinanceNavTree({
       </div>
 
       <nav aria-label="Sekcje finansów" className="hidden w-60 shrink-0 xl:sticky xl:top-4 xl:block">
-        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]/70 p-2">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]/60 py-1">
           {groups.map((group) => (
-            <div key={group.label} className="mb-1.5 last:mb-0">
-              <div className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-[#e5e4e2]/40">
+            <div key={group.label} className="border-t border-[#e5e4e2]/[0.06] pb-1 first:border-t-0">
+              <div className="px-4 pb-1 pt-2.5 text-[9.5px] font-medium uppercase tracking-[0.16em] text-[#e5e4e2]/35">
                 {group.label}
               </div>
-              <ul>
+              <ul className="divide-y divide-[#e5e4e2]/[0.045]">
                 {group.items.map((item) => {
                   const Icon = item.icon;
                   const selected = item.key === active;
@@ -73,20 +79,25 @@ export default function FinanceNavTree({
                     <li key={item.key}>
                       <button
                         type="button"
-                        data-crm-tab-active={selected}
                         aria-current={selected ? 'page' : undefined}
                         onClick={() => onSelect(item)}
-                        title={item.detail}
-                        className={`flex w-full items-start gap-2.5 rounded-lg px-3 py-2 text-left transition-colors ${
+                        title={`${item.label} — ${item.detail}`}
+                        className={`relative flex h-11 items-center gap-2.5 pl-4 text-left outline-none transition-[width,background-color,color,box-shadow] duration-150 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#d3bb73]/50 ${
                           selected
-                            ? 'bg-[#d3bb73]/10 text-[#d3bb73]'
-                            : 'text-[#e5e4e2]/75 hover:bg-white/[0.04] hover:text-[#e5e4e2]'
+                            ? 'z-10 w-[calc(100%+0.75rem)] rounded-r-lg pr-6 text-[#e2cd8d] [background:var(--crm-tab-active-bg)] shadow-[6px_0_14px_-8px_rgba(0,0,0,0.55)]'
+                            : 'w-full pr-3 text-[#e5e4e2]/70 hover:bg-white/[0.035] hover:text-[#e5e4e2]'
                         }`}
                       >
-                        <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${selected ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/45'}`} />
+                        {/* Wysunięta w stronę treści część wybranej pozycji — złota, zaokrąglona z prawej. */}
+                        {selected && <span aria-hidden className="absolute inset-y-0 right-0 w-3 rounded-r-lg bg-[#d3bb73]" />}
+                        <Icon className={`h-3.5 w-3.5 shrink-0 ${selected ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/40'}`} />
                         <span className="min-w-0">
-                          <span className="block text-sm leading-5">{item.label}</span>
-                          <span className={`block truncate text-[11px] leading-4 ${selected ? 'text-[#d3bb73]/70' : 'text-[#e5e4e2]/40'}`}>
+                          <span className="block truncate text-[10.5px] leading-4">{item.label}</span>
+                          <span
+                            className={`block truncate font-sans text-[10.5px] font-normal normal-case leading-[14px] tracking-normal ${
+                              selected ? 'text-[#d3bb73]/60' : 'text-[#e5e4e2]/35'
+                            }`}
+                          >
                             {item.detail}
                           </span>
                         </span>
