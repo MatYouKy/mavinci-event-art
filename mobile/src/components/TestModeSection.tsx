@@ -5,16 +5,20 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { isAdmin } from '../lib/permissions';
+import { roleLabel } from '../lib/roleLabels';
 import { TEST_MODE_CRM_URL, useTestMode } from '../lib/testMode';
 import {
   TEST_MODE_DEPARTMENTS,
   enterTestMode,
   exitTestMode,
+  loadPermissionLabels,
   loadTestModeHistory,
   loadTestModeTargets,
   testModeDepartment,
   testModeEndText,
+  testModePermissionGroups,
   type TestModeHistoryRow,
+  type TestModePermissionCatalog,
   type TestModeTarget,
 } from '../lib/testModeApi';
 import EmployeeAvatar from './EmployeeAvatar';
@@ -23,7 +27,9 @@ import { borderRadius, colors, spacing, typography } from '../theme';
 /*
  * Ustawienia → „Tryb testowy” (tylko administrator, `docs/test-mode.md`): wybór pracownika i wejście w jego widok (dane, menu,
  * uprawnienia), dziennik wejść; w trakcie trybu — kogo oglądamy i „Wyjdź z trybu”. Jak zakładka „Tryb testowy” w CRM
- * i Ustawieniach na Macu. Sprzedawców zewnętrznych (portal) sprawdza się w CRM w przeglądarce.
+ * i Ustawieniach na Macu. Sprzedawców zewnętrznych (portal) sprawdza się w CRM w przeglądarce. Dotknięcie zdjęcia lub nazwiska
+ * rozwija kartę pracownika (większe zdjęcie, dział, poziom dostępu, rola, przełożony, kontakt służbowy, ostatnia aktywność,
+ * uprawnienia) z „Otwórz kartę pracownika” (CRM w przeglądarce) — jak popover w CRM i na Macu.
  */
 
 const folded = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l').replace(/Ł/g, 'L').toLowerCase();
@@ -56,15 +62,18 @@ export default function TestModeSection({ onNotify }: { onNotify: (text: string,
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [catalog, setCatalog] = useState<TestModePermissionCatalog | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [list, log] = await Promise.all([loadTestModeTargets(), loadTestModeHistory()]);
+      const [list, log, labels] = await Promise.all([loadTestModeTargets(), loadTestModeHistory(), loadPermissionLabels()]);
       setTargets(list.employees);
       setSellers(list.sellers);
       setHistory(log);
+      if (labels) setCatalog(labels);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Nie udało się wczytać listy.');
     } finally {
@@ -192,16 +201,23 @@ export default function TestModeSection({ onNotify }: { onNotify: (text: string,
               <View key={group.value} style={styles.group}>
                 <Text style={styles.sectionTitle}>{group.label}</Text>
                 {group.people.map((target) => (
-                  <View key={target.id} style={styles.person}>
-                    <EmployeeAvatar avatarUrl={target.avatar_url} employeeName={displayName(target)} size={36} />
-                    <View style={styles.texts}>
-                      <Text style={styles.title} numberOfLines={1}>{displayName(target)}</Text>
-                      {details(target) ? <Text style={styles.detail} numberOfLines={1}>{details(target)}</Text> : null}
+                  <View key={target.id} style={[styles.personCard, expanded === target.id && styles.personCardOpen]}>
+                    <View style={styles.personRow}>
+                      <TouchableOpacity style={styles.personMain} onPress={() => setExpanded((current) => (current === target.id ? null : target.id))}
+                        accessibilityRole="button" accessibilityLabel={`Karta pracownika: ${displayName(target)}`} accessibilityState={{ expanded: expanded === target.id }}>
+                        <EmployeeAvatar avatarUrl={target.avatar_url} avatarMetadata={target.avatar_metadata ?? null} employeeName={displayName(target)} size={36} />
+                        <View style={styles.texts}>
+                          <Text style={styles.title} numberOfLines={1}>{displayName(target)}</Text>
+                          {details(target) ? <Text style={styles.detail} numberOfLines={1}>{details(target)}</Text> : null}
+                        </View>
+                        <Feather name={expanded === target.id ? 'chevron-up' : 'chevron-down'} size={16} color={colors.text.tertiary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.enter} onPress={() => void enter(target)} disabled={Boolean(busy)}>
+                        {busy === target.id ? <ActivityIndicator size="small" color={colors.primary.gold} /> : <Feather name="log-in" size={14} color={colors.primary.gold} />}
+                        <Text style={styles.secondaryText}>Wejdź jako</Text>
+                      </TouchableOpacity>
                     </View>
-                    <TouchableOpacity style={styles.enter} onPress={() => void enter(target)} disabled={Boolean(busy)}>
-                      {busy === target.id ? <ActivityIndicator size="small" color={colors.primary.gold} /> : <Feather name="log-in" size={14} color={colors.primary.gold} />}
-                      <Text style={styles.secondaryText}>Wejdź jako</Text>
-                    </TouchableOpacity>
+                    {expanded === target.id ? <PersonDetails target={target} catalog={catalog} department={group.label} /> : null}
                   </View>
                 ))}
               </View>
@@ -255,6 +271,59 @@ export default function TestModeSection({ onNotify }: { onNotify: (text: string,
   );
 }
 
+/** Karta pracownika rozwinięta na liście: większe zdjęcie, dane i uprawnienia, „Otwórz kartę pracownika” w przeglądarce. */
+function PersonDetails({ target, catalog, department }: { target: TestModeTarget; catalog: TestModePermissionCatalog | null; department: string }) {
+  const groups = testModePermissionGroups(Array.isArray(target.permission_keys) ? target.permission_keys : [], catalog);
+  const rows: Array<{ label: string; value: string; link?: string }> = [
+    { label: 'Dział', value: department },
+    { label: 'Poziom dostępu', value: target.access_level || '—' },
+    { label: 'Rola', value: roleLabel(target.role) || '—' },
+    { label: 'Przełożony', value: target.supervisor || '—' },
+    { label: 'E-mail', value: target.email || '—', link: target.email ? `mailto:${target.email}` : undefined },
+    { label: 'Telefon', value: target.phone || '—', link: target.phone ? `tel:${target.phone.replace(/\s+/g, '')}` : undefined },
+    { label: 'Ostatnio aktywny', value: target.last_active_at ? when(target.last_active_at) : 'brak danych' },
+  ];
+  return (
+    <View style={styles.details}>
+      <View style={styles.detailsHead}>
+        <EmployeeAvatar avatarUrl={target.avatar_url} avatarMetadata={target.avatar_metadata ?? null} employeeName={displayName(target)} size={88} />
+        <View style={styles.texts}>
+          <Text style={styles.detailsName}>{displayName(target)}</Text>
+          {target.nickname && target.nickname !== displayName(target) ? <Text style={styles.detail}>{`„${target.nickname}”`}</Text> : null}
+          {target.occupation ? <Text style={styles.occupation}>{target.occupation}</Text> : null}
+        </View>
+      </View>
+      {rows.map((row) => (
+        <View key={row.label} style={styles.infoRow}>
+          <Text style={styles.infoLabel}>{row.label}</Text>
+          {row.link ? (
+            <Text style={[styles.infoValue, styles.infoLink]} onPress={() => void Linking.openURL(row.link as string).catch(() => undefined)}>{row.value}</Text>
+          ) : (
+            <Text style={styles.infoValue}>{row.value}</Text>
+          )}
+        </View>
+      ))}
+      <Text style={[styles.infoLabel, styles.permissionsTitle]}>{`UPRAWNIENIA (${target.permissions ?? 0})`}</Text>
+      {groups.length === 0 ? (
+        <Text style={styles.detail}>
+          {target.permission_keys === undefined ? 'Lista uprawnień po migracji 20261202120000_test_mode_target_details.sql.' : 'Brak dodatkowych uprawnień — tylko to, co daje poziom dostępu.'}
+        </Text>
+      ) : groups.map((group) => (
+        <View key={group.key} style={styles.permissionGroup}>
+          <Text style={styles.permissionGroupLabel}>{group.label}</Text>
+          <View style={styles.chips}>
+            {group.scopes.map((scope) => <Text key={scope.key} style={styles.chip}>{scope.label}</Text>)}
+          </View>
+        </View>
+      ))}
+      <TouchableOpacity style={styles.secondary} onPress={() => void Linking.openURL(`${TEST_MODE_CRM_URL}/crm/employees/${target.id}`).catch(() => undefined)}>
+        <Feather name="external-link" size={14} color={colors.primary.gold} />
+        <Text style={styles.secondaryText}>Otwórz kartę pracownika</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   section: { padding: spacing.md },
   sectionTitle: {
@@ -299,9 +368,28 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, paddingVertical: spacing.sm + 2, color: colors.text.primary, fontSize: typography.fontSizes.md },
   sheetBody: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl * 2 },
   group: { marginTop: spacing.lg },
-  person: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, marginBottom: spacing.sm,
-    borderRadius: borderRadius.md, borderWidth: 1, borderColor: colors.border.default, backgroundColor: colors.background.secondary,
+  personCard: {
+    padding: spacing.md, marginBottom: spacing.sm, borderRadius: borderRadius.md, borderWidth: 1, borderColor: colors.border.default,
+    backgroundColor: colors.background.secondary,
+  },
+  personCardOpen: { borderColor: colors.primary.gold + '80' },
+  personRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  personMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md, minWidth: 0 },
+  details: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border.default, gap: spacing.sm },
+  detailsHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.xs },
+  detailsName: { fontSize: typography.fontSizes.lg, fontWeight: typography.fontWeights.semibold, color: colors.text.primary },
+  occupation: { fontSize: typography.fontSizes.sm, color: colors.primary.gold },
+  infoRow: { flexDirection: 'row', gap: spacing.md },
+  infoLabel: { width: 118, fontSize: typography.fontSizes.xs, color: colors.text.tertiary },
+  infoValue: { flex: 1, fontSize: typography.fontSizes.sm, color: colors.text.primary },
+  infoLink: { color: colors.primary.gold },
+  permissionsTitle: { width: undefined, marginTop: spacing.sm, letterSpacing: 0.6 },
+  permissionGroup: { gap: 4 },
+  permissionGroupLabel: { fontSize: typography.fontSizes.xs, color: colors.primary.gold },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  chip: {
+    fontSize: typography.fontSizes.xs, color: colors.text.secondary, backgroundColor: colors.background.tertiary,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: 'hidden',
   },
   enter: {
     flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

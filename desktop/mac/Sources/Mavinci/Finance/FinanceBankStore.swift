@@ -228,11 +228,22 @@ enum BankPreviewItem: Identifiable {
     }
 
     /// Zapis z oknem postępu; komunikat serwera (sukces albo ostrzeżenie); `true` przy sukcesie.
+    /// Tekst trwającej czynności banku — arkusze (`BankSheetFrame`) pokazują go nad sobą; wskaźnik okna głównego
+    /// (`Workspace.pending`) jest pod otwartym arkuszem.
+    @Published private(set) var busy: String?
+
+    /// `Workspace.withPending` i ten sam tekst w `busy` (wskaźnik w otwartym arkuszu).
+    func withBusy<T>(_ workspace: Workspace, _ text: String, _ work: () async throws -> T) async rethrows -> T {
+        busy = text
+        defer { busy = nil }
+        return try await workspace.withPending(text, work)
+    }
+
     @discardableResult func act(_ pending: String, _ op: String, _ body: [String: JSONValue], timeout: TimeInterval? = nil) async -> [String: JSONValue]? {
         guard let workspace else { return nil }
         guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return nil }
         do {
-            let reply = try await workspace.withPending(pending) { try await post(op, body, timeout: timeout) }
+            let reply = try await withBusy(workspace, pending) { try await post(op, body, timeout: timeout) }
             announce(reply)
             return reply
         } catch {
@@ -394,7 +405,7 @@ enum BankPreviewItem: Identifiable {
             "confirmAccount": confirmed ? "true" : "false",
         ]
         do {
-            let reply = try await workspace.withPending("Import wyciągu — odczyt, zapis operacji i uzgodnienie…") {
+            let reply = try await withBusy(workspace, "Import wyciągu — odczyt, zapis operacji i uzgodnienie…") {
                 try await upload("statementImport", fields: fields, file: file, limit: 10 * 1024 * 1024)
             }
             if reply["needsConfirmation"]?.flag == true {
@@ -424,7 +435,7 @@ enum BankPreviewItem: Identifiable {
         guard let workspace else { return nil }
         guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return nil }
         do {
-            let reply = try await workspace.withPending("Sprawdzanie powiązań wyciągu…") { try await post("statementCheck", ["id": .string(statement.id)], timeout: 120) }
+            let reply = try await withBusy(workspace, "Sprawdzanie powiązań wyciągu…") { try await post("statementCheck", ["id": .string(statement.id)], timeout: 120) }
             return reply["question"]?.text.nonEmpty
         } catch {
             workspace.error = failureText(error, "Nie można usunąć tego wyciągu.")
@@ -449,7 +460,7 @@ enum BankPreviewItem: Identifiable {
     func file(kind: String, id: String) async -> BankFile? {
         guard let workspace else { return nil }
         do {
-            let payload: BankFilePayload = try await workspace.withPending("Pobieranie pliku…") { try await get(["op": "file", "kind": kind, "id": id], as: BankFilePayload.self) }
+            let payload: BankFilePayload = try await withBusy(workspace, "Pobieranie pliku…") { try await get(["op": "file", "kind": kind, "id": id], as: BankFilePayload.self) }
             guard let file = decodeFile(payload) else { workspace.error = "Nie udało się odczytać pliku."; return nil }
             return file
         } catch {
@@ -462,7 +473,7 @@ enum BankPreviewItem: Identifiable {
     func preview(source: String, id: String) async -> BankPreviewItem? {
         guard let workspace else { return nil }
         do {
-            let payload: BankFilePayload = try await workspace.withPending("Otwieranie dokumentu…") { try await get(["op": "document", "source": source, "id": id], as: BankFilePayload.self) }
+            let payload: BankFilePayload = try await withBusy(workspace, "Otwieranie dokumentu…") { try await get(["op": "document", "source": source, "id": id], as: BankFilePayload.self) }
             if let invoice = payload.invoice { return .ksef(invoice) }
             guard let file = decodeFile(payload) else { workspace.error = "Nie udało się odczytać dokumentu."; return nil }
             return show(file)
@@ -546,7 +557,7 @@ enum BankPreviewItem: Identifiable {
         do {
             var payload = body
             payload["op"] = .string(op)
-            let data = try await workspace.withPending(pending) { try await api.post("/finance", payload) }
+            let data = try await withBusy(workspace, pending) { try await api.post("/finance", payload) }
             announce((try? JSONDecoder().decode([String: JSONValue].self, from: data)) ?? [:])
             await loadEntries(force: true)
             return true
@@ -582,7 +593,7 @@ enum BankPreviewItem: Identifiable {
         do {
             var payload = body
             payload["op"] = .string(op)
-            let data = try await workspace.withPending(pending) { try await api.post("/finance", payload) }
+            let data = try await withBusy(workspace, pending) { try await api.post("/finance", payload) }
             let reply = (try? JSONDecoder().decode([String: JSONValue].self, from: data)) ?? [:]
             announce(reply)
             await loadInvoices(force: true)
@@ -606,7 +617,7 @@ enum BankPreviewItem: Identifiable {
         guard let workspace, let api else { return false }
         guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return false }
         do {
-            let data = try await workspace.withPending(regenerate ? "Regenerowanie dokumentu PDF…" : "Generowanie dokumentu PDF…") {
+            let data = try await withBusy(workspace, regenerate ? "Regenerowanie dokumentu PDF…" : "Generowanie dokumentu PDF…") {
                 try await api.post("/finance", ["op": .string("invoicePdf"), "id": .string(id)], timeout: 180)
             }
             let reply = (try? JSONDecoder().decode([String: JSONValue].self, from: data)) ?? [:]
@@ -623,7 +634,7 @@ enum BankPreviewItem: Identifiable {
     func storedInvoicePdf(_ id: String) async -> BankFile? {
         guard let workspace, let api else { return nil }
         do {
-            let data = try await workspace.withPending("Pobieranie PDF…") { try await api.get("/finance", query: ["op": "invoicePdfFile", "id": id]) }
+            let data = try await withBusy(workspace, "Pobieranie PDF…") { try await api.get("/finance", query: ["op": "invoicePdfFile", "id": id]) }
             guard let file = decodeFile(try JSONDecoder().decode(BankFilePayload.self, from: data)) else {
                 workspace.error = "Nie można pobrać pliku. Wygeneruj PDF ponownie."
                 return nil
@@ -640,7 +651,7 @@ enum BankPreviewItem: Identifiable {
         struct Reply: Decodable { var name: String; var xml: String }
         guard let workspace, let api else { return }
         do {
-            let data = try await workspace.withPending("Pobieranie z KSeF…") {
+            let data = try await withBusy(workspace, "Pobieranie z KSeF…") {
                 try await api.post("/finance", ["op": .string("invoiceUpo"), "id": .string(id)], timeout: 180)
             }
             let reply = try JSONDecoder().decode(Reply.self, from: data)
@@ -692,7 +703,7 @@ enum BankPreviewItem: Identifiable {
         do {
             var payload = body
             payload["op"] = .string(op)
-            let data = try await workspace.withPending(pending) { try await api.post("/finance", payload) }
+            let data = try await withBusy(workspace, pending) { try await api.post("/finance", payload) }
             announce((try? JSONDecoder().decode([String: JSONValue].self, from: data)) ?? [:])
             await loadKsefInvoices(company, force: true)
             // Wpłaty faktur KSeF są też w Centrum, terminach i uzgodnieniu.
@@ -735,7 +746,7 @@ enum BankPreviewItem: Identifiable {
         let end = FinanceText.dayString(to)
         guard start <= end else { workspace.error = "Data „od” nie może być późniejsza niż data „do”."; return }
         do {
-            let summary: String = try await workspace.withPending("Synchronizacja z KSeF…") {
+            let summary: String = try await withBusy(workspace, "Synchronizacja z KSeF…") {
                 let auth = try await self.ksefBridge("/bridge/ksef/auth/token", ["companyId": .string(company)], fallback: "Błąd automatycznej autoryzacji KSeF")
                 guard auth["data"]?.object["redeemed"]?.flag == true else {
                     throw NativeFailure(status: 400, message: auth["error"]?.text.nonEmpty ?? "Błąd automatycznej autoryzacji KSeF.", fieldErrors: [:])
@@ -771,7 +782,7 @@ enum BankPreviewItem: Identifiable {
         guard let workspace else { return }
         guard workspace.canWrite else { workspace.error = "Zapis wymaga połączenia z serwerem CRM."; return }
         do {
-            let reply = try await workspace.withPending("Dodawanie pliku deklaracji…") {
+            let reply = try await withBusy(workspace, "Dodawanie pliku deklaracji…") {
                 try await upload("declarationFile", fields: ["declarationId": declaration.id], file: file, limit: 20 * 1024 * 1024)
             }
             announce(reply)

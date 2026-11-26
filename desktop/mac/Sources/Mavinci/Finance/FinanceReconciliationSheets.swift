@@ -9,13 +9,17 @@ struct BankSheetFrame<Content: View, Footer: View>: View {
     let title: String
     let symbol: String
     let subtitle: String?
+    /// Trwająca czynność (`FinanceBankStore.busy`, np. import wyciągu) — wskaźnik postępu nad arkuszem i zablokowane przyciski.
+    /// Wskaźnik okna głównego (`Workspace.pending`) jest pod arkuszem, więc bez tego nie było widać, że coś się dzieje.
+    let busy: String?
     let content: () -> Content
     let footer: () -> Footer
 
-    init(_ title: String, symbol: String, subtitle: String? = nil, @ViewBuilder content: @escaping () -> Content, @ViewBuilder footer: @escaping () -> Footer) {
+    init(_ title: String, symbol: String, subtitle: String? = nil, busy: String? = nil, @ViewBuilder content: @escaping () -> Content, @ViewBuilder footer: @escaping () -> Footer) {
         self.title = title
         self.symbol = symbol
         self.subtitle = subtitle
+        self.busy = busy
         self.content = content
         self.footer = footer
     }
@@ -32,6 +36,9 @@ struct BankSheetFrame<Content: View, Footer: View>: View {
             content().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             HStack { footer() }.padding(14).crmBar()
         }
+        .disabled(busy != nil)
+        .overlay { if let busy { PendingOverlay(text: busy) } }
+        .interactiveDismissDisabled(busy != nil)
     }
 }
 
@@ -92,7 +99,7 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
 
     var body: some View {
         BankSheetFrame("Dopasuj dokument do płatności", symbol: "doc.text.magnifyingglass",
-                       subtitle: data.map { "\(FinFormat.day($0.transaction.date)) · \(FinFormat.money($0.transaction.remaining, $0.transaction.currency)) do rozliczenia · \($0.transaction.counterparty ?? "bez kontrahenta")" } ?? txSubtitle(tx)) {
+                       subtitle: data.map { "\(FinFormat.day($0.transaction.date)) · \(FinFormat.money($0.transaction.remaining, $0.transaction.currency)) do rozliczenia · \($0.transaction.counterparty ?? "bez kontrahenta")" } ?? txSubtitle(tx), busy: store.busy) {
             if let data {
                 VStack(spacing: 0) {
                     filters.padding(.horizontal, 16).padding(.vertical, 8)
@@ -284,7 +291,7 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
     }
 
     var body: some View {
-        BankSheetFrame("Wyjaśnij płatność", symbol: "arrow.left.arrow.right", subtitle: "\(FinFormat.money(tx.amount, tx.currency)) · \(tx.displayName)") {
+        BankSheetFrame("Wyjaśnij płatność", symbol: "arrow.left.arrow.right", subtitle: "\(FinFormat.money(tx.amount, tx.currency)) · \(tx.displayName)", busy: store.busy) {
             if let setup {
                 form(setup)
             } else if let loadError {
@@ -468,7 +475,7 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
 
     var body: some View {
         BankSheetFrame("Przypisz przelew do deklaracji", symbol: "building.columns",
-                       subtitle: "\(FinFormat.day(tx.date)) · \(FinFormat.money(tx.remaining, tx.currency)) · \(tx.title ?? "")") {
+                       subtitle: "\(FinFormat.day(tx.date)) · \(FinFormat.money(tx.remaining, tx.currency)) · \(tx.title ?? "")", busy: store.busy) {
             if let reply {
                 if reply.declarations.isEmpty {
                     ContentUnavailableView("Brak deklaracji w \(year - 1)–\(year)", systemImage: "building.columns", description: Text("Dodaj nową poniżej."))
@@ -550,7 +557,7 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
     @State private var creating = false
 
     var body: some View {
-        BankSheetFrame("Przypisz do umowy stałej", symbol: "calendar.badge.clock", subtitle: subtitle) {
+        BankSheetFrame("Przypisz do umowy stałej", symbol: "calendar.badge.clock", subtitle: subtitle, busy: store.busy) {
             if let data {
                 if data.contracts.isEmpty {
                     ContentUnavailableView("Brak umów \(tx.credit ? "przychodowych" : "kosztowych") w \(tx.currency)", systemImage: "calendar.badge.clock",
@@ -704,7 +711,7 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
     @State private var prepared = false
 
     var body: some View {
-        BankSheetFrame("Nowa umowa stała", symbol: "calendar.badge.plus", subtitle: "Kierunek: \(transaction.direction == "credit" ? "przychód — otrzymujemy" : "koszt — płacimy")") {
+        BankSheetFrame("Nowa umowa stała", symbol: "calendar.badge.plus", subtitle: "Kierunek: \(transaction.direction == "credit" ? "przychód — otrzymujemy" : "koszt — płacimy")", busy: store.busy) {
             Form {
                 Picker("Rodzaj", selection: $kind) { ForEach(ContractStatus.kinds, id: \.0) { Text($0.1).tag($0.0) } }
                 TextField("Tytuł", text: $title, prompt: Text("np. Najem garażu nr 6"))
@@ -773,7 +780,7 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
     @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
-        BankSheetFrame("Powiąż ze zwrotem", symbol: "arrow.uturn.backward", subtitle: txSubtitle(tx)) {
+        BankSheetFrame("Powiąż ze zwrotem", symbol: "arrow.uturn.backward", subtitle: txSubtitle(tx), busy: store.busy) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Gdy sklep lub kontrahent zwrócił pieniądze (albo my zwróciliśmy klientowi) i nie ma faktury, wybierz drugą operację. Obie zostaną rozliczone parą „płatność + zwrot” — dowodem jest wyciąg. Przy zwrocie częściowym wpisz kwotę zwrotu: reszta płatności nadal będzie czekać na fakturę.")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -912,7 +919,7 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
     @State private var preview: BankPreviewItem?
 
     var body: some View {
-        BankSheetFrame("Szczegóły płatności", symbol: "info.circle") {
+        BankSheetFrame("Szczegóły płatności", symbol: "info.circle", busy: store.busy) {
             if let d = details {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {

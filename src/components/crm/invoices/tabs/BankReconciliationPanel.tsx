@@ -39,6 +39,8 @@ import { isPreviewableDocumentSource, useDocumentPreview } from '@/components/cr
 import { DeclarationLinkModal } from './FinanceDeclarationsPanel';
 import { RecurringContractLinkModal } from './RecurringContractsPanel';
 import BankRefundPairModal from './BankRefundPairModal';
+import ProposalComparisonTable from './ProposalComparisonTable';
+import { proposalComparison } from '@/lib/invoices/proposalComparison';
 import {
   DECLARATION_STATUS_META,
   RECURRING_MONTH_STATUS_META,
@@ -791,6 +793,26 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                             <p className={`mt-0.5 flex items-start gap-1 text-[11px] ${doc.suggested ? 'text-green-300' : 'text-[#e5e4e2]/50'} ${t.proposal!.kind === 'choose' ? 'pl-6' : ''}`}>
                               <Info className="mt-0.5 h-3 w-3 shrink-0" />{doc.suggested ? 'Sugerowany: ' : ''}{doc.hint}
                             </p>
+                          )}
+                          {/* Co do czego pasuje: płatność obok dokumentu (przy wyborze — dla zaznaczonego dokumentu). */}
+                          {(t.proposal!.kind !== 'choose' || choice[t.proposal!.id] === index) && (
+                            <div className={t.proposal!.kind === 'choose' ? 'pl-6' : ''}>
+                              <ProposalComparisonTable rows={proposalComparison({
+                                rule: t.proposal!.rule,
+                                share: t.proposal!.kind === 'allocate' && t.proposal!.documents.length > 1,
+                                tx: {
+                                  date: t.date, amount: Number(t.amount), remaining: Number(t.remaining), currency: t.currency,
+                                  counterparty: text(t.counterparty), counterpartyAccount: t.counterparty_account,
+                                  title: text(t.title), description: text(t.source_description),
+                                },
+                                doc: {
+                                  source: doc.source, number: doc.number, party: doc.party ? text(doc.party) : null, amount: Number(doc.amount),
+                                  due: doc.due ?? null, open: doc.open ?? null, manual: doc.manual, issueDate: doc.issue_date, dueDate: doc.due_date,
+                                  evidence: doc.evidence, documentAmount: doc.document_amount ?? null, documentCurrency: doc.document_currency ?? null,
+                                  rate: doc.rate ?? null, manualPaid: doc.manual_paid ?? null, manualDate: doc.manual_date ?? null,
+                                },
+                              })} />
+                            </div>
                           )}
                           </div>
                           );

@@ -24,12 +24,15 @@ export default function CRMClientLayout({
   initialUnreadMessagesCount,
   initialNotifications,
   initialNavigation,
+  navigationPaths,
 }: {
   employee: IEmployee | null;
   children: React.ReactNode;
   initialUnreadMessagesCount: number;
   initialNotifications: Notification[];
   initialNavigation: NavigationItem[];
+  /** Ścieżki stron wszystkich pozycji menu (`navigationPagePaths`) — dostęp do strony według menu pracownika. */
+  navigationPaths: string[];
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -235,6 +238,8 @@ export default function CRMClientLayout({
             pathname={pathname}
             employee={employee}
             router={router}
+            navigation={navigation}
+            navigationPaths={navigationPaths}
           >
             {children}
           </TaskAccessWrapper>

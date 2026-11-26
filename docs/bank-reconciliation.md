@@ -268,3 +268,27 @@ karty z wyciągu dopasowuje się do niego jak do każdego opłaconego dokumentu 
 W „Moich wydatkach” zakup pokazuje wtedy „Powiązany z wyciągiem”. Dokumentu powiązanego z wyciągiem pracownik nie usunie ani
 nie zmieni mu kwoty, waluty, działalności i sposobu zapłaty.
 
+## 10. „Co do czego pasuje” przy propozycji i import wyciągu na Macu (26.11.2026)
+
+- **Porównanie przy propozycji** (`src/lib/invoices/proposalComparison.ts`, CRM `ProposalComparisonTable`, Mac
+  `ReconciliationInspector`): pod dokumentem z propozycji (przy wyborze — pod zaznaczonym) tabela „Co do czego pasuje”:
+  płatność z wyciągu obok dokumentu, wiersz po wierszu, z zaznaczonym fragmentem, który się zgadza, i oceną
+  (zgadza się / do sprawdzenia / nie zgadza się / bez porównania):
+  - **Kwota** — pozostała kwota płatności (przy przelewie na kilka dokumentów: część na ten dokument) wobec kwoty do
+    zapłaty, pozostałej należności albo kwoty oznaczonej ręcznie; różnica jako „płatność częściowa — brakuje …” albo
+    „przelew większy o …”; dokument w walucie — przeliczenie kursem.
+  - **Kontrahent** — NIP z dokumentu w treści przelewu, ten sam rachunek kontrahenta co we wcześniejszych płatnościach
+    albo słowa z nazwy kontrahenta w nazwie / tytule / opisie operacji (dowód zapisany przez regułę; bez dowodu — pierwsze
+    znaczące słowa nazwy, jak w regule). Przy regule „zgodna kwota” bez potwierdzonego kontrahenta — „nie zgadza się”.
+  - **Numer dokumentu** — numer w tytule lub opisie (także bez spacji i ukośników); przy płatności kartą brak numeru jest
+    normalny.
+  - **Data** — data operacji wobec daty wystawienia i terminu, w tych samych oknach co reguła (karta: od 3 dni przed do
+    14 dni po wystawieniu; przelew: wystawiony od 60 dni przed do 7 dni po albo termin od 30 dni przed do 14 dni po).
+  - **Oznaczenie ręczne** — gdy dokument jest już oznaczony jako opłacony: data oznaczenia wobec daty operacji
+    (zatwierdzenie zamienia oznaczenie na powiązanie z wyciągiem, bez podwójnej zapłaty).
+  Porównanie liczy serwer CRM z danych propozycji (bez zmian w bazie); dotyczy faktur KSeF, CRM i dokumentów spoza KSeF
+  (deklaracje, umowy stałe i zwroty mają własne opisy). Nagłówek podsumowuje: „Zgadza się: … · Sprawdź: …”.
+- **Import wyciągu na Macu**: okno „Wgraj wyciąg” w czasie odczytu i zapisu pokazuje nakładkę z postępem i blokuje przyciski
+  oraz zamknięcie okna — drugie kliknięcie „Importuj” nie wyśle pliku ponownie (wcześniej postęp był w oknie głównym, pod
+  arkuszem, a powtórne wysłanie kończyło się komunikatem „MT940 … jest już zapisany”). Tak samo pozostałe okna Finansów
+  oparte na `BankSheetFrame` (wybór dokumentu, wyjaśnienie, deklaracje, umowy stałe, zwroty, wpisy, zapłaty i korekty).

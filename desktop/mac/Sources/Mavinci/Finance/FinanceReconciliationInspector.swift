@@ -272,12 +272,103 @@ struct ReconciliationInspector: View {
                         .font(.caption).foregroundStyle(doc.suggested ? CrmTheme.rgb(0x86efac) : Color.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                // Co do czego pasuje (przy wyborze — dla zaznaczonego dokumentu), jak w CRM (`ProposalComparisonTable`).
+                if let rows = doc.comparison, !rows.isEmpty, !choose || selected {
+                    comparison(rows, summary: doc.comparisonSummary)
+                }
             }
         }
         .padding(6)
         .background(doc.suggested ? CrmTheme.rgb(0x22c55e).opacity(0.07) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
         .onTapGesture { if choose { store.choice[proposal.id] = index } }
+    }
+
+    // MARK: Co do czego pasuje
+    /// Wiersz po wierszu: nagłówek (ocena, nazwa, opis), pod nim płatność z wyciągu obok dokumentu — w wąskim inspektorze
+    /// dwie kolumny zamiast trzech z CRM (`ProposalComparisonTable`), ta sama treść.
+    private func comparison(_ rows: [BankTx.ComparisonRow], summary: String?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("CO DO CZEGO PASUJE").font(.caption).foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                if let summary, !summary.isEmpty {
+                    Text(summary).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            Divider()
+            Grid(alignment: .topLeading, horizontalSpacing: 10, verticalSpacing: 4) {
+                GridRow {
+                    Text("Płatność z wyciągu").font(.caption2).foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Dokument").font(.caption2).foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                ForEach(rows) { row in
+                    Divider().gridCellUnsizedAxes(.horizontal)
+                    GridRow {
+                        HStack(alignment: .firstTextBaseline, spacing: 5) {
+                            Image(systemName: comparisonSymbol(row.state)).help(comparisonStateLabel(row.state))
+                            Text(row.label).fontWeight(.medium).fixedSize()
+                            Text(row.verdict).fixedSize(horizontal: false, vertical: true)
+                        }
+                        .font(.caption).foregroundStyle(comparisonColor(row.state))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .gridCellColumns(2)
+                    }
+                    GridRow {
+                        Text(highlighted(row.payment)).font(.caption).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+                        Text(highlighted(row.document)).font(.caption).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+        }
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.08)))
+        .padding(.top, 4)
+    }
+
+    /// Fragmenty z zaznaczeniem tego, co się zgadza (zielone tło, pogrubienie).
+    private func highlighted(_ segments: [BankTx.ComparisonRow.Segment]) -> AttributedString {
+        var text = AttributedString()
+        for segment in segments {
+            var part = AttributedString(segment.text)
+            if segment.hit {
+                // Klucze wprost — bez niejednoznaczności SwiftUI / AppKit przy `backgroundColor`.
+                part[AttributeScopes.SwiftUIAttributes.BackgroundColorAttribute.self] = CrmTheme.rgb(0x22c55e).opacity(0.28)
+                part[AttributeScopes.FoundationAttributes.InlinePresentationIntentAttribute.self] = .stronglyEmphasized
+            }
+            text += part
+        }
+        return text
+    }
+    private func comparisonSymbol(_ state: String) -> String {
+        switch state {
+        case "match": return "checkmark.circle.fill"
+        case "partial": return "exclamationmark.triangle.fill"
+        case "mismatch": return "xmark.circle.fill"
+        default: return "minus.circle"
+        }
+    }
+    private func comparisonColor(_ state: String) -> Color {
+        switch state {
+        case "match": return CrmTheme.rgb(0x86efac)
+        case "partial": return CrmTheme.rgb(0xfcd34d)
+        case "mismatch": return CrmTheme.rgb(0xfca5a5)
+        default: return Color.secondary
+        }
+    }
+    private func comparisonStateLabel(_ state: String) -> String {
+        switch state {
+        case "match": return "Zgadza się"
+        case "partial": return "Do sprawdzenia"
+        case "mismatch": return "Nie zgadza się"
+        default: return "Bez porównania"
+        }
     }
 
     // MARK: Ręczne rozliczenie

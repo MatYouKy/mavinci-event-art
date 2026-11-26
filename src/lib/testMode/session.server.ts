@@ -365,9 +365,9 @@ export async function verifyRollbackSupport() {
   if (error) throw new TestModeError('Nie udało się sprawdzić bazy przed trybem testowym (migracja 20261202100000_crm_test_mode.sql?).', 500);
   if (stayed === true) {
     console.error('[test-mode] baza nie wycofała zapisu próbnego — tryb testowy wyłączony');
-    throw new TestModeError('Baza nie wycofuje zapisów próbnych — tryb testowy jest niedostępny.', 503);
+    throw new TestModeError('Baza nie wycofuje zapisów próbnych — tryb testowy jest niedostępny (migracja 20261202110000_test_mode_postgrest_tx.sql).', 503);
   }
-  if (!ok || !applied) throw new TestModeError('Baza nie potwierdziła zapisu próbnego — tryb testowy jest niedostępny.', 503);
+  if (!ok || !applied) throw new TestModeError('Baza nie potwierdziła zapisu próbnego — tryb testowy jest niedostępny (migracja 20261202110000_test_mode_postgrest_tx.sql).', 503);
 }
 
 // ─── Otwarcie sesji testowej ──────────────────────────────────────────────────────────────────────────────────────────

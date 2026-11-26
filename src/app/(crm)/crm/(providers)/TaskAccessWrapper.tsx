@@ -4,12 +4,38 @@ import { canView, Employee, isAdmin } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase/browser';
 import { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import { useEffect, useMemo, useState } from 'react';
-import { allNavigation } from '../mock/navigation';
+import { allNavigation, type NavigationItem } from '../mock/navigation';
 import { hasAnyFinanceCompanyLevel } from '@/lib/financeCompanyAccess';
 
 type AccessState = 'granted' | 'denied' | 'checking';
 
-function getSyncAccess(pathname: string, employee: Employee | null): AccessState {
+/** Ścieżka strony pozycji menu bez parametrów (`/crm/offers?tab=catalog` → `/crm/offers`). */
+const pagePath = (href: string) => href.split('?')[0];
+
+/** Najdłuższa ścieżka z menu, pod którą leży adres (`/crm/tasks/123` → `/crm/tasks`). Pulpit (`/crm`) nie obejmuje innych stron. */
+function menuSection(pathname: string, paths: string[]): string | null {
+  let best: string | null = null;
+  for (const path of paths) {
+    if (path === '/crm') continue;
+    if ((pathname === path || pathname.startsWith(`${path}/`)) && (!best || path.length > best.length)) best = path;
+  }
+  return best;
+}
+
+/** Ścieżki stron, które pracownik ma w menu (pozycje bez podmenu; menu z serwera — `navigationForUser`). */
+function allowedMenuPaths(items: NavigationItem[]): Set<string> {
+  const allowed = new Set<string>();
+  const walk = (list: NavigationItem[]) => {
+    for (const item of list) {
+      if (item.children?.length) walk(item.children);
+      else allowed.add(pagePath(item.href));
+    }
+  };
+  walk(items);
+  return allowed;
+}
+
+function getSyncAccess(pathname: string, employee: Employee | null, navigation: NavigationItem[], navigationPaths: string[]): AccessState {
   if (!employee) return 'checking';
 
   if (pathname === '/crm') return 'granted';
@@ -22,23 +48,30 @@ function getSyncAccess(pathname: string, employee: Employee | null): AccessState
     return hasAnyFinanceCompanyLevel(employee.finance_company_access, 'sales') ? 'granted' : 'denied';
   }
 
+  const employeeIdMatch = pathname.match(/^\/crm\/employees\/([a-f0-9-]+)$/);
+  if (employeeIdMatch && employeeIdMatch[1] === employee.id) {
+    return 'granted';
+  }
+
+  const isTaskDetails = /^\/crm\/tasks\/([a-f0-9-]+)$/.test(pathname);
+  const isEventDetails = /^\/crm\/events\/([a-f0-9-]+)$/.test(pathname);
+
+  // Strona, której pozycję pracownik ma w menu (Dysk, Eventy, Moje zadania, Zakupy…), zawsze się otwiera — menu i dostęp liczą
+  // te same reguły (`navigationForUser`: uprawnienia, finanse według działalności, realizacje). Dotąd strona sprawdzała starą
+  // regułę modułu (np. Dysk — „Materiały”), więc pozycja z menu mogła odpowiadać „Brak uprawnień”.
+  const section = menuSection(pathname, navigationPaths);
+  if (section && allowedMenuPaths(navigation).has(section)) return 'granted';
+
+  // Pozostałe strony — jak dotąd, według modułu z listy `mock/navigation` (zadanie i event — jeszcze po przypisaniu, niżej).
   const currentNav = allNavigation.find(
     (nav) => pathname.startsWith(nav.href) && nav.href !== '/crm',
   );
 
   if (!currentNav?.module) return 'granted';
 
-  const employeeIdMatch = pathname.match(/^\/crm\/employees\/([a-f0-9-]+)$/);
-  if (employeeIdMatch && employeeIdMatch[1] === employee.id) {
-    return 'granted';
-  }
-
   if (canView(employee, currentNav.module)) {
     return 'granted';
   }
-
-  const isTaskDetails = /^\/crm\/tasks\/([a-f0-9-]+)$/.test(pathname);
-  const isEventDetails = /^\/crm\/events\/([a-f0-9-]+)$/.test(pathname);
 
   if (isTaskDetails || isEventDetails) {
     return 'checking';
@@ -51,14 +84,23 @@ export function TaskAccessWrapper({
   pathname,
   employee,
   router,
+  navigation,
+  navigationPaths,
   children,
 }: {
   pathname: string;
   employee: Employee | null;
   router: AppRouterInstance;
+  /** Menu pracownika z serwera (to samo co pasek boczny). */
+  navigation: NavigationItem[];
+  /** Ścieżki stron wszystkich pozycji menu (`navigationPagePaths`). */
+  navigationPaths: string[];
   children: React.ReactNode;
 }) {
-  const syncAccess = useMemo(() => getSyncAccess(pathname, employee), [pathname, employee]);
+  const syncAccess = useMemo(
+    () => getSyncAccess(pathname, employee, navigation, navigationPaths),
+    [pathname, employee, navigation, navigationPaths],
+  );
   const [accessState, setAccessState] = useState<AccessState>(syncAccess);
 
   useEffect(() => {

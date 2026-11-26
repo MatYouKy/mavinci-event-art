@@ -12,6 +12,15 @@ protocol WorkspaceBackend: Actor {
     func logout() async
 }
 
+extension URLComponents {
+    /// „+” w wartościach zapytania jako `%2B`. `URLComponents` zostawia „+” bez zmian, a serwer CRM (URLSearchParams)
+    /// i PostgREST czytają go jako spację — np. strefa `+00:00` w znaczniku czasu stawała się „ 00:00”, numer „+48…” — „ 48…”.
+    /// Spacje są już zakodowane jako `%20`, więc każdy „+” w zapytaniu pochodzi z wartości.
+    mutating func encodePlusInQuery() {
+        if let query = percentEncodedQuery, query.contains("+") { percentEncodedQuery = query.replacingOccurrences(of: "+", with: "%2B") }
+    }
+}
+
 actor HTTPBackend: WorkspaceBackend {
     let connection: Connection
     /// Sesja tylko w pamięci (tryb testowy „widok jako”, `TestMode/TestMode.swift`): bez zapisu w pęku kluczy i bez przekazania
@@ -94,6 +103,7 @@ actor HTTPBackend: WorkspaceBackend {
     func request(_ path: String, method: String? = nil, query: [URLQueryItem] = [], body: [String: JSONValue]? = nil, auth: Bool = true, range: Int? = nil, rawBody: Data? = nil, contentType: String? = nil) async throws -> Data {
         guard connection.valid, var u = URLComponents(string: connection.url.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path) else { throw AppError.configuration }
         u.queryItems = query.isEmpty ? nil : query
+        u.encodePlusInQuery()
         guard let url = u.url else { throw AppError.configuration }
         var req = URLRequest(url: url)
         req.httpMethod = method ?? (body == nil ? "GET" : "POST")
@@ -168,7 +178,8 @@ actor HTTPBackend: WorkspaceBackend {
         case .tasks:
             guard let session else { throw AppError.unauthorized }
             let own = try await read("tasks", Self.taskFields, ["owner_id": "eq.\(session.user.id)", "is_private": "eq.true", "is_inquiry": "eq.false", "deleted_at": "is.null"])
-            let assigned = try await read("tasks", Self.taskFields + ",assigned_filter:task_assignees!inner()", ["assigned_filter.employee_id": "eq.\(employee.id)", "is_private": "eq.false", "is_inquiry": "eq.false", "deleted_at": "is.null"])
+            // Przypisane — także prywatne zadanie innej osoby, która dodała pracownika (jak „Moje zadania” w CRM i na pulpicie).
+            let assigned = try await read("tasks", Self.taskFields + ",assigned_filter:task_assignees!inner()", ["assigned_filter.employee_id": "eq.\(employee.id)", "is_inquiry": "eq.false", "deleted_at": "is.null"])
             return Array(Dictionary((own + assigned).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }).values)
         case .inquiries: return try await read("tasks", Self.taskFields, ["is_inquiry":"eq.true", "deleted_at":"is.null", "archived_at":"is.null"])
         case .contacts: return try await read("contacts", Self.contactFields, ["status":"eq.active"])

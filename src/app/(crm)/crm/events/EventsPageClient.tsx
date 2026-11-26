@@ -2,7 +2,6 @@
 'use client';
 
 import type { EventStatus } from '@/components/crm/Calendar/types';
-import { refreshEventsPage } from './actions';
 import { eventMoney, fetchEventFinancials } from '@/lib/CRM/events/eventFinancials';
 import SalesColleagueBadge from '@/components/crm/events/SalesColleagueBadge';
 import type { EventsPageSnapshot } from '@/lib/CRM/events/eventsPageSnapshot.server';
@@ -992,7 +991,11 @@ export default function EventsPageClient({
     try {
       while (refreshQueued.current) {
         refreshQueued.current = false;
-        const next = await refreshEventsPage();
+        // Odświeżenie listy — GET `/bridge/events/page-snapshot` (te same dane co strona, sesja pracownika, RLS). Odczyt metodą
+        // GET działa też w trybie testowym „widok jako”, w którym akcje serwera są wyłączone (`src/middleware.ts`).
+        const response = await fetch('/bridge/events/page-snapshot', { cache: 'no-store', credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const next = (await response.json()) as EventsPageSnapshot;
         setSnapshot(next);
       }
     } catch (error) {

@@ -130,10 +130,19 @@ export const PERMISSION_SCOPE_GROUPS: PermissionScopeGroup[] = [
       // (employees.finance_company_access). Stare invoices_view / invoices_manage / ksef_manage nic już nie nadają.
       { key: 'finances_view', label: 'Wartości finansowe eventów (budżet, koszty)', description: 'Widzi budżet, przychód, koszty i prowizje eventów, które widzi, w dostępnych działalnościach. Nie obejmuje banku, faktur ani dokumentów działalności.' },
       { key: 'finances_manage', label: 'Wartości finansowe eventów (budżet, koszty) — edycja', description: 'Może edytować budżety, koszty i prowizje widocznych eventów w dostępnych działalnościach. Nie obejmuje banku, faktur ani dokumentów działalności.' },
-      { key: 'finances_purchases', label: 'Zakupy — własne wydatki', description: 'Zakupy → „Moje wydatki”: wprowadza zakupy robione firmową kartą (paragony z NIP i faktury spoza KSeF, z odczytem AI), przypisuje je do eventów jako koszt (widzi wtedy wszystkie koszty eventu, bez budżetu i przychodów) i co miesiąc wysyła rozliczenie do zatwierdzenia. Zatwierdza osoba z „Finanse — zarządzanie” w działalności.' },
       { key: 'databases_view', label: 'Podgląd baz danych', description: 'Widzi udostępnione bazy danych.' },
       { key: 'databases_manage', label: 'Zarządzanie bazami danych', description: 'Może tworzyć, edytować i udostępniać bazy.' },
       { key: 'tenders_view', label: 'Podgląd przetargów', description: 'Widzi przetargi i wyniki dopasowania.' },
+    ],
+  },
+  {
+    // Osobna grupa (dotąd w „Finanse i dane”), żeby uprawnienie było widać od razu — w uprawnieniach pracownika to osobna
+    // karta „Zakupy” (CRM `EmployeePermissionsTab`, Mac `EmployeePermissionsView`). Klucz zakresu bez zmian: `finances_purchases`.
+    key: 'purchases',
+    label: 'Zakupy',
+    description: 'Zakupy firmową kartą: faktury spoza KSeF i paragony z NIP firmy (odczyt AI), koszty eventów i miesięczne rozliczenie do zatwierdzenia.',
+    scopes: [
+      { key: 'finances_purchases', label: 'Zakupy — własne wydatki', description: 'Zakupy → „Moje wydatki”: wprowadza zakupy robione firmową kartą (paragony z NIP i faktury spoza KSeF, z odczytem AI), przypisuje je do eventów jako koszt (widzi wtedy wszystkie koszty eventu, bez budżetu i przychodów) i co miesiąc wysyła rozliczenie do zatwierdzenia. Zatwierdza osoba z „Finanse — zarządzanie” w działalności.' },
     ],
   },
   {
@@ -153,6 +162,9 @@ export const PERMISSION_SCOPE_GROUPS: PermissionScopeGroup[] = [
     ],
   },
 ];
+
+/** Zakupy → „Moje wydatki” (`docs/purchases.md`) — w uprawnieniach pracownika osobna karta „Zakupy”. */
+export const PURCHASES_PERMISSION = 'finances_purchases';
 
 export const ALL_PERMISSION_SCOPES = Array.from(
   new Set(PERMISSION_SCOPE_GROUPS.flatMap((group) => group.scopes.map((scope) => scope.key))),

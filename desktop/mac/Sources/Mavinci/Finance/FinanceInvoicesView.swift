@@ -686,7 +686,7 @@ enum FinInvoiceText {
     @State private var date = Date()
 
     var body: some View {
-        BankSheetFrame("Potwierdź pełną zapłatę", symbol: "checkmark.circle", subtitle: "Faktura \(detail.invoice.number) · \(detail.invoice.buyerName)") {
+        BankSheetFrame("Potwierdź pełną zapłatę", symbol: "checkmark.circle", subtitle: "Faktura \(detail.invoice.number) · \(detail.invoice.buyerName)", busy: store.busy) {
             Form {
                 LabeledContent("Łączna potwierdzona zapłata", value: FinFormat.money(detail.actions.paymentBase, detail.invoice.currency))
                 if detail.invoice.isFinal { Text("To kwota po odjęciu rozliczonych zaliczek.").font(.caption).foregroundStyle(.secondary) }
@@ -722,7 +722,7 @@ enum FinInvoiceText {
     @State private var notDelivered = false
 
     var body: some View {
-        BankSheetFrame("Anulowanie faktury", symbol: "xmark.circle", subtitle: "Faktura \(detail.invoice.number) · \(detail.invoice.buyerName)") {
+        BankSheetFrame("Anulowanie faktury", symbol: "xmark.circle", subtitle: "Faktura \(detail.invoice.number) · \(detail.invoice.buyerName)", busy: store.busy) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Numer zostaje w ewidencji, faktura dostaje status „anulowana” i nie wchodzi do rozliczeń ani raportów. Anulowanej faktury nie przywraca się. Jeśli faktura trafiła do nabywcy — nie anuluj jej, wystaw korektę.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

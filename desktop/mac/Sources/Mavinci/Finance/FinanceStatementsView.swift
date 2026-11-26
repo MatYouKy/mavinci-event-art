@@ -231,6 +231,8 @@ import UniformTypeIdentifiers
     @State private var dropTargeted = false
     @State private var dropError: String?
     @State private var question: (title: String, text: String, confirm: String)?
+    /// Import w toku — od kliknięcia „Importuj” do odpowiedzi serwera (drugie kliknięcie nie wysyła pliku jeszcze raz).
+    @State private var submitting = false
 
     /// Limit pliku jak przy przesyłaniu (`importStatement`).
     private static let limit = 10 * 1024 * 1024
@@ -253,7 +255,7 @@ import UniformTypeIdentifiers
     private var currentYear: Int { Calendar.current.component(.year, from: Date()) }
 
     var body: some View {
-        BankSheetFrame("Wgraj wyciąg", symbol: "square.and.arrow.up", subtitle: company.name) {
+        BankSheetFrame("Wgraj wyciąg", symbol: "square.and.arrow.up", subtitle: company.name, busy: store.busy ?? (submitting ? "Import wyciągu…" : nil)) {
             VStack(alignment: .leading, spacing: 14) {
                 settings
                 dropZone.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -268,15 +270,15 @@ import UniformTypeIdentifiers
             }
             Spacer()
             Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-            Button("Importuj") { Task { await run(confirmed: false) } }
-                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(file == nil)
+            Button("Importuj") { submit(confirmed: false) }
+                .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(file == nil || submitting)
         }
         .frame(minWidth: 560, idealWidth: 620, minHeight: 520, idealHeight: 600)
         .alert(question?.title ?? "Sprawdź numer rachunku", isPresented: Binding(get: { question != nil }, set: { if !$0 { question = nil } })) {
             Button("Anuluj import", role: .cancel) { question = nil }
             Button(question?.confirm ?? "Importuj") {
                 question = nil
-                Task { await run(confirmed: true) }
+                submit(confirmed: true)
             }
         } message: { Text(question?.text ?? "") }
     }
@@ -437,6 +439,16 @@ import UniformTypeIdentifiers
         file = nil
         fileSize = nil
         dropError = nil
+    }
+
+    /// Jedno wysłanie naraz: przycisk blokuje się od razu po kliknięciu, a w arkuszu widać postęp (`BankSheetFrame.busy`).
+    private func submit(confirmed: Bool) {
+        guard !submitting else { return }
+        submitting = true
+        Task {
+            await run(confirmed: confirmed)
+            submitting = false
+        }
     }
 
     private func run(confirmed: Bool) async {

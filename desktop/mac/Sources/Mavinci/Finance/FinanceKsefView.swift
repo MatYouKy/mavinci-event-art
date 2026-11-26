@@ -443,7 +443,7 @@ enum FinKsefText {
 
     var body: some View {
         BankSheetFrame("Płatność faktury \(current.number ?? current.ksefNumber)", symbol: "creditcard",
-                       subtitle: "\(current.party) · do zapłaty \(FinFormat.money(current.due, current.currency)) · wpłacono \(FinFormat.money(current.paid, current.currency))") {
+                       subtitle: "\(current.party) · do zapłaty \(FinFormat.money(current.due, current.currency)) · wpłacono \(FinFormat.money(current.paid, current.currency))", busy: store.busy) {
             Form {
                 Section("Wpłaty") {
                     if current.payments.isEmpty { Text("Brak wpłat w rejestrze.").foregroundStyle(.secondary) }

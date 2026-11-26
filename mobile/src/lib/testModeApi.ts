@@ -15,6 +15,7 @@ import {
  * kończy się na serwerze). Sprzedawców zewnętrznych (portal) sprawdza się w CRM w przeglądarce.
  */
 
+type AvatarPosition = { posX: number; posY: number; scale: number };
 export type TestModeTarget = {
   id: string;
   name: string | null;
@@ -22,9 +23,24 @@ export type TestModeTarget = {
   avatar_url: string | null;
   occupation: string | null;
   department: string | null;
+  role?: string | null;
   access_level: string | null;
   permissions: number | null;
+  /** Od migracji `20261202120000_test_mode_target_details.sql` (karta pracownika). */
+  email?: string | null;
+  phone?: string | null;
+  avatar_metadata?: {
+    desktop?: { src?: string; position?: AvatarPosition; objectFit?: string };
+    mobile?: { src?: string; position?: AvatarPosition; objectFit?: string };
+  } | null;
+  permission_keys?: string[] | null;
+  supervisor?: string | null;
+  last_active_at?: string | null;
 };
+
+/** Nazwy uprawnień jak w CRM (`GET /bridge/native/v1/permission-labels` — `src/lib/permissionCatalog.ts`). */
+export type TestModePermissionScope = { key: string; label: string; description: string };
+export type TestModePermissionCatalog = { groups: Array<{ key: string; label: string; scopes: TestModePermissionScope[] }> };
 
 export type TestModeHistoryRow = {
   id: string;
@@ -75,6 +91,44 @@ export async function loadTestModeHistory(): Promise<TestModeHistoryRow[]> {
   const { data, error } = await supabase.rpc('test_mode_history', { p_limit: 20 });
   if (error) return [];
   return Array.isArray(data) ? (data as TestModeHistoryRow[]) : [];
+}
+
+/** Słownik nazw uprawnień (bez danych pracowników); `null` — niedostępny (karta pokaże klucze). */
+export async function loadPermissionLabels(): Promise<TestModePermissionCatalog | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return null;
+    const response = await fetch(`${TEST_MODE_CRM_URL}/bridge/native/v1/permission-labels`, { headers: headers(session.access_token) });
+    const body = (await response.json().catch(() => null)) as TestModePermissionCatalog | null;
+    return response.ok && body && Array.isArray(body.groups) ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Uprawnienia pracownika w grupach jak w edytorze uprawnień CRM; nieznane (albo bez słownika) — „Inne”. */
+export function testModePermissionGroups(keys: string[], catalog: TestModePermissionCatalog | null) {
+  const owned = new Set(keys);
+  const known = new Set<string>();
+  const groups: Array<{ key: string; label: string; scopes: TestModePermissionScope[] }> = [];
+  for (const group of catalog?.groups || []) {
+    const scopes = group.scopes.filter((scope) => owned.has(scope.key) && !known.has(scope.key));
+    scopes.forEach((scope) => known.add(scope.key));
+    if (scopes.length) groups.push({ key: group.key, label: group.label, scopes });
+  }
+  const other = keys.filter((key) => !known.has(key));
+  if (other.length) {
+    groups.push({
+      key: 'other',
+      label: 'Inne',
+      scopes: other.map((key) => ({
+        key,
+        label: key === 'admin' ? 'Pełny dostęp administratora' : catalog ? 'Dodatkowe uprawnienie' : key,
+        description: key,
+      })),
+    });
+  }
+  return groups;
 }
 
 const headers = (token: string) => ({

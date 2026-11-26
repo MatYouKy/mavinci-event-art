@@ -610,9 +610,14 @@ const NAME_STOPWORDS = new Set(['SPOLKA', 'SPOLKI', 'FIRMA', 'USLUGI', 'HANDLOWA
   'GRUPA', 'POLSKA', 'POLSKIE', 'OGRANICZONA', 'ODPOWIEDZIALNOSCIA', 'AKCYJNA', 'KOMANDYTOWA', 'JAWNA', 'CYWILNA', 'ZOO', 'SKA', 'SPK',
   'THE', 'AND', 'LTD', 'GMBH', 'INC', 'PANI', 'PAN']);
 
+/** Znaczące słowa nazwy kontrahenta porównywane z przelewem (pierwsze dwa, bez form prawnych — jak w bazie). */
+export function counterpartyNameWords(name: string): string[] {
+  return normalizeBankText(name).split(' ').filter((w) => w.length >= 3 && !NAME_STOPWORDS.has(w)).slice(0, 2);
+}
+
 /** Nazwa kontrahenta w przelewie — te same zasady co w bazie (pierwsze dwa znaczące słowa nazwy). */
 export function counterpartyNameMatches(name: string, bankText: string): boolean {
-  const words = normalizeBankText(name).split(' ').filter((w) => w.length >= 3 && !NAME_STOPWORDS.has(w)).slice(0, 2);
+  const words = counterpartyNameWords(name);
   if (words.length === 0) return false;
   const haystack = ` ${normalizeBankText(bankText)} `;
   return words.every((w) => haystack.includes(` ${w} `));

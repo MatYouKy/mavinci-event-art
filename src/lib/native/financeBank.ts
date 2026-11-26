@@ -13,6 +13,7 @@ import {
   type RecurringContract,
 } from '@/lib/invoices/bankReconciliation';
 import { readBankTextFile, repairBrokenBankText } from '@/lib/bankTextEncoding';
+import { comparisonSummary, proposalComparison } from '@/lib/invoices/proposalComparison';
 import {
   applyBankTransactionMatchToDocument,
   assertBankTransactionCanMatchDocuments,
@@ -204,8 +205,26 @@ const SOURCE_LABELS: Record<string, string> = {
 const sourceLabel = (source: string) => SOURCE_LABELS[source] || source;
 const previewable = (source: string) => source === 'ksef' || source === 'invoice' || source === 'external';
 
-function proposalDocument(doc: Row, currency: string, period: { year: number; month: number }) {
+/** Płatność i reguła propozycji — do porównania „co do czego pasuje” (`proposalComparison`). */
+type ProposalContext = { tx: Row; rule: string; share: boolean };
+
+function proposalDocument(doc: Row, currency: string, period: { year: number; month: number }, context: ProposalContext) {
   const source = str(doc.source);
+  const comparison = proposalComparison({
+    rule: context.rule,
+    share: context.share,
+    tx: {
+      date: day(context.tx.date) || '', amount: num(context.tx.amount), remaining: num(context.tx.remaining), currency,
+      counterparty: bankTextOrNull(context.tx.counterparty), counterpartyAccount: strOrNull(context.tx.counterparty_account),
+      title: bankTextOrNull(context.tx.title), description: bankTextOrNull(context.tx.source_description),
+    },
+    doc: {
+      source, number: strOrNull(doc.number), party: bankTextOrNull(doc.party), amount: num(doc.amount), due: numOrNull(doc.due),
+      open: numOrNull(doc.open), manual: doc.manual === true, issueDate: day(doc.issue_date), dueDate: day(doc.due_date),
+      evidence: strOrNull(doc.evidence), documentAmount: numOrNull(doc.document_amount), documentCurrency: strOrNull(doc.document_currency),
+      rate: numOrNull(doc.rate), manualPaid: numOrNull(doc.manual_paid), manualDate: day(doc.manual_date),
+    },
+  });
   const facts = source === 'refund'
     ? refundFacts(doc, currency, period)
     : documentFacts({
@@ -233,6 +252,9 @@ function proposalDocument(doc: Row, currency: string, period: { year: number; mo
     facts: facts || null,
     statementId: strOrNull(doc.statement_id),
     previewable: previewable(source) && Boolean(doc.id),
+    /** Wiersze porównania płatności z dokumentem (kwota, kontrahent, numer w tytule, data, oznaczenie ręczne). */
+    comparison,
+    comparisonSummary: comparisonSummary(comparison) || null,
   };
 }
 
@@ -336,7 +358,9 @@ function transactionOf(t: Row, period: { year: number; month: number }) {
       rule: str(proposal.rule),
       ruleLabel: proposalRuleLabel(str(proposal.rule)),
       reason: str(proposal.reason),
-      documents: rows(proposal.documents).map((doc) => proposalDocument(doc, currency, period)),
+      documents: rows(proposal.documents).map((doc, _index, all) => proposalDocument(doc, currency, period, {
+        tx: t, rule: str(proposal.rule), share: proposal.kind !== 'choose' && proposal.kind !== 'hint' && all.length > 1,
+      })),
     } : null,
   };
 }

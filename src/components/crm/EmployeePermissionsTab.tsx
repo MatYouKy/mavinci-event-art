@@ -2,11 +2,12 @@
 
 import RecordScopeSelect from '@/components/crm/settings/RecordScopeSelect';
 import { useState, useEffect } from 'react';
-import { Shield, Save, RefreshCw, ChevronDown, ChevronRight, Bell, Webhook, Car, Building2, RotateCcw } from 'lucide-react';
+import { Shield, Save, RefreshCw, ChevronDown, ChevronRight, Bell, Webhook, Car, Building2, RotateCcw, ShoppingCart } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { ACCESS_SECTIONS } from '@/lib/accessSections';
 import { CONTACT_TABS, EVENT_TABS, LEGACY_FINANCE_PERMISSIONS, MAVINCI_LIVE_SECTION_SCOPES, ORGANIZATION_TABS } from '@/lib/employees/permissionTabs';
 import { getAllScopes } from '@/lib/permissions';
+import { PURCHASES_PERMISSION, getPermissionDefinition } from '@/lib/permissionCatalog';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -61,11 +62,13 @@ const availableContactTabs = CONTACT_TABS;
 const availableOrganizationTabs = ORGANIZATION_TABS;
 
 // Sekcja „Faktury” (invoices_view / invoices_manage) zastąpiona kartą „Finanse według działalności”.
+// „Zakupy — własne wydatki” (`finances_purchases`) — osobna karta „Zakupy”, nie w dodatkowych uprawnieniach „Wartości finansowych eventów”.
 const permissionCategories: PermissionCategory[] = ACCESS_SECTIONS.filter(section => section.key !== 'invoices').map(section => ({
   key: section.key,
   label: section.label,
-  extraPermissions: section.scopes.filter(scope => !scope.key.endsWith('_own_only') && scope.key !== `${section.key}_view` && scope.key !== `${section.key}_manage`),
+  extraPermissions: section.scopes.filter(scope => !scope.key.endsWith('_own_only') && scope.key !== `${section.key}_view` && scope.key !== `${section.key}_manage` && scope.key !== PURCHASES_PERMISSION),
 }));
+const purchasesScope = getPermissionDefinition(PURCHASES_PERMISSION);
 
 
 export default function EmployeePermissionsTab({
@@ -783,6 +786,43 @@ export default function EmployeePermissionsTab({
               poniżej dotyczy tylko budżetów i kosztów widocznych eventów, nie banku ani faktur.
             </p>
           </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+        <div className="mb-4 flex items-start gap-3">
+          <ShoppingCart className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
+          <div>
+            <h4 className="font-medium text-[#e5e4e2]">Zakupy</h4>
+            <p className="mt-1 text-xs leading-5 text-[#e5e4e2]/60">
+              Zakupy firmową kartą: faktury spoza KSeF i paragony z NIP firmy (odczyt AI), przypisanie do eventów jako koszt
+              i miesięczne rozliczenie do zatwierdzenia. Nie daje dostępu do pozostałych finansów działalności.
+            </p>
+          </div>
+        </div>
+        {targetIsAdmin ? (
+          <p className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 text-sm text-[#e5e4e2]/70">
+            Administrator może wprowadzać i zatwierdzać zakupy we wszystkich działalnościach.
+          </p>
+        ) : (
+          <label className="group flex cursor-pointer items-start gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3">
+            <input
+              type="checkbox"
+              checked={permissions.includes(PURCHASES_PERMISSION)}
+              onChange={() => toggleExtraPermission(PURCHASES_PERMISSION)}
+              disabled={!canEditThisEmployee}
+              className="mt-1 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
+                {purchasesScope?.label || 'Zakupy — własne wydatki'}
+              </div>
+              <div className="mt-0.5 text-xs text-[#e5e4e2]/60">{purchasesScope?.description}</div>
+              <div className="mt-1 text-xs text-[#e5e4e2]/45">
+                W menu pojawi się „Zakupy” (Moje wydatki). Zakupy wprowadza w działalnościach z sekcji „Marki i spółki”.
+              </div>
+            </div>
+          </label>
         )}
       </div>
 

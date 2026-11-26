@@ -10,8 +10,9 @@ wszystkie koszty tego eventu (bez budżetu i przychodów); do wyboru są eventy,
 
 ## Uprawnienia
 
-- **Zakupy — własne wydatki** (`finances_purchases`, Uprawnienia pracownika → „Finanse i dane”; w „Dostępie według sekcji”
-  — sekcja „Wartości finansowe eventów”): menu **Zakupy** → „Moje wydatki”. Zakupy tylko w działalnościach z NIP, do których
+- **Zakupy — własne wydatki** (`finances_purchases`, Uprawnienia pracownika → osobna karta **„Zakupy”** w CRM i na Macu, pod
+  „Finansami według działalności”; w katalogu uprawnień — grupa „Zakupy”; w „Dostępie według sekcji” — sekcja „Wartości finansowe
+  eventów”): menu **Zakupy** → „Moje wydatki”. Zakupy tylko w działalnościach z NIP, do których
   pracownik ma dostęp (`purchase_can_record`). Administrator ma to zawsze.
 - **Zatwierdzanie**: „Finanse — zarządzanie” w działalności (administrator — wszędzie) → Zakupy → „Rozliczenia pracowników”.
   Własnego rozliczenia nie zatwierdza się samemu (wyjątek: administrator).

@@ -704,6 +704,10 @@ dostępu i liczbą uprawnień, „Wejdź jako”, dziennik wejść; sprzedawców
   zmiany konta i operacje zapisujące natywnego API — „Tryb testowy: ta operacja jest wyłączona” (423, `AppError.testMode`).
   Odczyty natywnego API wysyłane metodą POST (synchronizacja, `op=items` itd.) działają. Komunikator bez połączenia na żywo
   i bez powiadomień push; Kalendarz Apple — kopiowanie wyłączone.
+- Kliknięcie zdjęcia albo nazwiska na liście — karta pracownika (`TestModePersonCard`, popover): większe zdjęcie, dział, poziom
+  dostępu, rola, przełożony, e-mail i telefon służbowy, ostatnia aktywność, uprawnienia w grupach (nazwy jak w CRM —
+  `GET /bridge/native/v1/permission-labels`), „Otwórz kartę pracownika” (nowa karta okna — `WindowDestination.employee`)
+  i „Wejdź jako”.
 - Na górze każdego okna, na środku: pasek „Tryb testowy · widok: … · zmiany nie są zapisywane” z **„Wyjdź z trybu”**
   (`TestModeBanner`); „Wyloguj” w trybie testowym też kończy tryb.
 - Sesja administratora zostaje w pęku kluczy (sesja testowa tylko w pamięci — `HTTPBackend(ephemeral:)`), jego kopie danych

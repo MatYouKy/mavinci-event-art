@@ -171,6 +171,24 @@ struct BankTx: Decodable, Identifiable {
         var facts: String?
         var statementId: String?
         var previewable: Bool
+        /// „Co do czego pasuje” — płatność obok dokumentu (`proposalComparison` na serwerze); brak u starszego serwera CRM.
+        var comparison: [ComparisonRow]?
+        var comparisonSummary: String?
+    }
+    /// Wiersz porównania: z wyciągu i z dokumentu (zaznaczone fragmenty — to, co się zgadza), ocena i opis.
+    struct ComparisonRow: Decodable, Identifiable {
+        struct Segment: Decodable {
+            var text: String
+            var hit: Bool
+        }
+        var key: String
+        var label: String
+        var payment: [Segment]
+        var document: [Segment]
+        /// match — zgadza się, partial — do sprawdzenia, mismatch — nie zgadza się, info — bez porównania.
+        var state: String
+        var verdict: String
+        var id: String { key }
     }
     struct Proposal: Decodable {
         var id: String

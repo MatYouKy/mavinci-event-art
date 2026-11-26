@@ -8,7 +8,8 @@ import { formatSystemSubject } from '@/lib/ui/systemLabels';
  *  - „Zadania firmowe” (`/crm/tasks`, `TasksPageClient` + `tasksApi.getTasksList`): zadania niebędące prywatnymi, zapytaniami
  *    ani zadaniami wydarzeń,
  *  - „Moje zadania” (`/crm/tasks/mine`, `PrivateTasksBoardTab`): prywatne zadania pracownika i zadania, do których jest przypisany
- *    (bez zapytań — te są w lejku sprzedaży),
+ *    — także prywatne zadanie innej osoby, która go dodała (jak pulpit „Moje zadania do wykonania”); bez zapytań — te są w lejku
+ *    sprzedaży,
  *  - „Zadania wydarzenia” (karta wydarzenia, `EventTasksBoard`): wszystkie zadania z `event_id` wydarzenia.
  * Tokenem pracownika (RLS). Przypisania, osoba pracująca, liczba komentarzy i załączników — zbiorczo, zmiany wykrywa skrót koszyków.
  */
@@ -63,9 +64,10 @@ async function loadBoard(ctx: NativeContext, board: TaskBoard, eventId?: string 
   } else {
     const [own, assigned] = await Promise.all([
       pages(() => s.from('tasks').select(FIELDS).eq('is_private', true).eq('owner_id', ctx.employee.id)),
-      // Zapytania (wiersze `is_inquiry`) są w lejku sprzedaży, nie na tablicy zadań — także te z dawnym przypisaniem.
+      // Przypisane — także prywatne zadanie innej osoby, która dodała pracownika. Zapytania (wiersze `is_inquiry`) są w lejku
+      // sprzedaży, nie na tablicy zadań — także te z dawnym przypisaniem.
       pages(() => s.from('tasks').select(`${FIELDS},task_assignees!inner(employee_id)`)
-        .eq('task_assignees.employee_id', ctx.employee.id).eq('is_private', false).eq('is_inquiry', false)),
+        .eq('task_assignees.employee_id', ctx.employee.id).eq('is_inquiry', false)),
     ]);
     const byId = new Map<string, Row>();
     for (const task of [...own, ...assigned]) byId.set(String(task.id), task);
@@ -195,7 +197,7 @@ export async function activeTimer(ctx: NativeContext) {
 
 /**
  * Widżet „Moje zadania” na Macu (pulpit, Centrum powiadomień — `desktop/mac/Sources/MavinciWidgets`): otwarte zadania z tablicy
- * „Moje zadania” — prywatne i te, do których pracownik jest przypisany (bez zapytań), krótka lista bez przypisań, komentarzy
+ * „Moje zadania” — prywatne i te, do których pracownik jest przypisany (także prywatne innej osoby; bez zapytań), krótka lista bez przypisań, komentarzy
  * i koszyków synchronizacji — oraz działający licznik czasu. Kolejność jak na tablicy: priorytet, termin, ostatnia zmiana.
  * Tokenem pracownika (RLS).
  */
@@ -205,7 +207,7 @@ export async function tasksWidget(ctx: NativeContext) {
   const [own, assigned, timer] = await Promise.all([
     s.from('tasks').select(fields).eq('is_private', true).eq('owner_id', ctx.employee.id).limit(500),
     s.from('tasks').select(`${fields},task_assignees!inner(employee_id)`)
-      .eq('task_assignees.employee_id', ctx.employee.id).eq('is_private', false).eq('is_inquiry', false).limit(500),
+      .eq('task_assignees.employee_id', ctx.employee.id).eq('is_inquiry', false).limit(500),
     activeTimer(ctx),
   ]);
   if (own.error) throw own.error;

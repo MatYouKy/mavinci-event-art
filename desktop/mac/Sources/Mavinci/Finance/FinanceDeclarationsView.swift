@@ -402,7 +402,7 @@ enum DeclarationLineTarget: Identifiable {
     }
 
     var body: some View {
-        BankSheetFrame(existing == nil ? "Nowa pozycja" : "Pozycja: \(existing?.personName ?? "")", symbol: "person.crop.circle", subtitle: declaration.label) {
+        BankSheetFrame(existing == nil ? "Nowa pozycja" : "Pozycja: \(existing?.personName ?? "")", symbol: "person.crop.circle", subtitle: declaration.label, busy: store.busy) {
             Form {
                 TextField("Imię i nazwisko", text: $person)
                 if showZus {
@@ -474,7 +474,7 @@ enum DeclarationLineTarget: Identifiable {
     @State private var prepared = false
 
     var body: some View {
-        BankSheetFrame(declaration.map { "Deklaracja \($0.label)" } ?? "Nowa deklaracja", symbol: "doc.plaintext") {
+        BankSheetFrame(declaration.map { "Deklaracja \($0.label)" } ?? "Nowa deklaracja", symbol: "doc.plaintext", busy: store.busy) {
             Form {
                 HStack {
                     TextField("Symbol", text: Binding(get: { formSymbol }, set: { pick($0) }))

@@ -63,6 +63,8 @@ enum WindowDestination {
     case href(String)
     /// Karta wydarzenia; „Wróć” pokazuje listę Wydarzeń.
     case event(String, tab: String?)
+    /// Karta pracownika w Zespole (`Workspace.showEmployee`; bez ekranu Zespołu — CRM w przeglądarce).
+    case employee(String)
 }
 
 extension Workspace {
@@ -150,6 +152,8 @@ extension Workspace {
             case .event(let id, let tab):
                 if employee?.canView(.events) == true { switchSection(.events) }
                 showEvent(id, cardTab: tab)
+            case .employee(let id):
+                showEmployee(id)
             }
         }
         if asTab { next.tabHost = source.window }

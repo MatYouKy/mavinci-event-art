@@ -11,7 +11,7 @@ import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmploye
 import CrmProviders from './CrmProviders';
 import { fetchUnreadCountServer } from '@/lib/CRM/messages/unreadCounter';
 import { fetchNotificationsServer } from '@/lib/CRM/notifications/fetchNotificationsServer';
-import { getNavigationForUserServer } from '@/lib/CRM/navigation/getNavigationForUser.server';
+import { getNavigationForUserServer, navigationPagePaths } from '@/lib/CRM/navigation/getNavigationForUser.server';
 import { cookies } from 'next/headers';
 import { GlobalLoaderProvider, RouteLoaderReset } from '@/contexts/GlobalLoaderContext';
 import BrandThemeProvider from '@/components/BrandThemeProvider';
@@ -58,6 +58,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 initialUnreadMessagesCount={initialUnreadMessagesCount}
                 initialNotifications={notifications}
                 initialNavigation={navigation}
+                navigationPaths={navigationPagePaths()}
               >
                 {children}
               </CRMClientLayout>

@@ -11,6 +11,7 @@ import { NavigationIcons } from '@/lib/CRM/navigation/registry.client';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
 import { useSellerSidebarBadge } from '@/lib/seller/sidebarBadge';
 import { SellerCountBadge } from '@/components/seller/SellerInboxPanel';
+import { TEST_MODE_COOKIE, readCookie } from '@/lib/testMode/shared';
 interface NavigationItem {
   key: string;
   name: string;
@@ -88,6 +89,9 @@ export default function NavigationManager({
     let lastAttempt = 0;
     const sync = async () => {
       if (!active || document.hidden || running || Date.now() - lastAttempt < 120000) return;
+      // Tryb testowy „widok jako” (`docs/test-mode.md`): funkcje serwera są wyłączone — synchronizacja przeczytanych wiadomości
+      // (zapis stanu w skrzynce pocztowej) nie rusza, zamiast zwracać 423 co dwie minuty.
+      if (readCookie(document.cookie, TEST_MODE_COOKIE)) return;
       running = true;
       lastAttempt = Date.now();
       try {

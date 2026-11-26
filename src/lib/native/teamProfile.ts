@@ -2,6 +2,7 @@ import 'server-only';
 import type { NativeContext } from './auth';
 import { ACCESS_SECTIONS } from '@/lib/accessSections';
 import { getAllScopes } from '@/lib/permissions';
+import { PURCHASES_PERMISSION, getPermissionDefinition } from '@/lib/permissionCatalog';
 import { FINANCE_COMPANY_LEVEL_OPTIONS, normalizeFinanceCompanyAccess } from '@/lib/financeCompanyAccess';
 import { isDrivingLicenseCertification } from '@/lib/CRM/employees/drivingLicenses';
 import {
@@ -181,15 +182,24 @@ export async function savePersonalAccount(ctx: NativeContext, employeeId: string
 
 // MARK: Uprawnienia
 
+/** Karta „Zakupy” w uprawnieniach pracownika (Mac): zakres `finances_purchases` z katalogu uprawnień. */
+function purchasesCatalogEntry() {
+  const scope = getPermissionDefinition(PURCHASES_PERMISSION);
+  return scope ? { key: scope.key, label: scope.label, description: scope.description } : null;
+}
+
 export function permissionCatalog() {
   return {
     categories: ACCESS_SECTIONS.filter((section) => section.key !== 'invoices').map((section) => ({
       key: section.key,
       label: section.label,
       extra: section.scopes
-        .filter((scope) => !scope.key.endsWith('_own_only') && scope.key !== `${section.key}_view` && scope.key !== `${section.key}_manage`)
+        .filter((scope) => !scope.key.endsWith('_own_only') && scope.key !== `${section.key}_view` && scope.key !== `${section.key}_manage`
+          && scope.key !== PURCHASES_PERMISSION)
         .map((scope) => ({ key: scope.key, label: scope.label, description: scope.description })),
     })),
+    // „Zakupy — własne wydatki” — osobna karta „Zakupy” (jak w CRM), nie w dodatkowych uprawnieniach „Wartości finansowych eventów”.
+    purchases: purchasesCatalogEntry(),
     allScopes: getAllScopes().filter((scope) => !scope.endsWith('_own_only')),
     financeLevels: FINANCE_COMPANY_LEVEL_OPTIONS,
     eventTabs: EVENT_TABS,

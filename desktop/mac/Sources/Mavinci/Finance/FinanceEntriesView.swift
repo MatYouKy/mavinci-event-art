@@ -243,7 +243,7 @@ enum FinEntryText {
     @State private var prepared = false
 
     var body: some View {
-        BankSheetFrame("Nowy koszt lub wypłata", symbol: "creditcard", subtitle: "Gotówka również trafia do faktycznych wydatków.") {
+        BankSheetFrame("Nowy koszt lub wypłata", symbol: "creditcard", subtitle: "Gotówka również trafia do faktycznych wydatków.", busy: store.busy) {
             Form {
                 Picker("Rodzaj", selection: Binding(get: { entryType }, set: { next in
                     entryType = next

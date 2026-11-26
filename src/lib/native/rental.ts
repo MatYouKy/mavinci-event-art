@@ -57,6 +57,13 @@ const fail = (message: string, status = 400): never => {
 const id = (value: unknown, label = 'wypożyczenie') => (isRentalId(value) ? value : fail(`Nieprawidłowe ${label}.`));
 const like = (text: string) => `%${text.replace(/[\\%_]/g, '\\$&')}%`;
 
+/**
+ * Znacznik czasu z adresu (`start`, `end`). Starsze wersje aplikacji na Maca wysyłały strefę `+00:00` bez zakodowania „+”,
+ * a w adresie „+” oznacza spację („2026-11-30T09:00:00 00:00”) — przywracamy „+” przed strefą.
+ */
+const stampParam = (value: string | null) =>
+  String(value || '').trim().replace(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?) (\d{2}(?::?\d{2})?)$/, '$1+$2');
+
 export async function rentalGet(ctx: NativeContext, params: URLSearchParams) {
   const s = ctx.supabase;
   switch (params.get('op') || '') {
@@ -76,7 +83,7 @@ export async function rentalGet(ctx: NativeContext, params: URLSearchParams) {
       const items = JSON.parse(params.get('items') || '[]');
       if (!Array.isArray(items) || items.length > 500) fail('Nieprawidłowa lista pozycji.');
       return {
-        availability: await checkRentalAvailability(s, String(params.get('start') || ''), String(params.get('end') || ''),
+        availability: await checkRentalAvailability(s, stampParam(params.get('start')), stampParam(params.get('end')),
           items.filter((item: Row) => isRentalId(item?.equipment_id)).map((item: Row) => ({ equipment_id: item.equipment_id, quantity: Math.max(0, Math.floor(Number(item.quantity) || 0)) })),
           isRentalId(params.get('exclude')) ? params.get('exclude') : null),
       };
@@ -84,14 +91,14 @@ export async function rentalGet(ctx: NativeContext, params: URLSearchParams) {
     case 'stock':
       // Katalog magazynu z wolnymi sztukami w terminie (`rental_catalog`): z `id` — w oknie wypożyczenia, bez jego pozycji.
       return {
-        catalog: await rentalCatalog(s, String(params.get('start') || ''), String(params.get('end') || ''),
+        catalog: await rentalCatalog(s, stampParam(params.get('start')), stampParam(params.get('end')),
           isRentalId(params.get('id')) ? params.get('id') : null),
       };
     case 'units':
       return { units: await rentalItemUnits(s, id(params.get('item'), 'pozycję')) };
     case 'conflicts':
       return {
-        conflicts: await rentalVehicleConflicts(s, id(params.get('vehicle'), 'pojazd'), String(params.get('start') || ''), String(params.get('end') || ''),
+        conflicts: await rentalVehicleConflicts(s, id(params.get('vehicle'), 'pojazd'), stampParam(params.get('start')), stampParam(params.get('end')),
           isRentalId(params.get('exclude')) ? params.get('exclude') : null),
       };
     case 'protocolPdf': {

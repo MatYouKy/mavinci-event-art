@@ -2,7 +2,19 @@
 
 Administrator może wejść w CRM (albo w portal sprzedawcy) oczami wybranej osoby i sprawdzić, co widzi, jakie ma funkcje
 i czy działają — czy nie ma za dużych albo za małych uprawnień. Ustawienia → zakładka **„Tryb testowy”** (tylko
-administrator). Migracja: `20261202100000_crm_test_mode.sql`.
+administrator). Migracje: `20261202100000_crm_test_mode.sql` i `20261202110000_test_mode_postgrest_tx.sql` (PostgREST
+`db_tx_end = commit-allow-override` — bez tego Data API pomija `Prefer: tx=rollback` i zatwierdza zapis; serwer wykrywa to zapisem
+próbnym i nie otwiera trybu).
+
+## Karta pracownika na liście
+
+Najechanie albo kliknięcie zdjęcia / nazwiska (CRM: popover `TestModePersonPopover`; Mac: popover `TestModePersonCard`; telefon:
+rozwinięcie wiersza) — większe zdjęcie, dział, poziom dostępu, rola, przełożony, e-mail i telefon służbowy, ostatnia aktywność
+i uprawnienia pracownika w grupach jak w edytorze uprawnień (`src/lib/permissionCatalog.ts`; Mac i telefon —
+`GET /bridge/native/v1/permission-labels`), „Otwórz kartę pracownika” (`/crm/employees/<id>` w nowej karcie przeglądarki; Mac —
+nowa karta okna z ekranem Zespołu; telefon — CRM w przeglądarce) i „Wejdź jako”. Dane: `test_mode_targets` (migracja
+`20261202120000_test_mode_target_details.sql` — e-mail, telefon, kadrowanie zdjęcia, lista uprawnień, przełożony, ostatnia
+aktywność; tylko administrator).
 
 ## Kogo można oglądać
 
@@ -33,6 +45,9 @@ administrator). Migracja: `20261202100000_crm_test_mode.sql`.
 5. `src/middleware.ts`: w trybie testowym serwer CRM nie wykonuje operacji zapisujących — trasy `/bridge/*` innymi metodami
    niż GET i akcje serwera Next zwracają 423 („Tryb testowy: ta operacja serwera jest wyłączona…”), bo mogłyby wysłać e-mail,
    wystawić dokument (KSeF) albo zapisać plik naprawdę.
+   Odczyty, które CRM robi w tle, idą metodą GET, więc działają też w trybie testowym — np. odświeżenie listy eventów
+   (`GET /bridge/events/page-snapshot`, dotąd akcja serwera). Synchronizacja przeczytanych wiadomości ze skrzynką
+   (`sync-email-read-state`, funkcja serwera — zapis) w trybie testowym nie rusza.
 6. **„Wyjdź z trybu”** — pasek zawsze na środku u góry (CRM i portal sprzedawcy, `TestModeBar`): `POST /bridge/test-mode/exit`
    unieważnia sesję osoby (`auth.sessions`, tylko ta jedna — jej prawdziwe logowania zostają), usuwa dane zaszyfrowane
    i przywraca sesję administratora. Wylogowanie w trybie testowym działa jak wyjście. Inne karty przeglądarki przeładowują

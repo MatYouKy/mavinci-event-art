@@ -143,7 +143,7 @@ enum FinKsefCorrectionText {
     }
 
     var body: some View {
-        BankSheetFrame(title, symbol: "arrow.uturn.backward.circle", subtitle: subtitle) {
+        BankSheetFrame(title, symbol: "arrow.uturn.backward.circle", subtitle: subtitle, busy: store.busy) {
             if let data {
                 content(data)
             } else if let loadError {

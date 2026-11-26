@@ -8,10 +8,11 @@ extension NativeAPI {
         c.timeoutIntervalForRequest = 90; c.timeoutIntervalForResource = 300; c.httpShouldSetCookies = false
         return URLSession(configuration: c)
     }()
-    /// GET z parametrami (`/messages?op=list&…`).
+    /// GET z parametrami (`/messages?op=list&…`); „+” w wartościach zakodowany (`encodePlusInQuery`, `Backend.swift`).
     func get(_ path: String, query: [String: String]) async throws -> Data {
         var components = URLComponents()
         components.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+        components.encodePlusInQuery()
         return try await get(path + (components.percentEncodedQuery.map { "?" + $0 } ?? ""))
     }
     /// Trasy CRM poza `/bridge/native/v1` (np. `/bridge/messages/trash`) — ten sam token pracownika.

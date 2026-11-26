@@ -2,13 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, FlaskConical, History, Loader2, LogIn, RefreshCw, Search, ShieldCheck, Store, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
 import { DEPARTMENTS, department } from '@/lib/CRM/meetings/teamAvailability';
 import { TEST_MODE_MAX_HOURS, setTestModeNavigation } from '@/lib/testMode/shared';
+import TestModePersonPopover, { type TestModeEmployeeTarget } from './TestModePersonPopover';
 
 /*
  * Ustawienia → „Tryb testowy” (tylko administrator, `docs/test-mode.md`): wybór pracownika albo sprzedawcy zewnętrznego
@@ -16,18 +17,7 @@ import { TEST_MODE_MAX_HOURS, setTestModeNavigation } from '@/lib/testMode/share
  * `test_mode_history` (baza sprawdza, że to administrator).
  */
 
-type EmployeeTarget = {
-  kind: 'employee';
-  id: string;
-  name: string | null;
-  nickname: string | null;
-  avatar_url: string | null;
-  occupation: string | null;
-  department: string | null;
-  role: string | null;
-  access_level: string | null;
-  permissions: number;
-};
+type EmployeeTarget = TestModeEmployeeTarget;
 type SellerTarget = { kind: 'seller'; id: string; name: string; organization: string | null; partner_type: string | null; status: string | null };
 type HistoryRow = {
   id: string;
@@ -73,6 +63,35 @@ export default function TestModePanel() {
   const [tab, setTab] = useState<'employee' | 'seller'>('employee');
   const [query, setQuery] = useState('');
   const [starting, setStarting] = useState<string | null>(null);
+  // Karta pracownika (`TestModePersonPopover`): po najechaniu na zdjęcie / nazwisko (zamyka się po zjechaniu) albo po kliknięciu
+  // (zostaje do zamknięcia: ×, Escape, kliknięcie obok).
+  const [card, setCard] = useState<{ id: string; anchor: HTMLElement; pinned: boolean } | null>(null);
+  const hoverTimer = useRef<number | null>(null);
+  const clearHover = useCallback(() => {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = null;
+  }, []);
+  const hoverOpen = (id: string, anchor: HTMLElement) => {
+    clearHover();
+    hoverTimer.current = window.setTimeout(() => setCard((current) => (current?.pinned ? current : { id, anchor, pinned: false })), 350);
+  };
+  const hoverClose = useCallback(() => {
+    clearHover();
+    hoverTimer.current = window.setTimeout(() => setCard((current) => (current?.pinned ? current : null)), 220);
+  }, [clearHover]);
+  const toggleCard = (id: string, anchor: HTMLElement) => {
+    clearHover();
+    setCard((current) => (current?.id === id && current.pinned ? null : { id, anchor, pinned: true }));
+  };
+  const closeCard = useCallback(() => {
+    clearHover();
+    setCard(null);
+  }, [clearHover]);
+  const onCardHover = useCallback((inside: boolean) => {
+    if (inside) clearHover();
+    else hoverClose();
+  }, [clearHover, hoverClose]);
+  useEffect(() => () => clearHover(), [clearHover]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -155,7 +174,8 @@ export default function TestModePanel() {
               <li>• Wysyłka e-maili, pliki, KSeF, dokumenty zapisywane na serwerze i funkcje serwera są wyłączone (komunikat w miejscu akcji).</li>
               <li>• Na środku u góry jest pasek „Wyjdź z trybu” — po wyjściu wraca Twoja sesja. Tryb kończy się sam po {TEST_MODE_MAX_HOURS} godzinach.</li>
               <li>• Osoba nie dostaje e-maila ani powiadomienia; każde wejście zapisuje się w dzienniku poniżej.</li>
-              <li>• Aplikacje na Maca i telefon — bez zmian (tryb działa w przeglądarce).</li>
+              <li>• Na Macu (Ustawienia → „Tryb testowy”) i w telefonie (Ustawienia) — ten sam tryb dla pracowników; widok portalu sprzedawcy sprawdzisz tutaj.</li>
+              <li>• Najedź albo kliknij zdjęcie lub nazwisko — karta pracownika: dane, uprawnienia i „Otwórz kartę pracownika” w nowej karcie.</li>
             </ul>
           </div>
         </div>
@@ -196,16 +216,22 @@ export default function TestModePanel() {
                   <p className="mb-2 text-xs uppercase tracking-wide text-[#d3bb73]/80">{group.label}</p>
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                     {group.people.map((person) => (
-                      <div key={person.id} className="flex items-center gap-3 rounded-lg border border-white/10 bg-[#0f1119]/60 p-3">
-                        {person.avatar_url
-                          ? <img src={person.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" loading="lazy" />
-                          : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#d3bb73]/15 text-sm text-[#d3bb73]">{initials(person.name)}</span>}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm text-[#e5e4e2]">{person.name || 'Pracownik'}</p>
-                          <p className="truncate text-xs text-[#e5e4e2]/55">
-                            {[person.occupation, person.access_level, `uprawnienia: ${person.permissions}`].filter(Boolean).join(' · ')}
-                          </p>
-                        </div>
+                      <div key={person.id} className={`flex items-center gap-3 rounded-lg border bg-[#0f1119]/60 p-3 ${card?.id === person.id ? 'border-[#d3bb73]/50' : 'border-white/10'}`}>
+                        <button type="button" title="Karta pracownika" aria-haspopup="dialog" aria-expanded={card?.id === person.id}
+                          onClick={(event) => toggleCard(person.id, event.currentTarget.parentElement as HTMLElement)}
+                          onMouseEnter={(event) => hoverOpen(person.id, event.currentTarget.parentElement as HTMLElement)}
+                          onMouseLeave={hoverClose}
+                          className="flex min-w-0 flex-1 items-center gap-3 rounded-md text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#d3bb73]/60">
+                          {person.avatar_url
+                            ? <img src={person.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" loading="lazy" />
+                            : <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#d3bb73]/15 text-sm text-[#d3bb73]">{initials(person.name)}</span>}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm text-[#e5e4e2]">{person.name || 'Pracownik'}</span>
+                            <span className="block truncate text-xs text-[#e5e4e2]/55">
+                              {[person.occupation, person.access_level, `uprawnienia: ${person.permissions}`].filter(Boolean).join(' · ')}
+                            </span>
+                          </span>
+                        </button>
                         <button type="button" onClick={() => void start('employee', person.id, person.name || 'Pracownik')} disabled={Boolean(starting)}
                           className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#d3bb73] px-3 py-1.5 text-xs font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50">
                           {starting === person.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogIn className="h-3.5 w-3.5" />}Wejdź jako
@@ -239,6 +265,22 @@ export default function TestModePanel() {
           </div>
         )}
       </div>
+
+      {(() => {
+        const person = card && tab === 'employee' ? employees.find((item) => item.id === card.id) : null;
+        if (!card || !person || !card.anchor.isConnected) return null;
+        return (
+          <TestModePersonPopover
+            person={person}
+            anchor={card.anchor}
+            entering={starting === person.id}
+            disabled={Boolean(starting)}
+            onEnter={() => void start('employee', person.id, person.name || 'Pracownik')}
+            onClose={closeCard}
+            onHover={onCardHover}
+          />
+        );
+      })()}
 
       <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
         <div className="mb-4 flex items-center gap-2">

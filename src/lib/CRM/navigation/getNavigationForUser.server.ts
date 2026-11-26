@@ -33,6 +33,23 @@ const hasAny = (perms: string[], options?: string[]) => {
   return options.some((r) => hasPermission(perms, r));
 };
 
+/**
+ * Ścieżki stron wszystkich pozycji menu z rejestru (bez parametrów, np. `/crm/offers?tab=catalog` → `/crm/offers`). CRM sprawdza
+ * nimi dostęp do strony (`TaskAccessWrapper`): strona z menu otwiera się temu, kto ma tę pozycję w menu — te same reguły co pasek
+ * boczny, więc pozycja widoczna w menu zawsze się otwiera, a niewidoczna — nie.
+ */
+export function navigationPagePaths(): string[] {
+  const paths = new Set<string>();
+  const walk = (items: NavigationItemDTO[]) => {
+    for (const item of items) {
+      if (item.children?.length) walk(item.children);
+      else paths.add(item.href.split('?')[0]);
+    }
+  };
+  walk(allNavigation);
+  return Array.from(paths);
+}
+
 export async function getNavigationForUserServer(): Promise<{
   navigation: Omit<NavigationItem, 'icon'>[]; // server-safe
   employeeId: string | null;

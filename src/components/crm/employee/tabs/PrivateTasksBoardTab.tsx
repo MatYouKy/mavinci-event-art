@@ -263,7 +263,8 @@ export default function PrivateTasksBoardTab({
           const isRelevant =
             !(newTask as Task & { is_inquiry?: boolean | null }).is_inquiry && (
               (newTask.is_private && newTask.owner_id === employeeId) ||
-              (!newTask.is_private && assignees?.some((a) => a.employee_id === employeeId)));
+              // Przypisane — także prywatne zadanie innej osoby, która dodała tego pracownika (jak na pulpicie).
+              assignees?.some((a) => a.employee_id === employeeId));
 
           if (isRelevant) {
             setTasks((prevTasks) => [
@@ -370,13 +371,17 @@ export default function PrivateTasksBoardTab({
         `,
         )
         .eq('task_assignees.employee_id', employeeId)
-        .eq('is_private', false)
+        // Wszystkie zadania, do których pracownik jest przypisany — także prywatne zadanie innej osoby, która go dodała
+        // (pulpit „Moje zadania do wykonania” pokazuje je tak samo; RLS: przypisany widzi i zmienia zadanie).
         // Zapytania są w lejku sprzedaży, nie na tablicy zadań (także te z dawnym przypisaniem).
         .eq('is_inquiry', false);
 
       if (assignedError) throw assignedError;
 
-      const allTasksBase = [...(privateTasks || []), ...(assignedTasks || [])];
+      // Własne prywatne zadanie z przypisaniem tego samego pracownika przychodzi z obu zapytań — raz na tablicy.
+      const uniqueTasks = new Map<string, Task>();
+      for (const task of [...(privateTasks || []), ...(assignedTasks || [])] as Task[]) uniqueTasks.set(task.id, task);
+      const allTasksBase = Array.from(uniqueTasks.values());
 
       const tasksWithAssignees = await Promise.all(
         allTasksBase.map(async (task) => {
@@ -858,9 +863,15 @@ export default function PrivateTasksBoardTab({
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+      // RLS nie zgłasza błędu, gdy wiersza nie wolno usunąć — po prostu go nie usuwa (np. prywatne zadanie innej osoby,
+      // do którego pracownik jest tylko przypisany). Bez usuniętego wiersza — komunikat zamiast fałszywego sukcesu.
+      const { data: deleted, error } = await supabase.from('tasks').delete().eq('id', taskId).select('id');
 
       if (error) throw error;
+      if (!deleted?.length) {
+        showSnackbar('Nie możesz usunąć tego zadania — usuwa je autor albo osoba zarządzająca zadaniami.', 'warning');
+        return;
+      }
 
       showSnackbar('Zadanie zostało usunięte', 'success');
     } catch (error: any) {

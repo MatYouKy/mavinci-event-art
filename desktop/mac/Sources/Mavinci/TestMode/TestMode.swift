@@ -44,7 +44,15 @@ struct TestModeTarget: Decodable, Identifiable, Hashable {
     let role: String?
     let access_level: String?
     let permissions: Int?
+    /// Od migracji `20261202120000_test_mode_target_details.sql` (karta pracownika — `TestModePersonCard`).
+    let email: String?
+    let phone: String?
+    let supervisor: String?
+    let last_active_at: String?
+    let permission_keys: [String]?
+    let avatar_metadata: TestModeAvatarMetadata?
 
+    var crop: AvatarCrop? { avatar_metadata?.crop }
     var displayName: String { name?.isEmpty == false ? name! : (nickname?.isEmpty == false ? nickname! : "Pracownik") }
     /// Dział jak w CRM (`teamAvailability.department`): pusty albo nieznany — Biuro.
     var departmentCode: String { ["management", "sales", "warehouse"].contains(department ?? "") ? department! : "office" }
@@ -60,6 +68,54 @@ struct TestModeTarget: Decodable, Identifiable, Hashable {
         if count == 1 { return "1 uprawnienie" }
         let few = (2...4).contains(count % 10) && !(12...14).contains(count % 100)
         return few ? "\(count) uprawnienia" : "\(count) uprawnień"
+    }
+}
+
+/// Kadrowanie zdjęcia z `avatar_metadata.desktop` (jak `EmployeeAvatar` w CRM); nieczytelne dane — bez kadrowania.
+struct TestModeAvatarMetadata: Decodable, Hashable {
+    var crop: AvatarCrop?
+    init(from decoder: Decoder) throws {
+        struct Position: Decodable { let posX: Double?; let posY: Double?; let scale: Double? }
+        struct Side: Decodable { let position: Position?; let objectFit: String? }
+        struct Raw: Decodable { let desktop: Side? }
+        if let side = (try? Raw(from: decoder))?.desktop, let position = side.position {
+            crop = AvatarCrop(x: position.posX ?? 0, y: position.posY ?? 0, scale: position.scale ?? 1, fit: side.objectFit)
+        } else {
+            crop = nil
+        }
+    }
+}
+
+/// Nazwy uprawnień jak w CRM (`GET /bridge/native/v1/permission-labels` — `src/lib/permissionCatalog.ts`).
+struct TestModePermissionCatalog: Decodable {
+    struct Scope: Decodable, Hashable { let key: String; let label: String; let description: String }
+    struct Group: Decodable { let key: String; let label: String; let scopes: [Scope] }
+    let groups: [Group]
+}
+
+/// Uprawnienia pracownika w grupach jak w edytorze uprawnień CRM; nieznane (albo bez słownika) — „Inne”.
+struct TestModePermissionGroup: Identifiable {
+    let id: String
+    let label: String
+    let scopes: [TestModePermissionCatalog.Scope]
+
+    static func groups(_ keys: [String], catalog: TestModePermissionCatalog?) -> [TestModePermissionGroup] {
+        let owned = Set(keys)
+        var known = Set<String>()
+        var result: [TestModePermissionGroup] = []
+        for group in catalog?.groups ?? [] {
+            let scopes = group.scopes.filter { owned.contains($0.key) && !known.contains($0.key) }
+            scopes.forEach { known.insert($0.key) }
+            if !scopes.isEmpty { result.append(TestModePermissionGroup(id: group.key, label: group.label, scopes: scopes)) }
+        }
+        let other = keys.filter { !known.contains($0) }
+        if !other.isEmpty {
+            let scopes = other.map { key in
+                TestModePermissionCatalog.Scope(key: key, label: key == "admin" ? "Pełny dostęp administratora" : (catalog == nil ? key : "Dodatkowe uprawnienie"), description: key)
+            }
+            result.append(TestModePermissionGroup(id: "other", label: "Inne", scopes: scopes))
+        }
+        return result
     }
 }
 
@@ -248,6 +304,10 @@ struct TestModeSettings: View {
     @State private var startFailure: String?
     @State private var query = ""
     @State private var starting: String?
+    /// Karta pracownika (popover po kliknięciu zdjęcia lub nazwiska).
+    @State private var shownCard: String?
+    @State private var catalog: TestModePermissionCatalog?
+    @Environment(\.openWindow) private var openWindow
 
     private static let departments: [(code: String, label: String)] = [
         ("management", "Zarząd"), ("sales", "Sprzedaż"), ("office", "Biuro"), ("warehouse", "Magazyn"),
@@ -326,10 +386,28 @@ struct TestModeSettings: View {
 
     private func row(_ person: TestModeTarget) -> some View {
         HStack(spacing: 10) {
-            EmployeeAvatarView(name: person.displayName, url: person.avatar_url, crop: nil, size: 28)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(person.displayName).lineLimit(1)
-                if !person.details.isEmpty { Text(person.details).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+            Button { shownCard = shownCard == person.id ? nil : person.id } label: {
+                HStack(spacing: 10) {
+                    EmployeeAvatarView(name: person.displayName, url: person.avatar_url, crop: person.crop, size: 28)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(person.displayName).lineLimit(1)
+                        if !person.details.isEmpty { Text(person.details).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Karta pracownika")
+            .popover(isPresented: Binding(get: { shownCard == person.id }, set: { if !$0, shownCard == person.id { shownCard = nil } }), arrowEdge: .trailing) {
+                TestModePersonCard(
+                    person: person,
+                    catalog: catalog,
+                    department: Self.departments.first { $0.code == person.departmentCode }?.label ?? "Biuro",
+                    entering: starting == person.id,
+                    canEnter: starting == nil && state.testMode == nil && state.canWrite,
+                    onOpen: { openEmployee(person) },
+                    onEnter: { shownCard = nil; Task { await start(person) } }
+                )
             }
             Spacer(minLength: 8)
             Button {
@@ -338,6 +416,16 @@ struct TestModeSettings: View {
                 if starting == person.id { ProgressView().controlSize(.small) } else { Label("Wejdź jako", systemImage: "person.badge.key") }
             }
             .disabled(starting != nil || state.testMode != nil || !state.canWrite)
+        }
+    }
+
+    /// Karta pracownika w nowej karcie głównego okna (ekran Zespołu); bez Zespołu w menu — CRM w przeglądarce.
+    private func openEmployee(_ person: TestModeTarget) {
+        shownCard = nil
+        if state.navigation.flatMap(\.flattened).contains(where: { $0.href == "/crm/employees" }) {
+            state.openInWindow(.employee(person.id), asTab: true, using: openWindow)
+        } else {
+            state.openCRM("/crm/employees/\(person.id)")
         }
     }
 
@@ -368,6 +456,9 @@ struct TestModeSettings: View {
            let rows = try? JSONDecoder().decode([TestModeHistoryRow].self, from: data) {
             history = rows
         }
+        if catalog == nil, let native = state.nativeAPI(), let data = try? await native.get("/permission-labels") {
+            catalog = try? JSONDecoder().decode(TestModePermissionCatalog.self, from: data)
+        }
     }
 
     private static func folded(_ text: String) -> String {
@@ -379,5 +470,102 @@ struct TestModeSettings: View {
     private static func when(_ raw: String) -> String {
         guard let date = ChatDates.parse(raw) else { return raw }
         return date.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+// MARK: Karta pracownika (popover na liście „Tryb testowy”)
+
+/// Większe zdjęcie i dane pracownika jak `TestModePersonPopover` w CRM: dział, poziom dostępu, rola, przełożony, kontakt
+/// służbowy, ostatnia aktywność, uprawnienia; „Otwórz kartę pracownika” (nowa karta okna) i „Wejdź jako”.
+struct TestModePersonCard: View {
+    let person: TestModeTarget
+    let catalog: TestModePermissionCatalog?
+    let department: String
+    let entering: Bool
+    let canEnter: Bool
+    let onOpen: () -> Void
+    let onEnter: () -> Void
+
+    private var groups: [TestModePermissionGroup] { TestModePermissionGroup.groups(person.permission_keys ?? [], catalog: catalog) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
+                EmployeeAvatarView(name: person.displayName, url: person.avatar_url, crop: person.crop, size: 96)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(person.displayName).font(.title3.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                    if let nickname = person.nickname, !nickname.isEmpty, nickname != person.displayName {
+                        Text("„\(nickname)”").foregroundStyle(.secondary)
+                    }
+                    if let occupation = person.occupation, !occupation.isEmpty { Text(occupation).foregroundStyle(.tint) }
+                }
+            }
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+                info("Dział", department)
+                info("Poziom dostępu", person.access_level?.isEmpty == false ? person.access_level! : "—")
+                info("Rola", person.role?.isEmpty == false ? TeamLabels.role(person.role!) : "—")
+                info("Przełożony", person.supervisor ?? "—")
+                GridRow {
+                    Text("E-mail").foregroundStyle(.secondary)
+                    if let email = person.email, let url = URL(string: "mailto:\(email)") { Link(email, destination: url) } else { Text("—") }
+                }
+                GridRow {
+                    Text("Telefon").foregroundStyle(.secondary)
+                    if let phone = person.phone, let url = URL(string: "tel:\(phone.filter { !$0.isWhitespace })") { Link(phone, destination: url) } else { Text("—") }
+                }
+                info("Ostatnio aktywny", lastActive)
+            }
+            .font(.callout)
+            Divider()
+            Text("Uprawnienia (\(person.permissions ?? 0))").font(.caption).textCase(.uppercase).foregroundStyle(.secondary)
+            if groups.isEmpty {
+                Text(person.permission_keys == nil ? "Lista uprawnień po migracji 20261202120000_test_mode_target_details.sql." : "Brak dodatkowych uprawnień — tylko to, co daje poziom dostępu.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(groups) { group in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(group.label).font(.caption).foregroundStyle(.tint)
+                                WrapLayout(spacing: 4) {
+                                    ForEach(group.scopes, id: \.self) { scope in
+                                        Text(scope.label).font(.caption)
+                                            .padding(.horizontal, 6).padding(.vertical, 2)
+                                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
+                                            .help(scope.description)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 200)
+            }
+            Divider()
+            HStack {
+                Spacer()
+                Button(action: onOpen) { Label("Otwórz kartę pracownika", systemImage: "arrow.up.forward.square") }
+                Button(action: onEnter) {
+                    if entering { ProgressView().controlSize(.small) } else { Label("Wejdź jako", systemImage: "person.badge.key") }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canEnter)
+            }
+        }
+        .padding(16)
+        .frame(width: 400)
+    }
+
+    private var lastActive: String {
+        guard let raw = person.last_active_at, let date = ChatDates.parse(raw) else { return "brak danych" }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private func info(_ label: String, _ value: String) -> some View {
+        GridRow {
+            Text(label).foregroundStyle(.secondary)
+            Text(value).lineLimit(2)
+        }
     }
 }

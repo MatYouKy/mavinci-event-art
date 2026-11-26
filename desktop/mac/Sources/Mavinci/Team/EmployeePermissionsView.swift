@@ -1,8 +1,8 @@
 import SwiftUI
 
 // MARK: Zakładka „Uprawnienia” — 1:1 z `EmployeePermissionsTab`: pakiet roli firmowej, szybkie akcje, marki i spółki, finanse według
-// działalności, subskrypcje powiadomień i źródła webhooków, sekcje CRM (poziom dostępu, zakres danych, zakładki wydarzeń / kontaktów
-// / organizacji, zespół sprzedaży, dodatkowe uprawnienia, sekcje Mavinci LIVE). Zapis z kontrolą równoczesnej zmiany.
+// działalności, zakupy, subskrypcje powiadomień i źródła webhooków, sekcje CRM (poziom dostępu, zakres danych, zakładki wydarzeń /
+// kontaktów / organizacji, zespół sprzedaży, dodatkowe uprawnienia, sekcje Mavinci LIVE). Zapis z kontrolą równoczesnej zmiany.
 
 struct PermissionDraft: Equatable {
     var permissions: [String]
@@ -194,6 +194,7 @@ struct PermissionDraft: Equatable {
             .controlSize(.small)
             companies(data, d)
             finance(data, d)
+            purchases(data, d)
             notifications(data, d)
             VStack(spacing: 8) { ForEach(data.catalog.categories) { category in categoryRow(category, data, d) } }
             if hasChanges {
@@ -287,6 +288,32 @@ struct PermissionDraft: Equatable {
                 }
                 Text("Finanse tej działalności: poziom wyższy obejmuje niższe. Uprawnienie „Wartości finansowe eventów” w sekcji poniżej dotyczy tylko budżetów i kosztów widocznych eventów, nie banku ani faktur.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// Zakupy → „Moje wydatki” (`finances_purchases`) — osobna karta, jak w CRM (dotąd ukryta w dodatkowych uprawnieniach
+    /// „Wartości finansowych eventów”).
+    @ViewBuilder private func purchases(_ data: EmployeePermissionsData, _ d: PermissionDraft) -> some View {
+        if let scope = data.catalog.purchases {
+            TeamCard(title: "Zakupy", symbol: "cart") {
+                Text("Zakupy firmową kartą: faktury spoza KSeF i paragony z NIP firmy (odczyt AI), przypisanie do eventów jako koszt i miesięczne rozliczenie do zatwierdzenia. Nie daje dostępu do pozostałych finansów działalności.")
+                    .font(.callout).foregroundStyle(.secondary)
+                if targetIsAdmin {
+                    Text("Administrator może wprowadzać i zatwierdzać zakupy we wszystkich działalnościach.").foregroundStyle(.secondary)
+                } else {
+                    Toggle(isOn: Binding(get: { d.permissions.contains(scope.key) }, set: { _ in toggleExtra(scope.key, d) })) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(scope.label)
+                            Text(scope.description).font(.caption).foregroundStyle(.secondary)
+                            Text("W menu pojawi się „Zakupy” (Moje wydatki). Zakupy wprowadza w działalnościach z sekcji „Marki i spółki”.")
+                                .font(.caption).foregroundStyle(.tertiary)
+                        }
+                    }
+                    .toggleStyle(.switch)
+                    .padding(10)
+                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                }
             }
         }
     }

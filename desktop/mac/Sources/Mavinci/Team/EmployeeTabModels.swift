@@ -192,6 +192,8 @@ struct WebhookSourceOption: Decodable, Identifiable, Hashable {
 }
 struct PermissionCatalog: Decodable {
     var categories: [PermissionCategory]
+    /// „Zakupy — własne wydatki” (`finances_purchases`) — osobna karta „Zakupy”; brak u starszego serwera CRM.
+    var purchases: PermissionExtra?
     var allScopes: [String]
     var financeLevels: [ValueOption]
     var eventTabs: [ValueOption]
