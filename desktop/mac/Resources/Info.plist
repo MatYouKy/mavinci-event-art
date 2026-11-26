@@ -15,5 +15,7 @@
 <key>CFBundleLocalizations</key><array><string>pl</string></array>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 <key>NSCalendarsFullAccessUsageDescription</key><string>Mavinci zapisuje i aktualizuje wybrane wydarzenia CRM w kalendarzu wskazanym przez Ciebie. Nie importuje prywatnych wpisów do CRM.</string>
+<key>NSLocalNetworkUsageDescription</key><string>Mavinci łączy się ze skanerem w sieci lokalnej (po adresie IP albo AirScan), żeby zeskanować dokument do PDF — tak jak skaner w CRM.</string>
+<key>NSBonjourServices</key><array><string>_uscan._tcp</string></array>
 <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>pl.mavinci.desktop.event</string><key>CFBundleURLSchemes</key><array><string>mavinci</string></array></dict></array>
 </dict></plist>

@@ -83,12 +83,15 @@ enum BankPreviewItem: Identifiable {
     @Published private(set) var ksefLoading = false
     @Published var ksefListError: String?
 
-    // Wszystkie dokumenty (`op=documents`) — rejestr działalności za zakres dat; filtry listy zostają przy przełączaniu części.
+    // Wszystkie dokumenty (`op=documents`) — rejestr działalności za okres; filtry listy zostają przy przełączaniu części.
+    // Okres: paski roku i miesięcy (`FinPeriodSlider`, na start bieżący miesiąc) albo — po kliknięciu ikony filtra — dowolny
+    // zakres dni („Wystawione od … do …”, `documentsCustomDates`).
     @Published private(set) var documentLists: [String: FinDocumentsReply] = [:]
     @Published private(set) var documentsLoading = false
     @Published var documentsError: String?
-    @Published var documentsFrom = FinanceBankStore.documentsDefaultFrom()
-    @Published var documentsTo = Date()
+    @Published var documentsFrom = FinanceBankStore.documentsDefaultRange().from
+    @Published var documentsTo = FinanceBankStore.documentsDefaultRange().to
+    @Published var documentsCustomDates = false
     @Published var documentsSource = "all"
     @Published var documentsSide = "all"
     @Published var documentsState = "all"
@@ -160,7 +163,8 @@ enum BankPreviewItem: Identifiable {
         invoices = nil; invoicesLoading = false; invoicesError = nil; selectedInvoice = nil
         ksefCompanies = nil; ksefError = nil; ksefCompanyID = nil; ksefLists = [:]; ksefLoading = false; ksefListError = nil
         documentLists = [:]; documentsLoading = false; documentsError = nil
-        documentsFrom = Self.documentsDefaultFrom(); documentsTo = Date()
+        let documentsRange = Self.documentsDefaultRange()
+        documentsFrom = documentsRange.from; documentsTo = documentsRange.to; documentsCustomDates = false
         documentsSource = "all"; documentsSide = "all"; documentsState = "all"; documentsSearch = ""
         let year = Calendar.current.component(.year, from: Date())
         statementsYear = year
@@ -613,11 +617,41 @@ enum BankPreviewItem: Identifiable {
     }
 
     // MARK: Wszystkie dokumenty (`/bridge/native/v1/finance/bank`, op=documents)
-    /// Domyślny zakres: od początku miesiąca sprzed dwóch miesięcy do dziś (jak serwer bez dat).
-    nonisolated static func documentsDefaultFrom() -> Date {
+    /// Domyślny okres: bieżący miesiąc (od pierwszego do ostatniego dnia).
+    nonisolated static func documentsDefaultRange() -> (from: Date, to: Date) {
         let calendar = Calendar.current
-        let start = calendar.date(from: calendar.dateComponents([.year, .month], from: Date())) ?? Date()
-        return calendar.date(byAdding: .month, value: -2, to: start) ?? start
+        let now = Date()
+        let month = calendar.component(.month, from: now)
+        return monthRange(year: calendar.component(.year, from: now), months: month...month)
+    }
+    /// Od pierwszego dnia pierwszego do ostatniego dnia ostatniego miesiąca zakresu (miesiące jednego roku).
+    nonisolated static func monthRange(year: Int, months: ClosedRange<Int>) -> (from: Date, to: Date) {
+        let calendar = Calendar.current
+        let start = calendar.date(from: DateComponents(year: year, month: months.lowerBound, day: 1)) ?? Date()
+        let last = calendar.date(from: DateComponents(year: year, month: months.upperBound, day: 1)) ?? start
+        return (start, calendar.date(byAdding: DateComponents(month: 1, day: -1), to: last) ?? last)
+    }
+    /// Rok i miesiące na paskach: miesiące zakresu dat (gdy oba końce są w jednym roku), inaczej — miesiąc daty „do”.
+    var documentsPeriod: (year: Int, months: ClosedRange<Int>) {
+        let calendar = Calendar.current
+        let fromYear = calendar.component(.year, from: documentsFrom), fromMonth = calendar.component(.month, from: documentsFrom)
+        let toYear = calendar.component(.year, from: documentsTo), toMonth = calendar.component(.month, from: documentsTo)
+        return fromYear == toYear && fromMonth <= toMonth ? (toYear, fromMonth...toMonth) : (toYear, toMonth...toMonth)
+    }
+    /// Okres z pasków: całe miesiące wybranego roku.
+    func selectDocumentsPeriod(year: Int, months: ClosedRange<Int>) {
+        let range = Self.monthRange(year: year, months: months)
+        documentsFrom = range.from
+        documentsTo = range.to
+    }
+    /// Ikona filtra: konkretne daty (pola „od … do …” z bieżącym okresem) albo powrót do pasków — okres dopasowany do całych
+    /// miesięcy wybranych dat.
+    func setDocumentsCustomDates(_ custom: Bool) {
+        documentsCustomDates = custom
+        if !custom {
+            let period = documentsPeriod
+            selectDocumentsPeriod(year: period.year, months: period.months)
+        }
     }
     func documentsKey(_ company: String) -> String {
         "\(company)|\(FinanceText.dayString(documentsFrom))|\(FinanceText.dayString(documentsTo))"

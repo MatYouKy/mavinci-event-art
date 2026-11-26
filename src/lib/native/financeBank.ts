@@ -19,10 +19,21 @@ import {
   applyBankTransactionMatchToDocument,
   assertBankTransactionCanMatchDocuments,
   isBankStatementMatchablePaymentMethod,
+  loadPaymentRemainderSuggestion,
   reconcileExternalInvoiceWithBankTransaction,
   reconcilePaidKsefInvoiceWithBankTransaction,
   reconcilePersonnelPaymentWithBankTransaction,
 } from '@/lib/bankTransactionMatching';
+import {
+  pickerBankMatched,
+  pickerBankOpen,
+  pickerIsPaid,
+  pickerIsPartiallyPaid,
+  pickerKnowsBankPart,
+  pickerManualPaid,
+  pickerMatchedBlockingReason,
+  pickerPlannedAllocation,
+} from '@/lib/bankPickerAllocation';
 import { loadExternalDocumentKinds } from '@/lib/invoices/loadExternalDocumentKinds';
 import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
 import { REGISTER_STATE_LABELS, registerState, warsawToday } from '@/lib/invoices/documentRegister';
@@ -548,18 +559,16 @@ type PickerRow = {
   payment_method: string | null;
   is_matched: boolean;
   is_matchable: boolean;
+  /** Migracja 20261202180000: część potwierdzona przelewami z wyciągu i część oznaczona ręcznie. */
+  bank_matched_amount?: number | string | null;
+  manual_paid_amount?: number | string | null;
   document_kind?: string;
   payroll?: PersonnelPaymentBreakdown;
 };
 
 const PICKER_SOURCE_LABELS: Record<string, string> = { invoice: 'CRM', ksef: 'KSeF', external: 'Spoza KSeF', personnel: 'Kadrowe' };
 
-function pickerPaid(document: PickerRow) {
-  const status = String(document.payment_status || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-  return document.is_matched
-    || Number(document.outstanding_amount || 0) <= 0.009
-    || ['paid', 'oplacona', 'zaplacona', 'settled', 'matched'].includes(status);
-}
+const pickerPaid = (document: PickerRow) => pickerIsPaid(document);
 
 async function pickerRows(ctx: NativeContext, transactionId: string): Promise<PickerRow[]> {
   await assertBankTransactionCanMatchDocuments(ctx.supabase, transactionId);
@@ -603,24 +612,13 @@ const sameCurrency = (document: PickerRow, tx: PickerTransaction) =>
   String(document.currency || 'PLN').toUpperCase() === String(tx.currency || 'PLN').toUpperCase();
 const cashConflict = (document: PickerRow) => !isBankStatementMatchablePaymentMethod(document.payment_method, document.document_source);
 
-/** Ile ta płatność rozliczy w dokumencie (mniej niż pozostało do zapłaty — płatność częściowa). */
-function plannedAllocation(document: PickerRow, tx: PickerTransaction) {
-  const remainingAmount = pickerRemaining(tx);
-  const grossAmount = Math.abs(Number(document.gross_amount || 0));
-  const outstandingAmount = Math.abs(Number(document.outstanding_amount || 0));
-  const documentAmount = outstandingAmount > 0.009 ? outstandingAmount : grossAmount;
-  const same = sameCurrency(document, tx);
-  const amount = document.document_source === 'personnel'
-    ? grossAmount
-    : same ? Math.min(remainingAmount, documentAmount) : remainingAmount;
-  const partial = document.document_source !== 'personnel' && same && !pickerPaid(document)
-    && amount > 0.009 && documentAmount - amount > 0.009;
-  return { amount, documentAmount, sameCurrency: same, partial, left: Math.max(documentAmount - amount, 0) };
-}
+/** Ile ta płatność rozliczy w dokumencie (mniej niż brakuje — płatność częściowa; `bankPickerAllocation.ts`). */
+const plannedAllocation = (document: PickerRow, tx: PickerTransaction) => pickerPlannedAllocation(document, pickerRemaining(tx), tx.currency);
 
 function blockingReason(document: PickerRow, tx: PickerTransaction, allowKsefCashException = false): string | null {
   const remainingAmount = pickerRemaining(tx);
-  if (document.is_matched) return 'Dokument ma już zapisane powiązanie z płatnością. Sprawdź je przed kolejnym dopasowaniem.';
+  const matched = pickerMatchedBlockingReason(document);
+  if (matched) return matched;
   if (remainingAmount <= 0.009) return 'Ta płatność jest już w całości rozliczona.';
   if (document.payroll && salaryPaymentNeedsNetConfirmation(document.payroll)) return 'Najpierw potwierdź kwotę netto w umowie personelu.';
   if (!document.is_matchable) return 'Brak dostępnej kwoty do dopasowania lub dokument nie spełnia warunków rozliczenia.';
@@ -690,7 +688,11 @@ export async function pickerDocuments(ctx: NativeContext, transactionId: unknown
         currency: str(document.currency) || 'PLN',
         paymentStatus: strOrNull(document.payment_status),
         paid: pickerPaid(document),
-        partiallyPaid: String(document.payment_status || '').toLowerCase() === 'partially_paid' && Number(document.outstanding_amount || 0) > 0.009,
+        partiallyPaid: pickerIsPartiallyPaid(document),
+        // Część potwierdzona przelewami, część oznaczona ręcznie i ile może jeszcze rozliczyć przelew (null — baza bez migracji).
+        bankMatched: pickerKnowsBankPart(document) ? pickerBankMatched(document) : null,
+        manualPaid: pickerKnowsBankPart(document) ? pickerManualPaid(document) : null,
+        bankOpen: pickerKnowsBankPart(document) ? pickerBankOpen(document) : null,
         blocking: blockingReason(document, found.tx),
         cashException: canConfirmCashException(document, found.tx),
         plannedAmount: planned.amount,
@@ -736,7 +738,8 @@ export async function matchDocument(ctx: NativeContext, body: Row) {
         documentAmount: same ? allocationAmount : documentAmount, confidence: 1,
         reasons: ['Dokument spoza KSeF wybrany ręcznie ze szczegółowej analizy wyciągu'],
       });
-    } else if (document.document_source === 'ksef' && pickerPaid(document)) {
+    } else if (document.document_source === 'ksef' && pickerPaid(document) && !pickerKnowsBankPart(document)) {
+      // Baza bez migracji 20261202180000 — faktura „opłacona” przyjmuje przelew tylko w miejsce ręcznego oznaczenia.
       await reconcilePaidKsefInvoiceWithBankTransaction(ctx.supabase, {
         transactionId: found.id, ksefInvoiceId: document.document_id, amount: allocationAmount, confidence: 1,
         reasons: ['Opłacony dokument KSeF wybrany ręcznie ze szczegółowej analizy wyciągu', ...exceptionReasons],
@@ -752,11 +755,26 @@ export async function matchDocument(ctx: NativeContext, body: Row) {
     const value = error as { message?: string; code?: string };
     rpcFail(value, 'Nie udało się dopasować dokumentu.');
   }
+  const number = document.document_number || 'dokumentu';
+  let message: string;
+  if (partial && pickerKnowsBankPart(document)) {
+    message = `Dopasowano ${money(allocationAmount, document.currency)} do ${number}. Wyciąg potwierdza ${money(pickerBankMatched(document) + allocationAmount, document.currency)} z ${money(grossAmount, document.currency)} — brakuje ${money(left, document.currency)}.`;
+  } else if (partial) {
+    message = `Dopasowano część płatności do ${number}. Faktura jest częściowo opłacona — pozostało ${money(left, document.currency)}.`;
+  } else {
+    message = `Dopasowano ${document.document_number || 'wybrany dokument'}.`;
+  }
+  // Baza po częściowym powiązaniu szuka płatności tego kontrahenta na brakującą kwotę (propozycja `reszta_platnosci`).
+  const suggestion = partial && document.document_source !== 'personnel'
+    ? await loadPaymentRemainderSuggestion(ctx.supabase, document.document_id)
+    : null;
+  if (suggestion) {
+    message += ` Proponowana druga część: płatność z ${plDate(suggestion.date)} na ${money(suggestion.amount, suggestion.currency)} — zatwierdź ją w uzgodnieniu.`;
+  }
   return {
     ok: true,
-    message: partial
-      ? `Dopasowano część płatności do ${document.document_number || 'dokumentu'}. Faktura jest częściowo opłacona — pozostało ${money(left, document.currency)}.`
-      : `Dopasowano ${document.document_number || 'wybrany dokument'}.`,
+    message,
+    suggestion: suggestion ? { transactionId: suggestion.transactionId, date: suggestion.date, amount: suggestion.amount } : null,
   };
 }
 

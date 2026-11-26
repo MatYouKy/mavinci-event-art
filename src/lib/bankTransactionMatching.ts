@@ -519,6 +519,52 @@ export async function matchBankTransactionToDocuments(
   return data || [];
 }
 
+export type PaymentRemainderSuggestion = {
+  proposalId: string;
+  transactionId: string;
+  date: string | null;
+  amount: number;
+  currency: string;
+};
+
+/**
+ * Propozycja brakującej części płatności zapisana przez bazę po ręcznym powiązaniu przelewu z dokumentem, który wyciąg
+ * potwierdza dopiero częściowo (reguła `reszta_platnosci`, migracja 20261202180000; docs/bank-reconciliation.md, sekcja 17).
+ * Tylko do komunikatu po dopasowaniu — brak propozycji albo błąd odczytu nie przeszkadza (null).
+ */
+export async function loadPaymentRemainderSuggestion(
+  supabase: any,
+  documentId: string,
+): Promise<PaymentRemainderSuggestion | null> {
+  try {
+    const { data: proposals, error } = await supabase
+      .from('bank_reconciliation_proposals')
+      .select('id, bank_transaction_id, created_at')
+      .eq('rule', 'reszta_platnosci')
+      .eq('status', 'open')
+      .contains('documents', [{ id: documentId }])
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const proposal = !error && Array.isArray(proposals) ? proposals[0] : null;
+    if (!proposal?.bank_transaction_id) return null;
+    const { data: transaction } = await supabase
+      .from('bank_transactions')
+      .select('id, transaction_date, amount, currency')
+      .eq('id', proposal.bank_transaction_id)
+      .maybeSingle();
+    if (!transaction) return null;
+    return {
+      proposalId: String(proposal.id),
+      transactionId: String(transaction.id),
+      date: transaction.transaction_date ? String(transaction.transaction_date).slice(0, 10) : null,
+      amount: Math.abs(Number(transaction.amount || 0)),
+      currency: String(transaction.currency || 'PLN').toUpperCase(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function removeBankTransactionMatch(
   supabase: any,
   transactionId: string,

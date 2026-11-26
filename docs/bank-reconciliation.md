@@ -62,6 +62,7 @@ sprawdzenia), `single_source`. Usunięcie pliku z operacjami głównymi przenosi
 | 7 | zwrot płatności: jedna operacja przeciwnego kierunku tej działalności (także z sąsiedniego miesiąca) z równą pozostałą kwotą (co do grosza), datą ±45 dni i wspólnym wyróżniającym słowem w opisie albo tym samym rachunkiem kontrahenta | propozycja pary „płatność + zwrot” (bez faktury) |
 | 7 | jw., kilka takich operacji | wybór |
 | 8 | kwota = do zapłaty i kontrahent (NIP, rachunek znany z wcześniejszych płatności, nazwa) | propozycja |
+| — | po ręcznym powiązaniu części faktury: płatność tego kontrahenta (ten sam rachunek, NIP albo nazwa) na dokładnie brakującą kwotę, data od 120 dni przed wystawieniem do 180 dni po terminie | propozycja „Druga część płatności” (sekcja 17) |
 | 8 | kilka dokumentów z tą kwotą | wybór |
 | 9 | przelew PLN za dokument w walucie: zapisana kwota obciążenia PLN albo kurs ±4% od średniej | automatycznie (kwota PLN) / propozycja (kurs) |
 | 10 | płatność zbiorcza (Allegro, PayU…) = suma 2–6 faktur z okolic daty | propozycja |
@@ -116,7 +117,7 @@ symbol formularza także rozcięty przez MT940 (`PI T 4R`, `VA T 7`). Przelew na
   `20261101200000`).
 - **Płatność częściowa (rata)**: „Wybierz dokument” rozlicza najwyżej tyle, ile zostało z płatności i z faktury.
   Gdy płatność jest mniejsza niż pozostała należność, przycisk ma nazwę „Dopasuj część” i pokazuje, ile zostanie do
-  zapłaty. Faktura dostaje status „częściowo opłacona” i czeka na kolejną płatność (historia wpłat KSeF:
+  zapłaty. Kolejna płatność do tej samej faktury (druga rata) — sekcja 17. Faktura dostaje status „częściowo opłacona” i czeka na kolejną płatność (historia wpłat KSeF:
   `ksef_invoice_payments`, status liczony przez `recalculate_ksef_invoice_payment_status`). Przy rozliczonej operacji
   chip dokumentu pokazuje „faktura częściowo opłacona, pozostało …”.
 - **Szczegóły płatności**: przy każdej operacji przycisk „Szczegóły płatności” otwiera pełne dane z wyciągu
@@ -403,3 +404,40 @@ w całości, a faktura opłacona z wyciągu (ręczne oznaczenie zastąpione powi
   AirScan / eSCL), strony jako miniatury („Dodaj stronę”, przestawianie, usuwanie), „Zakończ” łączy je w PDF (PDFKit).
   W formularzu pliki wgrywają się po zapisie umowy; w szczegółach — od razu. Ten sam skaner: Mavinci → „Skanuj dokument
   do PDF…” (zapis w wybranym miejscu).
+
+## 17. Płatność częściowa — kolejny przelew do tej samej faktury i propozycja brakującej części (26.11.2026)
+
+Przykład: faktura kosztowa V/093/10/2026 na 15 185,58 zł płacona dwoma przelewami po 7 592,79 zł (08.10 i 19.10), do tego
+ręczne oznaczenie zapłaty 7 592,79 zł z 22.10. Po dopasowaniu przelewu z 19.10 okno „Dopasuj dokument do płatności”
+blokowało fakturę dla przelewu z 08.10 („Dokument ma już zapisane powiązanie z płatnością”), a faktura była „Opłacona”
+(ręczny wpis + jeden przelew), choć wyciąg potwierdzał połowę. Migracja `20261202180000_bank_partial_payment_remainder.sql`:
+
+- **Okno wyboru dokumentu** (`get_bank_transaction_document_picker_items`, CRM `BankTransactionDocumentPickerModal`, Mac
+  `BankDocumentPickerSheet`, wspólna logika `src/lib/bankPickerAllocation.ts`): dokument z częściowym powiązaniem przyjmuje
+  kolejną płatność, dopóki część kwoty nie jest potwierdzona przelewem — status „Częściowo opłacona”, pod nim „z wyciągu
+  X · brakuje Y”, przycisk „Dopasuj resztę” (albo „Dopasuj część”, gdy płatność jest mniejsza niż brak). Nowe kolumny
+  funkcji: `bank_matched_amount` (ile potwierdzają przelewy) i `manual_paid_amount` (ile oznaczono ręcznie bez przelewu —
+  w oknie „oznaczono ręcznie X — do potwierdzenia przelewem”). Zablokowany jest tylko dokument w całości potwierdzony
+  wyciągiem („Dokument jest już w całości potwierdzony płatnościami z wyciągu”).
+- **Ręczne oznaczenie ustępuje przelewowi** (`match_bank_transaction_to_document`, faktura KSeF): do powiązania zostaje kwota
+  do zapłaty minus przelewy z wyciągu; gdy przelew razem z ręcznymi wpisami przekroczyłby kwotę faktury, najnowsze ręczne
+  wpisy są zmniejszane albo usuwane (powód powiązania: „Zastąpiono ręczne oznaczenie płatności powiązaniem z wyciągiem”).
+  Stary status „opłacona” bez historii wpłat jest najpierw zachowany jako wpis ręczny. W przykładzie: przelew z 08.10
+  zastępuje ręczny wpis z 22.10 — faktura „Opłacona” dwoma przelewami z wyciągu. Faktury CRM i dokumenty spoza KSeF
+  przyjmowały już kolejne przelewy (`paid_amount`, `reconcile_external_invoice_with_bank_transaction`).
+- **Propozycja brakującej części** (reguła `reszta_platnosci`, „Druga część płatności (brakująca kwota faktury)”): po ręcznym
+  powiązaniu (okno wyboru, zatwierdzona propozycja, zamiana ręcznego oznaczenia) wyzwalacz
+  `zzz_bank_match_remainder_proposal` → `private.propose_bank_payment_remainder` szuka płatności tej działalności na dokładnie
+  brakującą kwotę (co do grosza; kierunek i waluta jak dokument), od tego samego kontrahenta — ten sam rachunek co płatność
+  właśnie powiązana, NIP albo nazwa w treści przelewu — z datą od 120 dni przed wystawieniem do 180 dni po terminie. Pomija
+  płatności rozliczone, wyjaśnione, przeniesienia własne, operacje z otwartą propozycją i te, przy których człowiek odrzucił
+  ten dokument. Z kilku pasujących wybiera najbliższą terminowi (opis podaje, ile ich jest). Zatwierdza człowiek — jak każdą
+  propozycję; część oznaczona ręcznie idzie przez zamianę ręcznego oznaczenia. Błąd propozycji nie zatrzymuje dopasowania.
+  Komunikat po dopasowaniu części podaje proponowaną płatność („Proponowana druga część: płatność z 08.10.2026 na
+  7 592,79 zł — zatwierdź ją w uzgodnieniu”). „Uzgodnij automatycznie” odtwarza taką propozycję regułą „zgodna kwota
+  i kontrahent” (część otwarta albo oznaczona ręcznie).
+- **Okno na Macu** (`Finance/BankMatchWindow.swift`): „Wybierz dokument” otwiera osobne, pływające okno w rozmiarze dawnego
+  okna modalnego — przesuwanie, skalowanie (minimum 640 × 420), nad oknami Mavinci także na pełnym ekranie (to samo biurko,
+  bez nowego okna pełnoekranowego), chowa się po przejściu do innej aplikacji. Jedno okno na płatność.
+- **Sortowanie listy dokumentów** (CRM i Mac): najbliższa kwota (domyślnie), data — najnowsze / najstarsze, kontrahent A–Z,
+  status — do zapłaty najpierw (np. po wyszukaniu kwoty — po dacie albo kontrahencie).

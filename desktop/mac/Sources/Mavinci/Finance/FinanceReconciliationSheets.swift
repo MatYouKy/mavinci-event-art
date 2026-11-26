@@ -51,16 +51,23 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
 }
 
 // MARK: Wybór dokumentu do płatności (`BankTransactionDocumentPickerModal`)
+//
+// Z uzgodnienia otwiera się w osobnym, pływającym oknie (`BankMatchWindows`, `onClose`) — można je przesunąć i skalować,
+// żeby zerknąć na listę operacji pod spodem. Dokument częściowo potwierdzony wyciągiem przyjmuje kolejny przelew („Dopasuj
+// resztę”), a po dopasowaniu części baza proponuje płatność na brakującą kwotę (docs/bank-reconciliation.md, sekcja 17).
 
 @MainActor struct BankDocumentPickerSheet: View {
     @ObservedObject var store: FinanceBankStore
     let tx: BankTx
+    /// Zamknięcie okna (`BankMatchWindows`); bez niego — arkusz (`dismiss`).
+    var onClose: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var data: BankPicker?
     @State private var loadError: String?
     @State private var search = ""
     @State private var source = "all"
     @State private var payment = "all"
+    @State private var sort = "match"
     @State private var useFrom = false
     @State private var useTo = false
     @State private var from = Date()
@@ -90,11 +97,49 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
                 return abs(doc.gross - numeric) <= 0.01 || abs(doc.outstanding - numeric) <= 0.01
             }
             .sorted { left, right in
-                let l = abs((left.outstanding != 0 ? left.outstanding : left.gross) - remaining)
-                let r = abs((right.outstanding != 0 ? right.outstanding : right.gross) - remaining)
-                if l != r { return l < r }
+                switch sort {
+                case "dateDesc", "dateAsc":
+                    if left.issueDate != right.issueDate {
+                        guard let leftDate = left.issueDate else { return false }
+                        guard let rightDate = right.issueDate else { return true }
+                        return sort == "dateDesc" ? leftDate > rightDate : leftDate < rightDate
+                    }
+                case "party":
+                    let leftParty = (left.counterparty ?? "").trimmingCharacters(in: .whitespaces)
+                    let rightParty = (right.counterparty ?? "").trimmingCharacters(in: .whitespaces)
+                    if leftParty.isEmpty != rightParty.isEmpty { return !leftParty.isEmpty }
+                    let order = leftParty.compare(rightParty, options: [.caseInsensitive, .diacriticInsensitive, .numeric], locale: Self.polish)
+                    if order != .orderedSame { return order == .orderedAscending }
+                case "status":
+                    let leftRank = Self.statusRank(left)
+                    let rightRank = Self.statusRank(right)
+                    if leftRank != rightRank { return leftRank < rightRank }
+                default:
+                    break
+                }
+                let leftGap = abs(left.amountToMatch - remaining)
+                let rightGap = abs(right.amountToMatch - remaining)
+                if leftGap != rightGap { return leftGap < rightGap }
                 return (left.issueDate ?? "") > (right.issueDate ?? "")
             }
+    }
+
+    /// Kolejność listy: najbliższa kwota do rozliczenia (domyślnie), data wystawienia, kontrahent albo status zapłaty.
+    private static let sorts: [(String, String)] = [
+        ("match", "Najbliższa kwota"), ("dateDesc", "Data — najnowsze"), ("dateAsc", "Data — najstarsze"),
+        ("party", "Kontrahent A–Z"), ("status", "Status — do zapłaty najpierw"),
+    ]
+    private static let polish = Locale(identifier: "pl_PL")
+
+    /// Status do sortowania: nieopłacona, częściowo (także częściowo potwierdzona wyciągiem), opłacona.
+    private static func statusRank(_ doc: BankPicker.Document) -> Int {
+        if doc.paid { return 2 }
+        return doc.partiallyPaid || doc.awaitsNextPayment ? 1 : 0
+    }
+
+    /// Okno (`onClose`) albo arkusz.
+    private func close() {
+        if let onClose { onClose() } else { dismiss() }
     }
 
     var body: some View {
@@ -116,12 +161,13 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
                 ProgressView("Pobieranie dokumentów…").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         } footer: {
-            Text("Filtry działają od razu — stan pod paskiem filtrów. Kolejność: najbliższa kwota do rozliczenia, potem najnowsze. Mniejsza kwota niż do zapłaty — płatność częściowa (np. rata).")
+            Text("Filtry działają od razu — stan pod paskiem filtrów. Kolejność wybierasz w „Sortuj”. Mniejsza kwota niż brakuje — płatność częściowa (np. rata): faktura poczeka na kolejny przelew.")
                 .font(.caption).foregroundStyle(.secondary).lineLimit(2)
             Spacer()
-            Button("Zamknij") { dismiss() }.keyboardShortcut(.cancelAction)
+            Button("Zamknij") { close() }.keyboardShortcut(.cancelAction)
         }
-        .frame(minWidth: 900, idealWidth: 1000, minHeight: 620, idealHeight: 720)
+        // W oknie (`BankMatchWindows`) — mniejsze minimum: okno da się zmniejszyć i odsunąć.
+        .frame(minWidth: onClose == nil ? 900 : 640, idealWidth: 1000, minHeight: onClose == nil ? 620 : 420, idealHeight: 720)
         .task { await load() }
         .sheet(item: $preview) { item in BankPreviewSheet(item: item, store: store) }
     }
@@ -192,6 +238,11 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
                     if useTo { DatePicker("", selection: $to, displayedComponents: .date).labelsHidden().fixedSize() }
                 }
                 .finFilterActive(useTo)
+                Picker("Sortuj", selection: $sort) {
+                    ForEach(Self.sorts, id: \.0) { Text($0.1).tag($0.0) }
+                }
+                .fixedSize()
+                .help("Kolejność listy — np. po wyszukaniu kwoty: po dacie, kontrahencie albo statusie")
             }
             .controlSize(.small)
             FinFilterSummary(shown: visible.count, total: all.count, forms: ("dokument", "dokumenty", "dokumentów"), chips: chips) { clearFilters() }
@@ -218,8 +269,20 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
     private func status(_ doc: BankPicker.Document) -> (String, Color) {
         if doc.source == "personnel" { return (doc.paid ? "już dopasowana" : "Netto na konto", doc.paid ? Color.secondary : CrmTheme.rgb(0x93c5fd)) }
         if doc.paid { return ("Opłacona", CrmTheme.rgb(0x86efac)) }
-        if doc.partiallyPaid { return ("Częściowo opłacona", CrmTheme.rgb(0x93c5fd)) }
+        if doc.partiallyPaid || doc.awaitsNextPayment { return ("Częściowo opłacona", CrmTheme.rgb(0x93c5fd)) }
         return ("Nieopłacona", CrmTheme.rgb(0xfcd34d))
+    }
+
+    /// Pod statusem: ile potwierdza wyciąg i czego brakuje, część oznaczona ręcznie (zastąpi ją przelew).
+    @ViewBuilder private func statusDetails(_ doc: BankPicker.Document) -> some View {
+        if doc.awaitsNextPayment, let bank = doc.bankMatched, let open = doc.bankOpen {
+            Text("z wyciągu \(FinFormat.money(bank, doc.currency)) · brakuje \(FinFormat.money(open, doc.currency))")
+                .font(.caption2).foregroundStyle(CrmTheme.rgb(0x93c5fd)).fixedSize(horizontal: false, vertical: true)
+        }
+        if doc.source != "personnel", let manual = doc.manualPaid, manual > 0.009 {
+            Text("oznaczono ręcznie \(FinFormat.money(manual, doc.currency)) — do potwierdzenia przelewem")
+                .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func row(_ doc: BankPicker.Document, data: BankPicker) -> some View {
@@ -245,7 +308,11 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
                 if otherCurrency { Text("inna waluta").font(.caption2).foregroundStyle(CrmTheme.rgb(0xfcd34d)) }
             }
             .frame(width: 170, alignment: .trailing)
-            Text(state.0).font(.caption).foregroundStyle(state.1).frame(width: 120, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state.0).font(.caption).foregroundStyle(state.1)
+                statusDetails(doc)
+            }
+            .frame(width: 140, alignment: .leading)
             VStack(alignment: .trailing, spacing: 3) {
                 if data.canManage { action(doc) }
                 if doc.previewable {
@@ -266,12 +333,23 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
         } else if let blocking = doc.blocking {
             Text(blocking).font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.trailing).lineLimit(3)
         } else {
-            Button(doc.plannedPartial ? "Dopasuj część" : "Dopasuj") { Task { await match(doc, note: nil) } }
+            Button(Self.matchTitle(doc)) { Task { await match(doc, note: nil) } }
                 .buttonStyle(.borderedProminent).controlSize(.small)
-                .help(doc.plannedPartial
-                      ? "Płatność rozliczy \(FinFormat.money(doc.plannedAmount, doc.currency)); po dopasowaniu zostanie \(FinFormat.money(doc.plannedLeft, doc.currency))."
-                      : "Dopasuj dokument do tej płatności")
+                .help(Self.matchHelp(doc))
         }
+    }
+
+    /// „Dopasuj część” (płatność mniejsza niż brak), „Dopasuj resztę” (faktura częściowo potwierdzona wyciągiem), „Dopasuj”.
+    private static func matchTitle(_ doc: BankPicker.Document) -> String {
+        if doc.plannedPartial { return "Dopasuj część" }
+        return doc.awaitsNextPayment ? "Dopasuj resztę" : "Dopasuj"
+    }
+
+    private static func matchHelp(_ doc: BankPicker.Document) -> String {
+        if doc.plannedPartial {
+            return "Płatność rozliczy \(FinFormat.money(doc.plannedAmount, doc.currency)); zostanie \(FinFormat.money(doc.plannedLeft, doc.currency)) do kolejnej płatności — uzgodnienie zaproponuje płatność na tę kwotę."
+        }
+        return doc.awaitsNextPayment ? "Dopasuj brakującą część dokumentu do tej płatności" : "Dopasuj dokument do tej płatności"
     }
 
     private func exceptionPanel(_ doc: BankPicker.Document, data: BankPicker) -> some View {
@@ -306,7 +384,7 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
             "transactionId": .string(tx.id), "source": .string(doc.source), "documentId": .string(doc.id), "allocated": .number(tx.allocated),
         ]
         if let note { body["cashNote"] = .string(note.trimmingCharacters(in: .whitespacesAndNewlines)) }
-        if await store.reconcileAction("Dopasowywanie dokumentu…", "match", body) { dismiss() }
+        if await store.reconcileAction("Dopasowywanie dokumentu…", "match", body) { close() }
     }
 }
 

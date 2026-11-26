@@ -284,6 +284,7 @@ const PROPOSAL_RULES: Record<string, string> = {
   numer_inna_kwota: 'Numer w tytule, inna kwota',
   kilka_numerow: 'Kilka faktur w jednym przelewie',
   kwota_i_kontrahent: 'Zgodna kwota i kontrahent',
+  reszta_platnosci: 'Druga część płatności (brakująca kwota faktury)',
   tylko_kwota: 'Zgodna kwota — sprawdź kontrahenta',
   kwota_wiele: 'Kilka dokumentów z tą kwotą',
   platnosc_zbiorcza: 'Płatność zbiorcza (koszyk)',

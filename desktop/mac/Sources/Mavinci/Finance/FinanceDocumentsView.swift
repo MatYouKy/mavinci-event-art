@@ -2,8 +2,10 @@ import AppKit
 import SwiftUI
 
 // MARK: Wszystkie dokumenty (jak CRM: Dokumenty i rozliczenia → „Wszystkie dokumenty”) — jeden rejestr faktur i dokumentów
-// kosztowych wybranej działalności za zakres dat: faktury z KSeF (wystawione i otrzymane), faktury CRM i dokumenty spoza KSeF
-// (faktury zagraniczne, paragony, polisy, noty…). Filtry: źródło (KSeF / CRM / spoza KSeF), rodzaj (koszty / sprzedaż), stan
+// kosztowych wybranej działalności za okres: faktury z KSeF (wystawione i otrzymane), faktury CRM i dokumenty spoza KSeF
+// (faktury zagraniczne, paragony, polisy, noty…). Okres: paski roku i miesięcy (`FinPeriodSlider` — na start bieżący miesiąc,
+// Shift+klik — kilka miesięcy), a ikona filtra przełącza na konkretne daty („Wystawione od … do …”) i z powrotem.
+// Filtry: źródło (KSeF / CRM / spoza KSeF), rodzaj (koszty / sprzedaż), stan
 // zapłaty i wyszukiwanie — działają od razu, a wiersz stanu pod nimi pokazuje, które są włączone (`FinFilterSummary`).
 // Podgląd dokumentu jak w uzgodnieniu (KSeF z XML, faktura CRM — PDF, spoza KSeF — wgrany plik); dodawanie dokumentu spoza
 // KSeF (wgranie pliku, odczyt danych) — w CRM. Serwer: `/bridge/native/v1/finance/bank?op=documents` (`documentRegister`).
@@ -86,6 +88,7 @@ enum FinDocumentText {
     @ObservedObject var store: FinanceBankStore
     @ObservedObject var finance: FinanceStore
     @EnvironmentObject private var state: Workspace
+    @Environment(\.crmTheme) private var theme
     @State private var selection: String?
     @State private var sortOrder = [KeyPathComparator(\FinDocument.sortDate, order: .reverse)]
     @State private var preview: BankPreviewItem?
@@ -119,23 +122,68 @@ enum FinDocumentText {
         .sheet(item: $preview) { item in BankPreviewSheet(item: item, store: store) }
     }
 
-    /// Wczytanie przy zmianie działalności i zakresu dat.
+    /// Wczytanie przy zmianie działalności i okresu.
     private var loadKey: String { store.company.map { store.documentsKey($0.id) } ?? "" }
 
-    // MARK: Nagłówek: działalność, zakres dat, odświeżenie, dodanie dokumentu spoza KSeF (CRM)
+    // MARK: Nagłówek: działalność, okres (paski roku i miesięcy albo daty), odświeżenie, dodanie dokumentu spoza KSeF (CRM)
+    /// W jednym wierszu, a w wąskim oknie — okres w drugim wierszu.
     private func header(_ company: FinCompany) -> some View {
-        HStack(spacing: 10) {
-            if store.companies.count > 1 {
-                Picker("", selection: Binding(get: { company.id }, set: { store.selectCompany($0) })) {
-                    ForEach(store.companies) { Text($0.name).tag($0.id) }
-                }
-                .labelsHidden().fixedSize()
-            } else {
-                Text(company.name).font(.headline)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                companyLabel(company)
+                Spacer(minLength: 12)
+                period
+                actions
             }
-            Spacer()
-            DatePicker("Wystawione od", selection: $store.documentsFrom, displayedComponents: .date).fixedSize()
-            DatePicker("do", selection: $store.documentsTo, in: store.documentsFrom..., displayedComponents: .date).fixedSize()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    companyLabel(company)
+                    Spacer(minLength: 12)
+                    actions
+                }
+                period
+            }
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+
+    @ViewBuilder private func companyLabel(_ company: FinCompany) -> some View {
+        if store.companies.count > 1 {
+            Picker("", selection: Binding(get: { company.id }, set: { store.selectCompany($0) })) {
+                ForEach(store.companies) { Text($0.name).tag($0.id) }
+            }
+            .labelsHidden().fixedSize()
+        } else {
+            Text(company.name).font(.headline)
+        }
+    }
+
+    /// Okres: paski roku i miesięcy (domyślnie) albo — po kliknięciu ikony filtra — konkretne daty „od … do …”.
+    private var period: some View {
+        HStack(spacing: 8) {
+            if store.documentsCustomDates {
+                DatePicker("Wystawione od", selection: $store.documentsFrom, displayedComponents: .date).fixedSize()
+                DatePicker("do", selection: $store.documentsTo, in: store.documentsFrom..., displayedComponents: .date).fixedSize()
+            } else {
+                let current = store.documentsPeriod
+                FinPeriodSlider(year: current.year, months: current.months) { year, months in
+                    store.selectDocumentsPeriod(year: year, months: months)
+                }
+            }
+            Button { store.setDocumentsCustomDates(!store.documentsCustomDates) } label: {
+                Image(systemName: store.documentsCustomDates ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 15))
+                    .foregroundStyle(store.documentsCustomDates ? theme.accent : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(store.documentsCustomDates ? "Wróć do wyboru roku i miesięcy" : "Konkretne daty — zakres „Wystawione od … do …”")
+            .accessibilityLabel(store.documentsCustomDates ? "Wybór roku i miesięcy" : "Konkretne daty")
+        }
+    }
+
+    private var actions: some View {
+        HStack(spacing: 10) {
             Button { Task { await store.loadDocuments(force: true) } } label: {
                 if store.documentsLoading { ProgressView().controlSize(.small) } else { Label("Odśwież", systemImage: "arrow.clockwise") }
             }
@@ -146,8 +194,6 @@ enum FinDocumentText {
             .fixedSize()
             .help("Wgranie faktury spoza KSeF, paragonu, polisy albo noty z odczytem danych — w CRM (przeglądarka)")
         }
-        .controlSize(.small)
-        .padding(.horizontal, 16).padding(.vertical, 10)
     }
 
     // MARK: Filtry i lista

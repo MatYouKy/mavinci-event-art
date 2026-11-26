@@ -171,7 +171,7 @@ enum ReconSheet: Identifiable {
     // MARK: Panel operacji
     @ViewBuilder private func inspector(_ month: BankMonth) -> some View {
         if let id = store.selectedTx, let tx = month.transactions.first(where: { $0.id == id }) {
-            ReconciliationInspector(store: store, month: month, tx: tx, open: { sheet = $0 }, preview: { source, documentId in
+            ReconciliationInspector(store: store, month: month, tx: tx, open: { openSheet($0) }, preview: { source, documentId in
                 Task { preview = await store.preview(source: source, id: documentId) }
             })
             .id(tx.id)
@@ -182,6 +182,15 @@ enum ReconSheet: Identifiable {
                 Text("Z lewej lista operacji miesiąca. Po wybraniu zobaczysz rozliczenie, propozycję i czynności dla tej operacji.")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// „Wybierz dokument” — osobne okno, które można przesunąć i skalować (`BankMatchWindows`); pozostałe okna — arkusz.
+    private func openSheet(_ item: ReconSheet) {
+        if case .picker(let tx) = item {
+            BankMatchWindows.shared.open(store: store, tx: tx, workspace: state)
+        } else {
+            sheet = item
         }
     }
 

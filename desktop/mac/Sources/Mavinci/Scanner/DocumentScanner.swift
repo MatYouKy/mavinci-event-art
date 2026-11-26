@@ -7,13 +7,16 @@ import UniformTypeIdentifiers
 
 // MARK: Skaner dokumentów — kilka stron w jeden PDF (jak skaner w CRM, `ScannerCaptureModal` z `multiPage`)
 //
-// Natywnie przez ImageCaptureCore (to samo co „Pobieranie obrazów” i Ustawienia systemowe → Drukarki i skanery): skanery
-// podłączone kablem, udostępnione i sieciowe (AirScan / eSCL, np. Brother MFC-T920) — bez lokalnego modułu NAPS2, którego
-// używa przeglądarka. Każdy skan dokłada strony do listy („Skanuj pierwszą stronę”, potem „Dodaj stronę”; z podajnika może
-// przyjść kilka stron naraz), strony można obejrzeć, przestawić i usunąć, a „Zakończ” łączy je w jeden PDF (PDFKit,
-// JPEG ~72%, wymiar strony z rozdzielczości skanu). Strony leżą w katalogu tymczasowym do zamknięcia okna. Ustawienia
-// (skaner, źródło, jakość, kolor) zapamiętuje ten Mac. Użycie: umowy stałe (Finanse → Umowy stałe — formularz i „Pliki
-// umowy”) oraz Mavinci → „Skanuj dokument do PDF…” (zapis w wybranym miejscu).
+// Skanery z dwóch miejsc, na jednej liście: ImageCaptureCore (to samo co „Pobieranie obrazów” i Ustawienia systemowe →
+// Drukarki i skanery — skanery na kablu, udostępnione i AirScan widoczne dla macOS) oraz skaner w sieci po adresie IP, jak
+// w CRM (`NetworkScanner.swift`: eSCL, a HP Photosmart 6510 — HP WebScan; adres domyślnie 192.168.1.17, plus skanery
+// AirScan ogłaszane w sieci) — bez lokalnego modułu NAPS2, którego używa przeglądarka. Skaner bez sterownika dla macOS albo
+// przez macOS niewidoczny skanuje się więc po adresie. Każdy skan dokłada strony do listy („Skanuj pierwszą stronę”, potem
+// „Dodaj stronę”; z podajnika może przyjść kilka stron naraz), strony można obejrzeć, przestawić i usunąć, a „Zakończ”
+// łączy je w jeden PDF (PDFKit, JPEG ~72%, wymiar strony z rozdzielczości skanu; strona PDF z HP WebScan — bez zmian).
+// Strony leżą w katalogu tymczasowym do zamknięcia okna. Ustawienia (skaner, adres IP, źródło, jakość, kolor) zapamiętuje
+// ten Mac. Użycie: umowy stałe (Finanse → Umowy stałe — formularz i „Pliki umowy”) oraz Mavinci → „Skanuj dokument do
+// PDF…” (zapis w wybranym miejscu).
 
 /// Źródło papieru (`ICScannerFunctionalUnitType`: 0 — szyba, 3 — podajnik).
 enum ScanSource: String, CaseIterable, Identifiable {
@@ -65,12 +68,32 @@ struct ScanFailure: LocalizedError {
     var errorDescription: String? { message }
 }
 
+/// Pozycja listy skanerów (ImageCaptureCore albo skaner sieciowy).
+struct ScannerChoice: Identifiable, Hashable {
+    let id: String
+    let title: String
+}
+
 @MainActor final class DocumentScanner: NSObject, ObservableObject {
     enum Phase { case idle, opening, scanning }
+    /// Połączenie ze skanerem pod adresem IP (pole „Adres IP skanera”).
+    enum AddressStatus: Equatable {
+        case idle
+        case probing(String)
+        case found(String)
+        case failed(String)
+    }
 
     @Published private(set) var devices: [ICScannerDevice] = []
+    /// Skanery sieciowe (adres IP, AirScan ogłaszany w sieci) — `NetworkScanner.swift`.
+    @Published private(set) var network: [NetworkScanner] = []
     @Published private(set) var searching = true
-    @Published var selectedID = ""
+    @Published var selectedID = "" {
+        didSet { if selectedID != oldValue { selectionChanged() } }
+    }
+    /// Adres IP skanera (jak „Adres skanera” w CRM; domyślnie 192.168.1.17).
+    @Published var address = ""
+    @Published private(set) var addressStatus: AddressStatus = .idle
     @Published var source: ScanSource = .flatbed
     @Published var dpi = 300
     @Published var color: ScanColor = .color
@@ -94,12 +117,19 @@ struct ScanFailure: LocalizedError {
     private var counter = 0
     private var started = false
     private var stopped = false
+    /// Skan skanerem sieciowym w toku (przerwanie — `cancel`).
+    private var networkTask: Task<Void, Never>?
+    private var addressTask: Task<Void, Never>?
+    private var finder: ScannerServiceFinder?
+
+    nonisolated static let defaultAddress = "192.168.1.17"
 
     private enum Key {
         static let device = "scanner.device"
         static let source = "scanner.source"
         static let dpi = "scanner.dpi"
         static let color = "scanner.color"
+        static let address = "scanner.address"
     }
 
     override init() {
@@ -111,9 +141,17 @@ struct ScanFailure: LocalizedError {
         let savedDPI = defaults.integer(forKey: Key.dpi)
         dpi = Self.standardResolutions.contains(savedDPI) ? savedDPI : 300
         color = ScanColor(rawValue: defaults.string(forKey: Key.color) ?? "") ?? .color
+        address = defaults.string(forKey: Key.address) ?? Self.defaultAddress
     }
 
     var selectedDevice: ICScannerDevice? { devices.first { Self.key($0) == selectedID } }
+    var selectedNetwork: NetworkScanner? { network.first { $0.id == selectedID } }
+    var hasSelection: Bool { selectedDevice != nil || selectedNetwork != nil }
+    var addressProbing: Bool { if case .probing = addressStatus { return true } else { return false } }
+    /// Lista skanerów: najpierw widoczne dla macOS (ImageCaptureCore), potem sieciowe (adres IP, AirScan w sieci).
+    var choices: [ScannerChoice] {
+        devices.map { ScannerChoice(id: Self.key($0), title: Self.title($0)) } + network.map { ScannerChoice(id: $0.id, title: $0.title) }
+    }
     var totalBytes: Int { pages.reduce(0) { $0 + $1.bytes } }
     var busy: Bool { phase != .idle }
 
@@ -142,6 +180,13 @@ struct ScanFailure: LocalizedError {
             browser.browsedDeviceTypeMask = mask
         }
         browser.start()
+        // Skanery AirScan ogłaszane w sieci i skaner pod zapamiętanym adresem IP (jak w CRM).
+        let finder = ScannerServiceFinder { [weak self] found in
+            Task { @MainActor in self?.serviceFound(found) }
+        }
+        self.finder = finder
+        finder.start()
+        if !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { probeAddress(select: false) }
         // Skanery sieciowe zgłaszają się z opóźnieniem — po chwili przestajemy pokazywać „Szukanie…”.
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 8_000_000_000)
@@ -153,6 +198,10 @@ struct ScanFailure: LocalizedError {
     func stop() {
         guard !stopped else { return }
         stopped = true
+        networkTask?.cancel()
+        addressTask?.cancel()
+        finder?.stop()
+        finder = nil
         if phase == .scanning { sessionDevice?.cancelScan() }
         sessionDevice?.requestCloseSession()
         sessionDevice = nil
@@ -165,14 +214,20 @@ struct ScanFailure: LocalizedError {
         guard let scanner = device as? ICScannerDevice, !devices.contains(where: { $0 === scanner }) else { return }
         devices.append(scanner)
         devices.sort { Self.title($0).localizedCaseInsensitiveCompare(Self.title($1)) == .orderedAscending }
-        if selectedDevice == nil { selectedID = Self.key(preferred() ?? scanner) }
+        if !hasSelection { selectedID = preferredID() ?? Self.key(scanner) }
     }
 
-    /// Zapamiętany skaner, potem Brother (jak w CRM), potem pierwszy.
-    private func preferred() -> ICScannerDevice? {
+    /// Zapamiętany skaner, potem jak w CRM (`findPreferredScanner`): Brother, MFC-T920, Photosmart 6510, HP; potem pierwszy.
+    private func preferredID() -> String? {
+        let all = choices
         let saved = UserDefaults.standard.string(forKey: Key.device) ?? ""
-        if let device = devices.first(where: { Self.key($0) == saved }) { return device }
-        return devices.first { Self.title($0).range(of: "brother", options: .caseInsensitive) != nil } ?? devices.first
+        if all.contains(where: { $0.id == saved }) { return saved }
+        for pattern in ["brother", "mfc[-\\s]?t920", "photosmart\\s*6510", "\\bhp\\b"] {
+            if let choice = all.first(where: { $0.title.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil }) {
+                return choice.id
+            }
+        }
+        return all.first?.id
     }
 
     private func remove(_ device: ICDevice) {
@@ -183,7 +238,105 @@ struct ScanFailure: LocalizedError {
             phase = .idle
             wantScan = false
         }
-        if selectedDevice == nil { selectedID = preferred().map { Self.key($0) } ?? "" }
+        if !hasSelection { selectedID = preferredID() ?? "" }
+    }
+
+    // MARK: Skaner w sieci (adres IP, AirScan ogłaszany w sieci)
+
+    /// Połączenie ze skanerem pod wpisanym adresem (zapamiętanym na tym Macu); `select` — wybór go na liście („Połącz”).
+    func probeAddress(select: Bool = true) {
+        let raw = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        UserDefaults.standard.set(raw, forKey: Key.address)
+        addressTask?.cancel()
+        let target: (base: String, host: String)
+        do {
+            target = try NetworkScan.base(address: raw)
+        } catch {
+            addressStatus = .failed(error.localizedDescription)
+            return
+        }
+        addressStatus = .probing(target.host)
+        addressTask = Task { [weak self] in
+            do {
+                let found = try await NetworkScan.probe(base: target.base)
+                self?.addressStatus = .found(found.name)
+                self?.addNetwork(found, select: select)
+            } catch is CancellationError {
+            } catch {
+                self?.addressStatus = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Skaner AirScan ogłoszony w sieci — po sprawdzeniu możliwości trafia na listę.
+    private func serviceFound(_ found: ScannerServiceFinder.Found) {
+        guard !stopped, !network.contains(where: { $0.base == found.base }) else { return }
+        Task { [weak self] in
+            guard let scanner = try? await NetworkScan.probe(base: found.base, fallbackName: found.name) else { return }
+            self?.addNetwork(scanner, select: false)
+        }
+    }
+
+    private func addNetwork(_ scanner: NetworkScanner, select: Bool) {
+        guard !stopped else { return }
+        if let index = network.firstIndex(where: { $0.id == scanner.id }) { network[index] = scanner } else { network.append(scanner) }
+        let previous = selectedID
+        if select && phase == .idle { selectedID = scanner.id } else if !hasSelection { selectedID = preferredID() ?? scanner.id }
+        // Ten sam skaner wybrany jak wcześniej — świeże możliwości (źródła, rozdzielczości).
+        if selectedID == previous, selectedID == scanner.id { selectionChanged() }
+    }
+
+    /// Zmiana skanera: źródła i rozdzielczości skanera sieciowego od razu; skanera ImageCaptureCore — po połączeniu.
+    private func selectionChanged() {
+        if let scanner = selectedNetwork {
+            apply(sources: scanner.sources, resolutions: scanner.resolutions)
+        } else if sessionDevice == nil || sessionDevice !== selectedDevice {
+            sources = ScanSource.allCases
+            resolutions = Self.standardResolutions
+        }
+    }
+
+    private func apply(sources available: [ScanSource], resolutions supported: [Int]) {
+        sources = available.isEmpty ? [.flatbed] : available
+        resolutions = supported.isEmpty ? Self.standardResolutions : supported
+        if !resolutions.contains(dpi) { dpi = resolutions.min { abs($0 - dpi) < abs($1 - dpi) } ?? dpi }
+        if phase == .idle, !sources.contains(source), let first = sources.first {
+            let missing = source
+            source = first
+            notice = "Ten skaner nie ma źródła „\(missing.label.lowercased())” — wybrano „\(first.label.lowercased())”."
+        }
+    }
+
+    private func scanNetwork(_ scanner: NetworkScanner) {
+        error = nil
+        notice = nil
+        remember()
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        counter += 1
+        pagesBefore = pages.count
+        scanDPI = dpi
+        phase = .scanning
+        let settings = NetworkScan.Settings(source: source, dpi: dpi, color: color, folder: folder, prefix: "skan-\(counter)")
+        networkTask = Task { [weak self] in
+            do {
+                let result = try await NetworkScan.scan(scanner, settings)
+                self?.networkFinished(result, failure: nil)
+            } catch {
+                self?.networkFinished([], failure: error)
+            }
+        }
+    }
+
+    private func networkFinished(_ result: [NetworkScan.Page], failure: Error?) {
+        networkTask = nil
+        guard !stopped else { return }
+        for page in result { scanned(page.url) }
+        if let failure, failure is CancellationError {
+            phase = .idle
+            notice = "Skanowanie przerwane."
+            return
+        }
+        completed(failure)
     }
 
     // MARK: Skanowanie
@@ -191,19 +344,19 @@ struct ScanFailure: LocalizedError {
     /// Skan z bieżącymi ustawieniami: sesja ze skanerem, wybór szyby lub podajnika, ustawienia, skan.
     func scan() {
         guard phase == .idle else { return }
+        if let scanner = selectedNetwork {
+            scanNetwork(scanner)
+            return
+        }
         guard let device = selectedDevice else {
-            error = devices.isEmpty
-                ? "Nie znaleziono skanera. Sprawdź, czy jest włączony i w tej samej sieci (Ustawienia systemowe → Drukarki i skanery)."
+            error = choices.isEmpty
+                ? "Nie znaleziono skanera. Wpisz jego adres IP (jak w CRM) albo sprawdź, czy jest włączony i w tej samej sieci."
                 : "Wybierz skaner."
             return
         }
         error = nil
         notice = nil
-        let defaults = UserDefaults.standard
-        defaults.set(selectedID, forKey: Key.device)
-        defaults.set(source.rawValue, forKey: Key.source)
-        defaults.set(dpi, forKey: Key.dpi)
-        defaults.set(color.rawValue, forKey: Key.color)
+        remember()
         wantScan = true
         unitRequested = false
         pagesBefore = pages.count
@@ -223,7 +376,20 @@ struct ScanFailure: LocalizedError {
 
     func cancel() {
         wantScan = false
+        if let networkTask {
+            networkTask.cancel()
+            return
+        }
         if phase == .scanning { sessionDevice?.cancelScan() } else { phase = .idle }
+    }
+
+    /// Ustawienia skanu zapamiętane na tym Macu (następne okno skanera zaczyna od nich).
+    private func remember() {
+        let defaults = UserDefaults.standard
+        defaults.set(selectedID, forKey: Key.device)
+        defaults.set(source.rawValue, forKey: Key.source)
+        defaults.set(dpi, forKey: Key.dpi)
+        defaults.set(color.rawValue, forKey: Key.color)
     }
 
     private func selectUnit(_ device: ICScannerDevice) {
@@ -347,6 +513,16 @@ struct ScanFailure: LocalizedError {
     nonisolated static func pdf(from pages: [(URL, Int)]) throws -> Data {
         let document = PDFDocument()
         for (index, page) in pages.enumerated() {
+            // Strona PDF (HP WebScan) — wstawiona bez zmian.
+            if page.0.pathExtension.lowercased() == "pdf" {
+                guard let source = PDFDocument(url: page.0), source.pageCount > 0 else {
+                    throw ScanFailure(message: "Nie udało się odczytać strony \(index + 1).")
+                }
+                for number in 0..<source.pageCount {
+                    if let pdfPage = source.page(at: number) { document.insert((pdfPage.copy() as? PDFPage) ?? pdfPage, at: document.pageCount) }
+                }
+                continue
+            }
             guard let image = NSImage(contentsOf: page.0), let rep = image.representations.first, rep.pixelsWide > 0, rep.pixelsHigh > 0 else {
                 throw ScanFailure(message: "Nie udało się odczytać strony \(index + 1).")
             }
@@ -363,6 +539,9 @@ struct ScanFailure: LocalizedError {
     }
 
     nonisolated static func thumbnail(_ url: URL) -> NSImage? {
+        if url.pathExtension.lowercased() == "pdf" {
+            return PDFDocument(url: url)?.page(at: 0)?.thumbnail(of: NSSize(width: 360, height: 360), for: .mediaBox)
+        }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -520,13 +699,10 @@ extension DocumentScanner: ICDeviceBrowserDelegate, ICScannerDeviceDelegate {
                 }
                 Spacer(minLength: 8)
                 Button("Anuluj", role: .cancel) { close() }.keyboardShortcut(.cancelAction).disabled(merging)
-                if scanner.phase == .scanning || scanner.phase == .opening {
-                    Button("Przerwij skanowanie") { scanner.cancel() }
-                }
                 Button { scanner.scan() } label: {
                     Label(scanner.pages.isEmpty ? "Skanuj pierwszą stronę" : "Dodaj stronę", systemImage: scanner.pages.isEmpty ? "doc.viewfinder" : "plus.rectangle.on.rectangle")
                 }
-                .disabled(scanner.busy || merging || scanner.selectedDevice == nil)
+                .disabled(scanner.busy || merging || !scanner.hasSelection)
                 Button { Task { await finish() } } label: {
                     Label(scanner.pages.isEmpty ? finishLabel : "\(finishLabel) (\(DocumentScanner.pagesLabel(scanner.pages.count)))", systemImage: "doc.on.doc")
                 }
@@ -539,8 +715,8 @@ extension DocumentScanner: ICDeviceBrowserDelegate, ICScannerDeviceDelegate {
         .frame(minWidth: 860, idealWidth: 940, minHeight: 560, idealHeight: 640)
         .overlay {
             if merging { PendingOverlay(text: "Łączenie stron w PDF…") }
-            else if scanner.phase == .opening { PendingOverlay(text: "Łączenie ze skanerem…") }
-            else if scanner.phase == .scanning { PendingOverlay(text: "Skanowanie…") }
+            else if scanner.phase == .opening { ScanProgressOverlay(text: "Łączenie ze skanerem…") { scanner.cancel() } }
+            else if scanner.phase == .scanning { ScanProgressOverlay(text: "Skanowanie…") { scanner.cancel() } }
         }
         .interactiveDismissDisabled(true)
         .onAppear { scanner.start() }
@@ -554,24 +730,55 @@ extension DocumentScanner: ICDeviceBrowserDelegate, ICScannerDeviceDelegate {
     private var settings: some View {
         Form {
             Section("Skaner") {
-                if scanner.devices.isEmpty {
+                if scanner.choices.isEmpty {
+                    let looking = scanner.searching || scanner.addressProbing
                     HStack(spacing: 8) {
-                        if scanner.searching { ProgressView().controlSize(.small) }
-                        Text(scanner.searching ? "Szukanie skanerów…" : "Nie znaleziono skanera").foregroundStyle(.secondary)
+                        if looking { ProgressView().controlSize(.small) }
+                        Text(looking ? "Szukanie skanerów…" : "Nie znaleziono skanera").foregroundStyle(.secondary)
                     }
-                    if !scanner.searching {
-                        Text("Sprawdź, czy skaner jest włączony i w tej samej sieci albo podłączony kablem.").font(.caption).foregroundStyle(.secondary)
+                    if !looking {
+                        Text("Wpisz adres IP skanera poniżej (jak w CRM) albo sprawdź, czy skaner jest włączony i w tej samej sieci lub podłączony kablem.")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Button("Drukarki i skanery…") {
                             if let url = URL(string: "x-apple.systempreferences:com.apple.Print-Scan-Settings.extension") { NSWorkspace.shared.open(url) }
                         }
                     }
                 } else {
                     Picker("Skaner", selection: $scanner.selectedID) {
-                        ForEach(scanner.devices, id: \.self) { device in Text(DocumentScanner.title(device)).tag(DocumentScanner.key(device)) }
+                        ForEach(scanner.choices) { choice in Text(choice.title).tag(choice.id) }
                     }
                     .labelsHidden()
+                    .disabled(scanner.busy || merging)
                 }
             }
+            Section {
+                HStack(spacing: 6) {
+                    TextField("Adres IP skanera", text: $scanner.address, prompt: Text(DocumentScanner.defaultAddress))
+                        .labelsHidden()
+                        .onSubmit { scanner.probeAddress() }
+                    Button("Połącz") { scanner.probeAddress() }
+                        .disabled(scanner.address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || scanner.addressProbing)
+                }
+                switch scanner.addressStatus {
+                case .idle:
+                    EmptyView()
+                case .probing(let host):
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Łączenie z \(host)…").font(.caption).foregroundStyle(.secondary)
+                    }
+                case .found(let name):
+                    Label("Połączono: \(name)", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(CrmTheme.rgb(0x86efac))
+                case .failed(let message):
+                    Text(message).font(.caption).foregroundStyle(CrmTheme.rgb(0xfca5a5)).fixedSize(horizontal: false, vertical: true)
+                }
+            } header: {
+                Text("Skaner w sieci (adres IP)")
+            } footer: {
+                Text("Jak w CRM: połączenie ze skanerem po adresie IP (AirScan/eSCL, HP WebScan) — także gdy macOS go nie widzi. Adres zapamiętuje ten Mac.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            .disabled(scanner.busy || merging)
             Section("Ustawienia") {
                 Picker("Źródło", selection: $scanner.source) {
                     ForEach(scanner.sources) { Text($0.label).tag($0) }
@@ -668,6 +875,28 @@ extension DocumentScanner: ICDeviceBrowserDelegate, ICScannerDeviceDelegate {
             dismiss()
         } catch {
             scanner.error = error.localizedDescription
+        }
+    }
+}
+
+/// Skan w toku: zasłona okna z opisem i „Przerwij skanowanie” (skan trwa do kilkudziesięciu sekund).
+private struct ScanProgressOverlay: View {
+    let text: String
+    let cancel: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.22).ignoresSafeArea().contentShape(Rectangle())
+            VStack(spacing: 14) {
+                ProgressView().controlSize(.large)
+                Text(text).font(.headline).multilineTextAlignment(.center)
+                Text("Zeskanowane strony pojawią się na liście po zakończeniu skanu.").font(.caption).foregroundStyle(.secondary)
+                Button("Przerwij skanowanie", action: cancel)
+            }
+            .padding(.horizontal, 32).padding(.vertical, 26)
+            .frame(minWidth: 280)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(color: .black.opacity(0.25), radius: 24, y: 10)
         }
     }
 }

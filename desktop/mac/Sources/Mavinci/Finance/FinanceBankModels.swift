@@ -440,7 +440,16 @@ struct BankPicker: Decodable {
         var plannedPartial: Bool
         var plannedLeft: Double
         var previewable: Bool
+        /// Część potwierdzona przelewami z wyciągu, część oznaczona ręcznie i ile może jeszcze rozliczyć przelew
+        /// (`nil` — baza bez migracji 20261202180000; docs/bank-reconciliation.md, sekcja 17).
+        var bankMatched: Double?
+        var manualPaid: Double?
+        var bankOpen: Double?
         var key: String { "\(source):\(id)" }
+        /// Kwota, do której porównujemy płatność: brakująca część, do zapłaty albo całość.
+        var amountToMatch: Double { bankOpen ?? (outstanding != 0 ? outstanding : gross) }
+        /// Dokument częściowo potwierdzony wyciągiem — przyjmie kolejny przelew (np. drugą ratę).
+        var awaitsNextPayment: Bool { source != "personnel" && (bankMatched ?? 0) > 0.009 && (bankOpen ?? 0) > 0.009 }
     }
     var canManage: Bool
     var transaction: Transaction
