@@ -162,7 +162,7 @@ enum ReconSheet: Identifiable {
             }
             ReconciliationStatusBar(store: store, month: month)
             if !month.declarations.isEmpty || month.contracts.contains(where: { $0.status != "not_due" }) {
-                ReconciliationObligations(month: month) { finance.part = .declarations }
+                ReconciliationObligations(month: month, openDeclarations: { finance.part = .declarations }, openContracts: { finance.part = .contracts })
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 10)
@@ -324,6 +324,7 @@ private struct ReconciliationStatusBar: View {
 private struct ReconciliationObligations: View {
     let month: BankMonth
     let openDeclarations: () -> Void
+    let openContracts: () -> Void
     @State private var expanded = false
 
     var body: some View {
@@ -361,6 +362,7 @@ private struct ReconciliationObligations: View {
                         }
                         .font(.caption)
                     }
+                    Button("Umowy stałe →", action: openContracts).buttonStyle(.link).font(.caption)
                 }
             }
             .padding(.top, 4)

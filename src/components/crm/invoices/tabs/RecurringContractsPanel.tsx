@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  ScanLine,
   Sparkles,
   Trash2,
   Undo2,
@@ -18,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { ScannerCaptureModal, scanFileSize, scanPagesLabel } from '@/components/crm/scanner/ScannerCaptureModal';
 import { financeEntities } from '@/lib/invoices/financeEntities';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
@@ -55,6 +57,45 @@ const num = (value: string) => {
 };
 const CYCLE_MONTHS: Record<RecurringContractCycle, number> = { monthly: 1, quarterly: 3, yearly: 12 };
 
+/** Limit pliku w magazynie `finance-contracts` (20 MB). */
+const MAX_CONTRACT_FILE = 20 * 1024 * 1024;
+const CONTRACT_FILE_ACCEPT = '.pdf,.doc,.docx,.odt,.zip,image/*';
+const CONTRACT_SCAN_INTRO =
+  'Połóż pierwszą stronę umowy na szybie skanera i kliknij „Skanuj pierwszą stronę”. Potem połóż kolejną stronę i kliknij „Dodaj stronę” — ' +
+  'skany możesz obejrzeć, przestawić albo usunąć. „Zakończ” łączy wszystkie strony w jeden plik PDF. Podajnik może zeskanować kilka stron naraz.';
+
+/** Nazwa pliku skanu widoczna w „Plikach umowy”: tytuł umowy i data skanu. */
+function contractScanFile(file: File, title: string): File {
+  const name = title.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Umowa';
+  return new File([file], `${name} — skan ${new Date().toLocaleDateString('sv-SE')}.pdf`, { type: 'application/pdf', lastModified: file.lastModified });
+}
+
+/** Wgranie pliku do magazynu i rejestru plików umowy. Zwraca komunikat błędu albo null, gdy się udało. */
+async function uploadContractFile(companyId: string, contractId: string, file: File): Promise<string | null> {
+  if (file.size > MAX_CONTRACT_FILE) return `Plik „${file.name}” jest większy niż 20 MB.`;
+  const safe = file.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80) || 'plik';
+  const path = `${companyId}/${contractId}/${Date.now()}-${safe}`;
+  const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, {
+    contentType: file.type || 'application/octet-stream', upsert: false,
+  });
+  if (uploadError) return uploadError.message || 'Nie udało się wgrać pliku.';
+  const { error } = await supabase.rpc('add_finance_recurring_contract_file', {
+    p_contract_id: contractId, p_storage_path: path, p_file_name: file.name, p_mime_type: file.type || null, p_file_size: file.size,
+  });
+  if (error) {
+    await supabase.storage.from(BUCKET).remove([path]);
+    return error.message || 'Nie udało się zapisać pliku.';
+  }
+  return null;
+}
+
+/** Podgląd lokalnego pliku (przed zapisaniem) w nowej karcie. */
+function previewLocalFile(file: Blob) {
+  const url = URL.createObjectURL(file);
+  window.open(url, '_blank', 'noopener');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 interface Company { id: string; name: string; nip?: string | null }
 
 interface Props {
@@ -78,6 +119,8 @@ export default function RecurringContractsPanel({ filterCompanyIds = null, onOpe
   const [openId, setOpenId] = useState<string | null>(null);
   const [form, setForm] = useState<RecurringContract | 'new' | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** Umowa, do której skanujemy (kilka stron → jeden PDF dopisany do „Plików umowy”). */
+  const [scanFor, setScanFor] = useState<RecurringContract | null>(null);
 
   const companyKey = filterCompanyIds === null ? '*' : [...filterCompanyIds].sort().join(',');
 
@@ -150,25 +193,13 @@ export default function RecurringContractsPanel({ filterCompanyIds = null, onOpe
     await load();
   };
 
-  const upload = async (c: RecurringContract, file: File) => {
-    if (file.size > 20 * 1024 * 1024) { showSnackbar('Plik jest większy niż 20 MB.', 'warning'); return; }
+  const upload = async (c: RecurringContract, file: File, success = 'Plik umowy dodany.') => {
+    if (file.size > MAX_CONTRACT_FILE) { showSnackbar('Plik jest większy niż 20 MB.', 'warning'); return; }
     setBusy(`upload:${c.id}`);
-    const safe = file.name.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80) || 'plik';
-    const path = `${c.company_id}/${c.id}/${Date.now()}-${safe}`;
-    const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, {
-      contentType: file.type || 'application/octet-stream', upsert: false,
-    });
-    if (uploadError) { setBusy(null); showSnackbar(uploadError.message || 'Nie udało się wgrać pliku.', 'error'); return; }
-    const { error } = await supabase.rpc('add_finance_recurring_contract_file', {
-      p_contract_id: c.id, p_storage_path: path, p_file_name: file.name, p_mime_type: file.type || null, p_file_size: file.size,
-    });
+    const failure = await uploadContractFile(c.company_id, c.id, file);
     setBusy(null);
-    if (error) {
-      await supabase.storage.from(BUCKET).remove([path]);
-      showSnackbar(error.message || 'Nie udało się zapisać pliku.', 'error');
-      return;
-    }
-    showSnackbar('Plik umowy dodany.', 'success');
+    if (failure) { showSnackbar(failure, 'error'); return; }
+    showSnackbar(success, 'success');
     await load();
   };
 
@@ -278,6 +309,7 @@ export default function RecurringContractsPanel({ filterCompanyIds = null, onOpe
                       onEdit={() => setForm(c)}
                       onDelete={() => void removeContract(c)}
                       onUpload={(file) => void upload(c, file)}
+                      onScan={() => setScanFor(c)}
                       onOpenFile={(path) => void openFile(path)}
                       onRemoveFile={(id) => void removeFile(id)}
                       onUndoPayment={(paymentId) => void run(`undo:${paymentId}`, () => supabase.rpc('undo_bank_recurring_contract_payment', { p_payment_id: paymentId }),
@@ -298,6 +330,23 @@ export default function RecurringContractsPanel({ filterCompanyIds = null, onOpe
           contract={form === 'new' ? null : form}
           onClose={() => setForm(null)}
           onSaved={async (id) => { setForm(null); setOpenId(id); await load(); }}
+        />
+      )}
+
+      {scanFor && (
+        <ScannerCaptureModal
+          open
+          multiPage
+          title="Skanuj umowę"
+          intro={CONTRACT_SCAN_INTRO}
+          fileName="skan-umowy"
+          maxBytes={MAX_CONTRACT_FILE}
+          onClose={() => setScanFor(null)}
+          onScanned={(file, pages) => {
+            const target = scanFor;
+            setScanFor(null);
+            void upload(target, contractScanFile(file, target.title), pages ? `Skan umowy dodany (${scanPagesLabel(pages)}).` : 'Skan umowy dodany.');
+          }}
         />
       )}
     </div>
@@ -325,13 +374,15 @@ function PeriodStrip({ periods, currency, compact = false }: { periods: Recurrin
   );
 }
 
-function ContractDetails({ contract: c, canManage, busy, onEdit, onDelete, onUpload, onOpenFile, onRemoveFile, onUndoPayment, onOpenReconciliation }: {
+function ContractDetails({ contract: c, canManage, busy, onEdit, onDelete, onUpload, onScan, onOpenFile, onRemoveFile, onUndoPayment, onOpenReconciliation }: {
   contract: RecurringContract;
   canManage: boolean;
   busy: string | null;
   onEdit: () => void;
   onDelete: () => void;
   onUpload: (file: File) => void;
+  /** Skan wielostronicowy (strony łączone w jeden PDF). */
+  onScan: () => void;
   onOpenFile: (path: string) => void;
   onRemoveFile: (id: string) => void;
   onUndoPayment: (paymentId: string) => void;
@@ -411,16 +462,21 @@ function ContractDetails({ contract: c, canManage, busy, onEdit, onDelete, onUpl
               {canManage && <button type="button" disabled={busy === `file:${f.id}`} onClick={() => onRemoveFile(f.id)} className="text-[#e5e4e2]/40 hover:text-red-300"><X className="h-3 w-3" /></button>}
             </span>
           ))}
-          {c.files.length === 0 && <span className="text-xs text-[#e5e4e2]/45">Brak pliku — dodaj skan umowy (PDF lub zdjęcie).</span>}
+          {c.files.length === 0 && <span className="text-xs text-[#e5e4e2]/45">Brak pliku — zeskanuj umowę (kilka stron połączy się w jeden PDF) albo dodaj plik.</span>}
           {canManage && (
-            <label className={`${ghost} cursor-pointer`}>
-              {busy === `upload:${c.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Dodaj plik
-              <input type="file" className="hidden" accept=".pdf,.doc,.docx,.odt,.zip,image/*" onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                if (file) onUpload(file);
-              }} />
-            </label>
+            <>
+              <button type="button" className={ghost} disabled={busy === `upload:${c.id}`} onClick={onScan} title="Skanuj umowę — kolejne strony łączą się w jeden PDF">
+                <ScanLine className="h-3.5 w-3.5" /> Skanuj
+              </button>
+              <label className={`${ghost} cursor-pointer`}>
+                {busy === `upload:${c.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Dodaj plik
+                <input type="file" className="hidden" accept={CONTRACT_FILE_ACCEPT} onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (file) onUpload(file);
+                }} />
+              </label>
+            </>
           )}
         </div>
       </section>
@@ -467,6 +523,21 @@ export function RecurringContractFormModal({ companyId, contract, initial, onClo
   const [expectsInvoice, setExpectsInvoice] = useState(contract?.expects_invoice || false);
   const [notes, setNotes] = useState(contract?.notes || '');
   const [saving, setSaving] = useState(false);
+  /** Pliki do wgrania po zapisaniu umowy (skan wielostronicowy albo pliki z dysku). */
+  const [pendingFiles, setPendingFiles] = useState<Array<{ id: string; file: File; scanned: boolean; pages?: number }>>([]);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
+
+  const addPendingFile = (file: File, scanned: boolean, pages?: number) => {
+    if (file.size > MAX_CONTRACT_FILE) { showSnackbar(`Plik „${file.name}” jest większy niż 20 MB.`, 'warning'); return; }
+    setPendingFiles((current) => [...current, { id: `${Date.now()}-${current.length}-${file.name}`, file, scanned, pages }]);
+  };
+
+  const close = () => {
+    if (saving) return;
+    if (pendingFiles.length && !window.confirm('Zamknąć bez zapisywania? Zeskanowane i dodane pliki nie zostaną zapisane.')) return;
+    onClose();
+  };
 
   const accountClean = accountDigits(account);
   const nipClean = accountDigits(nip);
@@ -486,6 +557,7 @@ export function RecurringContractFormModal({ companyId, contract, initial, onClo
     const day = paymentDay.trim() === '' ? null : Math.round(num(paymentDay));
     if (day !== null && (day < 1 || day > 31)) { showSnackbar('Dzień płatności to liczba od 1 do 31.', 'warning'); return; }
     setSaving(true);
+    setProgress('Zapisywanie…');
     const { data, error } = await supabase.rpc('save_finance_recurring_contract', {
       p_id: contract?.id || null, p_company_id: companyId, p_kind: kind, p_direction: direction, p_title: title.trim(),
       p_counterparty_name: counterparty.trim(), p_counterparty_nip: nipClean || null, p_counterparty_account: accountClean || null,
@@ -493,10 +565,26 @@ export function RecurringContractFormModal({ companyId, contract, initial, onClo
       p_start_date: startDate, p_end_date: endDate || null, p_payments_from: paymentsFrom ? `${paymentsFrom}-01` : null,
       p_status: status, p_expects_invoice: expectsInvoice, p_notes: notes.trim() || null,
     });
+    if (error) { setSaving(false); setProgress(null); showSnackbar(error.message || 'Nie udało się zapisać umowy.', 'error'); return; }
+    const savedId = data as string;
+    // Pliki dopiero po zapisie umowy (ścieżka w magazynie: firma/umowa/…); błąd pliku nie cofa zapisanej umowy.
+    const failed: string[] = [];
+    for (const [index, item] of pendingFiles.entries()) {
+      setProgress(pendingFiles.length > 1 ? `Wgrywanie plików ${index + 1}/${pendingFiles.length}…` : 'Wgrywanie pliku…');
+      const file = item.scanned ? contractScanFile(item.file, title.trim()) : item.file;
+      const failure = await uploadContractFile(contract?.company_id || companyId, savedId, file);
+      if (failure) failed.push(failure);
+    }
     setSaving(false);
-    if (error) { showSnackbar(error.message || 'Nie udało się zapisać umowy.', 'error'); return; }
-    showSnackbar('Umowa zapisana.', 'success');
-    await onSaved(data as string);
+    setProgress(null);
+    if (failed.length) {
+      const what = pendingFiles.length === 1 ? 'pliku nie udało się wgrać' : `nie udało się wgrać plików: ${failed.length} z ${pendingFiles.length}`;
+      showSnackbar(`Umowa zapisana, ale ${what} (${failed[0]}). Dodaj ${failed.length === 1 ? 'go' : 'je'} w szczegółach umowy.`, 'warning');
+    } else {
+      showSnackbar(pendingFiles.length ? `Umowa zapisana razem z ${pendingFiles.length === 1 ? 'plikiem' : `plikami (${pendingFiles.length})`}.` : 'Umowa zapisana.', 'success');
+    }
+    setPendingFiles([]);
+    await onSaved(savedId);
   };
 
   return (
@@ -504,7 +592,7 @@ export function RecurringContractFormModal({ companyId, contract, initial, onClo
       <div className="flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-5">
         <div className="flex items-center justify-between">
           <h4 className="text-base font-light text-[#e5e4e2]">{contract ? `Umowa „${contract.title}”` : 'Nowa umowa stała'}</h4>
-          <button type="button" onClick={onClose} className="text-[#e5e4e2]/50 hover:text-[#e5e4e2]"><X className="h-5 w-5" /></button>
+          <button type="button" onClick={close} disabled={saving} className="text-[#e5e4e2]/50 hover:text-[#e5e4e2] disabled:opacity-40"><X className="h-5 w-5" /></button>
         </div>
         <div className="mt-4 grid flex-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
           <label className="text-xs text-[#e5e4e2]/60">Rodzaj
@@ -574,18 +662,60 @@ export function RecurringContractFormModal({ companyId, contract, initial, onClo
           <label className="text-xs text-[#e5e4e2]/60 sm:col-span-2">Notatki
             <textarea className={`${input} mt-1`} rows={2} value={notes} maxLength={2000} onChange={(e) => setNotes(e.target.value)} placeholder="np. umowa na czas nieokreślony, 1 miesiąc wypowiedzenia" />
           </label>
+          <div className="text-xs text-[#e5e4e2]/60 sm:col-span-2">
+            {contract ? 'Dodaj skan lub plik (dopisze się do plików umowy)' : 'Skan lub plik umowy (opcjonalnie)'}
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              {pendingFiles.map((item) => (
+                <span key={item.id} className="inline-flex items-center gap-1.5 rounded-lg border border-[#d3bb73]/15 bg-[#0f1119] px-2 py-1 text-[11px] text-[#e5e4e2]/80">
+                  <button type="button" onClick={() => previewLocalFile(item.file)} title="Podgląd" className="inline-flex items-center gap-1 hover:text-[#d3bb73]">
+                    <FileText className="h-3.5 w-3.5" />
+                    {item.scanned ? `Skan umowy${item.pages ? ` · ${scanPagesLabel(item.pages)}` : ''}` : item.file.name} · {scanFileSize(item.file.size)}
+                  </button>
+                  <button type="button" disabled={saving} title="Usuń" onClick={() => setPendingFiles((current) => current.filter((x) => x.id !== item.id))}
+                    className="text-[#e5e4e2]/40 hover:text-red-300 disabled:opacity-40"><X className="h-3 w-3" /></button>
+                </span>
+              ))}
+              <button type="button" className={ghost} disabled={saving} onClick={() => setScannerOpen(true)}>
+                <ScanLine className="h-3.5 w-3.5" /> Skanuj umowę
+              </button>
+              <label className={`${ghost} ${saving ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}>
+                <Upload className="h-3.5 w-3.5" /> Dodaj plik
+                <input type="file" multiple className="hidden" accept={CONTRACT_FILE_ACCEPT} disabled={saving} onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  e.target.value = '';
+                  files.forEach((file) => addPendingFile(file, false));
+                }} />
+              </label>
+            </div>
+            <span className="mt-0.5 block text-[10px] text-[#e5e4e2]/40">
+              Umowa ma kilka stron? W skanerze „Dodaj stronę” skanuje kolejną, a „Zakończ” łączy wszystkie w jeden PDF. Pliki zapiszą się razem z umową (do 20 MB każdy).
+            </span>
+          </div>
         </div>
         <p className="mt-3 text-[11px] leading-4 text-[#e5e4e2]/45">
           Zmiana kwoty (np. waloryzacja czynszu) dotyczy wszystkich okresów. Jeśli od danego miesiąca kwota jest inna, zakończ umowę datą
           i dodaj nową od kolejnego okresu — historia płatności zostanie bez zmian.
         </p>
         <div className="mt-4 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg border border-[#e5e4e2]/15 px-3 py-2 text-xs text-[#e5e4e2]/70 hover:bg-white/5">Anuluj</button>
+          <button type="button" onClick={close} disabled={saving} className="rounded-lg border border-[#e5e4e2]/15 px-3 py-2 text-xs text-[#e5e4e2]/70 hover:bg-white/5 disabled:opacity-50">Anuluj</button>
           <button type="button" disabled={saving} onClick={() => void save()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#0a0d1a] hover:bg-[#e5d799] disabled:opacity-50">
-            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Zapisz
+            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} {progress || 'Zapisz'}
           </button>
         </div>
       </div>
+      {scannerOpen && (
+        <ScannerCaptureModal
+          open
+          multiPage
+          title="Skanuj umowę"
+          intro={CONTRACT_SCAN_INTRO}
+          fileName="skan-umowy"
+          maxBytes={MAX_CONTRACT_FILE}
+          layerClassName="z-[70]"
+          onClose={() => setScannerOpen(false)}
+          onScanned={(file, pages) => { setScannerOpen(false); addPendingFile(file, true, pages); }}
+        />
+      )}
     </div>
   );
 }

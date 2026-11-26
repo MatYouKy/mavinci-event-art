@@ -630,7 +630,7 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
         .task { await load() }
         .sheet(isPresented: $creating) {
             if let data {
-                BankContractFormSheet(store: store, companyID: data.companyId, transaction: data.transaction) { id in
+                ContractFormSheet(store: store, companyID: data.companyId, contract: nil, transaction: data.transaction) { id in
                     Task { await link(id, period: nil, amount: nil) }
                 }
             }
@@ -727,84 +727,6 @@ private func txSubtitle(_ tx: BankTx, remaining: Bool = true) -> String {
         body["periodStart"] = period.map { JSONValue.string($0) } ?? JSONValue.null
         body["amount"] = amount.map { JSONValue.string($0) } ?? JSONValue.null
         if await store.reconcileAction("Przypisywanie przelewu do umowy…", "linkContract", body) { dismiss() }
-    }
-}
-
-/// „Nowa umowa z tej płatności” (jak `RecurringContractFormModal` z danymi operacji).
-@MainActor struct BankContractFormSheet: View {
-    @ObservedObject var store: FinanceBankStore
-    let companyID: String
-    let transaction: BankContractCandidates.Transaction
-    let onSaved: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var kind = "rent"
-    @State private var title = ""
-    @State private var counterparty = ""
-    @State private var nip = ""
-    @State private var account = ""
-    @State private var amount = ""
-    @State private var currency = "PLN"
-    @State private var cycle = "monthly"
-    @State private var paymentDay = ""
-    @State private var start = Date()
-    @State private var hasEnd = false
-    @State private var end = Date()
-    @State private var paymentsFrom = ""
-    @State private var expectsInvoice = false
-    @State private var notes = ""
-    @State private var prepared = false
-
-    var body: some View {
-        BankSheetFrame("Nowa umowa stała", symbol: "calendar.badge.plus", subtitle: "Kierunek: \(transaction.direction == "credit" ? "przychód — otrzymujemy" : "koszt — płacimy")", busy: store.busy) {
-            Form {
-                Picker("Rodzaj", selection: $kind) { ForEach(ContractStatus.kinds, id: \.0) { Text($0.1).tag($0.0) } }
-                TextField("Tytuł", text: $title, prompt: Text("np. Najem garażu nr 6"))
-                TextField("Kontrahent", text: $counterparty)
-                TextField("NIP (opcjonalnie, firma)", text: $nip, prompt: Text("bez PESEL"))
-                TextField("Rachunek kontrahenta", text: $account).font(.body.monospaced())
-                Text("Przelew na ten rachunek z kwotą okresu przypisze się do umowy automatycznie.").font(.caption).foregroundStyle(.secondary)
-                TextField("Kwota brutto na okres", text: $amount)
-                Picker("Waluta", selection: $currency) { ForEach(Array(Set(["PLN", "EUR", "USD", "GBP", "CHF", currency])).sorted(), id: \.self) { Text($0).tag($0) } }
-                Picker("Cykl", selection: $cycle) { ForEach(ContractStatus.cycles, id: \.0) { Text($0.1).tag($0.0) } }
-                TextField("Dzień płatności (opcjonalnie)", text: $paymentDay, prompt: Text("np. 10 — puste: do końca miesiąca"))
-                DatePicker("Data początku", selection: $start, displayedComponents: .date)
-                Toggle("Data końca", isOn: $hasEnd)
-                if hasEnd { DatePicker("Koniec", selection: $end, in: start..., displayedComponents: .date) }
-                TextField("Rozliczaj płatności od (RRRR-MM, opcjonalnie)", text: $paymentsFrom)
-                Toggle("Kontrahent wystawia faktury za okresy", isOn: $expectsInvoice)
-                Text("Wtedy przelew rozliczasz z fakturą (KSeF lub spoza KSeF), a umowa tylko informuje — automat nie przypisuje do niej płatności.").font(.caption).foregroundStyle(.secondary)
-                TextField("Notatki", text: $notes, axis: .vertical).lineLimit(2...4)
-            }
-            .formStyle(.grouped)
-        } footer: {
-            Spacer()
-            Button("Anuluj", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-            Button("Zapisz i przypisz") { Task { await save() } }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-        }
-        .frame(minWidth: 600, idealWidth: 640, minHeight: 640, idealHeight: 720)
-        .onAppear {
-            guard !prepared else { return }
-            prepared = true
-            title = String((transaction.title ?? "").prefix(200))
-            counterparty = String((transaction.counterparty ?? "").prefix(200))
-            account = BankFormat.account(transaction.counterpartyAccount)
-            amount = BankFormat.plain(transaction.remaining)
-            currency = transaction.currency
-            start = FinFormat.date(transaction.date) ?? Date()
-        }
-    }
-
-    private func save() async {
-        let body: [String: JSONValue] = [
-            "companyId": .string(companyID), "kind": .string(kind), "direction": .string(transaction.direction == "credit" ? "income" : "cost"),
-            "title": .string(title), "counterparty": .string(counterparty), "nip": .string(nip), "account": .string(account),
-            "amount": .string(amount), "currency": .string(currency), "cycle": .string(cycle), "paymentDay": .string(paymentDay),
-            "startDate": .string(FinanceText.dayString(start)), "endDate": hasEnd ? .string(FinanceText.dayString(end)) : .null,
-            "paymentsFrom": .string(paymentsFrom.trimmingCharacters(in: .whitespaces)), "expectsInvoice": .bool(expectsInvoice), "notes": .string(notes),
-        ]
-        guard let reply = await store.act("Zapisywanie umowy…", "saveContract", body), let id = reply["id"]?.text.nonEmpty else { return }
-        dismiss()
-        onSaved(id)
     }
 }
 

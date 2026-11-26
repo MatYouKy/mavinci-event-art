@@ -3,61 +3,40 @@ import AppKit
 
 @main struct MavinciApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var workspace = Workspace()
+    /// Pierwszy obszar roboczy w uchwycie (`WindowWorkspaces.swift`) — scena aplikacji nie obserwuje danych, więc zmiana w jednym
+    /// oknie nie przelicza pozostałych; każde okno i każda karta ma własny obszar.
+    @StateObject private var hub = WorkspaceHub()
+    private var workspace: Workspace { hub.primary }
     var body: some Scene {
-        // Okna obszaru roboczego — każde (także karta okna) z własną nawigacją (`WindowNavigation`); dane i sesja wspólne.
+        // Okna obszaru roboczego — każde (także karta okna) z własnym obszarem: dane, stan sekcji i nawigacja; sesja i usługi
+        // wspólne w pierwszym obszarze (`WindowWorkspaces.swift`).
         WindowGroup("Mavinci", id: "main") {
-            WorkspaceWindow(workspace: workspace).environmentObject(workspace).environmentObject(workspace.native).frame(minWidth: 1080, minHeight: 680)
-                .crmThemed(workspace.theme)
-                .task { await workspace.restore() }
+            WorkspaceWindow(primary: workspace)
         }
         .defaultSize(width: 1280, height: 800)
         .windowResizability(.contentMinSize)
-        .commands {
-            // Plik → Nowe okno (⇧⌘N) / Nowa karta (⇧⌘T) — ⌘N zostaje dla „Nowe zadanie / spotkanie / wiadomość” w sekcjach.
-            CommandGroup(replacing: .newItem) { WindowMenuItems(workspace: workspace) }
-            CommandMenu("Mavinci") {
-                Button("Odśwież dane") { Task { await workspace.refresh(); if workspace.screen == .messages { await workspace.messages.refresh() }; if workspace.screen == .meetings { await workspace.meetings.sync(force: true) }; if workspace.selection == .inquiries { await workspace.inquiries.sync(force: true) }; if workspace.selection == .tasks || workspace.screen == .myTasks { await workspace.myTasks.sync(force: true) }; if workspace.screen == .companyTasks { await workspace.companyTasks.sync(force: true) }; if workspace.selection == .contacts { await workspace.contacts.sync(force: true) }; if workspace.selection == .events { await workspace.events.sync(force: true) }; if workspace.screen == .team { await workspace.team.sync(force: true); if let id = workspace.team.openedID { await workspace.team.loadDetail(id) } }; if workspace.screen?.isWarehouse == true { await workspace.warehouse.sync(force: true); if workspace.screen == .warehouse, let id = workspace.warehouse.openedID { await workspace.warehouse.loadDetail(id) } } } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
-                Divider()
-                Button("Dashboard") { workspace.switchSection(.day) }.keyboardShortcut("1")
-                Button("Zapytania") { if workspace.employee?.canView(.inquiries) == true { workspace.switchSection(.inquiries) } }.keyboardShortcut("2")
-                Button("Moje zadania") { if workspace.employee?.canView(.tasks) == true { workspace.switchSection(.tasks) } }.keyboardShortcut("3")
-                Button("Eventy") { if workspace.employee?.canView(.events) == true { workspace.switchSection(.events) } }.keyboardShortcut("4")
-                Button("Kalendarz") { if workspace.employee?.canView(.calendar) == true { workspace.switchSection(.calendar) } }.keyboardShortcut("5")
-                Button("Kontakty") {workspace.switchSection(.contacts)}.keyboardShortcut("6")
-                Button("Oferty") {workspace.switchSection(.offers)}.keyboardShortcut("7")
-                Button("Przetargi") {workspace.switchSection(.tenders)}.keyboardShortcut("8")
-                Button("Powiadomienia") {workspace.notificationsVisible.toggle()}.keyboardShortcut("9")
-                Button("Komunikator") { workspace.toggleChat() }.keyboardShortcut("k", modifiers: [.command, .option]).disabled(workspace.employee == nil)
-                Divider()
-                // Ustawienia → Oprogramowanie (wersja, co nowego, instalacja) i sprawdzenie wersji.
-                CheckUpdatesCommand(updater: workspace.updater, signedIn: workspace.employee != nil)
-                Divider()
-                // W trybie testowym „Wyloguj” kończy tryb i przywraca sesję administratora (`Workspace.logout`).
-                Button(workspace.testMode == nil ? "Wyloguj" : "Wyjdź z trybu testowego") { Task { await workspace.logout() } }
-                    .disabled(workspace.loading || workspace.acting || workspace.testSwitching)
-            }
-        }
+        .commands { MavinciCommands(hub: hub) }
         WindowGroup("Wiadomość", id: "message", for: String.self) { $key in
-            MessageWindow(key: key ?? "").environmentObject(workspace).crmThemed(workspace.theme)
-                .safeAreaInset(edge: .top, spacing: 0) { TestModeBanner().environmentObject(workspace) }
+            MessageWindowScene(key: key ?? "", fallback: workspace)
         }
         .defaultSize(width: 900, height: 780)
         // Formularze w osobnych oknach (`FormWindows.swift`): nowa wiadomość / odpowiedź / przekazanie i faktura — zwykłe okna
-        // macOS (skalowanie, przesuwanie, praca obok głównego okna); każdy rodzaj pamięta swój rozmiar i położenie.
+        // macOS (skalowanie, przesuwanie, praca obok głównego okna); każdy rodzaj pamięta swój rozmiar i położenie. Formularz
+        // działa w obszarze okna, z którego go otwarto.
         WindowGroup("Wiadomość e-mail", id: FormWindowKind.compose.rawValue, for: UUID.self) { $id in
-            FormWindowHost(id: id).environmentObject(workspace).environmentObject(workspace.native).crmThemed(workspace.theme)
-                .safeAreaInset(edge: .top, spacing: 0) { TestModeBanner().environmentObject(workspace) }
+            WorkspaceScene(workspace: workspace) {
+                FormWindowHost(id: id).safeAreaInset(edge: .top, spacing: 0) { TestModeBanner() }
+            }
         }
         .defaultSize(width: 900, height: 880)
         WindowGroup("Faktura", id: FormWindowKind.invoice.rawValue, for: UUID.self) { $id in
-            FormWindowHost(id: id).environmentObject(workspace).environmentObject(workspace.native).crmThemed(workspace.theme)
-                .safeAreaInset(edge: .top, spacing: 0) { TestModeBanner().environmentObject(workspace) }
+            WorkspaceScene(workspace: workspace) {
+                FormWindowHost(id: id).safeAreaInset(edge: .top, spacing: 0) { TestModeBanner() }
+            }
         }
         .defaultSize(width: 1120, height: 940)
-        // Sygnet na pasku menu (jak dawne „Mavinci Reminders”): stan, wersja, pliki w Finderze, synchronizacja — tylko w procesie
-        // głównym (okno w osobnym procesie nie dodaje drugiego sygnetu, `WindowProcess.swift`).
-        MenuBarExtra(isInserted: .constant(!AppInstance.isSecondary)) {
+        // Sygnet na pasku menu (jak dawne „Mavinci Reminders”): stan, wersja, pliki w Finderze, synchronizacja.
+        MenuBarExtra {
             MenuBarStatusMenu(workspace: workspace)
         } label: {
             Image(nsImage: MenuBarSignet.image)
@@ -67,11 +46,53 @@ import AppKit
         .menuBarExtraStyle(.menu)
         // Ustawienia (⌘,): Wygląd, Oprogramowanie, a w kompilacji deweloperskiej także Połączenie (`SettingsWindow.swift`).
         Settings {
-            SettingsTabs(updater: workspace.updater)
-                .environmentObject(workspace).frame(width: 600, height: 460).crmThemed(workspace.theme)
+            WorkspaceScene(workspace: workspace) {
+                SettingsTabs(updater: workspace.updater).frame(width: 600, height: 460)
+            }
         }
     }
 }
+
+/// Menu aplikacji dla okna na pierwszym planie: jego obszar roboczy (`focusedSceneObject` w `WorkspaceWindow`); gdy na pierwszym
+/// planie jest okno bez obszaru (Ustawienia, wiadomość, formularz) — obszar ostatnio aktywnego okna.
+@MainActor struct MavinciCommands: Commands {
+    let hub: WorkspaceHub
+    @FocusedObject private var focused: Workspace?
+    var body: some Commands {
+        // Plik → Nowe okno (⇧⌘N) / Nowa karta (⇧⌘T) — ⌘N zostaje dla „Nowe zadanie / spotkanie / wiadomość” w sekcjach.
+        CommandGroup(replacing: .newItem) { WindowMenuItems(workspace: focused ?? hub.keyWorkspace) }
+        CommandMenu("Mavinci") { MavinciMenuItems(workspace: focused ?? hub.keyWorkspace) }
+    }
+}
+
+/// Menu „Mavinci” — czynności obszaru okna na pierwszym planie.
+struct MavinciMenuItems: View {
+    @ObservedObject var workspace: Workspace
+    var body: some View {
+        Button("Odśwież dane") { Task { await workspace.refresh(); if workspace.screen == .messages { await workspace.messages.refresh() }; if workspace.screen == .meetings { await workspace.meetings.sync(force: true) }; if workspace.selection == .inquiries { await workspace.inquiries.sync(force: true) }; if workspace.selection == .tasks || workspace.screen == .myTasks { await workspace.myTasks.sync(force: true) }; if workspace.screen == .companyTasks { await workspace.companyTasks.sync(force: true) }; if workspace.selection == .contacts { await workspace.contacts.sync(force: true) }; if workspace.selection == .events { await workspace.events.sync(force: true) }; if workspace.screen == .team { await workspace.team.sync(force: true); if let id = workspace.team.openedID { await workspace.team.loadDetail(id) } }; if workspace.screen?.isWarehouse == true { await workspace.warehouse.sync(force: true); if workspace.screen == .warehouse, let id = workspace.warehouse.openedID { await workspace.warehouse.loadDetail(id) } } } }.keyboardShortcut("r").disabled(workspace.syncing || workspace.editing)
+        Divider()
+        Button("Dashboard") { workspace.switchSection(.day) }.keyboardShortcut("1")
+        Button("Zapytania") { if workspace.employee?.canView(.inquiries) == true { workspace.switchSection(.inquiries) } }.keyboardShortcut("2")
+        Button("Moje zadania") { if workspace.employee?.canView(.tasks) == true { workspace.switchSection(.tasks) } }.keyboardShortcut("3")
+        Button("Eventy") { if workspace.employee?.canView(.events) == true { workspace.switchSection(.events) } }.keyboardShortcut("4")
+        Button("Kalendarz") { if workspace.employee?.canView(.calendar) == true { workspace.switchSection(.calendar) } }.keyboardShortcut("5")
+        Button("Kontakty") {workspace.switchSection(.contacts)}.keyboardShortcut("6")
+        Button("Oferty") {workspace.switchSection(.offers)}.keyboardShortcut("7")
+        Button("Przetargi") {workspace.switchSection(.tenders)}.keyboardShortcut("8")
+        Button("Powiadomienia") {workspace.notificationsVisible.toggle()}.keyboardShortcut("9")
+        Button("Komunikator") { workspace.toggleChat() }.keyboardShortcut("k", modifiers: [.command, .option]).disabled(workspace.employee == nil)
+        // Skaner (ImageCaptureCore): kilka stron w jeden PDF zapisany w wybranym miejscu (`Scanner/DocumentScanner.swift`).
+        Button("Skanuj dokument do PDF…") { workspace.activeNavigation.documentScanShown = true }.disabled(workspace.employee == nil)
+        Divider()
+        // Ustawienia → Oprogramowanie (wersja, co nowego, instalacja) i sprawdzenie wersji.
+        CheckUpdatesCommand(updater: workspace.updater, signedIn: workspace.employee != nil)
+        Divider()
+        // W trybie testowym „Wyloguj” kończy tryb i przywraca sesję administratora (`Workspace.logout`).
+        Button(workspace.testMode == nil ? "Wyloguj" : "Wyjdź z trybu testowego") { Task { await workspace.logout() } }
+            .disabled(workspace.loading || workspace.acting || workspace.testSwitching)
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular); NSApp.activate(ignoringOtherApps: true)
@@ -79,11 +100,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in BrandStore.applyCached() }
     }
     /// Zamknięcie okna nie kończy aplikacji — działa dalej na pasku menu (pliki w Finderze, synchronizacja); „Zakończ Mavinci” w menu.
-    /// Okno w osobnym procesie (`WindowProcess.swift`): zamknięcie okna kończy jego proces.
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { AppInstance.isSecondary }
-    /// Zakończenie procesu głównego (⌘Q, „Zakończ Mavinci”) zamyka też okna w osobnych procesach.
-    func applicationWillTerminate(_ notification: Notification) {
-        if !AppInstance.isSecondary { AppInstance.post(.quit) }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    /// Menu ikony w Docku: okna Mavinci (macOS dodaje je sam) i „Nowe okno” — jak w VS Code.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        let item = NSMenuItem(title: "Nowe okno", action: #selector(newWindowFromDock(_:)), keyEquivalent: "")
+        item.target = self
+        menu.addItem(item)
+        return menu
+    }
+    @objc private func newWindowFromDock(_ sender: Any?) {
+        Task { @MainActor in WorkspaceHub.current?.newWindow() }
     }
 }
 
@@ -219,6 +246,15 @@ struct RootView: View {
                         SystemHealthView()
                             .environmentObject(state).environmentObject(nav).environment(\.crmTheme, state.theme).tint(state.theme.accent)
                     }
+                    // Mavinci → „Skanuj dokument do PDF…” — skaner w tym oknie, PDF w wybranym miejscu (domyślnie Pobrane).
+                    .sheet(isPresented: $nav.documentScanShown) {
+                        DocumentScannerSheet(title: "Skanuj dokument do PDF",
+                                             intro: "Zeskanuj jedną albo kilka stron — „Zakończ” łączy je w jeden PDF i pyta, gdzie go zapisać (domyślnie Pobrane).",
+                                             finishLabel: "Zakończ — zapisz PDF") { data, pages in
+                            DocumentScanSaver.save(data, pages: pages, workspace: state)
+                        }
+                        .environmentObject(state).environment(\.crmTheme, state.theme).tint(state.theme.accent)
+                    }
                     // „Mianuj sprzedawcą” (karta i lista kontaktów, osoby organizacji) — kreator w tym oknie.
                     .sheet(item: $nav.sellerAppointment) { preset in
                         NewSellerWizard(store: state.sellers, preset: preset) { result in state.sellerAppointed(result) }
@@ -247,8 +283,8 @@ struct RootView: View {
                         ToolbarItem(placement: .primaryAction) { if state.syncing { ProgressView().controlSize(.small) } }
                     }
                 }
-            } else if state.processWindowOpening {
-                // Okno w osobnym procesie (`WindowProcess.swift`): sesja i kopia z dysku — bez ekranu logowania w międzyczasie.
+            } else if state.windowOpening {
+                // Okno kolejnego obszaru (`WindowWorkspaces.swift`) przed przejęciem sesji — bez ekranu logowania w międzyczasie.
                 VStack(spacing: 12) {
                     ProgressView().controlSize(.large)
                     Text("Otwieranie okna…").font(.headline)
@@ -264,8 +300,8 @@ struct RootView: View {
         // Tryb testowy „widok jako” — pasek z „Wyjdź z trybu” zawsze na górze, na środku okna (`TestMode/TestMode.swift`).
         .safeAreaInset(edge: .top, spacing: 0) { TestModeBanner() }
         .sheet(isPresented: $help) { HelpView() }
-        // Sprawdzanie nowej wersji aplikacji — raz na uruchomienie (kolejne okna niczego nie dublują), w procesie głównym.
-        .task { if !AppInstance.isSecondary { state.updater.start() } }
+        // Sprawdzanie nowej wersji aplikacji — raz na uruchomienie, w pierwszym obszarze (kolejne okna dzielą jego aktualizacje).
+        .task { if !state.isSecondary { state.updater.start() } }
         .onChange(of: nav.selection) { _, next in
             if next != nil { nav.nativeSet = nil; nav.webItem = nil; nav.screen = nil }
             if let route = nav.eventRoute, next != route.origin { nav.eventRoute = nil }
@@ -290,10 +326,11 @@ struct RootView: View {
             }
         }
         .onChange(of: phase) { _, next in
-            // Kilka okien — jedno odświeżenie (pomija, gdy poprzednie zaczęło się przed chwilą).
+            // Powrót do okna — odświeżenie jego obszaru (pomija, gdy poprzednie zaczęło się przed chwilą).
             if next == .active { Task { await state.refreshIfIdle(after: 10) } }
         }
-        // Komunikator: rozmowy, połączenie na żywo i powiadomienia po zalogowaniu (raz na pracownika, niezależnie od liczby okien).
+        // Komunikator (wspólny dla okien): rozmowy, połączenie na żywo i powiadomienia po zalogowaniu (raz na pracownika,
+        // niezależnie od liczby okien).
         .task(id: state.employee?.id) { await state.chat.start() }
         .task(id: state.employee?.id) {
             while !Task.isCancelled && state.employee != nil {
@@ -396,7 +433,7 @@ struct HelpView: View {
                     Text("Kalendarz i Eventy używają wspólnego zakresu uprawnień i tego samego zbioru eventów. Kolorowe obramowanie wpisu odpowiada kategorii w CRM. Eventy i oferty domyślnie pomijają przeszłe i zamknięte rekordy; zaznacz Pokaż również ukryte lub Szukaj również w ukrytych, aby je odnaleźć. Filtr nie rozszerza uprawnień do danych.")
                     Text("Przetargi domyślnie pokazują aktywne sprawy. Na liście są ocena dopasowania, zamawiający i czas do terminu. Szczegóły zawierają dane jak modal CRM oraz obserwowanie, opiekuna, utworzenie zapytania, notatki, status i ocenę manualną. Starsze i ukryte pozycje włączysz filtrem.")
                     Text("⌘R odświeża dane, ⌘1 otwiera Mój dzień, ⌘2 zapytania, ⌘3 zadania. W Moich zadaniach ⌘N tworzy prywatne zadanie, a ⌘E edytuje zaznaczone.")
-                    Text("Okna i karty: Plik → Nowe okno (⇧⌘N) albo Nowa karta (⇧⌘T) otwiera bieżącą sekcję obok — każde okno ma własną nawigację, więc w jednym możesz mieć Wiadomości, a w drugim event. Prawy przycisk na pozycji paska bocznego albo na evencie w liście: Otwórz w nowym oknie / w nowej karcie. Nowe okno (także karta przeciągnięta z paska kart poza okno) działa w osobnym procesie: ma własny stan sekcji (np. podsekcję Finansów) i nie spowalnia pozostałych okien; zamknięcie go kończy ten proces, a zakończenie Mavinci albo wylogowanie zamyka wszystkie okna. Zapis w jednym oknie widać w drugim po odświeżeniu (co minutę, po przejściu do okna, ⌘R). Karty jednego okna dzielą stan sekcji — ta sama sekcja w dwóch kartach pokazuje ten sam otwarty rekord; karty eventów są niezależne. Karty obsługujesz jak w Finderze (Widok → Pokaż pasek kart, Okno → Scal wszystkie okna).")
+                    Text("Okna i karty: Plik → Nowe okno (⇧⌘N) albo Nowa karta (⇧⌘T) otwiera bieżącą sekcję obok; prawy przycisk na pozycji paska bocznego albo na evencie w liście: Otwórz w nowym oknie / w nowej karcie; menu ikony Mavinci w Docku: lista okien i Nowe okno. Każde okno i każda karta ma własny stan — sekcję, podsekcję (np. Finansów), otwarty rekord i filtry — więc praca w jednym oknie nie zmienia drugiego i go nie spowalnia. Karta przeciągnięta z paska kart do osobnego okna zachowuje swój stan. Zapis w jednym oknie widać w drugim po odświeżeniu (co minutę, po przejściu do okna, ⌘R). Wylogowanie zamyka pozostałe okna. Karty obsługujesz jak w Finderze (Widok → Pokaż pasek kart, Okno → Scal wszystkie okna).")
                     Text("Zapytania: przejmij nieprzypisaną sprawę, zapisz wykonany kontakt lub odłóż przypomnienie o godzinę. Po wykonaniu kontaktu możesz wybrać termin kolejnego działania. Ostateczne uprawnienia sprawdza baza danych.")
                     Text("Zadania: twórz prywatne zadania, zmieniaj tytuł, opis, priorytet, termin i etap. Zapis wymaga połączenia. Konflikt zmian wymaga odświeżenia; formularz zachowuje wpisany tekst.")
                     Text("Bez internetu ostatnia zapisana kopia jest dostępna tylko do odczytu przez maksymalnie 24 godziny od pełnego udanego odświeżenia. Po powrocie do aplikacji uprawnienia są sprawdzane ponownie. Wylogowanie usuwa kopię i lokalną sesję.")

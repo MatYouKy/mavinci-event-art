@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-// MARK: Bank i deklaracje na Macu — stan ekranów „Wyciągi”, „Uzgodnienie wyciągów” i „ZUS i podatki — deklaracje”
+// MARK: Bank i deklaracje na Macu — stan ekranów „Wyciągi”, „Uzgodnienie wyciągów”, „ZUS i podatki — deklaracje” i „Umowy stałe”
 // (`/bridge/native/v1/finance/bank`, token pracownika), a także faktur, KSeF oraz kosztów i wypłat (`/bridge/native/v1/finance`).
 // Dane trzymane w pamięci na czas pracy (wczytywane przy wejściu na ekran i po każdej zmianie); zapisy z oknem postępu
 // i komunikatem jak w CRM, potem świeży stan z serwera.
@@ -57,6 +57,13 @@ enum BankPreviewItem: Identifiable {
     @Published var declarationsError: String?
     @Published var openDeclaration: String?
 
+    // Umowy stałe (`FinanceContractsView.swift`)
+    @Published var contractLists: [String: FinContractsReply] = [:]
+    @Published var contractsLoading = false
+    @Published var contractsError: String?
+    @Published var contractsStatus = "active"
+    @Published var openContract: String?
+
     // Faktury (rejestr sprzedaży)
     @Published private(set) var invoices: FinInvoicesReply?
     @Published private(set) var invoicesLoading = false
@@ -100,6 +107,7 @@ enum BankPreviewItem: Identifiable {
         selectedTx = nil
         period = periods.first { $0.companyId == id }
         openDeclaration = nil
+        openContract = nil
         statementMonth = nil
     }
 
@@ -147,6 +155,7 @@ enum BankPreviewItem: Identifiable {
         statusFilter = "todo"; accountFilter = "all"; search = ""; selectedTx = nil; choice = [:]
         statementLists = [:]; statementsLoading = false; statementsError = nil; statementMonth = nil
         declarationLists = [:]; declarationsLoading = false; declarationsError = nil; openDeclaration = nil; declarationKind = "all"
+        contractLists = [:]; contractsLoading = false; contractsError = nil; contractsStatus = "active"; openContract = nil
         entries = nil; entriesLoading = false; entriesError = nil
         invoices = nil; invoicesLoading = false; invoicesError = nil; selectedInvoice = nil
         ksefCompanies = nil; ksefError = nil; ksefCompanyID = nil; ksefLists = [:]; ksefLoading = false; ksefListError = nil
@@ -180,6 +189,17 @@ enum BankPreviewItem: Identifiable {
 
     /// Plik do serwera (multipart, pole „file”) z polami formularza — import wyciągu, plik deklaracji, dokument wyjaśnienia.
     func upload(_ op: String, fields: [String: String], file: URL?, limit: Int) async throws -> [String: JSONValue] {
+        var part: BankUploadPart?
+        if let file {
+            let access = file.startAccessingSecurityScopedResource()
+            defer { if access { file.stopAccessingSecurityScopedResource() } }
+            part = BankUploadPart(data: try Data(contentsOf: file), name: file.lastPathComponent, mime: Self.mime(file))
+        }
+        return try await upload(op, fields: fields, part: part, limit: limit)
+    }
+
+    /// Jak wyżej, z treścią pliku w pamięci (np. skan umowy połączony w PDF).
+    func upload(_ op: String, fields: [String: String], part: BankUploadPart?, limit: Int) async throws -> [String: JSONValue] {
         guard let api, let url = URL(string: api.base.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/bridge/native/v1/finance/bank?op=\(op)") else {
             throw AppError.configuration
         }
@@ -188,16 +208,13 @@ enum BankPreviewItem: Identifiable {
         for (name, value) in fields.sorted(by: { $0.key < $1.key }) {
             body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
         }
-        if let file {
-            let access = file.startAccessingSecurityScopedResource()
-            defer { if access { file.stopAccessingSecurityScopedResource() } }
-            let content = try Data(contentsOf: file)
-            guard content.count <= limit else {
-                throw NativeFailure(status: 400, message: "Plik „\(file.lastPathComponent)” jest większy niż \(limit / 1024 / 1024) MB.", fieldErrors: [:])
+        if let part {
+            guard part.data.count <= limit else {
+                throw NativeFailure(status: 400, message: "Plik „\(part.name)” jest większy niż \(limit / 1024 / 1024) MB.", fieldErrors: [:])
             }
-            let name = file.lastPathComponent.replacingOccurrences(of: "\"", with: "")
-            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(name)\"\r\nContent-Type: \(Self.mime(file))\r\n\r\n".utf8))
-            body.append(content)
+            let name = part.name.replacingOccurrences(of: "\"", with: "")
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(name)\"\r\nContent-Type: \(part.mime)\r\n\r\n".utf8))
+            body.append(part.data)
             body.append(Data("\r\n".utf8))
         }
         body.append(Data("--\(boundary)--\r\n".utf8))
@@ -580,15 +597,19 @@ enum BankPreviewItem: Identifiable {
     @discardableResult func declarationAction(_ pending: String, _ op: String, _ body: [String: JSONValue]) async -> [String: JSONValue]? {
         guard let reply = await act(pending, op, body) else { return nil }
         invalidateDeclarations()
-        // Stany deklaracji są też w uzgodnieniu: otwarty miesiąc — od razu świeży, pozostałe — przy następnym otwarciu.
+        await refreshReconciliation()
+        await loadDeclarations(force: true)
+        return reply
+    }
+
+    /// Stany deklaracji i umów stałych są też w uzgodnieniu: otwarty miesiąc — od razu świeży, pozostałe — przy następnym otwarciu.
+    func refreshReconciliation() async {
         if finance?.part == .reconciliation, let current = period {
             months = months.filter { $0.key == current.id }
             await loadMonth(force: true)
         } else {
             months = [:]
         }
-        await loadDeclarations(force: true)
-        return reply
     }
 
     // MARK: Wszystkie dokumenty (`/bridge/native/v1/finance/bank`, op=documents)
@@ -872,4 +893,11 @@ enum BankPreviewItem: Identifiable {
             workspace.error = failureText(error, "Nie udało się wgrać pliku.")
         }
     }
+}
+
+/// Plik do wysłania w polu „file” (`FinanceBankStore.upload`).
+struct BankUploadPart {
+    let data: Data
+    let name: String
+    let mime: String
 }

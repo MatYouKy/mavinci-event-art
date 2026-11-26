@@ -1,7 +1,7 @@
 import SwiftUI
 
 // MARK: Finanse (`/crm/invoices`) — natywnie: Centrum finansów, Wyciągi, Uzgodnienie wyciągów, Terminy i monity,
-// Deklaracje ZUS i podatki, Zamknięcie miesięcy, Koszty i wypłaty (jak sekcje CRM „Centrum finansów”, „Dokumenty
+// Deklaracje ZUS i podatki, Umowy stałe (ze skanerem umów), Zamknięcie miesięcy, Koszty i wypłaty (jak sekcje CRM „Centrum finansów”, „Dokumenty
 // i rozliczenia” i „Koszty i wypłaty”), rejestr faktur z kartą faktury, faktury KSeF (wpłaty, synchronizacja) i przekazanie
 // księgowej (Saldeo). W CRM zostają wystawianie i edycja faktur oraz konfiguracja KSeF.
 
@@ -178,6 +178,10 @@ import SwiftUI
         case .declarations:
             guard let list = bank.declarationList else { return nil }
             return list.declarations.filter { DeclarationStatus.attention.contains($0.status) }.count
+        case .contracts:
+            // Okresy umów stałych po terminie (gdy rejestr wczytany).
+            guard let list = bank.contractList else { return nil }
+            return list.contracts.reduce(0) { $0 + $1.overdue }
         }
     }
 
@@ -197,6 +201,8 @@ import SwiftUI
                 FinanceReconciliationView(store: bank, finance: store)
             case .declarations:
                 FinanceDeclarationsView(store: bank, finance: store)
+            case .contracts:
+                FinanceContractsView(store: bank, finance: store)
             case .accountant:
                 FinanceAccountantView(store: store.saldeo, finance: store)
             case .entries:

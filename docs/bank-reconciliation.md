@@ -369,3 +369,37 @@ w całości, a faktura opłacona z wyciągu (ręczne oznaczenie zastąpione powi
   NASTROJOWO… — ustawiono tę działalność”); zgodna — potwierdzenie; NIP spoza działalności — ostrzeżenie. Z rozliczenia
   miesiąca (działalność ustalona z góry) tylko ostrzeżenie. Bez wybranej działalności odczyt idzie z domyślną (uprawnienia
   funkcji odczytu `extract-external-invoice` — bez zmian), a działalność ustala NIP nabywcy.
+
+## 15. Umowy stałe — skan wielostronicowy łączony w jeden PDF (26.11.2026)
+
+- **Skaner w trybie wielostronicowym** (`ScannerCaptureModal`, `multiPage`): pierwszy skan („Skanuj pierwszą stronę”)
+  nie zamyka okna — strony trafiają na listę „Zeskanowano: N stron · rozmiar”. „Dodaj stronę” skanuje kolejną (z podajnika
+  może przyjść kilka stron naraz), każdy skan można obejrzeć, przestawić (↑/↓) i usunąć. „Zakończ — połącz w PDF” łączy
+  skany w kolejności z listy w jeden plik (`pdf-lib` w przeglądarce, `copyPages` — bez ponownej kompresji obrazów).
+  Zamknięcie z niepołączonymi stronami pyta o potwierdzenie. Przy limicie rozmiaru (`maxBytes`) „Zakończ” jest zablokowane
+  z podpowiedzią (niższa jakość, np. 200 DPI, albo skala szarości). Faktury — bez zmian: jeden skan to jeden plik.
+- **Formularz umowy** (`RecurringContractFormModal` — „Nowa umowa stała”, edycja, „Nowa umowa z tej płatności”): sekcja
+  „Skan lub plik umowy” z przyciskami „Skanuj umowę” i „Dodaj plik” (kilka plików). Pliki czekają na liście (podgląd,
+  usuń) i wgrywają się po zapisaniu umowy („Wgrywanie plików 1/2…”); skan dostaje nazwę „<tytuł umowy> — skan RRRR-MM-DD.pdf”.
+  Błąd pliku nie cofa zapisanej umowy — komunikat mówi, ile plików nie weszło, i odsyła do szczegółów umowy. Zamknięcie
+  formularza z niezapisanymi plikami pyta o potwierdzenie. Skaner otwiera się nad formularzem (`Modal.layerClassName`).
+- **Szczegóły umowy** → „Pliki umowy i aneksów”: obok „Dodaj plik” przycisk „Skanuj” — połączony PDF od razu trafia do plików
+  umowy. Wgrywanie w obu miejscach to ta sama funkcja (`uploadContractFile`: magazyn `finance-contracts`
+  `firma/umowa/…`, rejestr `add_finance_recurring_contract_file`, przy błędzie rejestru plik jest usuwany z magazynu).
+  Limit pliku 20 MB (jak w magazynie).
+
+## 16. Umowy stałe na Macu i natywny skaner (26.11.2026)
+
+- **Mac — Finanse → Umowy stałe** (`desktop/mac/Sources/Mavinci/Finance/FinanceContractsView.swift`): rejestr jak
+  `RecurringContractsPanel` — lista z kratkami okresów i podsumowaniem, kafelki (aktywne, miesięcznie, po terminie),
+  szczegóły (okresy, przelewy z odpięciem i przejściem do uzgodnienia, pliki z podglądem), dodawanie, edycja (status),
+  usuwanie albo zakończenie umowy z płatnościami. Formularz wspólny z „Nowa umowa z tej płatności” w uzgodnieniu.
+- **Serwer** (`src/lib/native/financeBank.ts`, trasa `/bridge/native/v1/finance/bank`): `op=recurring` (rejestr działalności,
+  zdanie podsumowania z `recurringContractSummarySentence`), `saveContract` z `id` i `status` (zmiana; umowa musi należeć
+  do działalności z formularza), `contractDelete` (pliki z magazynu po usunięciu), `contractFile` (multipart, nazwa pliku
+  w osobnym polu `fileName` — polskie znaki), `contractFileRemove`, `file&kind=contract`. Odpięcie przelewu — `undo`
+  z `kind=contract`. Uprawnienia: „Podgląd finansów” do odczytu, „Zarządzanie finansami” do zmian; funkcje bazy jak w CRM.
+- **Skan umowy na Macu** (`Scanner/DocumentScanner.swift`): ImageCaptureCore (skanery na kablu, udostępnione i sieciowe —
+  AirScan / eSCL), strony jako miniatury („Dodaj stronę”, przestawianie, usuwanie), „Zakończ” łączy je w PDF (PDFKit).
+  W formularzu pliki wgrywają się po zapisie umowy; w szczegółach — od razu. Ten sam skaner: Mavinci → „Skanuj dokument
+  do PDF…” (zapis w wybranym miejscu).

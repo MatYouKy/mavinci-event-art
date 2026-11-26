@@ -10,6 +10,7 @@ import {
   matchMethodLabel,
   proposalRuleLabel,
   reconciliationRunSentence,
+  recurringContractSummarySentence,
   type RecurringContract,
 } from '@/lib/invoices/bankReconciliation';
 import { readBankTextFile, repairBrokenBankText } from '@/lib/bankTextEncoding';
@@ -41,7 +42,7 @@ import { invoicePdfFileName, isProformaInvoiceRow } from '@/lib/invoices/print/i
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 
 /*
- * Bank na Macu (`/crm/invoices`: „Wyciągi i płatności”, „Uzgodnienie wyciągów”, „ZUS i podatki — deklaracje”) — te same
+ * Bank na Macu (`/crm/invoices`: „Wyciągi i płatności”, „Uzgodnienie wyciągów”, „ZUS i podatki — deklaracje”, „Umowy stałe”) — te same
  * funkcje bazy co panele CRM (`BankReconciliationPanel`, `KSeFFinancialDashboard`, `FinanceDeclarationsPanel`, okna wyboru
  * dokumentu, wyjaśnienia, deklaracji, umowy stałej i zwrotu), klientem z tokenem pracownika: uprawnienia, RLS i ochrona
  * przed podwójnym rozliczeniem zostają w bazie. Logika wyboru dokumentu (płatność częściowa, gotówka na fakturze KSeF,
@@ -1274,10 +1275,14 @@ const CONTRACT_KINDS = new Set(['rent', 'lease', 'subscription', 'insurance', 'l
 const CONTRACT_CYCLES = new Set(['monthly', 'quarterly', 'yearly']);
 const digits = (value: unknown) => str(value).replace(/\D/g, '');
 
-/** „Nowa umowa z tej płatności” — walidacja jak `RecurringContractFormModal` w CRM. */
+/** Nowa umowa („Umowy stałe”, „Nowa umowa z tej płatności”) albo zmiana istniejącej (`id`, `status`) — walidacja jak
+ *  `RecurringContractFormModal` w CRM. */
 export async function saveContract(ctx: NativeContext, body: Row) {
   const companyId = uuid(body.companyId, 'Nieprawidłowa działalność.');
   await requireManage(ctx, companyId);
+  const id = body.id ? uuid(body.id, 'Nieprawidłowa umowa.') : null;
+  if (id && await contractCompany(ctx, id) !== companyId) fail('Umowa należy do innej działalności.');
+  const status = id && body.status === 'ended' ? 'ended' : 'active';
   const kind = str(body.kind);
   const direction = str(body.direction);
   const cycle = str(body.cycle);
@@ -1304,14 +1309,135 @@ export async function saveContract(ctx: NativeContext, body: Row) {
   if (paymentDay !== null && (paymentDay < 1 || paymentDay > 31)) fail('Dzień płatności to liczba od 1 do 31.');
   const paymentsFrom = /^\d{4}-\d{2}$/.test(str(body.paymentsFrom)) ? `${str(body.paymentsFrom)}-01` : null;
   const { data, error } = await ctx.supabase.rpc('save_finance_recurring_contract', {
-    p_id: null, p_company_id: companyId, p_kind: kind, p_direction: direction, p_title: title.slice(0, 200),
+    p_id: id, p_company_id: companyId, p_kind: kind, p_direction: direction, p_title: title.slice(0, 200),
     p_counterparty_name: counterparty.slice(0, 200), p_counterparty_nip: nip || null, p_counterparty_account: account || null,
     p_amount: amount, p_currency: currency, p_billing_cycle: cycle, p_payment_day: paymentDay,
     p_start_date: startDate, p_end_date: endDate || null, p_payments_from: paymentsFrom,
-    p_status: 'active', p_expects_invoice: body.expectsInvoice === true, p_notes: str(body.notes).trim().slice(0, 2000) || null,
+    p_status: status, p_expects_invoice: body.expectsInvoice === true, p_notes: str(body.notes).trim().slice(0, 2000) || null,
   });
   if (error) rpcFail(error, 'Nie udało się zapisać umowy.');
   return { ok: true, id: str(data), message: 'Umowa zapisana.' };
+}
+
+// MARK: Umowy stałe — rejestr (Mac: Finanse → „Umowy stałe”; CRM: `RecurringContractsPanel`)
+
+const CONTRACTS_BUCKET = 'finance-contracts';
+
+/** Działalność umowy (odczyt przez RLS — „Podgląd finansów” działalności). */
+async function contractCompany(ctx: NativeContext, contractId: string) {
+  const { data, error } = await ctx.supabase.from('finance_recurring_contracts').select('id,my_company_id').eq('id', contractId).maybeSingle();
+  if (error || !data?.my_company_id) fail('Nie znaleziono umowy albo nie masz do niej dostępu.', 404);
+  return String(data.my_company_id);
+}
+
+function contractOf(c: Row) {
+  const currency = str(c.currency) || 'PLN';
+  const summary = object(c.summary);
+  return {
+    id: str(c.id),
+    companyId: str(c.company_id),
+    kind: str(c.kind) || 'other',
+    direction: c.direction === 'income' ? 'income' : 'cost',
+    title: str(c.title),
+    counterparty: str(c.counterparty_name),
+    nip: strOrNull(c.counterparty_nip),
+    account: strOrNull(c.counterparty_account),
+    amount: num(c.amount),
+    currency,
+    cycle: str(c.billing_cycle) || 'monthly',
+    paymentDay: numOrNull(c.payment_day),
+    startDate: day(c.start_date) || '',
+    endDate: day(c.end_date),
+    paymentsFrom: day(c.payments_from),
+    status: c.status === 'ended' ? 'ended' : 'active',
+    expectsInvoice: c.expects_invoice === true,
+    notes: strOrNull(c.notes),
+    summary: recurringContractSummarySentence(c as RecurringContract, (value) => money(value, currency)),
+    overdue: num(summary.overdue),
+    overdueAmount: num(summary.overdue_amount),
+    nextDueDate: day(summary.next_due_date),
+    periods: rows(c.periods).map((p) => ({
+      start: day(p.period_start) || '',
+      label: str(p.label),
+      dueDate: day(p.due_date),
+      amount: num(p.amount),
+      paid: num(p.paid),
+      missing: num(p.missing),
+      status: str(p.status) || 'upcoming',
+    })),
+    payments: rows(c.payments).map((p) => ({
+      id: str(p.id),
+      transactionId: str(p.transaction_id),
+      periodLabel: str(p.period_label),
+      date: day(p.date) || '',
+      amount: num(p.amount),
+      method: matchMethodLabel(strOrNull(p.method)),
+      reasons: strings(p.reasons),
+      title: bankTextOrNull(p.title),
+      counterparty: bankTextOrNull(p.counterparty),
+      statementYear: num(p.statement_year),
+      statementMonth: num(p.statement_month),
+    })),
+    files: rows(c.files).map((f) => ({
+      id: str(f.id),
+      name: str(f.file_name),
+      size: numOrNull(f.file_size),
+      createdAt: strOrNull(f.created_at),
+    })),
+  };
+}
+
+/** Rejestr umów stałych działalności: okresy (opłacone, brak, po terminie, przyszłe), przelewy z wyciągów i pliki. */
+export async function recurringContracts(ctx: NativeContext, companyParam: unknown) {
+  const companyId = uuid(companyParam, 'Nieprawidłowa działalność.');
+  const { canManage } = await companyAccess(ctx, companyId);
+  const { data, error } = await ctx.supabase.rpc('get_finance_recurring_contracts', { p_company_id: companyId });
+  if (error) rpcFail(error, 'Nie udało się wczytać umów stałych.');
+  return { companyId, canManage, contracts: rows(data).map(contractOf) };
+}
+
+/** Usunięcie umowy bez płatności (z plikami); umowa z płatnościami zostaje zakończona i zostaje w historii. */
+export async function deleteContract(ctx: NativeContext, body: Row) {
+  const id = uuid(body.id, 'Nieprawidłowa umowa.');
+  await requireManage(ctx, await contractCompany(ctx, id));
+  const { data, error } = await ctx.supabase.rpc('delete_finance_recurring_contract', { p_id: id });
+  if (error) rpcFail(error, 'Nie udało się usunąć umowy.');
+  const result = object(data);
+  const paths = strings(result.paths);
+  if (paths.length) await ctx.supabase.storage.from(CONTRACTS_BUCKET).remove(paths);
+  const deleted = result.deleted === true;
+  return { ok: true, deleted, message: deleted ? 'Umowa usunięta.' : 'Umowa zakończona — zostaje w historii z płatnościami.' };
+}
+
+/** Plik umowy lub aneksu (także skan kilku stron połączony w PDF na Macu); `fileName` — nazwa do pokazania (polskie znaki). */
+export async function addContractFile(ctx: NativeContext, contractParam: unknown, file: File, nameParam: unknown) {
+  const contractId = uuid(contractParam, 'Nieprawidłowa umowa.');
+  const companyId = await contractCompany(ctx, contractId);
+  await requireManage(ctx, companyId);
+  if (file.size > 20 * 1024 * 1024) fail('Plik jest większy niż 20 MB.');
+  const fileName = (str(nameParam).trim() || file.name || 'plik').slice(0, 255);
+  const safe = fileName.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80) || 'plik';
+  const path = `${companyId}/${contractId}/${Date.now()}-${safe}`;
+  const { error: uploadError } = await ctx.supabase.storage.from(CONTRACTS_BUCKET)
+    .upload(path, new Uint8Array(await file.arrayBuffer()), { contentType: file.type || 'application/octet-stream', upsert: false });
+  if (uploadError) fail(uploadError.message || 'Nie udało się wgrać pliku.');
+  const { error } = await ctx.supabase.rpc('add_finance_recurring_contract_file', {
+    p_contract_id: contractId, p_storage_path: path, p_file_name: fileName, p_mime_type: file.type || null, p_file_size: file.size,
+  });
+  if (error) {
+    await ctx.supabase.storage.from(CONTRACTS_BUCKET).remove([path]);
+    rpcFail(error, 'Nie udało się zapisać pliku.');
+  }
+  return { ok: true, message: 'Plik umowy dodany.' };
+}
+
+export async function removeContractFile(ctx: NativeContext, body: Row) {
+  const contractId = uuid(body.contractId, 'Nieprawidłowa umowa.');
+  await requireManage(ctx, await contractCompany(ctx, contractId));
+  const { data, error } = await ctx.supabase.rpc('remove_finance_recurring_contract_file', { p_file_id: uuid(body.id, 'Nieprawidłowy plik.') });
+  if (error) rpcFail(error, 'Nie udało się usunąć pliku.');
+  if (data) await ctx.supabase.storage.from(CONTRACTS_BUCKET).remove([String(data)]);
+  return { ok: true, message: 'Plik usunięty.' };
 }
 
 // MARK: Para „płatność + zwrot” (`BankRefundPairModal`)
@@ -1705,6 +1831,15 @@ export async function fileContent(ctx: NativeContext, kind: unknown, idParam: un
       await companyAccess(ctx, await declarationCompany(ctx, String(data.declaration_id)));
       const file = await download(ctx, DECLARATIONS_BUCKET, String(data.storage_path));
       return asFile(str(data.file_name) || 'deklaracja', str(data.mime_type) || file.mime, file.bytes);
+    }
+    case 'contract': {
+      const id = uuid(idParam, 'Nieprawidłowy plik.');
+      const { data, error } = await ctx.supabase.from('finance_recurring_contract_files')
+        .select('id,contract_id,storage_path,file_name,mime_type').eq('id', id).maybeSingle();
+      if (error || !data) fail('Nie znaleziono pliku umowy.', 404);
+      await companyAccess(ctx, await contractCompany(ctx, String(data.contract_id)));
+      const file = await download(ctx, CONTRACTS_BUCKET, String(data.storage_path));
+      return asFile(str(data.file_name) || 'umowa', str(data.mime_type) || file.mime, file.bytes);
     }
     case 'supporting': {
       const id = uuid(idParam, 'Nieprawidłowy dokument.');

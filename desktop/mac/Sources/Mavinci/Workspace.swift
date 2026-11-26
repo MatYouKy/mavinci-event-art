@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 import AppKit
-import Combine
 import Network
 
 @MainActor final class Workspace: ObservableObject {
@@ -50,10 +49,12 @@ import Network
     let myTasks = TasksStore(board: .mine)
     /// Sprzedawcy zewnętrzni (`/crm/salespeople`) — kokpit opiekuna, karty sprzedawców, instrukcja opiekuna.
     let sellers = SellersStore()
-    /// Komunikator (`Chat/`) — rozmowy pracowników na żywo, jak widżet czatu w CRM i w telefonie.
-    let chat = ChatStore()
-    /// Kopia wydarzeń i spotkań w Kalendarzu Apple (`AppleCalendarSync.swift`) — aktualizowana po odświeżeniu, jeśli włączono.
-    let appleCalendar = AppleCalendarLink()
+    /// Komunikator (`Chat/`) — rozmowy pracowników na żywo, jak widżet czatu w CRM i w telefonie. Jeden dla wszystkich okien
+    /// (pierwszy obszar): jedno połączenie na żywo, powiadomienia i licznik na ikonie w Docku.
+    let chat: ChatStore
+    /// Kopia wydarzeń i spotkań w Kalendarzu Apple (`AppleCalendarSync.swift`) — aktualizowana po odświeżeniu pierwszego obszaru,
+    /// jeśli włączono; wspólna dla okien.
+    let appleCalendar: AppleCalendarLink
     let fleet = FleetStore()
     /// Rental → Wypożyczenia klientom (`/crm/rental`) — lista, karta, protokoły wydania i odbioru, rozliczenie.
     let clientRentals = ClientRentalsStore()
@@ -82,34 +83,44 @@ import Network
     let drive = DriveStore()
     /// Finanse (`/crm/invoices`) — Centrum finansów, terminy i monity, zamknięcia miesięcy; kopia na dysku.
     let finance = FinanceStore()
-    /// Aktualizacje aplikacji (`Updates/AppUpdater.swift`) — wersje publikowane przez `yarn dmg` na serwerze CRM.
-    let updater = AppUpdater()
+    /// Aktualizacje aplikacji (`Updates/AppUpdater.swift`) — wersje publikowane przez `yarn dmg` na serwerze CRM; wspólne dla okien.
+    let updater: AppUpdater
     /// Motyw okna (`employees.crm_theme`); do pierwszego odczytu profilu — ostatni motyw zapisany na tym Macu.
     @Published var theme = CrmTheme.saved
     /// Menu jak w CRM (z serwera; ostatnie zapisane na tym Macu do pierwszego odczytu).
     @Published var navigation: [NavItem] = []
     /// Pozycja paska bocznego przeciągana do kart (`NavigationDrag.swift`) — okna pokazują pola „Nowa karta” / „Nowe okno”.
     @Published var navDrag: String?
-    // MARK: Okna (`WindowNavigation.swift`) — każde okno ma własną nawigację; dane, sesja i synchronizacja są wspólne
-    /// Okno, w którym pracuje użytkownik (ostatnio aktywne okno obszaru roboczego) — do niego trafiają czynności nawigacji.
-    /// Przed pojawieniem się pierwszego okna i po zamknięciu ostatniego — nawigacja czekająca na następne okno.
+    // MARK: Okno (`WindowNavigation.swift`) — obszar roboczy ma jedno okno albo jedną kartę (`WindowWorkspaces.swift`)
+    /// Nawigacja okna tego obszaru — do niej trafiają czynności nawigacji. Przed pojawieniem się okna i po jego zamknięciu —
+    /// czeka na następne okno (ten sam widok po ponownym otwarciu).
     var activeNavigation = WindowNavigation()
-    /// Otwarte okna obszaru roboczego i okna przygotowane przez „Nowe okno”, „Nowa karta”, „Otwórz w nowym oknie”.
+    /// Okno obszaru na ekranie.
     var windowNavigations: [WindowNavigation] = []
-    var pendingNavigations: [WindowNavigation] = []
     /// Okno, w którym zaczęła się trwająca czynność, i okno ostatniego komunikatu.
     var busyWindow: UUID?
     var snackWindow: UUID?
-    /// Początek ostatniego odświeżenia (`refreshIfIdle` — jedno odświeżanie w tle niezależnie od liczby okien).
+    /// Początek ostatniego odświeżenia (`refreshIfIdle` — powrót do okna tuż po odświeżeniu go nie powtarza).
     var lastRefreshStarted: Date?
-    // MARK: Okna w osobnych procesach (`WindowProcess.swift`)
-    /// Okno tego procesu (okna w osobnym procesie) ustawione według okna źródłowego i widok z argumentu uruchomienia pokazany.
-    var processWindowPrepared = false
-    var windowLaunchApplied = false
-    /// Okno w osobnym procesie przed odczytem sesji i kopii z dysku — „Otwieranie okna…” zamiast ekranu logowania.
-    @Published private(set) var processWindowOpening = AppInstance.isSecondary
-    /// Sygnały od innych kopii aplikacji (okno na ekranie, zakończenie, aktualizacja, wylogowanie).
-    private var processLinks: Set<AnyCancellable> = []
+    // MARK: Obszary robocze okien (`WindowWorkspaces.swift`)
+    /// Pierwszy obszar (logowanie, sesja, usługi wspólne); `nil` — to jest pierwszy obszar.
+    let primary: Workspace?
+    /// Obszar okna otwartego jako kolejne okno lub karta (wspólna sesja z pierwszym obszarem).
+    var isSecondary: Bool { primary != nil }
+    /// Pierwszy obszar: obszary pozostałych okien, obszary przygotowane dla otwieranych okien, obszar okna na pierwszym planie
+    /// i otwieranie okna obszaru roboczego bez widoku (menu ikony w Docku, logowanie po wylogowaniu w innym oknie).
+    let windowWorkspaces = NSHashTable<Workspace>.weakObjects()
+    var pendingWorkspaces: [Workspace] = []
+    weak var keyWorkspace: Workspace?
+    var openWindowAction: OpenWindowAction?
+    /// Obszar kolejnego okna: sesja i dane przejęte (`adopt`), odświeżenie po pojawieniu się okna, praca zakończona
+    /// (`shutdown`), okno do zamknięcia od razu po podpięciu (nie było sesji do przejęcia).
+    private(set) var adopted = false
+    private var windowStarted = false
+    private var finished = false
+    var closeWhenAttached = false
+    /// Okno kolejnego obszaru przed przejęciem sesji — „Otwieranie okna…” zamiast ekranu logowania.
+    @Published private(set) var windowOpening = false
     // Nawigacja aktywnego okna — czynności (`switchSection`, `showEvent`, `openHref`…); widoki okna czytają własną `WindowNavigation`.
     var selection: Module? { get { activeNavigation.selection } set { activeNavigation.selection = newValue } }
     var eventRoute: EventRoute? { get { activeNavigation.eventRoute } set { activeNavigation.eventRoute = newValue } }
@@ -171,7 +182,13 @@ import Network
     var canConfigure: Bool { false }
     #endif
     var unread: Int { rows(.notifications).filter { $0.fields["is_read"]?.flag != true }.count }
-    init() {
+    /// `primary` — pierwszy obszar, gdy to obszar kolejnego okna (`WindowWorkspaces.swift`): komunikator, Kalendarz Apple
+    /// i aktualizacje są jego, sesję przejmuje `adopt`.
+    init(primary: Workspace? = nil) {
+        self.primary = primary
+        chat = primary?.chat ?? ChatStore()
+        appleCalendar = primary?.appleCalendar ?? AppleCalendarLink()
+        updater = primary?.updater ?? AppUpdater()
         messages.workspace = self
         meetings.workspace = self
         inquiries.workspace = self
@@ -186,7 +203,6 @@ import Network
         eventCards.workspace = self
         myTasks.workspace = self
         sellers.workspace = self
-        chat.workspace = self
         fleet.workspace = self
         clientRentals.workspace = self
         purchases.workspace = self
@@ -201,7 +217,12 @@ import Network
         materials.workspace = self
         drive.workspace = self
         finance.workspace = self
-        updater.workspace = self
+        if primary == nil {
+            chat.workspace = self
+            updater.workspace = self
+        } else {
+            windowOpening = true
+        }
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 guard let self else { return }
@@ -212,52 +233,17 @@ import Network
             }
         }
         monitor.start(queue: DispatchQueue(label: "pl.mavinci.network"))
-        if AppInstance.isSecondary { Vault.shareAcrossProcesses() }
-        startProcessLinks()
-    }
-    /// Sygnały kopii aplikacji (`AppInstance.Signal`, `WindowProcess.swift`): okno nowego procesu na ekranie (proces źródłowy
-    /// zdejmuje postęp), zakończenie procesu głównego i instalacja aktualizacji (okna w osobnych procesach kończą pracę),
-    /// wylogowanie (okna w osobnych procesach się zamykają; proces główny wylogowuje się, gdy sesji nie ma już w pęku kluczy).
-    private func startProcessLinks() {
-        let center = DistributedNotificationCenter.default()
-        center.publisher(for: AppInstance.Signal.shown.name).receive(on: DispatchQueue.main)
-            .sink { note in
-                if let token = note.object as? String { WindowProcess.markShown(token) }
-            }
-            .store(in: &processLinks)
-        center.publisher(for: AppInstance.Signal.quit.name).receive(on: DispatchQueue.main)
-            .sink { note in
-                if AppInstance.isSecondary, AppInstance.fromSibling(note) { NSApp.terminate(nil) }
-            }
-            .store(in: &processLinks)
-        center.publisher(for: AppInstance.Signal.update.name).receive(on: DispatchQueue.main)
-            .sink { note in
-                if AppInstance.fromSibling(note) { NSApp.terminate(nil) }
-            }
-            .store(in: &processLinks)
-        center.publisher(for: AppInstance.Signal.signedOut.name).receive(on: DispatchQueue.main)
-            .sink { [weak self] note in
-                guard let self, AppInstance.fromSibling(note) else { return }
-                if AppInstance.isSecondary { NSApp.terminate(nil); return }
-                guard self.testMode == nil, self.backend != nil else { return }
-                // Sygnał wylogowania potwierdzony stanem pęku kluczy (świeży odczyt — inny proces usunął sesję).
-                do {
-                    guard try Vault.readFresh("session-\(self.connection.identity)") == nil else { return }
-                } catch { return }
-                Task { await self.logout() }
-            }
-            .store(in: &processLinks)
     }
     func rows(_ module: Module) -> [Row] {
         if module == .events {return snapshot?.collections[Module.calendar.rawValue]?.rows.filter{$0["kind"]=="event"} ?? []}
         return snapshot?.collections[module.rawValue]?.rows ?? []
     }
     func restore() async {
-        defer { if processWindowOpening { processWindowOpening = false } }
+        // Okno z własnym obszarem: sesja i dane z okna źródłowego, potem własne odświeżenie (`WindowWorkspaces.swift`).
+        if let primary { await startWindow(primary); return }
         guard !loading, snapshot == nil, testMode == nil, connection.valid else { return }
-        // Kopie z trybu testowego przerwanego zamknięciem aplikacji — usuwane przy następnym starcie (w procesie głównym — okno
-        // w osobnym procesie nie usuwa kopii trwającego trybu testowego procesu głównego).
-        if !AppInstance.isSecondary { TestModeStorage.purgeLeftover() }
+        // Kopie z trybu testowego przerwanego zamknięciem aplikacji — usuwane przy następnym starcie.
+        TestModeStorage.purgeLeftover()
         loading = true
         defer { loading = false }
         let ticket = generation
@@ -266,8 +252,7 @@ import Network
             let session = try JSONDecoder().decode(Session.self, from: data)
             let api = HTTPBackend(connection); backend = api
             await api.restore(session)
-            // Mavinci w Finderze i widżety prowadzi proces główny (okno w osobnym procesie ich nie dubluje).
-            if !AppInstance.isSecondary { FinderDomain.activate(connection: connection, session: data, fresh: false) }
+            FinderDomain.activate(connection: connection, session: data, fresh: false)
             openStores(namespace: digest("\(connection.identity)|\(session.user.id)"))
             Task { await BrandStore.refresh(nativeAPI()) }
             // Kopia z dysku od razu (bez czekania na sieć); zapis dopiero po potwierdzeniu profilu na serwerze.
@@ -276,12 +261,68 @@ import Network
             let stored = cache
             let saved = try await Task.detached(priority: .userInitiated) { try stored?.load() }.value
             guard ticket == generation else { return }
-            if let saved, Date().timeIntervalSince(saved.savedAt) <= 30 * 86_400 { snapshot = saved; restoreNavigation(); applyWindowLaunch(final: false) }
+            if let saved, Date().timeIntervalSince(saved.savedAt) <= 30 * 86_400 { snapshot = saved; restoreNavigation() }
             await refresh(force: true)
         } catch {
             self.error = friendlyError(error)
         }
     }
+    // MARK: Obszar kolejnego okna (`WindowWorkspaces.swift`)
+
+    /// Okno z własnym obszarem: wspólna sesja (ten sam `HTTPBackend` — token odświeża jedno miejsce) i dane okna `source`
+    /// w chwili otwarcia, więc okno pokazuje się od razu, bez logowania i czekania na sieć. Stan sekcji (magazyny) — z kopii
+    /// na dysku, jak po uruchomieniu aplikacji; dalej obszar odświeża się sam. `false` — okno źródłowe nie ma sesji.
+    @discardableResult func adopt(from source: Workspace) -> Bool {
+        guard isSecondary, !adopted, !finished, source !== self, source.testMode == nil, let shared = source.backend,
+              let data = source.snapshot, let namespace = source.cacheNamespace else { return false }
+        adopted = true
+        backend = shared
+        connection = source.connection
+        theme = source.theme
+        navigation = source.navigation
+        openStores(namespace: namespace)
+        snapshot = data
+        dashboard = source.dashboard; dashboardError = source.dashboardError; dashboardLoadedAt = source.dashboardLoadedAt
+        scheduleRows = source.scheduleRows; scheduleFailed = source.scheduleFailed
+        moduleErrors = source.moduleErrors; compatibilityMode = source.compatibilityMode
+        verifiedConnection = source.verifiedConnection; offline = source.offline
+        windowOpening = false
+        return true
+    }
+
+    /// Okno kolejnego obszaru na ekranie: własne odświeżenie. Okno otwarte przez macOS (odtworzone przy starcie) bez danych okna
+    /// źródłowego czeka na sesję pierwszego obszaru; bez niej (ekran logowania) — zamyka się.
+    private func startWindow(_ primary: Workspace) async {
+        guard !windowStarted, !finished else { return }
+        windowStarted = true
+        let started = Date()
+        while !adopted {
+            let source = primary.keyWorkspace.flatMap { $0 === self ? nil : $0 } ?? primary
+            if adopt(from: source) { break }
+            let waited = Date().timeIntervalSince(started)
+            if finished || waited > 15 || (waited > 2 && !primary.loading && primary.backend == nil) {
+                closeWindow()
+                return
+            }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+        await refresh()
+    }
+
+    /// Zamknięte okno kolejnego obszaru: koniec pracy w tle (odświeżanie, obserwacja sieci); komunikator i okno na pierwszym
+    /// planie wracają do pozostałych obszarów. Sesja i usługi wspólne zostają w pierwszym obszarze.
+    func shutdown() {
+        guard let primary, !finished else { return }
+        finished = true
+        generation = UUID()
+        persistTask?.cancel(); persistTask = nil
+        monitor.cancel()
+        primary.windowWorkspaces.remove(self)
+        primary.pendingWorkspaces.removeAll { $0 === self }
+        if primary.keyWorkspace === self { primary.keyWorkspace = nil }
+        if chat.workspace === self { chat.workspace = primary.keyWorkspace ?? primary }
+    }
+
     func login(email: String, password: String) async {
         guard !loading else { return }
         loading = true; error = nil
@@ -355,8 +396,6 @@ import Network
                 await loadNavigation()
             }
             guard ticket == generation else { return }
-            // Okno w osobnym procesie: widok z okna źródłowego (gdy kopia na dysku nie miała menu — teraz).
-            applyWindowLaunch(final: true)
             await loadSchedule()
             for module in modules where module != .day && module != .events {
                 guard ticket == generation else { return }
@@ -416,8 +455,9 @@ import Network
             // Do not extend the offline permission lease on a partial/failed synchronization.
             if moduleErrors.isEmpty { snapshot?.savedAt = Date() }
             if !editing { refreshEventToken = UUID() }
-            // Kalendarz Apple: automatyczna aktualizacja kopii po pełnym odświeżeniu kalendarza (tylko gdy wpisy się zmieniły).
-            if testMode == nil, !AppInstance.isSecondary, current.canView(.calendar), moduleErrors["calendar"] == nil, snapshot?.collections["calendar"]?.lastSync != nil {
+            // Kalendarz Apple: automatyczna aktualizacja kopii po pełnym odświeżeniu kalendarza (tylko gdy wpisy się zmieniły) —
+            // w pierwszym obszarze (kolejne okna jej nie dublują).
+            if testMode == nil, !isSecondary, current.canView(.calendar), moduleErrors["calendar"] == nil, snapshot?.collections["calendar"]?.lastSync != nil {
                 appleCalendar.refreshed(rows: rows(.calendar), employee: current.id, identity: connection.identity)
             }
             if snapshot != nil { scheduleSnapshotWrite(after: nil, reportFailure: true) }
@@ -523,6 +563,8 @@ import Network
         offline = false
     }
     func logout() async {
+        // Okno z własnym obszarem: sesja jest wspólna — wylogowuje pierwszy obszar (wszystkie okna).
+        if let primary { await primary.logout(); return }
         // Tryb testowy: „Wyloguj” (także wygaśnięcie sesji oglądanej osoby) kończy tryb i przywraca sesję administratora.
         if testMode != nil { await exitTestMode(); return }
         let old = backend
@@ -536,10 +578,8 @@ import Network
         catch { self.error = "Nie udało się usunąć lokalnej kopii. Sprawdź dostęp aplikacji do plików i pęku kluczy." }
         cache = nil
         await old?.logout()
-        // Wylogowanie zamyka okna w osobnych procesach (`WindowProcess.swift`); w oknie osobnego procesu kończy jego proces —
-        // logowanie jest w oknie procesu głównego.
-        AppInstance.post(.signedOut)
-        if AppInstance.isSecondary { NSApp.terminate(nil) }
+        // Wylogowanie z innego okna, gdy okno pierwszego obszaru było zamknięte — nowe okno z logowaniem.
+        showWindowIfNeeded()
     }
     /// Stan obszaru roboczego w pamięci: dane, sekcje, okna (zostaje jedno). `forget` — wylogowanie i wyjście z trybu testowego:
     /// kopie kart natywnych, dashboardu i planu dnia znikają też z dysku; bez tego (wejście w tryb testowy) kopie administratora
@@ -550,7 +590,8 @@ import Network
         backend = nil
         snapshot = nil
         for nav in allNavigations { nav.reset() }
-        // Po wylogowaniu zostaje jedno okno (logowanie) — pozostałe okna i karty są zamykane.
+        // Po wylogowaniu (i przy wejściu w tryb testowy) zostaje jedno okno — okna i karty z własnym obszarem są zamykane.
+        closeWindowWorkspaces()
         for nav in windowNavigations where nav !== activeNavigation { nav.window?.close() }
         verifiedConnection = false; offline = false; syncing = false; acting = false; editing = false; refreshQueued = false
         moduleErrors = [:]; compatibilityMode = false; notice = nil; snack = nil; pending = nil
@@ -563,7 +604,8 @@ import Network
     }
     /// Kopie danych konta na dysku (przestrzeń nazw: połączenie + konto) — po zalogowaniu, przy starcie i w trybie testowym.
     private func openStores(namespace: String) {
-        cache = LocalCache(namespace: namespace)
+        // Kopię zbiorów na dysku zapisuje pierwszy obszar; obszar kolejnego okna przejmuje zbiory z pamięci okna źródłowego.
+        if !isSecondary { cache = LocalCache(namespace: namespace) }
         native.open(namespace: namespace)
         messages.open(namespace: namespace)
         meetings.open(namespace: namespace)
@@ -594,9 +636,9 @@ import Network
     /// i operacje serwera wyłączone). Sesja administratora zostaje w pęku kluczy, jego kopie danych na dysku i Finder — bez
     /// zmian. Zwraca komunikat błędu albo `nil`.
     func enterTestMode(employeeID: String) async -> String? {
+        // Tryb testowy prowadzi pierwszy obszar w jednym oknie (pozostałe okna się zamykają — `resetState`).
+        if let primary { return await primary.enterTestMode(employeeID: employeeID) }
         guard testMode == nil else { return "Tryb testowy jest już włączony — najpierw wyjdź z trybu." }
-        // Sesja oglądanej osoby jest tylko w pamięci procesu — tryb prowadzi proces główny (jego okna i karty).
-        guard !AppInstance.isSecondary else { return "Tryb testowy włączysz w głównym oknie Mavinci — to okno działa w osobnym procesie." }
         guard employee?.isAdmin == true, let admin = backend, let crm = connection.crm else { return "Tryb testowy jest dostępny tylko dla administratora." }
         guard !loading, !acting, pending == nil else { return "Trwa inna czynność — spróbuj ponownie za chwilę." }
         let home = connection
@@ -644,6 +686,8 @@ import Network
         snapshot = Snapshot(employee: target)
         verifiedConnection = true; offline = false
         notice = "Tryb testowy: widok \(reply.label). Zmiany nie są zapisywane."
+        // Włączony w Ustawieniach, gdy okno pierwszego obszaru było zamknięte — okno z widokiem testowym.
+        showWindowIfNeeded()
         await refresh(force: true)
         return nil
     }
@@ -652,6 +696,7 @@ import Network
     /// na serwerze, kopie danych oglądanej osoby usunięte z dysku, wraca administrator (sesja z pęku kluczy).
     /// `reason` — komunikat zamiast potwierdzenia.
     func exitTestMode(reason: String? = nil) async {
+        if let primary { await primary.exitTestMode(reason: reason); return }
         guard testMode != nil, let home = testHome else { return }
         testSwitching = true
         defer { testSwitching = false }
@@ -684,8 +729,8 @@ import Network
     func switchSection(_ module:Module) {
         guard employee?.canView(module)==true else{return}
         eventRoute=nil;focusedID=nil;notificationsVisible=false;nativeSet=nil;webItem=nil;screen=nil;selection=module
-        // Wejście do Ofert z paska bocznego pokazuje listę (strona oferty otwiera się przez `showOffer`); oferta otwarta w innym
-        // oknie zostaje (stan sekcji jest wspólny dla okien).
+        // Wejście do Ofert z paska bocznego pokazuje listę (strona oferty otwiera się przez `showOffer`); oferta otwarta w innej
+        // karcie tego obszaru zostaje (`shownElsewhere`; okna i karty z własnym obszarem mają własny stan sekcji).
         if module == .offers && !shownElsewhere(module: .offers) { offers.openedID = nil }
         // Wejście do Kontaktów pokazuje listę (karta otwiera się przez `showContact` albo z listy).
         if module == .contacts && !shownElsewhere(module: .contacts) { contacts.opened = nil }
@@ -831,14 +876,20 @@ extension Workspace {
     /// Zmiana motywu: od razu w oknie, potem zapis w profilu pracownika (jak `CrmThemePicker` w CRM). Bez połączenia — tylko na tym Macu.
     func setTheme(_ next: CrmTheme) async {
         let previous = theme
-        theme = next; next.remember()
+        applyTheme(next)
         guard let id = employee?.id, let backend = eventAPI(), !offline else { return }
         do {
             _ = try await backend.request("/rest/v1/employees", method: "PATCH", query: [.init(name: "id", value: "eq.\(id)")], body: ["crm_theme": .string(next.rawValue)])
         } catch {
-            theme = previous; previous.remember()
+            applyTheme(previous)
             self.error = "Nie udało się zapisać motywu w profilu. Spróbuj ponownie."
         }
+    }
+    /// Motyw we wszystkich oknach — każdy obszar roboczy ma własny (`WindowWorkspaces.swift`).
+    private func applyTheme(_ next: CrmTheme) {
+        let root = primary ?? self
+        for workspace in [root] + root.windowWorkspaces.allObjects where workspace.theme != next { workspace.theme = next }
+        next.remember()
     }
 }
 
@@ -922,7 +973,7 @@ extension Workspace {
         if let module = item.module, employee?.canView(module) == true { switchSection(module); sidebarHref = href; return }
         if let screen = item.screen {
             // Wejście do Zespołu z innej sekcji pokazuje listę (karta pracownika otwiera się przez `showEmployee`). Sekcja otwarta
-            // w innym oknie zachowuje tam otwarty rekord (stan sekcji jest wspólny dla okien).
+            // w innej karcie tego obszaru zachowuje tam otwarty rekord (`shownElsewhere`).
             if screen == .team && self.screen != .team && !shownElsewhere(screen: .team) { team.openedID = nil; team.openedTab = nil; team.openedDate = nil }
             if screen != self.screen && !shownElsewhere(screen: screen) {
                 switch screen {

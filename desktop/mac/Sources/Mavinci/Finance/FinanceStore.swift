@@ -8,7 +8,7 @@ import SwiftUI
 
 /// Części ekranu Finanse (lewa kolumna).
 enum FinancePart: String, CaseIterable, Identifiable {
-    case center, statements, reconciliation, deadlines, declarations, accountant, periods, documents, invoices, ksef, entries
+    case center, statements, reconciliation, deadlines, declarations, contracts, accountant, periods, documents, invoices, ksef, entries
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -17,6 +17,7 @@ enum FinancePart: String, CaseIterable, Identifiable {
         case .reconciliation: return "Uzgodnienie wyciągów"
         case .deadlines: return "Terminy i monity"
         case .declarations: return "Deklaracje ZUS i podatki"
+        case .contracts: return "Umowy stałe"
         case .accountant: return "Przekazanie księgowej"
         case .periods: return "Zamknięcie miesięcy"
         case .entries: return "Koszty i wypłaty"
@@ -32,6 +33,7 @@ enum FinancePart: String, CaseIterable, Identifiable {
         case .reconciliation: return "Operacje ↔ faktury, propozycje"
         case .deadlines: return "Kalendarz, monity, biała lista"
         case .declarations: return "DRA, PIT-4R, VAT-7, CIT-8"
+        case .contracts: return "Najem, abonamenty, leasing"
         case .accountant: return "Saldeo, wyciągi, płatności zbiorcze"
         case .periods: return "Blokada miesięcy po przekazaniu"
         case .entries: return "Wypłaty, gotówka, koszty bez dokumentu"
@@ -47,6 +49,7 @@ enum FinancePart: String, CaseIterable, Identifiable {
         case .reconciliation: return "arrow.left.arrow.right"
         case .deadlines: return "calendar.badge.clock"
         case .declarations: return "doc.plaintext"
+        case .contracts: return "calendar.badge.clock"
         case .accountant: return "paperplane"
         case .periods: return "lock"
         case .entries: return "creditcard"
@@ -60,7 +63,7 @@ enum FinancePart: String, CaseIterable, Identifiable {
         switch self {
         case .center: return "Przegląd"
         case .statements, .reconciliation: return "Bank"
-        case .deadlines, .declarations, .accountant, .periods: return "Podatki i terminy"
+        case .deadlines, .declarations, .contracts, .accountant, .periods: return "Podatki i terminy"
         case .documents, .entries, .invoices, .ksef: return "Koszty i dokumenty"
         }
     }
@@ -87,6 +90,8 @@ enum FinancePart: String, CaseIterable, Identifiable {
             return "Wszystkie faktury i dokumenty kosztowe wybranej działalności w jednym rejestrze: faktury z KSeF (wystawione i otrzymane), faktury utworzone w CRM i dokumenty spoza KSeF — faktury zagraniczne (np. Adobe, OpenAI), paragony, polisy, noty. Przełącznik „Źródło” pokazuje wszystkie albo tylko KSeF, CRM lub spoza KSeF; do tego rodzaj (koszty / sprzedaż), stan zapłaty i wyszukiwanie. Wiersz pod filtrami pokazuje, które filtry działają. Dwuklik otwiera podgląd dokumentu. Dokument spoza KSeF dodaje się w CRM (wgranie pliku z odczytem danych).\n\nPo co: każdy dokument kosztowy i sprzedażowy znajdziesz w jednym miejscu, niezależnie od tego, czy przyszedł przez KSeF."
         case .entries:
             return "Ręczne zapisy kosztów, których nie ma w KSeF ani na fakturach: wynagrodzenia i wypłaty, podwykonawcy, zakupy, zwroty kosztów, gotówka. Zapłacone i poniesione liczą się do wyniku, planowane — nie.\n\nPo co: raporty i wynik obejmują też koszty bez faktury."
+        case .contracts:
+            return "Najem, leasing, abonamenty i raty płacone co miesiąc, kwartał lub rok bez faktury za każdy okres (np. najem garażu od osoby prywatnej, rata pożyczki). Okresy pokazują, za co zapłacono, a czego brakuje; przelew na rachunek z umowy z kwotą okresu przypisuje się sam przy uzgadnianiu wyciągu, inne przypiszesz w „Uzgodnieniu wyciągów”. Umowę i aneksy możesz zeskanować — kilka stron połączy się w jeden PDF.\n\nPo co: stałe koszty i wpływy bez faktur też są pod kontrolą, a umowa leży przy płatnościach."
         case .declarations:
             return "Rejestr deklaracji (DRA, PIT-4R, VAT-7, CIT-8) z kwotą do zapłaty, plikami i rozbiciem na pracowników. Przelewy z okresem w tytule przypisują się przy uzgadnianiu wyciągu — tu widać niedopłatę, nadpłatę albo brak przelewu.\n\nPo co: kwota z deklaracji i przelew z banku zgadzają się co do grosza."
         }
@@ -488,6 +493,7 @@ enum FinDeadlinesList: String, CaseIterable, Identifiable {
         if href.contains("section=reconciliation") || href.contains("section=control") { part = .reconciliation; return }
         if href.contains("section=statements") { part = .statements; return }
         if href.contains("section=declarations") { part = .declarations; return }
+        if href.contains("section=recurring") { part = .contracts; return }
         if href.contains("tab=expenses") { part = .entries; return }
         if href.contains("tab=local") { part = .invoices; return }
         if href.contains("tab=ksef") { part = .ksef; return }

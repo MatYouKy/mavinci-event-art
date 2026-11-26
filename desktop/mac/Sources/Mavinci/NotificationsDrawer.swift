@@ -204,6 +204,7 @@ import AppKit
             case "statements":return .statements
             case "reconciliation":return .reconciliation
             case "declarations":return .declarations
+            case "recurring":return .contracts
             case "accountant":return .accountant
             case "periods":return .periods
             case "documents","external":return .documents

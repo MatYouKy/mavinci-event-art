@@ -110,9 +110,11 @@ enum ChatLauncherMode: String { case shown, minimized, hidden }
         .accessibilityLabel("Komunikator")
     }
 
-    /// Powiadomienie albo „Czat” z karty pracownika — w oknie, w którym pracuje użytkownik.
+    /// Powiadomienie albo „Czat” z karty pracownika — w oknie, w którym pracuje użytkownik (komunikator jest wspólny dla okien,
+    /// a każde okno ma własny obszar — prośbę obsługuje okno na pierwszym planie, `WindowWorkspaces.swift`).
     private func handleRequest() {
-        guard let request = store.openRequest, state.activeNavigation === nav else { return }
+        let root = state.primary ?? state
+        guard let request = store.openRequest, state.activeNavigation === nav, (root.keyWorkspace ?? root) === state else { return }
         store.openRequest = nil
         nav.chatOpen = true
         nav.chatMinimized = false

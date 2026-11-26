@@ -6,7 +6,8 @@ import SwiftUI
 // Zamiast arkusza przyklejonego do okna — zwykłe okno macOS: skalowanie, przesuwanie, kilka naraz i praca obok głównego okna
 // (np. przewijanie skrzynki przy pisaniu odpowiedzi). Widok, który otwierał arkusz (`.sheet(item:)`), otwiera okno tym samym
 // zapisem: `.formWindow(item:kind:)`. Treść czeka w `FormWindows` pod identyfikatorem, który dostaje scena `WindowGroup`
-// (`MavinciApp`: obszar roboczy, motyw); okno zabiera ją przy otwarciu. `dismiss()` w formularzu zamyka okno. Nowa wiadomość
+// (`MavinciApp`: motyw), razem z obszarem roboczym okna, z którego otwarto formularz (`WindowWorkspaces.swift` — zapis
+// odświeża sekcję tego okna); okno zabiera ją przy otwarciu. `dismiss()` w formularzu zamyka okno. Nowa wiadomość
 // otwiera się zawsze w rozmiarze okna modalnego na środku okna CRM (`FormWindowKind.openSize`), a nie w ostatnim rozmiarze
 // (np. na cały ekran po powiększeniu poprzedniego okna).
 
@@ -24,15 +25,16 @@ enum FormWindowKind: String {
 /// Treść okien formularzy czekająca na otwarcie okna (zabierana raz, przy otwarciu).
 @MainActor final class FormWindows {
     static let shared = FormWindows()
-    private var pending: [UUID: (view: AnyView, size: CGSize?)] = [:]
+    private var pending: [UUID: (view: AnyView, size: CGSize?, owner: Workspace?)] = [:]
 
+    /// `owner` — obszar okna na pierwszym planie (to z niego otwiera się formularz).
     func register(_ content: AnyView, size: CGSize? = nil) -> UUID {
         let id = UUID()
-        pending[id] = (content, size)
+        pending[id] = (content, size, WorkspaceHub.current?.keyWorkspace)
         return id
     }
 
-    func take(_ id: UUID) -> (view: AnyView, size: CGSize?)? { pending.removeValue(forKey: id) }
+    func take(_ id: UUID) -> (view: AnyView, size: CGSize?, owner: Workspace?)? { pending.removeValue(forKey: id) }
 }
 
 private struct InFormWindowKey: EnvironmentKey {
@@ -55,13 +57,17 @@ extension EnvironmentValues {
     @Environment(\.crmTheme) private var theme
     @State private var content: AnyView?
     @State private var size: CGSize?
+    @State private var owner: Workspace?
     @State private var checked = false
 
     var body: some View {
         Group {
             if let content {
-                content.environment(\.inFormWindow, true)
-                    .background { if let size { FormWindowSizer(size: size) } }
+                Group {
+                    if let owner { content.environmentObject(owner).environmentObject(owner.native) } else { content }
+                }
+                .environment(\.inFormWindow, true)
+                .background { if let size { FormWindowSizer(size: size) } }
             } else if checked {
                 ContentUnavailableView {
                     Label("Formularz nie jest już otwarty", systemImage: "doc.questionmark")
@@ -82,6 +88,7 @@ extension EnvironmentValues {
             if let id, let entry = FormWindows.shared.take(id) {
                 content = entry.view
                 size = entry.size
+                owner = entry.owner
             }
         }
     }
@@ -89,7 +96,7 @@ extension EnvironmentValues {
 
 extension View {
     /// Jak `.sheet(item:)`, tylko formularz otwiera się w osobnym oknie (`FormWindowHost`): ustawienie `item` otwiera okno
-    /// i zeruje `item` (kolejne ustawienie — kolejne okno). Obszar roboczy i motyw okno dostaje ze sceny.
+    /// i zeruje `item` (kolejne ustawienie — kolejne okno). Obszar roboczy — okna, z którego otwarto formularz; motyw — ze sceny.
     func formWindow<Item: Identifiable, Panel: View>(item: Binding<Item?>, kind: FormWindowKind,
                                                       @ViewBuilder content: @escaping (Item) -> Panel) -> some View {
         modifier(FormWindowPresenter(item: item, kind: kind, panel: content))

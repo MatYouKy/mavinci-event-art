@@ -2014,3 +2014,18 @@ Panel „Przegląd” w karcie wydarzenia otwiera się domyślnie. Na stałe (na
 - **CRM**: „Dodaj dokument spoza KSeF” — nowy dokument ma od razu domyślną działalność (Mavinci), „Odczytaj AI” działa bez wybierania, a NIP nabywcy z odczytu ustawia właściwą działalność (`financeEntityByNip`; z rozliczenia miesiąca — tylko ostrzeżenie). Marka bez NIP (Event Rulers) zniknęła z list działalności w finansach (`src/lib/invoices/financeEntities.ts`): dokument spoza KSeF, koszty i wypłaty, przegląd finansowy, KSeF (panel, ustawienia), numeracja i wystawianie faktur (nowa, edycja, z wydarzenia, końcowa), deklaracje, umowy stałe, Saldeo, `CompanySelector` na ekranach finansów, „Finanse według działalności” w uprawnieniach; umowy personelu — migracja `20261202170000_personnel_companies_without_brands.sql`. Wybór marki realizującej wydarzenie bez zmian. Opis: `docs/bank-reconciliation.md` (sekcja 14).
 - **Mac**: serwer bez marek w wyborze działalności przy wystawianiu, edycji i fakturze końcowej; „Finanse według działalności” w uprawnieniach pracownika — tylko działalności (`CompanyAccessOption.financeEntity`).
 - **Mobile**: nie dotyczy — telefon nie ma finansów (Zakupy już bez marek w bazie).
+
+### 2026-11-26 — Umowy stałe: skanowanie wielu stron do jednego PDF (u242)
+- **CRM:** skaner w trybie wielostronicowym (`ScannerCaptureModal multiPage`: „Dodaj stronę”, podgląd/kolejność/usuwanie skanów, „Zakończ — połącz w PDF” przez `pdf-lib`, limit 20 MB); formularz umowy stałej — „Skanuj umowę” i „Dodaj plik” (pliki wgrywane po zapisie umowy); szczegóły umowy — „Skanuj” obok „Dodaj plik”; `Modal.layerClassName` (skaner nad formularzem). Faktury bez zmian.
+- **Mac:** n/d — rejestr umów stałych i skaner są tylko w CRM.
+- **Mobile:** n/d — rejestru umów stałych nie ma w aplikacji mobilnej.
+
+### 2026-11-26 — Mac: okna jak w VS Code — jedna aplikacja, każde okno z własnym obszarem roboczym (u243)
+- **Mac:** zamiast osobnych procesów (u238 — druga ikona w Docku) jedna aplikacja z jedną ikoną; okna w menu ikony w Docku (z „Nowe okno”). Każde okno i każda karta ma własny `Workspace` (`WindowWorkspaces.swift`): dane, stan sekcji (np. podsekcja Finansów), zapisy i odświeżanie — zmiana w jednym oknie nie zmienia i nie przelicza drugiego (scena aplikacji nie obserwuje danych — `WorkspaceHub`). Pierwszy obszar: logowanie, wspólna sesja (jeden `HTTPBackend`), komunikator, pasek menu, Finder, Kalendarz Apple, aktualizacje, tryb testowy. Nowe okno pokazuje się od razu z danymi okna źródłowego; wiadomości i formularze działają w obszarze okna, z którego je otwarto; menu aplikacji — na oknie na pierwszym planie. Usunięto `WindowProcess.swift`, sygnały między procesami i współdzielenie pęku kluczy między procesami.
+- **CRM:** n/d — przeglądarka ma własne karty.
+- **Mobile:** n/d — jedno okno aplikacji.
+
+### 2026-11-26 — Mac: Finanse → Umowy stałe i natywny skaner dokumentów (u244)
+- **Mac:** nowa część Finansów „Umowy stałe” (`FinanceContractsView.swift`) jak `RecurringContractsPanel` w CRM — rejestr z okresami, przelewami (odpięcie) i plikami, dodawanie, edycja, usuwanie/zakończenie; formularz wspólny z „Nowa umowa z tej płatności”; „Skanuj umowę” / „Skanuj” i „Dodaj plik”. Skaner natywny (ImageCaptureCore, `Scanner/DocumentScanner.swift`): wiele stron → jeden PDF; także Mavinci → „Skanuj dokument do PDF…”. Serwer: `op=recurring`, `saveContract` (edycja), `contractDelete`, `contractFile`, `contractFileRemove`, `file&kind=contract`.
+- **CRM:** bez zmian (rejestr i skan wielostronicowy — u242).
+- **Mobile:** n/d — rejestru umów stałych nie ma w aplikacji mobilnej.

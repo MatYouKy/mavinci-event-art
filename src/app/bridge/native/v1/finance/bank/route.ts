@@ -1,12 +1,14 @@
 import { nativeContext, nativeJson, nativeUnauthorized, readJson } from '@/lib/native/auth';
 import {
   acceptProposal,
+  addContractFile,
   addDeclarationFile,
   bankMonth,
   bankPeriods,
   checkStatementRemoval,
   contractCandidates,
   declarations,
+  deleteContract,
   deleteDeclaration,
   deleteDeclarationLine,
   deleteStatement,
@@ -22,8 +24,10 @@ import {
   matchDocument,
   pickerDocuments,
   prefillDeclarationLines,
+  recurringContracts,
   refundCandidates,
   rejectProposal,
+  removeContractFile,
   removeDeclarationFile,
   renameStatement,
   runReconciliation,
@@ -44,15 +48,18 @@ export const maxDuration = 300;
  * Bank i deklaracje dla aplikacji na Maca (`src/lib/native/financeBank.ts`) — token pracownika, uprawnienia jak w CRM.
  * GET op=periods | month&company&year&month | picker&transaction&allocated | explain&transaction | details&transaction |
  *   contracts&transaction&remaining | refunds&transaction&search | declarations&company&years | statements&company&year |
- *   file&kind=statement|declaration|supporting&id | document&source=invoice|external|ksef&id |
+ *   recurring&company — rejestr „Umowy stałe” (okresy, przelewy, pliki) |
+ *   file&kind=statement|declaration|contract|supporting&id | document&source=invoice|external|ksef&id |
  *   documents&company&from&to — „Wszystkie dokumenty”: faktury KSeF, CRM i dokumenty spoza KSeF działalności za zakres dat |
  *   matchedPdf&company&year&month (też POST JSON — Mac z dłuższym czasem oczekiwania).
  *   matchedPdf — „Dopasowane faktury (PDF)”: zestawienie i dokumenty przypisane w miesiącu, adres do pobrania (`drive.server.ts`).
- * POST JSON op=run | accept | reject | undo | match | explain | linkDeclaration | linkContract | saveContract | linkRefund | matchedPdf |
+ * POST JSON op=run | accept | reject | undo | match | explain | linkDeclaration | linkContract | saveContract (nowa albo `id`
+ *   i `status` — zmiana) | contractDelete | contractFileRemove | linkRefund | matchedPdf |
  *   declarationSave | declarationDelete | lineSave | lineDelete | linesPrefill | declarationFileRemove |
  *   statementRename | statementCheck | statementDelete.
  * POST multipart (pole „file”) ?op=statementImport (companyId, year, month, accountType, format, confirmAccount) |
- *   declarationFile (declarationId) | explainFile (transactionId, subtype, note).
+ *   declarationFile (declarationId) | contractFile (contractId, fileName — np. skan umowy z Maca) |
+ *   explainFile (transactionId, subtype, note).
  */
 
 const failure = (message: string, status = 400) => nativeJson({ error: message }, status);
@@ -88,6 +95,8 @@ export async function GET(request: Request) {
         return nativeJson(await declarations(ctx, params.get('company'), params.get('years')));
       case 'statements':
         return nativeJson(await statements(ctx, params.get('company'), params.get('year')));
+      case 'recurring':
+        return nativeJson(await recurringContracts(ctx, params.get('company')));
       case 'file':
         return nativeJson(await fileContent(ctx, params.get('kind'), params.get('id')));
       case 'document':
@@ -128,6 +137,7 @@ async function multipart(request: Request, op: string) {
       }, file));
     }
     if (op === 'declarationFile') return nativeJson(await addDeclarationFile(ctx, field(form, 'declarationId'), file));
+    if (op === 'contractFile') return nativeJson(await addContractFile(ctx, field(form, 'contractId'), file, field(form, 'fileName')));
     return failure('Nieznana operacja.');
   } catch (error) {
     if (statusOf(error) >= 500) console.error('[native-finance-bank]', error);
@@ -137,7 +147,7 @@ async function multipart(request: Request, op: string) {
 
 export async function POST(request: Request) {
   const fileOp = new URL(request.url).searchParams.get('op') || '';
-  if (['statementImport', 'declarationFile', 'explainFile'].includes(fileOp)) return multipart(request, fileOp);
+  if (['statementImport', 'declarationFile', 'contractFile', 'explainFile'].includes(fileOp)) return multipart(request, fileOp);
 
   const ctx = await nativeContext(request);
   if (!ctx) return nativeUnauthorized();
@@ -168,6 +178,10 @@ export async function POST(request: Request) {
         return nativeJson(await linkContract(ctx, body));
       case 'saveContract':
         return nativeJson(await saveContract(ctx, body));
+      case 'contractDelete':
+        return nativeJson(await deleteContract(ctx, body));
+      case 'contractFileRemove':
+        return nativeJson(await removeContractFile(ctx, body));
       case 'linkRefund':
         return nativeJson(await linkRefund(ctx, body));
       case 'matchedPdf':
