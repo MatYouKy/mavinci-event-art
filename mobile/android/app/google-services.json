@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "207391092670",
+    "project_id": "mavinci-crm-ea9c7",
+    "storage_bucket": "mavinci-crm-ea9c7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:207391092670:android:38fc697369b04c8f1193ef",
+        "android_client_info": {
+          "package_name": "com.mavinci.crm"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAOqmry-zTGnhfi4CNAal9GqHX6yC2UA6k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
