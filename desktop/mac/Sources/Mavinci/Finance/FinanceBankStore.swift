@@ -413,7 +413,9 @@ enum BankPreviewItem: Identifiable {
             let saved = try ContractFiles.saveToDownloads(data, name: name)
             let documents = Int(reply["documents"]?.number ?? 0), pages = Int(reply["pages"]?.number ?? 0)
             let skipped = reply["skipped"]?.array.count ?? 0
+            let unmatched = Int(reply["unmatched"]?.number ?? 0)
             let summary = "Zapisano „\(saved.lastPathComponent)” w Pobranych — dokumenty: \(documents), strony: \(pages)."
+                + (unmatched > 0 ? " Płatności bez dokumentu: \(unmatched) (powody w załączniku)." : "")
             if skipped > 0 {
                 workspace.notice = summary + " Bez pliku: \(skipped) (lista na pierwszej stronie)."
             } else {
@@ -435,7 +437,7 @@ enum BankPreviewItem: Identifiable {
         for t in open {
             lines.append([
                 t.date, t.accountKind == "vat" ? "VAT" : "bieżący", t.credit ? "Wpływ" : "Wydatek", t.counterparty ?? "", t.title ?? "",
-                amount(t.amount), amount(t.remaining), t.currency, BankStatus.label(t.status), t.proposal?.reason ?? "",
+                amount(t.amount), amount(t.remaining), t.currency, BankStatus.label(t.status), t.missingHint,
             ].map(escape).joined(separator: ";"))
         }
         let name = "braki-dokumentow-\(month.year)-\(String(format: "%02d", month.month)).csv"

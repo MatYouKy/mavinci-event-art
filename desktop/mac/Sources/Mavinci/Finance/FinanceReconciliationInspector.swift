@@ -1,7 +1,8 @@
 import SwiftUI
 
 // MARK: Panel jednej operacji uzgodnienia: dane z wyciągu, rozliczenie (dokumenty, wypłaty, deklaracje, umowy, zwroty)
-// z cofaniem, wyjaśnienie bez faktury, propozycja systemu (zatwierdź / odrzuć / wybierz inny) i ręczne rozliczenie.
+// z cofaniem, wyjaśnienie bez faktury, propozycja systemu (zatwierdź / odrzuć / wybierz inny), dlaczego bez dokumentu (opis
+// braku dokumentu i fakty o dokumentach kontrahenta — docs/bank-reconciliation.md, sekcja 18) i ręczne rozliczenie.
 
 struct ReconciliationInspector: View {
     @ObservedObject var store: FinanceBankStore
@@ -27,6 +28,7 @@ struct ReconciliationInspector: View {
                         proposalView(proposal)
                     }
                 }
+                if tx.isOpen && (tx.pendingNote != nil || !tx.reasons.isEmpty) { whyView }
                 if canManage && tx.isOpen { manual }
                 if !canManage {
                     Text("Podgląd — zmiany w rozliczeniu wymagają poziomu „Zarządzanie finansami” tej działalności.")
@@ -192,6 +194,39 @@ struct ReconciliationInspector: View {
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(CrmTheme.rgb(0x14b8a6).opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    // MARK: Dlaczego bez dokumentu
+    /// Opis braku dokumentu (zmiana, usunięcie) i fakty o dokumentach kontrahenta — jak pod operacją w CRM; to samo trafia do
+    /// załącznika „Dopasowane faktury (PDF)”.
+    private var whyView: some View {
+        section("Dlaczego bez dokumentu", symbol: "questionmark.circle") {
+            VStack(alignment: .leading, spacing: 8) {
+                if let note = tx.pendingNote {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("\(note.label) · opis do kontroli").font(.callout.weight(.medium))
+                        Text(note.note).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if canManage {
+                            HStack(spacing: 8) {
+                                Button { open(.explain(tx, note.subtype)) } label: { Label("Zmień opis", systemImage: "pencil") }
+                                Button { Task { await store.undo(tx, kind: "note", id: nil) } } label: { Label("Usuń opis", systemImage: "trash") }
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(CrmTheme.rgb(0xf59e0b).opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(CrmTheme.rgb(0xf59e0b).opacity(0.25)))
+                    .help("Płatność dalej czeka na dokument — opis trafia do załącznika „Dopasowane faktury (PDF)”.")
+                }
+                ForEach(Array(tx.reasons.enumerated()), id: \.offset) { _, line in
+                    Label(line, systemImage: "magnifyingglass").font(.callout).foregroundStyle(.secondary)
+                        .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 
@@ -376,6 +411,11 @@ struct ReconciliationInspector: View {
         section("Rozlicz ręcznie", symbol: "hand.point.up.left") {
             VStack(alignment: .leading, spacing: 6) {
                 manualButton("Wybierz dokument", detail: "Faktura KSeF, CRM, spoza KSeF albo wypłata — także płatność częściowa", symbol: "doc.text.magnifyingglass") { open(.picker(tx)) }
+                if tx.pendingNote == nil {
+                    manualButton("Opisz brak dokumentu", detail: "Np. szukam faktury u dostawcy — płatność czeka dalej, opis trafi do „Dopasowane faktury (PDF)”", symbol: "square.and.pencil") {
+                        open(.explain(tx, tx.credit ? "other" : "supplier_invoice_missing"))
+                    }
+                }
                 manualButton("Wyjaśnij bez faktury", detail: "Opłata bankowa, przelew własny, transfer VAT, ZUS, wynagrodzenie, gotówka…", symbol: "arrow.left.arrow.right") { open(.explain(tx, "other")) }
                 if tx.credit && tx.looksLikeCashDeposit {
                     manualButton("Wpłata własna", detail: "Gotówka właściciela we wpłatomacie — nie jest przychodem", symbol: "banknote") { open(.explain(tx, "owner_deposit")) }

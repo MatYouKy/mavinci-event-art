@@ -34,6 +34,9 @@ import {
   pickerMatchedBlockingReason,
   pickerPlannedAllocation,
 } from '@/lib/bankPickerAllocation';
+import {
+  PENDING_NOTE_SAVED_MESSAGE, pendingNoteOf, SUPPLIER_INVOICE_MISSING_NOTE, unmatchedFactsMap, unmatchedReasons, type UnmatchedReasonFacts,
+} from '@/lib/invoices/bankUnmatchedReasons';
 import { loadExternalDocumentKinds } from '@/lib/invoices/loadExternalDocumentKinds';
 import { externalDocumentKindLabel } from '@/lib/invoices/externalDocumentKinds';
 import { REGISTER_STATE_LABELS, registerState, warsawToday } from '@/lib/invoices/documentRegister';
@@ -401,8 +404,16 @@ export async function bankMonth(ctx: NativeContext, companyParam: unknown, yearP
   const year = intIn(yearParam, 2000, 2100, 'Nieprawidłowy rok.');
   const month = intIn(monthParam, 1, 12, 'Nieprawidłowy miesiąc.');
   const { canManage } = await companyAccess(ctx, companyId);
-  const { data, error } = await ctx.supabase.rpc('get_bank_reconciliation_month', { p_company_id: companyId, p_year: year, p_month: month });
+  // Uzgodnienie i — równolegle — powody braku dokumentu (migracja 20261202190000; bez niej lista bez powodów).
+  const [monthResult, reasonsResult] = await Promise.all([
+    ctx.supabase.rpc('get_bank_reconciliation_month', { p_company_id: companyId, p_year: year, p_month: month }),
+    ctx.supabase.rpc('get_bank_unmatched_reasons', { p_company_id: companyId, p_year: year, p_month: month }),
+  ]);
+  const { data, error } = monthResult;
   if (error) rpcFail(error, 'Nie udało się wczytać uzgodnienia.');
+  let facts = new Map<string, UnmatchedReasonFacts>();
+  if (!reasonsResult.error) facts = unmatchedFactsMap(reasonsResult.data);
+  else if (!['PGRST202', '42883'].includes(String(reasonsResult.error.code || ''))) console.error('[native bank] unmatched reasons', reasonsResult.error.message);
   const raw = object(data);
   const period = { year, month };
   const lastRun = raw.last_run ? object(raw.last_run) : null;
@@ -439,7 +450,16 @@ export async function bankMonth(ctx: NativeContext, companyParam: unknown, yearP
     })),
     transactions: rows(raw.transactions).map((t) => {
       const bookedDate = booked.get(str(t.id));
-      return { ...transactionOf(t, period), bookedDate: bookedDate && bookedDate !== day(t.date) ? bookedDate : null };
+      const base = transactionOf(t, period);
+      const fact = facts.get(base.id) ?? null;
+      return {
+        ...base,
+        bookedDate: bookedDate && bookedDate !== day(t.date) ? bookedDate : null,
+        /** Opis braku dokumentu („Opisz brak dokumentu” — wyjaśnienie do kontroli): rodzaj, subtype do edycji, treść. */
+        pendingNote: pendingNoteOf(fact),
+        /** Dlaczego bez dokumentu — fakty, których inspektor nie pokazuje osobno (sekcja 18). */
+        why: unmatchedReasons(base, fact, 'app'),
+      };
     }),
     declarations: rows(raw.declarations).map((d) => ({
       id: str(d.id),
@@ -535,6 +555,14 @@ export async function undoLink(ctx: NativeContext, body: Row) {
     case 'explanation':
       result = await ctx.supabase.rpc('clear_bank_transaction_explanation', { p_transaction_id: transactionId });
       message = 'Wyjaśnienie cofnięte.';
+      break;
+    case 'note':
+      // Opis braku dokumentu (wyjaśnienie „do kontroli”) — usunięcie treści; wyjaśnienia zamkniętego nie rusza.
+      result = await ctx.supabase.from('bank_transactions')
+        .update({ accounting_category: 'other', accounting_subtype: null, accounting_note: null, accounting_reviewed_at: null })
+        .eq('id', transactionId)
+        .or('accounting_review_status.is.null,accounting_review_status.neq.explained');
+      message = 'Opis braku dokumentu usunięty. Płatność dalej czeka na dokument.';
       break;
     default:
       fail('Nieznana operacja.');
@@ -804,7 +832,7 @@ const EXPLAIN_ACTIONS: ExplainAction[] = [
   { subtype: 'cash_settlement', label: 'Rozliczenie gotówkowe', category: 'cash', defaultNote: 'Operacja związana z rozliczeniem gotówkowym — nie jest płatnością faktury z tego rachunku.', resolvesWithoutDocument: true },
   { subtype: 'owner_deposit', label: 'Wpłata własna (środki właściciela, np. gotówka we wpłatomacie)', category: 'own_transfer', defaultNote: 'Wpłata własnych środków właściciela na rachunek firmy (np. gotówka we wpłatomacie). Nie jest przychodem i nie wymaga faktury.', resolvesWithoutDocument: true, direction: 'credit' },
   { subtype: 'owner_withdrawal', label: 'Wypłata własna (pobranie środków przez właściciela)', category: 'own_transfer', defaultNote: 'Wypłata środków z rachunku firmy na potrzeby własne właściciela (np. gotówka z bankomatu). Nie jest kosztem i nie wymaga faktury.', resolvesWithoutDocument: true, direction: 'debit' },
-  { subtype: 'supplier_invoice_missing', label: 'Brak faktury od dostawcy', category: 'foreign_purchase', defaultNote: 'Dostawca nie wystawił faktury na właściwą działalność. Dokument pozostaje do pozyskania.', alwaysPending: true },
+  { subtype: 'supplier_invoice_missing', label: 'Brak faktury od dostawcy', category: 'foreign_purchase', defaultNote: SUPPLIER_INVOICE_MISSING_NOTE, alwaysPending: true },
   { subtype: 'other', label: 'Inne wyjaśnienie', category: 'other', defaultNote: '' },
 ];
 
@@ -944,6 +972,9 @@ export async function explainTransaction(ctx: NativeContext, body: Row, file: Fi
   if (resolved) return { ok: true, resolved, tone: 'success', message: 'Płatność została opisana i oznaczona jako wyjaśniona.' };
   if (requiresDocument && !file) {
     return { ok: true, resolved, tone: 'warning', message: `Opis zapisany. Dołącz ${action.documentLabel || 'dokument'}, aby zamknąć kontrolę.` };
+  }
+  if (action.alwaysPending) {
+    return { ok: true, resolved, tone: 'success', message: PENDING_NOTE_SAVED_MESSAGE };
   }
   return { ok: true, resolved, tone: 'warning', message: 'Opis zapisany. Płatność pozostaje do kontroli.' };
 }

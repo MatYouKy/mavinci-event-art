@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, Image as ImageIcon, Loader2, Trash2, Upload } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
+import { Check, Image as ImageIcon, ImagePlus, Loader2, Trash2, Upload } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { isLocationBackgroundPath, LOCATION_BACKGROUND_BUCKET } from '@/lib/CRM/Offers/offerVenueBackground';
 
@@ -10,7 +10,8 @@ import { isLocationBackgroundPath, LOCATION_BACKGROUND_BUCKET } from '@/lib/CRM/
  * także gdy klientem jest inna firma (np. impreza firmowa w hotelu Marina: oferta dla firmy, w tle Marina). Nowe zdjęcie (trafia
  * też do galerii obiektu — jeden zapis z kontrolą zmian, jak informacje techniczne) albo zdjęcie z galerii obiektu i sal
  * (`location-materials`). Okładka: własna grafika oferty → tło miejsca → grafika szablonu. `onGalleryChange` — nowe zdjęcie
- * w galerii (strona odświeża „Informacje techniczne”).
+ * w galerii (strona odświeża „Informacje techniczne”). Zdjęcie można też przeciągnąć na sekcję — nad sekcją pojawia się strefa
+ * upuszczania (jak w aplikacji na Maca, `LocationOfferBackgroundPanel`).
  */
 
 type Row = Record<string, any>;
@@ -66,6 +67,9 @@ export function LocationOfferBackground({ locationId, readOnly = false, onGaller
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const fileInput = useRef<HTMLInputElement | null>(null);
+  // Przeciąganie pliku nad sekcją: licznik wejść (dragenter/dragleave przychodzą też z elementów w środku sekcji).
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
 
   const load = useCallback(async () => {
     setError('');
@@ -182,9 +186,55 @@ export function LocationOfferBackground({ locationId, readOnly = false, onGaller
     }
   };
 
+  const canUpload = !readOnly && ready && loaded && !busy;
+  const draggingFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types || []).includes('Files');
+  const onDragEnter = (event: DragEvent<HTMLElement>) => {
+    if (!canUpload || !draggingFiles(event)) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setDragging(true);
+  };
+  const onDragOver = (event: DragEvent<HTMLElement>) => {
+    if (!canUpload || !draggingFiles(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+  const onDragLeave = (event: DragEvent<HTMLElement>) => {
+    if (!dragging) return;
+    event.preventDefault();
+    dragDepth.current = Math.max(dragDepth.current - 1, 0);
+    if (dragDepth.current === 0) setDragging(false);
+  };
+  /** Upuszczony plik: pierwsze zdjęcie (albo pierwszy plik — komunikat o formacie z `upload`). */
+  const onDrop = (event: DragEvent<HTMLElement>) => {
+    if (!draggingFiles(event)) return;
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragging(false);
+    if (!canUpload) return;
+    const files = Array.from(event.dataTransfer.files || []);
+    void upload(files.find((file) => FORMATS[(file.name.split('.').pop() || '').toLowerCase()]) || files[0]);
+  };
+
   const previewUrl = path ? urls[path] : '';
   return (
-    <section className="mt-6 rounded-xl bg-[#351020] p-4 text-[#e5e4e2] sm:p-6">
+    <section
+      className="relative mt-6 rounded-xl bg-[#351020] p-4 text-[#e5e4e2] sm:p-6"
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dragging && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#d3bb73] bg-[#351020]/90 p-6 text-center backdrop-blur-sm"
+        >
+          <Upload className="h-8 w-8 text-[#d3bb73]" />
+          <p className="text-base text-[#e5e4e2]">{path ? 'Upuść zdjęcie, aby zmienić tło ofert' : 'Upuść zdjęcie — tło ofert tej lokalizacji'}</p>
+          <p className="text-xs text-[#e5e4e2]/60">JPG, PNG lub WEBP · do 20 MB · trafi też do galerii obiektu</p>
+        </div>
+      )}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-lg uppercase">
           <ImageIcon className="h-5 w-5 text-[#d3bb73]" />
@@ -231,15 +281,29 @@ export function LocationOfferBackground({ locationId, readOnly = false, onGaller
       )}
       {ready && !loaded && <p className="text-sm text-[#e5e4e2]/60">Ładowanie…</p>}
       {ready && loaded && (path ? (
-        <div className="overflow-hidden rounded-xl border border-[#d3bb73]/15 bg-[#0f1118]">
-          {previewUrl
-            ? <img src={previewUrl} alt="Tło ofert" className="h-56 w-full object-cover" />
-            : <p className="p-6 text-sm text-[#e5e4e2]/60">Nie udało się wczytać podglądu zdjęcia.</p>}
-        </div>
-      ) : (
+        <>
+          <div className="overflow-hidden rounded-xl border border-[#d3bb73]/15 bg-[#0f1118]">
+            {previewUrl
+              ? <img src={previewUrl} alt="Tło ofert" className="h-56 w-full object-cover" />
+              : <p className="p-6 text-sm text-[#e5e4e2]/60">Nie udało się wczytać podglądu zdjęcia.</p>}
+          </div>
+          {!readOnly && <p className="mt-2 text-xs text-[#e5e4e2]/40">Przeciągnij nowe zdjęcie na sekcję, aby zmienić tło.</p>}
+        </>
+      ) : readOnly ? (
         <p className="rounded-lg border border-dashed border-[#d3bb73]/20 p-6 text-center text-sm text-[#e5e4e2]/50">
           Brak tła — okładka oferty użyje grafiki szablonu.
         </p>
+      ) : (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => fileInput.current?.click()}
+          className="flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed border-[#d3bb73]/20 p-6 text-center text-sm text-[#e5e4e2]/50 transition-colors hover:border-[#d3bb73]/50 disabled:opacity-60"
+        >
+          <ImagePlus className="h-6 w-6 text-[#d3bb73]/70" />
+          <span>Brak tła — okładka oferty użyje grafiki szablonu.</span>
+          <span className="text-xs text-[#e5e4e2]/40">Przeciągnij tu zdjęcie lub kliknij, aby wybrać plik · JPG, PNG, WEBP · do 20 MB</span>
+        </button>
       ))}
       {picking && (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

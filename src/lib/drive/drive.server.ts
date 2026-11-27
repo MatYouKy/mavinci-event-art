@@ -9,7 +9,11 @@ import { assetRegisterRows } from '@/lib/assets/assets.server';
 import type { AssetRegisterRow } from '@/lib/assets/assetsShared';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin.server';
 import { latestDesktopRelease, signedDesktopLink } from '@/lib/native/desktopRelease';
-import type { MatchedFile, MatchedPayment } from './matchedDocumentsPdf.server';
+import type { MatchedFile, MatchedPayment, UnmatchedPayment } from './matchedDocumentsPdf.server';
+import { repairBrokenBankText } from '@/lib/bankTextEncoding';
+import {
+  UNMATCHED_STATUSES, unmatchedFactsMap, unmatchedPartyName, unmatchedReasons, unmatchedStateLabel, type UnmatchedReasonFacts,
+} from '@/lib/invoices/bankUnmatchedReasons';
 import {
   DRIVE_CORPORATE_CATEGORIES, DRIVE_EMPLOYEE_GROUPS, DRIVE_FINANCE_AGREEMENTS, DRIVE_FINANCE_ASSETS, DRIVE_FINANCE_BOOKS, DRIVE_FINANCE_CLARIFY,
   DRIVE_FINANCE_CORPORATE, DRIVE_FINANCE_GROUPS, DRIVE_MONTHS, driveAssetsNodeId, driveClarifyNodeId, driveMonthCloseFileId,
@@ -1966,12 +1970,17 @@ async function matchedDownload(ctx: NativeContext, type: DriveFileType, id: stri
   }
 }
 
+/** Tekst z wyciągu: naprawa kodowania, bez „˙”, pojedyncze spacje (jak `bankText` w `financeBank.ts`). */
+const bankText = (value: unknown) => repairBrokenBankText(text(value) || null).replace(/[˙]+/g, ' ').replace(/\s+/g, ' ').trim();
+
 /**
  * „Dopasowane faktury (PDF)” w Uzgodnieniu wyciągów (CRM i Mac): płatności z wyciągów miesiąca z przypisanymi dokumentami
  * (faktury z KSeF, faktury CRM, dokumenty spoza KSeF) i same dokumenty w jednym pliku dla księgowej
- * (`matchedDocumentsPdf.server.ts`). Dane — uzgodnienie miesiąca (`get_bank_reconciliation_month`, token pracownika), pliki —
- * jak w Dysku (`financeDownload`: dostęp, kopie wizualizacji KSeF i wydruków). Plik trafia do magazynu Finansów (jeden na
- * działalność i miesiąc, kolejne pobranie go zastępuje) — wynik to podpisany adres do pobrania.
+ * (`matchedDocumentsPdf.server.ts`), a na końcu zestawienia załącznik „Płatności bez dokumentu” — stan i powód każdej płatności,
+ * której brakuje dokumentu (`get_bank_unmatched_reasons`, `bankUnmatchedReasons.ts`; docs/bank-reconciliation.md, sekcja 18).
+ * Dane — uzgodnienie miesiąca (`get_bank_reconciliation_month`, token pracownika), pliki — jak w Dysku (`financeDownload`:
+ * dostęp, kopie wizualizacji KSeF i wydruków). Plik trafia do magazynu Finansów (jeden na działalność i miesiąc, kolejne
+ * pobranie go zastępuje) — wynik to podpisany adres do pobrania.
  */
 export async function financeMatchedDocumentsPdf(ctx: NativeContext, companyParam: unknown, yearParam: unknown, monthParam: unknown) {
   const companyId = lower(companyParam);
@@ -1994,19 +2003,44 @@ export async function financeMatchedDocumentsPdf(ctx: NativeContext, companyPara
     check(postingError, 'Nie udało się odczytać dat księgowania.');
     for (const row of (postings || []) as Row[]) if (dayOf(row.posting_date)) booked.set(lower(row.id), dayOf(row.posting_date));
   }
+  // Powody braku dokumentu (migracja 20261202190000; baza bez niej — powód z propozycji i stanu płatności).
+  let facts = new Map<string, UnmatchedReasonFacts>();
+  if (transactions.some((t) => UNMATCHED_STATUSES.includes(text(t.status)))) {
+    const { data: reasonRows, error: reasonError } = await ctx.supabase.rpc('get_bank_unmatched_reasons', { p_company_id: companyId, p_year: year, p_month: month });
+    if (!reasonError) facts = unmatchedFactsMap(reasonRows);
+    else if (!['PGRST202', '42883'].includes(String(reasonError.code || ''))) console.error('[native drive] unmatched reasons', reasonError.message);
+  }
   const files = new Map<string, MatchedFile & { type: DriveFileType; id: string }>();
   const payments: MatchedPayment[] = [];
+  const unmatched: UnmatchedPayment[] = [];
   const ordered = [...transactions].sort((a, b) => dayOf(a.date).localeCompare(dayOf(b.date)) || text(a.account_kind).localeCompare(text(b.account_kind)));
   for (const t of ordered) {
     const allocations = (Array.isArray(t.allocations) ? t.allocations : []) as Row[];
     const documents = allocations.filter((a) => MATCHED_SOURCES[text(a.source)] && MATCHED_UUID.test(lower(a.document_id)));
-    if (!documents.length) continue;
     const currency = text(t.currency).toUpperCase() || 'PLN';
     const bookedDay = booked.get(lower(t.id));
+    const status = text(t.status);
+    const amount = Math.abs(Number(t.amount) || 0);
+    if (UNMATCHED_STATUSES.includes(status)) {
+      const fact = facts.get(text(t.id)) ?? null;
+      const proposal = t.proposal && typeof t.proposal === 'object' ? t.proposal as Row : null;
+      const tx = {
+        status, direction: text(t.direction), amount, allocated: Number(t.allocated) || 0,
+        remaining: t.remaining === null || t.remaining === undefined ? amount : Math.abs(Number(t.remaining) || 0), currency,
+        proposal: proposal ? { kind: text(proposal.kind), rule: text(proposal.rule), reason: text(proposal.reason) } : null,
+      };
+      unmatched.push({
+        date: dayOf(t.date), booked: bookedDay && bookedDay !== dayOf(t.date) ? bookedDay : null,
+        account: t.account_kind === 'vat' ? 'vat' : 'regular', credit: t.direction === 'credit', amount, remaining: tx.remaining, currency,
+        counterparty: bankText(t.counterparty) || unmatchedPartyName(fact?.party), title: bankText(t.title),
+        state: unmatchedStateLabel(tx, fact), reasons: unmatchedReasons(tx, fact, 'pdf'),
+      });
+    }
+    if (!documents.length) continue;
     payments.push({
       date: dayOf(t.date), booked: bookedDay && bookedDay !== dayOf(t.date) ? bookedDay : null,
       account: t.account_kind === 'vat' ? 'vat' : 'regular', credit: t.direction === 'credit',
-      amount: Math.abs(Number(t.amount) || 0), currency, counterparty: text(t.counterparty), title: text(t.title),
+      amount, currency, counterparty: bankText(t.counterparty), title: bankText(t.title),
       documents: documents.map((a) => {
         const source = MATCHED_SOURCES[text(a.source)];
         const id = lower(a.document_id);
@@ -2020,7 +2054,9 @@ export async function financeMatchedDocumentsPdf(ctx: NativeContext, companyPara
       }),
     });
   }
-  if (!payments.length) fail('W tym miesiącu żadna płatność z wyciągu nie ma jeszcze przypisanej faktury.', 404);
+  if (!payments.length && !unmatched.length) {
+    fail('W tym miesiącu żadna płatność z wyciągu nie ma jeszcze przypisanej faktury ani nie czeka na dokument.', 404);
+  }
   // Pliki po kilka naraz — wizualizacje KSeF i wydruki CRM powstają na serwerze (pierwszy raz), potem są w kopiach.
   const queue = [...files.values()];
   const worker = async () => {
@@ -2038,7 +2074,7 @@ export async function financeMatchedDocumentsPdf(ctx: NativeContext, companyPara
   };
   await Promise.all(Array.from({ length: Math.min(4, queue.length) }, worker));
   const builder = await import('./matchedDocumentsPdf.server');
-  const result = await builder.renderMatchedDocumentsPdf({ company: owner.name, year, month, payments, files: [...files.values()] });
+  const result = await builder.renderMatchedDocumentsPdf({ company: owner.name, year, month, payments, files: [...files.values()], unmatched });
   const name = driveName(`Dopasowane dokumenty — ${owner.name} — ${DRIVE_MONTHS[month - 1]} ${year}.pdf`, 'Dopasowane dokumenty.pdf');
   const path = `${owner.id}/matched/${monthPrefix}.pdf`;
   const admin = createSupabaseAdminClient();
@@ -2052,6 +2088,7 @@ export async function financeMatchedDocumentsPdf(ctx: NativeContext, companyPara
   if (!signed?.signedUrl) fail('Nie udało się przygotować pliku PDF. Spróbuj ponownie za chwilę.', 500);
   return {
     url: signed.signedUrl, name, payments: payments.length, documents: result.documents, pages: result.pages, skipped: result.skipped,
+    unmatched: unmatched.length,
   };
 }
 

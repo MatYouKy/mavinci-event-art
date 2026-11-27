@@ -15,7 +15,7 @@ import { colors, spacing, typography, borderRadius } from '../theme';
 import { appTheme, syncAppTheme } from '../theme/appTheme';
 import { CRM_THEMES, CRM_THEME_PALETTES, type CrmTheme } from '../theme/crmThemePalette';
 import { supabase } from '../lib/supabase';
-import { APP_VERSION } from '../lib/appVersion';
+import { APP_VERSION, appUpdateLabel } from '../lib/appVersion';
 import MailboxPreferencesSection from '../components/MailboxPreferencesSection';
 import FilesAppSection from '../components/FilesAppSection';
 import TestModeSection from '../components/TestModeSection';
@@ -185,6 +185,7 @@ export default function SettingsScreen() {
         {/* Version */}
         <View style={styles.footer}>
           <Text style={styles.version}>Mavinci CRM Mobile v{APP_VERSION}</Text>
+          <Text style={[styles.version, styles.versionDetail]}>{appUpdateLabel()}</Text>
         </View>
 
         <Modal visible={Boolean(themeBusy)} transparent animationType="fade">
@@ -311,6 +312,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     color: colors.text.tertiary,
   },
+  versionDetail: { marginTop: 4, textAlign: 'center' },
   themeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   themeOption: {
     flexBasis: '47%', flexGrow: 1, padding: spacing.sm, borderRadius: borderRadius.md, borderWidth: 1,

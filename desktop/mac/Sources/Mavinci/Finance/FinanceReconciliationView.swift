@@ -450,6 +450,9 @@ private struct ReconciliationRow: View {
                     Circle().fill(BankStatus.color(tx.status)).frame(width: 6, height: 6)
                     Text(BankStatus.label(tx.status)).foregroundStyle(BankStatus.color(tx.status))
                     if tx.status == "partial" { Text("· pozostało \(FinFormat.money(tx.remaining, tx.currency))").foregroundStyle(.secondary) }
+                    if tx.isOpen, let note = tx.pendingNote {
+                        Image(systemName: "text.bubble").foregroundStyle(CrmTheme.rgb(0xfcd34d)).help("\(note.label): \(note.note)")
+                    }
                     if tx.unconfirmed { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(CrmTheme.rgb(0xfcd34d)).help("Tej operacji nie ma w drugim pliku wyciągu.") }
                 }
                 .font(.caption2).lineLimit(1)

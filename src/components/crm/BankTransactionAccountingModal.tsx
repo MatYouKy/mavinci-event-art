@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowRightLeft, CheckCircle2, FileText, Loader2, Upload,
 import { supabase } from '@/lib/supabase/browser';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { PENDING_NOTE_SAVED_MESSAGE, SUPPLIER_INVOICE_MISSING_NOTE } from '@/lib/invoices/bankUnmatchedReasons';
 
 export type BankAccountingSubtype =
   | 'automatic_vat_transfer'
@@ -131,7 +132,7 @@ export const BANK_ACCOUNTING_ACTIONS: BankAccountingAction[] = [
     subtype: 'supplier_invoice_missing',
     label: 'Brak faktury od dostawcy',
     category: 'foreign_purchase',
-    defaultNote: 'Dostawca nie wystawił faktury na właściwą działalność. Dokument pozostaje do pozyskania.',
+    defaultNote: SUPPLIER_INVOICE_MISSING_NOTE,
     alwaysPending: true,
   },
   {
@@ -377,6 +378,8 @@ export default function BankTransactionAccountingModal({
         showSnackbar('Płatność została opisana i oznaczona jako wyjaśniona.', 'success');
       } else if (requiresDocument && !file) {
         showSnackbar(`Opis zapisany. Dołącz ${action.documentLabel || 'dokument'}, aby zamknąć kontrolę.`, 'warning');
+      } else if (action.alwaysPending) {
+        showSnackbar(PENDING_NOTE_SAVED_MESSAGE, 'success');
       } else {
         showSnackbar('Opis zapisany. Płatność pozostaje do kontroli.', 'warning');
       }

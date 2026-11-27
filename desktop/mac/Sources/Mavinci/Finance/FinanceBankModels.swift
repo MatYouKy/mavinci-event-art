@@ -199,6 +199,12 @@ struct BankTx: Decodable, Identifiable {
         var documents: [ProposalDoc]
         var isRefund: Bool { rule == "zwrot_platnosci" }
     }
+    /// Opis braku dokumentu („Opisz brak dokumentu” — wyjaśnienie, które zostaje do kontroli): rodzaj, `subtype` do edycji, treść.
+    struct PendingNote: Decodable {
+        var label: String
+        var subtype: String
+        var note: String
+    }
 
     var id: String
     var statementId: String
@@ -224,8 +230,21 @@ struct BankTx: Decodable, Identifiable {
     var refunds: [Refund]
     var explanation: Explanation?
     var proposal: Proposal?
+    /// Opis braku dokumentu (docs/bank-reconciliation.md, sekcja 18); brak u starszego serwera CRM.
+    var pendingNote: PendingNote?
+    /// Dlaczego bez dokumentu — dokumenty kontrahenta w systemie, lista do dosłania (`bankUnmatchedReasons.ts`); brak u starszego serwera.
+    var why: [String]?
 
     var credit: Bool { direction == "credit" }
+    var reasons: [String] { why ?? [] }
+    /// „Wskazówka” w „Brakach dokumentów (CSV)” — jak `unmatchedHint` w CRM: opis, propozycja, powody.
+    var missingHint: String {
+        var parts: [String] = []
+        if let note = pendingNote { parts.append("\(note.label): \(note.note)") }
+        if let reason = proposal?.reason, !reason.isEmpty { parts.append(reason) }
+        parts += reasons
+        return parts.filter { !$0.isEmpty }.joined(separator: " ")
+    }
     var isOpen: Bool { BankStatus.open.contains(status) }
     var signedAmount: String { (credit ? "+" : "−") + FinFormat.money(amount, currency) }
     var displayName: String { counterparty?.nonEmpty ?? "Bez nazwy kontrahenta" }

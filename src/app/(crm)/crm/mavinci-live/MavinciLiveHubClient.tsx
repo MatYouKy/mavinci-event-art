@@ -115,14 +115,28 @@ const emptyAnswers = (): FamiliadaAnswer[] => Array.from({ length: 6 }, () => ({
 const emptyQuestion = () => ({ id: '', event_id: '', category: 'Ogólne', question: '', answers: emptyAnswers(), tags: '' });
 const emptyGame = () => ({ id: '', event_id: '', name: '', description: '', is_active: true, rounds: [] as FamiliadaGameRound[] });
 
-const FAMILIADA_ROUND_RULES = [
-  { answers: 6, multiplier: 1 as const },
-  { answers: 6, multiplier: 1 as const },
-  { answers: 5, multiplier: 2 as const },
-  { answers: 4, multiplier: 2 as const },
-  { answers: 3, multiplier: 3 as const },
-  { answers: 3, multiplier: 3 as const },
-] as const;
+// Zasady jak w TV: najpierw rundy pojedyncze, potem podwójna, na koniec potrójne.
+// Mnożnik wynika z liczby odpowiedzi: 6 → ×1, 4–5 → ×2, 3 → ×3 (te same zasady w Mavinci LIVE).
+type FamiliadaMultiplier = 1 | 2 | 3;
+type FamiliadaPlanId = 'classic' | 'short';
+const FAMILIADA_ANSWERS_FOR: Record<FamiliadaMultiplier, number[]> = { 1: [6], 2: [4, 5], 3: [3] };
+const FAMILIADA_PLANS: Record<FamiliadaPlanId, { label: string; hint: string; multipliers: FamiliadaMultiplier[] }> = {
+  classic: {
+    label: 'Klasyczna · 6 rund',
+    hint: 'Jak w TV: 3 × ×1 (6 odpowiedzi), 1 × ×2 (4–5 odpowiedzi), 2 × ×3 (3 odpowiedzi).',
+    multipliers: [1, 1, 1, 2, 3, 3],
+  },
+  short: {
+    label: 'Krótka · 5 rund',
+    hint: '2 × ×1 (6 odpowiedzi), 1 × ×2 (4–5 odpowiedzi), 2 × ×3 (3 odpowiedzi).',
+    multipliers: [1, 1, 2, 3, 3],
+  },
+};
+const familiadaAnswersLabel = (multiplier: FamiliadaMultiplier) =>
+  multiplier === 2 ? '4–5 odpowiedzi' : `${FAMILIADA_ANSWERS_FOR[multiplier][0]} odpowiedzi`;
+const fitsFamiliadaRound = (question: { answers: unknown[] } | undefined, multiplier: FamiliadaMultiplier) =>
+  Boolean(question) && FAMILIADA_ANSWERS_FOR[multiplier].includes(question!.answers.length);
+const detectFamiliadaPlan = (roundCount: number): FamiliadaPlanId => (roundCount === 5 ? 'short' : 'classic');
 
 const formatDate = (value?: string | null) => value
   ? new Date(value).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })
@@ -169,6 +183,8 @@ export default function MavinciLiveHubClient() {
   const [roundQuestionSearch, setRoundQuestionSearch] = useState<Record<number, string>>({});
   const [openRoundQuestionSelector, setOpenRoundQuestionSelector] = useState<number | null>(null);
   const [savingGame, setSavingGame] = useState(false);
+  const [gamePlan, setGamePlan] = useState<FamiliadaPlanId>('classic');
+  const planMultipliers = FAMILIADA_PLANS[gamePlan].multipliers;
 
   const loadData = useCallback(async (quiet = false) => {
     if (!canViewHub) {
@@ -329,18 +345,70 @@ export default function MavinciLiveHubClient() {
     return true;
   };
 
+  /** Rundy według układu: wybrane pytania zostają tam, gdzie pasują liczbą odpowiedzi. */
+  const planFamiliadaRounds = (
+    plan: FamiliadaPlanId,
+    current: FamiliadaGameRound[],
+    fill: boolean,
+    eventId: string,
+  ): FamiliadaGameRound[] => {
+    const byId = new Map(questions.map((question) => [question.id, question]));
+    const used = new Set<string>();
+    const planned = FAMILIADA_PLANS[plan].multipliers.map((multiplier, index) => {
+      const pick = current.find(
+        (round) => round.question_id && !used.has(round.question_id) && fitsFamiliadaRound(byId.get(round.question_id), multiplier),
+      )?.question_id;
+      if (pick) used.add(pick);
+      return { question_id: pick || '', sort_order: index, multiplier };
+    });
+    if (!fill) {
+      let last = planned.length - 1;
+      while (last >= 0 && !planned[last].question_id) last -= 1;
+      return planned.slice(0, last + 1);
+    }
+    const ordered = [...questions].sort(
+      (a, b) =>
+        Number(!(eventId && a.event_id === eventId)) - Number(!(eventId && b.event_id === eventId)) ||
+        String(b.updated_at || '').localeCompare(String(a.updated_at || '')),
+    );
+    return planned.map((round) => {
+      if (round.question_id) return round;
+      const pick = ordered.find((question) => !used.has(question.id) && fitsFamiliadaRound(question, round.multiplier));
+      if (!pick) return round;
+      used.add(pick.id);
+      return { ...round, question_id: pick.id };
+    });
+  };
+
+  const changeGamePlan = (plan: FamiliadaPlanId) => {
+    setGamePlan(plan);
+    setGameDraft((current) => ({ ...current, rounds: planFamiliadaRounds(plan, current.rounds, false, current.event_id) }));
+    setOpenRoundQuestionSelector(null);
+  };
+
+  const suggestFamiliadaQuestions = () => {
+    const rounds = planFamiliadaRounds(gamePlan, gameDraft.rounds, true, gameDraft.event_id);
+    const missing = rounds.filter((round) => !round.question_id).length;
+    setGameDraft((current) => ({ ...current, rounds }));
+    showSnackbar(
+      missing
+        ? `Brakuje pytań dla ${missing} ${missing === 1 ? 'rundy' : 'rund'} — dodaj do bazy pytania o właściwej liczbie odpowiedzi.`
+        : 'Pytania podpowiedziane według zasad — każde możesz zmienić.',
+      missing ? 'warning' : 'success',
+    );
+    setOpenRoundQuestionSelector(null);
+  };
+
   const openGameEditor = (game?: FamiliadaGame) => {
+    const plan = detectFamiliadaPlan(game?.rounds.length ?? 6);
+    setGamePlan(plan);
     setGameDraft(game ? {
       id: game.id,
       event_id: game.event_id || '',
       name: game.name,
       description: game.description,
       is_active: game.is_active,
-      rounds: game.rounds.slice(0, FAMILIADA_ROUND_RULES.length).map((round, index) => ({
-        ...round,
-        sort_order: index,
-        multiplier: FAMILIADA_ROUND_RULES[index].multiplier,
-      })),
+      rounds: planFamiliadaRounds(plan, game.rounds, false, game.event_id || ''),
     } : emptyGame());
     setRoundQuestionSearch({});
     setOpenRoundQuestionSelector(null);
@@ -349,19 +417,19 @@ export default function MavinciLiveHubClient() {
 
   const addStructuredFamiliadaRound = () => {
     const roundIndex = gameDraft.rounds.length;
-    const rule = FAMILIADA_ROUND_RULES[roundIndex];
-    if (!rule) {
-      showSnackbar('Gra Familiady ma dokładnie 6 rund.', 'warning');
+    const multiplier = planMultipliers[roundIndex];
+    if (!multiplier) {
+      showSnackbar(`Ten układ gry ma dokładnie ${planMultipliers.length} rund.`, 'warning');
       return;
     }
     const hasUnusedQuestion = questions.some(
       (question) =>
-        question.answers.length === rule.answers &&
+        fitsFamiliadaRound(question, multiplier) &&
         !gameDraft.rounds.some((round) => round.question_id === question.id),
     );
     if (!hasUnusedQuestion) {
       showSnackbar(
-        `Brakuje niewykorzystanego pytania z ${rule.answers} odpowiedziami dla rundy ${roundIndex + 1}.`,
+        `Brakuje niewykorzystanego pytania z ${familiadaAnswersLabel(multiplier)} dla rundy ${roundIndex + 1}.`,
         'warning',
       );
       return;
@@ -373,7 +441,7 @@ export default function MavinciLiveHubClient() {
         {
           question_id: '',
           sort_order: roundIndex,
-          multiplier: rule.multiplier,
+          multiplier,
         },
       ],
     }));
@@ -382,8 +450,8 @@ export default function MavinciLiveHubClient() {
   };
 
   const saveGame = async () => {
-    if (gameDraft.name.trim().length < 2 || gameDraft.rounds.length !== FAMILIADA_ROUND_RULES.length) {
-      showSnackbar('Podaj nazwę i skonfiguruj dokładnie 6 rund Familiady.', 'warning');
+    if (gameDraft.name.trim().length < 2 || gameDraft.rounds.length !== planMultipliers.length) {
+      showSnackbar(`Podaj nazwę i skonfiguruj dokładnie ${planMultipliers.length} rund Familiady.`, 'warning');
       return;
     }
     if (gameDraft.rounds.some((round) => !round.question_id)) {
@@ -396,12 +464,12 @@ export default function MavinciLiveHubClient() {
     }
     const invalidRoundIndex = gameDraft.rounds.findIndex((round, index) => {
       const question = questions.find((item) => item.id === round.question_id);
-      return !question || question.answers.length !== FAMILIADA_ROUND_RULES[index].answers;
+      return !fitsFamiliadaRound(question, planMultipliers[index]);
     });
     if (invalidRoundIndex >= 0) {
-      const rule = FAMILIADA_ROUND_RULES[invalidRoundIndex];
+      const multiplier = planMultipliers[invalidRoundIndex];
       showSnackbar(
-        `Runda ${invalidRoundIndex + 1} wymaga pytania z ${rule.answers} odpowiedziami.`,
+        `Runda ${invalidRoundIndex + 1} (×${multiplier}) wymaga pytania z ${familiadaAnswersLabel(multiplier)}.`,
         'warning',
       );
       return;
@@ -416,7 +484,7 @@ export default function MavinciLiveHubClient() {
         is_active: gameDraft.is_active,
         rounds: gameDraft.rounds.map((round, index) => ({
           question_id: round.question_id,
-          multiplier: FAMILIADA_ROUND_RULES[index].multiplier,
+          multiplier: planMultipliers[index],
         })),
       },
     });
@@ -554,7 +622,7 @@ export default function MavinciLiveHubClient() {
                     {game.event_id ? eventMap.get(game.event_id)?.name || 'Event' : 'Gra globalna'}
                   </span>
                   <span className="hidden text-xs tabular-nums text-[#e5e4e2]/50 md:block">
-                    {game.rounds.length} / {FAMILIADA_ROUND_RULES.length}
+                    {game.rounds.length} rund
                   </span>
                   <span className="hidden text-xs text-[#e5e4e2]/35 md:block">
                     {formatDate(game.updated_at)}
@@ -848,9 +916,33 @@ export default function MavinciLiveHubClient() {
                 />
               </label>
 
-              <div className="rounded-xl border border-[#d3bb73]/15 bg-[#d3bb73]/5 px-4 py-3 text-xs text-[#e5e4e2]/65">
-                Układ gry: rundy 1–2 — 6 odpowiedzi i ×1; runda 3 — 5 odpowiedzi i ×2;
-                runda 4 — 4 odpowiedzi i ×2; rundy 5–6 — 3 odpowiedzi i ×3.
+              <div className="grid gap-2 md:grid-cols-2" role="radiogroup" aria-label="Układ gry">
+                {(Object.keys(FAMILIADA_PLANS) as FamiliadaPlanId[]).map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={gamePlan === id}
+                    onClick={() => changeGamePlan(id)}
+                    className={`rounded-xl border px-4 py-3 text-left text-xs ${
+                      gamePlan === id
+                        ? 'border-[#d3bb73]/60 bg-[#d3bb73]/10 text-[#e5e4e2]'
+                        : 'border-white/10 bg-[#0f1119] text-[#e5e4e2]/65'
+                    }`}
+                  >
+                    <span className="block text-sm font-semibold">{FAMILIADA_PLANS[id].label}</span>
+                    <span className="mt-1 block text-[#e5e4e2]/50">{FAMILIADA_PLANS[id].hint}</span>
+                  </button>
+                ))}
+                <p className="text-[11px] text-[#e5e4e2]/40 md:col-span-2">
+                  W bazie:{' '}
+                  {([1, 2, 3] as FamiliadaMultiplier[])
+                    .map(
+                      (multiplier) =>
+                        `${questions.filter((question) => fitsFamiliadaRound(question, multiplier)).length} × ${familiadaAnswersLabel(multiplier)} (×${multiplier})`,
+                    )
+                    .join(' · ')}
+                </p>
               </div>
 
               <div>
@@ -858,30 +950,40 @@ export default function MavinciLiveHubClient() {
                   <div>
                     <h3 className="font-semibold">Rundy gry</h3>
                     <p className="text-xs text-[#e5e4e2]/40">
-                      Dla każdej rundy dostępne są tylko pytania z właściwą liczbą odpowiedzi.
+                      Najpierw pytania z 6 odpowiedziami, potem z 4–5, na koniec z 3 — mnożnik wynika z rundy.
                     </p>
                   </div>
+                  <div className="flex flex-wrap gap-2">
+                  <button data-crm-action="secondary"
+                    type="button"
+                    onClick={suggestFamiliadaQuestions}
+                    className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs font-semibold text-[#d3bb73]"
+                  >
+                    <Check className="h-4 w-4" />
+                    Podpowiedz pytania
+                  </button>
                   <button data-crm-action="secondary"
                     type="button"
                     onClick={addStructuredFamiliadaRound}
-                    disabled={gameDraft.rounds.length >= FAMILIADA_ROUND_RULES.length}
+                    disabled={gameDraft.rounds.length >= planMultipliers.length}
                     className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs font-semibold text-[#d3bb73] disabled:cursor-not-allowed disabled:opacity-35"
                   >
                     <Plus className="h-4 w-4" />
                     Dodaj rundę
                   </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   {gameDraft.rounds.map((round, index) => {
-                    const rule = FAMILIADA_ROUND_RULES[index];
+                    const multiplier = planMultipliers[index] ?? round.multiplier;
                     const currentQuestion = questions.find(
                       (question) => question.id === round.question_id,
                     );
                     const currentQuestionIsInvalid =
-                      currentQuestion && currentQuestion.answers.length !== rule.answers;
-                    const eligibleQuestions = questions.filter(
-                      (question) => question.answers.length === rule.answers,
+                      currentQuestion && !fitsFamiliadaRound(currentQuestion, multiplier);
+                    const eligibleQuestions = questions.filter((question) =>
+                      fitsFamiliadaRound(question, multiplier),
                     );
                     const questionSearch = (roundQuestionSearch[index] || '')
                       .trim()
@@ -939,7 +1041,7 @@ export default function MavinciLiveHubClient() {
                                 [index]: event.target.value,
                               }));
                             }}
-                            placeholder={`Szukaj pytania z ${rule.answers} odpowiedziami…`}
+                            placeholder={`Szukaj pytania (${familiadaAnswersLabel(multiplier)})…`}
                             role="combobox"
                             aria-autocomplete="list"
                             aria-controls={`familiada-round-${index}-questions`}
@@ -958,7 +1060,7 @@ export default function MavinciLiveHubClient() {
                             >
                               <div className="border-b border-white/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-[#e5e4e2]/35">
                                 {visibleQuestions.length} z {eligibleQuestions.length} pytań ·{' '}
-                                {rule.answers} odpowiedzi
+                                {familiadaAnswersLabel(multiplier)}
                               </div>
                               <div className="max-h-64 overflow-y-auto overscroll-contain p-1.5">
                                 {visibleQuestions.map((question) => {
@@ -996,7 +1098,12 @@ export default function MavinciLiveHubClient() {
                                       } disabled:cursor-not-allowed disabled:opacity-35`}
                                     >
                                       <span className="min-w-0 flex-1">
-                                        <span className="block truncate">{question.question}</span>
+                                        <span className="block truncate">
+                                          {question.question}
+                                          <span className="ml-2 text-[10px] text-[#e5e4e2]/35">
+                                            {question.answers.length} odp.
+                                          </span>
+                                        </span>
                                         <span className="mt-0.5 block truncate text-[10px] text-[#e5e4e2]/35">
                                           {question.category}
                                           {question.tags.length > 0
@@ -1024,10 +1131,10 @@ export default function MavinciLiveHubClient() {
                         </div>
                         <div className="flex items-center gap-2 text-xs">
                           <span className="rounded-lg bg-white/5 px-2.5 py-2 text-[#e5e4e2]/60">
-                            {rule.answers} odpowiedzi
+                            {familiadaAnswersLabel(multiplier)}
                           </span>
                           <strong className="rounded-lg bg-[#d3bb73]/10 px-2.5 py-2 text-[#d3bb73]">
-                            ×{rule.multiplier}
+                            ×{multiplier}
                           </strong>
                         </div>
                         <button
@@ -1055,7 +1162,7 @@ export default function MavinciLiveHubClient() {
 
               <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 pt-5">
                 <span className="mr-auto text-sm text-[#e5e4e2]/45">
-                  {gameDraft.rounds.length} / {FAMILIADA_ROUND_RULES.length} rund
+                  {gameDraft.rounds.length} / {planMultipliers.length} rund
                 </span>
                 <button
                   type="button"
@@ -1067,7 +1174,7 @@ export default function MavinciLiveHubClient() {
                 <button
                   type="button"
                   onClick={() => void saveGame()}
-                  disabled={savingGame || gameDraft.rounds.length !== FAMILIADA_ROUND_RULES.length}
+                  disabled={savingGame || gameDraft.rounds.length !== planMultipliers.length}
                   className="rounded-xl bg-[#d3bb73] px-5 py-3 text-sm font-bold text-[#1c1f33] disabled:opacity-50"
                 >
                   {savingGame ? 'Zapisywanie…' : 'Zapisz grę'}

@@ -11,7 +11,6 @@ import {
   Platform,
   ActivityIndicator,
   Keyboard,
-  KeyboardAvoidingView,
   Image,
   Alert,
   Modal,
@@ -19,6 +18,7 @@ import {
   Dimensions,
   Linking,
   AppState,
+  type KeyboardEvent,
 } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -110,6 +110,19 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * Ile klawiatura zasłania od dołu ekranu (dp). iOS — wysokość klawiatury. Android (edge-to-edge, Expo 54): okno nie zmniejsza
+ * się pod klawiaturą, a `height` z React Native nie liczy paska nawigacji systemu, który klawiatura też przykrywa — dlatego od
+ * górnej krawędzi klawiatury w ekranie (`screenY`) do dołu ekranu; bez niej — wysokość + dolny pasek systemu.
+ */
+function keyboardCover(frame: KeyboardEvent['endCoordinates'] | undefined, bottomInset: number): number {
+  if (!frame) return 0;
+  if (Platform.OS !== 'android') return frame.height ?? 0;
+  const screenHeight = Dimensions.get('screen').height;
+  if (frame.screenY > 0 && frame.screenY < screenHeight) return screenHeight - frame.screenY;
+  return Math.max(frame.height ?? 0, 0) + bottomInset;
+}
+
 export default function ChatScreen({ conversation, onBack }: Props) {
   const { employee, onlineEmployeeIds } = useAuth();
   const insets = useSafeAreaInsets();
@@ -158,7 +171,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showMenu, setShowMenu] = useState(false);
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
+  // Ile klawiatura zasłania od dołu ekranu (`keyboardCover`); 0 — klawiatura schowana.
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const bottomInsetRef = useRef(insets.bottom);
+  bottomInsetRef.current = insets.bottom;
   const [participantsState, setParticipantsState] = useState<
     Map<string, { last_read_at: string | null; last_delivered_at: string | null }>
   >(new Map());
@@ -167,7 +183,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const showSub = Keyboard.addListener(showEvent, (e) => {
-      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+      setKeyboardHeight(keyboardCover(e.endCoordinates, bottomInsetRef.current));
       // Pisząc, widzisz ostatnie wiadomości (chyba że przewinięto wyżej, do starszych).
       if (!userHasScrolledRef.current) {
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 60);
@@ -1305,14 +1321,13 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     );
   };
 
-  // Android (edge-to-edge, Expo 54): okno nie zmniejsza się pod klawiaturą (adjustResize nie działa), więc pole
-  // wpisywania i lista podnoszą się przez KeyboardAvoidingView. iOS — własne odsunięcie pola (niżej).
+  // Klawiatura na iPhonie i Androidzie (edge-to-edge, Expo 54 — okno nie zmniejsza się pod klawiaturą): ekran czatu kończy się
+  // nad paskiem zakładek, który zostaje pod klawiaturą, więc pole wpisywania podnosi się o to, co klawiatura zasłania ponad
+  // paskiem; lista wiadomości kurczy się nad polem. (Wcześniej na Androidzie KeyboardAvoidingView liczył położenie ekranu bez
+  // nagłówka aplikacji nad nim — pole zostawało pod klawiaturą.)
+  const keyboardOverlap = keyboardHeight > 0 ? Math.max(keyboardHeight - tabBarHeight, 0) : 0;
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'android' ? 'padding' : undefined}
-      enabled={Platform.OS === 'android'}
-    >
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
@@ -1554,10 +1569,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         style={[
           styles.inputContainer,
           {
-            paddingBottom:
-              Platform.OS === 'ios' && keyboardHeight > 0
-                ? Math.max(keyboardHeight - tabBarHeight, 0) + spacing.sm
-                : Math.max(insets.bottom, spacing.sm),
+            paddingBottom: keyboardHeight > 0 ? keyboardOverlap + spacing.sm : Math.max(insets.bottom, spacing.sm),
           },
         ]}
       >
@@ -1590,7 +1602,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           )}
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

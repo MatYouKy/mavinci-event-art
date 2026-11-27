@@ -20,10 +20,12 @@ import {
   Landmark,
   Link2,
   Loader2,
+  Pencil,
   RefreshCw,
   RotateCcw,
   Search,
   Sparkles,
+  Trash2,
   Undo2,
   Wand2,
   X,
@@ -34,7 +36,7 @@ import { useInvoiceFinanceAccess } from '@/hooks/useInvoiceFinanceAccess';
 import { canFinanceCompany } from '@/lib/invoices/financeAccess';
 import { repairBrokenBankText } from '@/lib/bankTextEncoding';
 import BankTransactionDocumentPickerModal from '@/components/crm/BankTransactionDocumentPickerModal';
-import BankTransactionAccountingModal from '@/components/crm/BankTransactionAccountingModal';
+import BankTransactionAccountingModal, { type BankAccountingSubtype } from '@/components/crm/BankTransactionAccountingModal';
 import BankTransactionDetailsModal from '@/components/crm/BankTransactionDetailsModal';
 import { isPreviewableDocumentSource, useDocumentPreview } from '@/components/crm/invoices/useDocumentPreview';
 import { DeclarationLinkModal } from './FinanceDeclarationsPanel';
@@ -61,6 +63,9 @@ import {
   type ReconciliationStatus,
   type ReconciliationTransaction,
 } from '@/lib/invoices/bankReconciliation';
+import {
+  pendingNoteOf, unmatchedFactsMap, unmatchedHint, unmatchedReasons, type UnmatchedReasonFacts,
+} from '@/lib/invoices/bankUnmatchedReasons';
 
 interface Props {
   filterCompanyIds?: string[] | null;
@@ -168,6 +173,10 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
   const [choice, setChoice] = useState<Record<string, number>>({});
   const [pickerFor, setPickerFor] = useState<ReconciliationTransaction | null>(null);
   const [explainFor, setExplainFor] = useState<ReconciliationTransaction | null>(null);
+  // Rodzaj wyjaśnienia na start okna: „Opisz brak dokumentu” — Brak faktury od dostawcy, „Zmień opis” — zapisany rodzaj.
+  const [explainSubtype, setExplainSubtype] = useState<BankAccountingSubtype | null>(null);
+  // Dlaczego płatność nie ma dokumentu: opis użytkownika, lista do dosłania, dokumenty kontrahenta (docs/bank-reconciliation.md, sekcja 18).
+  const [reasons, setReasons] = useState<Map<string, UnmatchedReasonFacts>>(() => new Map());
   const [declarationFor, setDeclarationFor] = useState<ReconciliationTransaction | null>(null);
   const [contractFor, setContractFor] = useState<ReconciliationTransaction | null>(null);
   const [refundFor, setRefundFor] = useState<ReconciliationTransaction | null>(null);
@@ -220,9 +229,12 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
   const load = useCallback(async (quiet = false) => {
     if (!period) return;
     if (!quiet) setLoading(true);
-    const { data: result, error } = await supabase.rpc('get_bank_reconciliation_month', {
-      p_company_id: period.companyId, p_year: period.year, p_month: period.month,
-    });
+    // Uzgodnienie i — równolegle — powody braku dokumentu (migracja 20261202190000; bez niej lista bez powodów).
+    const params = { p_company_id: period.companyId, p_year: period.year, p_month: period.month };
+    const [{ data: result, error }, reasonsResult] = await Promise.all([
+      supabase.rpc('get_bank_reconciliation_month', params),
+      supabase.rpc('get_bank_unmatched_reasons', params),
+    ]);
     if (error) {
       showSnackbar(error.message || 'Nie udało się wczytać uzgodnienia.', 'error');
       if (!quiet) setData(null);
@@ -239,10 +251,17 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
         }
       }
       setBooked(dates);
+      setReasons(reasonsResult.error ? new Map() : unmatchedFactsMap(reasonsResult.data));
       setData(month);
     }
     if (!quiet) setLoading(false);
   }, [period, showSnackbar]);
+
+  /** Okno „Wyjaśnij płatność” — `subtype`: rodzaj na start (np. Brak faktury od dostawcy przy „Opisz brak dokumentu”). */
+  const openExplain = (t: ReconciliationTransaction, subtype: BankAccountingSubtype | null = null) => {
+    setExplainSubtype(subtype);
+    setExplainFor(t);
+  };
 
   /** Odświeżenie po zapisie w oknie (wybór dokumentu, wyjaśnienie…) — z oknem postępu. */
   const refreshAfterChange = async () => {
@@ -362,7 +381,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
         headers: { Authorization: `Bearer ${token}`, 'x-mavinci-client': 'web' },
       });
       const body = (await response.json().catch(() => null)) as {
-        error?: string; url?: string; name?: string; documents?: number; pages?: number; skipped?: unknown[];
+        error?: string; url?: string; name?: string; documents?: number; pages?: number; skipped?: unknown[]; unmatched?: number;
       } | null;
       if (!response.ok || !body?.url) throw new Error(body?.error || 'Nie udało się przygotować PDF z dopasowanymi fakturami.');
       const link = document.createElement('a');
@@ -372,7 +391,9 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
       link.click();
       link.remove();
       const skipped = Array.isArray(body.skipped) ? body.skipped.length : 0;
+      const unmatched = Number(body.unmatched || 0);
       showSnackbar(`Pobieranie „${body.name || 'Dopasowane dokumenty.pdf'}” — dokumenty: ${body.documents ?? 0}, strony: ${body.pages ?? 0}.`
+        + (unmatched ? ` Płatności bez dokumentu: ${unmatched} (powody w załączniku).` : '')
         + (skipped ? ` Bez pliku: ${skipped} (lista na pierwszej stronie).` : ''), skipped ? 'warning' : 'success');
     } catch (error) {
       showSnackbar(error instanceof Error ? error.message : 'Nie udało się przygotować PDF z dopasowanymi fakturami.', 'error');
@@ -417,7 +438,7 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
       ...rows.map((t) => [
         t.date, t.account_kind === 'vat' ? 'VAT' : 'bieżący', t.direction === 'credit' ? 'Wpływ' : 'Wydatek',
         text(t.counterparty), text(t.title), t.amount.toFixed(2).replace('.', ','), t.remaining.toFixed(2).replace('.', ','),
-        t.currency, RECONCILIATION_STATUS_META[t.status].label, t.proposal?.reason || '',
+        t.currency, RECONCILIATION_STATUS_META[t.status].label, unmatchedHint(t, reasons.get(t.id)),
       ]),
     ].map((row) => row.map(escape).join(';')).join('\n');
     const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
@@ -683,6 +704,9 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
             {visible.map((t) => {
               const meta = RECONCILIATION_STATUS_META[t.status];
               const isOpen = OPEN_STATUSES.includes(t.status);
+              const facts = reasons.get(t.id) ?? null;
+              const pendingNote = isOpen ? pendingNoteOf(facts) : null;
+              const why = unmatchedReasons(t, facts, 'app');
               return (
                 <li key={t.id} className="px-4 py-3">
                   <div className="flex flex-col gap-2 md:flex-row md:items-start">
@@ -933,6 +957,38 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                     </div>
                   )}
 
+                  {/* Opis braku dokumentu (płatność dalej czeka na dokument) i dlaczego bez dokumentu — sekcja 18 */}
+                  {pendingNote && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-amber-200 md:pl-24">
+                      <span className="rounded-lg border border-amber-500/25 bg-amber-500/[0.07] px-2 py-1"
+                        title="Opis braku dokumentu — płatność dalej czeka na dokument, a opis trafia do załącznika „Dopasowane faktury (PDF)”.">
+                        {pendingNote.label} · opis do kontroli — {pendingNote.note}
+                      </span>
+                      {canManage && (
+                        <>
+                          <button type="button" onClick={() => openExplain(t, pendingNote.subtype as BankAccountingSubtype)}
+                            className="inline-flex items-center gap-1 text-amber-200/80 hover:text-[#d3bb73]"><Pencil className="h-3 w-3" /> Zmień opis</button>
+                          <button type="button" disabled={busyKey === `note:${t.id}`}
+                            onClick={() => void callAction(`note:${t.id}`, () => supabase.from('bank_transactions')
+                              .update({ accounting_category: 'other', accounting_subtype: null, accounting_note: null, accounting_reviewed_at: null })
+                              .eq('id', t.id)
+                              .or('accounting_review_status.is.null,accounting_review_status.neq.explained'),
+                            'Opis braku dokumentu usunięty. Płatność dalej czeka na dokument.')}
+                            className="inline-flex items-center gap-1 text-amber-200/60 hover:text-red-300"><Trash2 className="h-3 w-3" /> Usuń opis</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {why.length > 0 && (
+                    <ul className="mt-1.5 space-y-0.5 text-xs text-[#e5e4e2]/55 md:pl-24" title="Dlaczego bez dokumentu — według dokumentów w systemie">
+                      {why.map((line) => (
+                        <li key={line} className="flex items-start gap-1.5">
+                          <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#e5e4e2]/35" /> {line}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
                   {/* Akcje ręczne */}
                   {canManage && isOpen && (
                     <div className="mt-2 flex flex-wrap gap-2 md:pl-24">
@@ -940,12 +996,19 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
                         className="inline-flex items-center gap-1 rounded-lg border border-[#d3bb73]/25 px-2.5 py-1 text-[11px] text-[#d3bb73] hover:bg-[#d3bb73]/10">
                         <FileSearch className="h-3.5 w-3.5" /> Wybierz dokument
                       </button>
-                      <button type="button" onClick={() => setExplainFor(t)}
+                      {!pendingNote && (
+                        <button type="button" onClick={() => openExplain(t, t.direction === 'debit' ? 'supplier_invoice_missing' : 'other')}
+                          title="Np. szukam faktury u dostawcy — płatność dalej czeka na dokument, a opis trafi do załącznika „Dopasowane faktury (PDF)”"
+                          className="inline-flex items-center gap-1 rounded-lg border border-amber-500/25 px-2.5 py-1 text-[11px] text-amber-200 hover:bg-amber-500/10">
+                          <Pencil className="h-3.5 w-3.5" /> Opisz brak dokumentu
+                        </button>
+                      )}
+                      <button type="button" onClick={() => openExplain(t)}
                         className="inline-flex items-center gap-1 rounded-lg border border-[#e5e4e2]/15 px-2.5 py-1 text-[11px] text-[#e5e4e2]/70 hover:bg-white/5">
                         <ArrowLeftRight className="h-3.5 w-3.5" /> Wyjaśnij bez faktury
                       </button>
                       {t.direction === 'credit' && isCashDeposit(t) && (
-                        <button type="button" onClick={() => setExplainFor(t)}
+                        <button type="button" onClick={() => openExplain(t, 'owner_deposit')}
                           className="inline-flex items-center gap-1 rounded-lg border border-[#d3bb73]/25 px-2.5 py-1 text-[11px] text-[#d3bb73] hover:bg-[#d3bb73]/10">
                           <ArrowLeftRight className="h-3.5 w-3.5" /> Wpłata własna
                         </button>
@@ -1072,9 +1135,9 @@ export default function BankReconciliationPanel({ filterCompanyIds = null, onOpe
             id: explainFor.id, statement_id: explainFor.statement_id, company_id: period.companyId,
             transaction_date: explainFor.date, amount: explainFor.amount, currency: explainFor.currency,
             transaction_type: explainFor.direction, counterparty_name: text(explainFor.counterparty), title: text(explainFor.title),
-            accounting_note: explainFor.explanation?.note ?? null,
+            accounting_note: explainFor.explanation?.note ?? pendingNoteOf(reasons.get(explainFor.id))?.note ?? null,
           }}
-          initialSubtype={explainFor.direction === 'credit' && isCashDeposit(explainFor) ? 'owner_deposit' : 'other'}
+          initialSubtype={explainSubtype ?? (explainFor.direction === 'credit' && isCashDeposit(explainFor) ? 'owner_deposit' : 'other')}
           onClose={() => setExplainFor(null)}
           onSaved={async () => { setExplainFor(null); await refreshAfterChange(); }}
         />

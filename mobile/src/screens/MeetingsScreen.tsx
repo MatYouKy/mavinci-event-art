@@ -43,6 +43,7 @@ import { notifyMeetingContacts, type MeetingMailBefore } from '../lib/teamAvaila
 import { navigateToChat, navigateToEvent } from '../navigation/navigationRef';
 
 import * as Notifications from 'expo-notifications';
+import { ANDROID_NOTIFICATION_CHANNEL } from '../services/pushNotifications';
 
 import { Feather } from '@expo/vector-icons';
 import { appPalette, colors, spacing, typography } from '../theme';
@@ -240,6 +241,8 @@ async function scheduleMeetingAlerts(meeting: Meeting) {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: secondsUntilTrigger,
         repeats: false,
+        // Android — kanał z dźwiękiem i banerem (jak powiadomienia push).
+        channelId: ANDROID_NOTIFICATION_CHANNEL,
       },
     });
   }

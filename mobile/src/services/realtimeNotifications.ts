@@ -1,5 +1,7 @@
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { ANDROID_NOTIFICATION_CHANNEL } from './pushNotifications';
 import { useForegroundEffect } from '../hooks/useForegroundEffect';
 
 type EmployeeMessageRow = {
@@ -83,7 +85,8 @@ export function useRealtimePushNotifications(employeeId: string | undefined) {
             sender_id: message.sender_id,
           },
         },
-        trigger: null,
+        // Android — kanał z dźwiękiem i banerem (jak powiadomienia push); iOS — od razu.
+        trigger: Platform.OS === 'android' ? { channelId: ANDROID_NOTIFICATION_CHANNEL } : null,
       });
     };
 

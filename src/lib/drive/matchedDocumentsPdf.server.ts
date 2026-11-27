@@ -8,7 +8,9 @@ import { monthLabel } from './financeReports.server';
  * księgowej. Na początku zestawienie płatności z wyciągu za miesiąc z przypisanymi dokumentami i numerem strony, na której
  * zaczyna się każdy dokument; dalej same dokumenty — faktury z KSeF (wizualizacja), faktury CRM (wydruk) i dokumenty spoza
  * KSeF (wgrany PDF albo zdjęcie JPG / PNG). Dokument bez pliku albo w formacie, którego nie da się wstawić do PDF, jest na
- * liście „Bez pliku w zestawieniu” z powodem. Dane i pliki zbiera `financeMatchedDocumentsPdf` (`drive.server.ts`).
+ * liście „Bez pliku w zestawieniu” z powodem. Po zestawieniu — załącznik „Płatności bez dokumentu” (sekcja 18): płatności
+ * miesiąca, którym brakuje dokumentu, ze stanem i powodem (opis wpisany w CRM, propozycja, co system znalazł w dokumentach
+ * kontrahenta — `bankUnmatchedReasons.ts`). Dane i pliki zbiera `financeMatchedDocumentsPdf` (`drive.server.ts`).
  */
 
 export type MatchedDocumentRef = { key: string; number: string; party: string; amount: number };
@@ -38,7 +40,31 @@ export type MatchedFile = {
   problem: string | null;
 };
 
-export type MatchedReport = { company: string; year: number; month: number; payments: MatchedPayment[]; files: MatchedFile[] };
+/** Płatność bez dokumentu (w całości albo w części) — wiersz załącznika. */
+export type UnmatchedPayment = {
+  date: string;
+  booked: string | null;
+  account: 'regular' | 'vat';
+  credit: boolean;
+  amount: number;
+  /** Brakująca część (przy płatności częściowo rozliczonej mniejsza niż kwota). */
+  remaining: number;
+  currency: string;
+  counterparty: string;
+  title: string;
+  /** „Brak dokumentu · opisana”, „Częściowo rozliczona”, „Propozycja”… */
+  state: string;
+  reasons: string[];
+};
+
+export type MatchedReport = {
+  company: string;
+  year: number;
+  month: number;
+  payments: MatchedPayment[];
+  files: MatchedFile[];
+  unmatched: UnmatchedPayment[];
+};
 
 export type MatchedPdf = { pdf: Buffer; documents: number; pages: number; skipped: Array<{ number: string; party: string; problem: string }> };
 
@@ -63,6 +89,10 @@ const CSS = `
   .doc{margin-bottom:2px}
   .page{font-weight:600;white-space:nowrap}
   .missing{color:#b45309}
+  .state{font-weight:600;color:#b45309}
+  .why{margin-bottom:2px}
+  .why:before{content:'• ';color:#9ca3af}
+  .empty{color:#6b7280;margin:6px 0 0}
 `;
 
 const isPdf = (bytes: Uint8Array) => bytes.length > 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46;
@@ -108,6 +138,23 @@ function coverHtml(report: MatchedReport, starts: Map<string, number>, skipped: 
       <td>${documents}</td>
     </tr>`;
   }).join('');
+  const unmatched = report.unmatched.length
+    ? `<h2>Załącznik: płatności bez dokumentu (${report.unmatched.length}) — dlaczego nie są dopasowane</h2>
+      <p class="note">Płatności z wyciągów za miesiąc, którym brakuje dokumentu (w całości albo w części), według uzgodnienia wyciągów
+        w CRM: stan, opis wpisany w CRM („Opisz brak dokumentu”), propozycja do zatwierdzenia i to, co system znalazł w dokumentach
+        kontrahenta (KSeF, faktury CRM, dokumenty spoza KSeF).</p>
+      <table><colgroup><col style="width:11%"><col style="width:24%"><col style="width:12%"><col style="width:12%"><col style="width:41%"></colgroup>
+      <thead><tr><th>Data</th><th>Kontrahent / tytuł</th><th class="r">Kwota</th><th>Stan</th><th>Dlaczego</th></tr></thead>
+      <tbody>${report.unmatched.map((payment) => `<tr>
+        <td>${escapeHtml(plDate(payment.date))}${payment.booked ? `<div class="sub">zaksięgowana ${escapeHtml(plDate(payment.booked))}</div>` : ''}
+          <div class="sub">${payment.account === 'vat' ? 'rachunek VAT' : 'rachunek bieżący'}</div></td>
+        <td>${escapeHtml(payment.counterparty || 'Bez nazwy kontrahenta')}${payment.title ? `<div class="sub">${escapeHtml(payment.title)}</div>` : ''}</td>
+        <td class="r">${payment.credit ? '+' : '−'}${escapeHtml(amountText(payment.amount, payment.currency))}${payment.remaining < payment.amount - 0.009
+          ? `<div class="sub">brakuje ${escapeHtml(amountText(payment.remaining, payment.currency))}</div>` : ''}</td>
+        <td class="state">${escapeHtml(payment.state)}</td>
+        <td>${payment.reasons.length ? payment.reasons.map((reason) => `<div class="why">${escapeHtml(reason)}</div>`).join('') : '—'}</td>
+      </tr>`).join('')}</tbody></table>`
+    : '';
   const missing = skipped.length
     ? `<h2>Bez pliku w zestawieniu (${skipped.length})</h2>
       <table><colgroup><col style="width:28%"><col style="width:32%"><col style="width:40%"></colgroup>
@@ -119,14 +166,15 @@ function coverHtml(report: MatchedReport, starts: Map<string, number>, skipped: 
   return `<!doctype html><html lang="pl"><head><meta charset="utf-8"><style>${fontCss}${CSS}</style></head><body>
     <h1>Dopasowane dokumenty — ${escapeHtml(monthLabel(report.year, report.month))}</h1>
     <p class="meta">${escapeHtml(report.company)} · stan na ${escapeHtml(stamp)} · płatności: ${report.payments.length} · dokumenty w pliku: ${included}
-      · stron: ${totalPages}</p>
+      ${report.unmatched.length ? `· bez dokumentu: ${report.unmatched.length} (załącznik)` : ''} · stron: ${totalPages}</p>
     <p class="note">Płatności z wyciągów za miesiąc z przypisanymi dokumentami (faktury z KSeF, faktury CRM, dokumenty spoza KSeF) — według
       uzgodnienia wyciągów w CRM. „str.” — strona tego pliku, na której zaczyna się dokument; dokument opłacony kilkoma przelewami
       jest w pliku raz.</p>
-    <table><colgroup><col style="width:13%"><col style="width:33%"><col style="width:14%"><col style="width:40%"></colgroup>
+    ${report.payments.length ? `<table><colgroup><col style="width:13%"><col style="width:33%"><col style="width:14%"><col style="width:40%"></colgroup>
       <thead><tr><th>Data</th><th>Kontrahent / tytuł</th><th class="r">Kwota</th><th>Dokumenty</th></tr></thead>
-      <tbody>${rows}</tbody></table>
+      <tbody>${rows}</tbody></table>` : '<p class="empty">W tym miesiącu żadna płatność z wyciągu nie ma jeszcze przypisanego dokumentu.</p>'}
     ${missing}
+    ${unmatched}
   </body></html>`;
 }
 

@@ -305,6 +305,7 @@ nie zmieni mu kwoty, waluty, działalności i sposobu zapłaty.
   zaczyna się dokument) i za nim same dokumenty: faktury z KSeF (wizualizacja jak w Dysku), faktury CRM (wydruk) i dokumenty
   spoza KSeF (wgrany PDF albo zdjęcie JPG / PNG — strona A4). Dokument opłacony kilkoma przelewami jest w pliku raz. Dokument
   bez pliku, w innym formacie (HEIC, WebP) albo z uszkodzonym PDF — na liście „Bez pliku w zestawieniu” z powodem.
+  Na końcu zestawienia — załącznik „Płatności bez dokumentu” z powodami (sekcja 18).
   Liczy serwer CRM (`financeMatchedDocumentsPdf` w `drive.server.ts`, szablon `matchedDocumentsPdf.server.ts`; dostęp
   i pliki jak w Dysku → Finanse, „Podgląd finansów” działalności); plik trafia do magazynu Finansów (jeden na działalność
   i miesiąc) i pobiera się przez podpisany adres. Mac — plik w Pobranych, zaznaczony w Finderze (do przeciągnięcia
@@ -441,3 +442,42 @@ blokowało fakturę dla przelewu z 08.10 („Dokument ma już zapisane powiązan
   bez nowego okna pełnoekranowego), chowa się po przejściu do innej aplikacji. Jedno okno na płatność.
 - **Sortowanie listy dokumentów** (CRM i Mac): najbliższa kwota (domyślnie), data — najnowsze / najstarsze, kontrahent A–Z,
   status — do zapłaty najpierw (np. po wyszukaniu kwoty — po dacie albo kontrahencie).
+
+## 18. Dlaczego płatność nie ma dokumentu — załącznik w „Dopasowanych fakturach (PDF)” i opis braku dokumentu (27.11.2026)
+
+Przykład: październik — PayPro +1 947,00 zł, Apple −9,99 zł i −179,99 zł, Google −35,00 zł, Allegro −99,99 zł w stanie
+„Brak dokumentu”. „Dopasowane faktury (PDF)” pokazywały tylko płatności z dokumentami — księgowa nie wiedziała, czemu tych nie ma,
+a opis wpisany przy wyjaśnieniu „do kontroli” (np. „Inne wyjaśnienie”) nie był nigdzie widoczny: uzgodnienie miesiąca zwraca
+tylko wyjaśnienia zamknięte.
+
+- **Fakty z bazy** (migracja `20261202190000_bank_unmatched_reasons.sql`, `get_bank_unmatched_reasons(działalność, rok,
+  miesiąc)`, tylko odczyt, „Podgląd finansów” działalności): dla każdej płatności miesiąca, której brakuje dokumentu (brak,
+  częściowo, propozycja, wybór; bez przeniesień i wyjaśnionych):
+  - opis braku dokumentu — wyjaśnienie zapisane, ale „do kontroli” (`accounting_subtype` i treść, np. „Brak faktury od
+    dostawcy — szukam faktury w koncie Apple”),
+  - wpis na liście „Dokumenty do dosłania” (`accounting_document_followups`, aktywny),
+  - dokumenty tego kontrahenta (KSeF, faktury CRM, dokumenty spoza KSeF; kopie tej samej faktury liczone raz): ile, ile
+    otwartych, dokument na tę kwotę — otwarty, oznaczony ręcznie albo już rozliczony innym przelewem — a gdy takiego nie ma,
+    otwarty najbliższy kwotą; kontrahent = nazwa z dokumentu w treści przelewu (jak w regułach), ten sam pierwszy wyraz nazwy
+    co kontrahent płatności (także z „Lokalizacja:” w opisie z PDF — np. APPLE.COM/BILL) albo NIP dokumentu w treści,
+  - otwarty dokument na brakującą kwotę od innego kontrahenta (wystawiony od 180 dni przed do 45 dni po płatności),
+  - dokument spoza KSeF tego kontrahenta, którego uzgodnienie nie widzi („częściowo opłacony” bez kwoty zapłaty).
+- **Zdania** (`src/lib/invoices/bankUnmatchedReasons.ts`, wspólne dla CRM, trasy Maca i PDF): np. „Jedyny dokument od Apple
+  Distribution International Ltd. w systemie jest już rozliczony — dokumentu za tę płatność jeszcze nie ma.”, „W systemie
+  nie ma żadnego dokumentu od „Allegro” — ani w KSeF, ani w dokumentach spoza KSeF.”, „Od ALLEGRO sp. z o.o. sp.k. jest jeden
+  otwarty dokument, ale na inną kwotę niż 1947,00 zł: faktura CRM 46/2026 (do zapłaty 5965,50 zł). Jeśli to część płatności
+  (rata, zaliczka), przypisz ją do tego dokumentu jako płatność częściową.”, „Jest otwarta faktura KSeF … na tę kwotę, ale
+  uzgodnienie jej nie przypisało…”, „… jest już w całości rozliczona innym przelewem z wyciągu — sprawdź, czy to nie druga
+  płatność…”; przy wydatku bez dokumentu — wskazówka o fakturach spoza KSeF (zagraniczny serwis: faktura z konta u
+  sprzedawcy jako dokument spoza KSeF).
+- **Załącznik PDF** — po zestawieniu (i liście „Bez pliku w zestawieniu”): „Załącznik: płatności bez dokumentu (N) — dlaczego
+  nie są dopasowane”, kolumny Data · Kontrahent / tytuł · Kwota (przy częściowej — „brakuje X”) · Stan („Brak dokumentu ·
+  opisana · do dosłania”, „Częściowo rozliczona”, „Propozycja”, „Do wyboru”) · Dlaczego (opis użytkownika, propozycja
+  z powodem albo wskazówka uzgodnienia, „Przypisano dokumenty na X z Y”, fakty o dokumentach). PDF powstaje także w miesiącu
+  bez żadnego dopasowania (wtedy tylko załącznik). Komunikat po pobraniu: „Płatności bez dokumentu: N (powody w załączniku)”.
+- **Uzgodnienie (CRM i Mac)**: przy płatności bez dokumentu — „Opisz brak dokumentu” (wydatek: „Brak faktury od dostawcy”,
+  wpływ: „Inne wyjaśnienie”; domyślny opis „Faktury jeszcze nie ma w systemie — do pozyskania od dostawcy…”); zapisany opis
+  widać przy płatności (CRM — bursztynowa etykieta, Mac — „Dlaczego bez dokumentu” w panelu i ikona dymka na liście) z „Zmień
+  opis” i „Usuń opis” (usuwa treść; wyjaśnienia zamkniętego nie rusza). Pod płatnością — powody z faktów (bez opisu
+  i propozycji, które ekran pokazuje osobno). „Braki dokumentów (CSV)” — kolumna „Wskazówka”: opis, propozycja, powody.
+- **Bez migracji**: uzgodnienie działa jak dotąd (bez powodów), PDF ma załącznik ze stanem, propozycją i częścią rozliczoną.

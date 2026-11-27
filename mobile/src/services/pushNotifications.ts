@@ -44,9 +44,16 @@ void Notifications.setNotificationCategoryAsync(INQUIRY_FOLLOWUP_CATEGORY, [
   console.error('[Push] Inquiry follow-up category setup failed:', error);
 });
 
+/**
+ * Kanał powiadomień Androida (dźwięk, wibracja, baner): ten sam w powiadomieniach push (`channelId` w funkcjach
+ * `send-*-push`, domyślny kanał FCM w AndroidManifest) i lokalnych (wiadomość z komunikatora przy otwartej aplikacji,
+ * przypomnienia o spotkaniach) — bez niego Android wkłada powiadomienie lokalne do kanału zapasowego, bez banera.
+ */
+export const ANDROID_NOTIFICATION_CHANNEL = 'default';
+
 // Android notification channel setup (must run early, before any notification arrives)
 if (Platform.OS === 'android') {
-  Notifications.setNotificationChannelAsync('default', {
+  Notifications.setNotificationChannelAsync(ANDROID_NOTIFICATION_CHANNEL, {
     name: 'Mavinci CRM',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
